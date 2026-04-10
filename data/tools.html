@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenTurbine — Tools</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <a href="/hardware.html">Hardware</a>
+  <a href="/calibration.html">Calibration</a>
+  <a href="/config.html">Config</a>
+  <a href="/sequence.html">Sequence</a>
+  <a href="/">Dashboard</a>
+  <a href="/log.html">Log</a>
+  <a href="/tools.html" class="active">Tools</a>
+  <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
+</nav>
+<main>
+  <h2 style="margin-bottom:.6rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Tools</h2>
+  <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.1rem">
+    <span style="font-size:.78rem;color:var(--dim)">Engine:</span>
+    <span id="mode-badge" class="mode-badge" style="font-size:.78rem;padding:.2rem .8rem">—</span>
+    <span id="lock-warn" style="font-size:.75rem;color:var(--red);display:none">Stop engine before using actuator tools</span>
+  </div>
+
+  <div id="tool-area"></div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+// ── Tool definitions ──────────────────────────────────────────
+// durationMs=0 → instant toggle, no progress bar
+// toggleKey     → EngineData field name in telemetry (for ON/OFF state display)
+// special       → reserved for non-standard cards (rendered separately)
+const TOOLS = [
+  { id:'FUEL_PRIME',          name:'Fuel Prime',     durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid — primes fuel lines.' },
+  { id:'OIL_PRIME',           name:'Oil Prime',      durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100 % — primes oil circuit.' },
+  { id:'IGN_TEST',            name:'Igniter Test',   durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter — verify spark visually.' },
+  { id:'START_TEST',          name:'Starter Test',   durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at 30 % — verify motor turns.' },
+  { id:'FUEL_SOL_TEST',       name:'Solenoid Click', durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse — audible click to confirm valve.' },
+  { id:'IDLE_TEST',           name:'Idle Throttle',  durationMs:3000, desc:'Moves throttle to idle position — verify servo travel.' },
+  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',   durationMs:0, desc:'Closed-loop idle RPM hold.', toggleKey:'dynamic_idle_enabled' },
+  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',      durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode' },
+];
+
+let activeId    = null;
+let activeTick  = null;
+let activeStart = 0;
+let engineMode  = null;
+let liveData    = {};
+
+// ── Render ────────────────────────────────────────────────────
+function renderTools() {
+  let html = '';
+  let dividerDone = false;
+  TOOLS.forEach(t => {
+    const isToggle = t.durationMs === 0;
+    if (isToggle && !dividerDone) { html += '<hr class="tool-divider">'; dividerDone = true; }
+    html += `
+    <div class="tool-card" id="card-${t.id}">
+      <div class="tool-header">
+        <div class="tool-name">${t.name}</div>
+        <div class="tool-state" id="state-${t.id}">${isToggle ? 'OFF' : 'Ready'}</div>
+      </div>
+      ${!isToggle ? `<div class="prog-track"><div class="prog-fill" id="prog-${t.id}"></div></div>` : ''}
+      <div class="tool-footer">
+        <div class="tool-desc">${t.desc}</div>
+        ${!isToggle ? `<div class="tool-time" id="time-${t.id}">${(t.durationMs/1000).toFixed(0)} s</div>` : ''}
+        <button id="btn-${t.id}" onclick="runTool('${t.id}')" disabled>
+          ${isToggle ? 'Toggle' : 'Run'}
+        </button>
+      </div>
+    </div>`;
+  });
+
+  // ── Extra Cooldown — slider-based special card ────────────
+  html += `<hr class="tool-divider">
+  <div class="tool-card" id="card-EXTRA_COOLDOWN">
+    <div class="tool-header">
+      <div class="tool-name">Extra Cooldown</div>
+      <div class="tool-state off" id="state-EXTRA_COOLDOWN">OFF</div>
+    </div>
+    <div id="cooldown-start-ui">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+        <input type="range" id="cooldown-slider" min="60" max="300" step="10" value="120"
+               style="flex:1"
+               oninput="document.getElementById('cooldown-slider-val').textContent=this.value+' s'">
+        <span id="cooldown-slider-val" style="font-size:.75rem;color:var(--dim);min-width:3.5rem;text-align:right">120 s</span>
+      </div>
+      <div class="tool-footer">
+        <div class="tool-desc">Runs starter + oil pump to spin-cool engine after a hot stop.</div>
+        <button id="btn-EXTRA_COOLDOWN" onclick="startCooldown()" disabled>Start</button>
+      </div>
+    </div>
+    <div id="cooldown-stop-ui" style="display:none">
+      <div class="tool-footer">
+        <div class="tool-desc" style="color:var(--yellow)">Cooldown running — starter + oil pump active.</div>
+        <button onclick="stopCooldown()" class="danger">Stop</button>
+      </div>
+    </div>
+  </div>`;
+
+  // ── Config Backup & Restore ──────────────────────────────────
+  html += `<hr class="tool-divider">
+  <div class="tool-card" id="card-CONFIG_BACKUP">
+    <div class="tool-header">
+      <div class="tool-name">Config Backup &amp; Restore</div>
+      <div class="tool-state off" id="cfg-backup-state">Ready</div>
+    </div>
+    <div class="tool-footer" style="margin-top:.5rem;flex-wrap:wrap;gap:.5rem">
+      <div class="tool-desc" style="flex:1;min-width:140px">
+        Download a full backup of hardware + settings as <code>ecu_config.json</code>,
+        or restore from a previously saved file. Engine must be in STANDBY to restore.
+      </div>
+      <button id="cfg-backup-btn" onclick="backupConfig()">Backup</button>
+      <label style="cursor:pointer">
+        <input type="file" id="cfg-restore-file" accept=".json" style="display:none" onchange="restoreConfig(this)">
+        <button id="cfg-restore-btn" onclick="document.getElementById('cfg-restore-file').click()">Restore…</button>
+      </label>
+    </div>
+    <div id="cfg-backup-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
+  </div>`;
+
+  // ── OTA Firmware Update ─────────────────────────────────────
+  html += `<hr class="tool-divider">
+  <div class="tool-card" id="card-OTA">
+    <div class="tool-header">
+      <div class="tool-name">OTA Firmware Update</div>
+      <div class="tool-state off" id="ota-state">Ready</div>
+    </div>
+    <div class="prog-track" id="ota-prog-track" style="display:none">
+      <div class="prog-fill running" id="ota-prog-fill" style="width:0%"></div>
+    </div>
+    <div class="tool-footer" style="margin-top:.5rem">
+      <div class="tool-desc" style="flex:1">
+        Upload a compiled <code>.bin</code> file directly from your device.
+        Works over WiFi AP — no internet needed. ESP32 reboots automatically.
+      </div>
+      <label style="cursor:pointer">
+        <input type="file" id="ota-file" accept=".bin" style="display:none" onchange="startOTA(this)">
+        <button onclick="document.getElementById('ota-file').click()" id="ota-btn">Choose .bin</button>
+      </label>
+    </div>
+    <div id="ota-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
+  </div>`;
+
+  document.getElementById('tool-area').innerHTML = html;
+
+  // Dev mode section is always in the DOM but hidden until dev_mode is active
+  const devHtml = `
+  <hr class="tool-divider" id="dev-divider" style="display:none">
+  <div id="dev-section" style="display:none">
+    <div style="padding:.45rem .75rem;background:rgba(220,50,50,.09);border:1px solid var(--red);border-radius:6px;margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">
+      <span style="font-size:.78rem;color:var(--red);font-weight:700">⚠ DEVELOPMENT MODE ACTIVE — Not for engine operation</span>
+    </div>
+    <div class="tool-card" id="card-TOGGLE_SAFETY_CHECKS" style="border-color:var(--red)">
+      <div class="tool-header">
+        <div class="tool-name" style="color:var(--red)">Skip Safety Checks</div>
+        <div class="tool-state off" id="state-TOGGLE_SAFETY_CHECKS">Active</div>
+      </div>
+      <div class="tool-footer">
+        <div class="tool-desc" style="color:var(--dim)">
+          Disables overspeed, overtemp, low-oil, and flameout monitors.
+          Engine will not protect itself. Use only for sensor/wiring tests — never with fuel.
+        </div>
+        <button id="btn-TOGGLE_SAFETY_CHECKS" onclick="toggleSafetyChecks()" class="danger">Toggle</button>
+      </div>
+    </div>
+    <div class="tool-card" id="card-TOGGLE_BENCH_MODE" style="border-color:var(--yellow);margin-top:.55rem">
+      <div class="tool-header">
+        <div class="tool-name" style="color:var(--yellow)">Bench / Debug Mode</div>
+        <div class="tool-state off" id="state-TOGGLE_BENCH_MODE">OFF</div>
+      </div>
+      <div class="tool-footer">
+        <div class="tool-desc" style="color:var(--dim)">
+          All sequencer blocks complete on their configured timeout — no sensor feedback required.
+          Safety faults are bypassed. Use to verify actuator wiring and sequence timing without a connected engine or sensors.
+          <b style="color:var(--yellow)">Standby only. Never use with fuel or a running engine.</b>
+        </div>
+        <button id="btn-TOGGLE_BENCH_MODE" onclick="toggleBenchMode()" class="danger">Enable Bench Mode</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('tool-area').insertAdjacentHTML('beforeend', devHtml);
+
+  // Factory reset card — always visible
+  const factoryResetHtml = `
+  <hr class="tool-divider" style="margin-top:1.4rem">
+  <div class="tool-card" id="card-factory-reset" style="border-color:var(--red);margin-top:.75rem">
+    <div class="tool-header">
+      <div class="tool-name" style="color:var(--red)">Factory Reset</div>
+      <div class="tool-state off" id="state-factory-reset">Standby only</div>
+    </div>
+    <div class="tool-footer">
+      <div class="tool-desc" style="color:var(--dim)">
+        Erases all config, hardware settings, and flight logs, then reboots to factory defaults.
+        Use if config is corrupted or you want to start fresh. <b style="color:var(--red)">Cannot be undone.</b>
+      </div>
+      <button onclick="factoryReset()" class="danger" id="btn-factory-reset">Factory Reset</button>
+    </div>
+    <div id="factory-reset-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
+  </div>`;
+  document.getElementById('tool-area').insertAdjacentHTML('beforeend', factoryResetHtml);
+
+  // Dev mode — always-visible card so it's easy to find before the dev section appears
+  const devToggleHtml = `
+  <hr class="tool-divider" style="margin-top:1.4rem">
+  <div class="tool-card" style="border-color:var(--red);margin-top:.75rem;opacity:.75" id="card-dev-mode">
+    <div class="tool-header">
+      <div class="tool-name" style="color:var(--red)">Developer Mode</div>
+      <div class="tool-state off" id="dev-mode-label">OFF</div>
+    </div>
+    <div class="tool-footer">
+      <div class="tool-desc" style="color:var(--dim)">
+        Unlocks safety bypass and bench mode controls above.
+        <b style="color:var(--red)">Never enable during engine operation.</b>
+      </div>
+      <button id="btn-dev-mode" onclick="toggleDevMode()" class="danger">Enable Dev Mode</button>
+    </div>
+  </div>`;
+  document.getElementById('tool-area').insertAdjacentHTML('beforeend', devToggleHtml);
+}
+
+// ── Run a standard tool ───────────────────────────────────────
+function runTool(id) {
+  const tool = TOOLS.find(t => t.id === id);
+  if (!tool) return;
+
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: id }),
+    headers: { 'Content-Type': 'application/json' }
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) { alert('Failed: ' + JSON.stringify(d)); return; }
+    if (tool.durationMs === 0) {
+      setState(id, 'Toggled', 'done');
+      setTimeout(() => refreshToggleState(tool), 800);
+      return;
+    }
+    startProgress(tool);
+  }).catch(e => alert('Network error: ' + e));
+}
+
+// ── Extra Cooldown start / stop ───────────────────────────────
+function startCooldown() {
+  const secs = parseInt(document.getElementById('cooldown-slider').value, 10) || 120;
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: 'EXTRA_COOLDOWN', iParam: secs }),
+    headers: { 'Content-Type': 'application/json' }
+  }).catch(e => alert('Network error: ' + e));
+}
+
+function stopCooldown() {
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: 'EXTRA_COOLDOWN', iParam: 0 }),
+    headers: { 'Content-Type': 'application/json' }
+  }).catch(e => alert('Network error: ' + e));
+}
+
+// ── Countdown progress bar ────────────────────────────────────
+function startProgress(tool) {
+  if (activeTick) { clearInterval(activeTick); activeTick = null; }
+  activeId    = tool.id;
+  activeStart = Date.now();
+
+  setAllButtons(true);
+  setState(tool.id, 'Active', 'active');
+  const pfill = document.getElementById('prog-' + tool.id);
+  if (pfill) pfill.classList.add('running');
+
+  activeTick = setInterval(() => {
+    const elapsed = Date.now() - activeStart;
+    const pct     = Math.min(100, (elapsed / tool.durationMs) * 100);
+    const remain  = Math.max(0, (tool.durationMs - elapsed) / 1000);
+
+    const pf = document.getElementById('prog-' + tool.id);
+    const tm = document.getElementById('time-' + tool.id);
+    if (pf) pf.style.width = pct + '%';
+    if (tm) tm.textContent = remain.toFixed(1) + ' s';
+
+    if (elapsed >= tool.durationMs) {
+      clearInterval(activeTick); activeTick = null; activeId = null;
+      if (pf) { pf.style.width = '100%'; pf.classList.remove('running'); }
+      setState(tool.id, 'Done', 'done');
+      setAllButtons(false);
+      setTimeout(() => {
+        setState(tool.id, 'Ready', '');
+        if (pf) pf.style.width = '0%';
+        if (tm) tm.textContent = (tool.durationMs / 1000).toFixed(0) + ' s';
+      }, 2000);
+    }
+  }, 40);
+}
+
+// ── Toggle state refresh ──────────────────────────────────────
+function refreshToggleState(tool) {
+  if (!tool.toggleKey) return;
+  const val = liveData[tool.toggleKey];
+  if (val === undefined) return;
+  const on = !!val;
+  setState(tool.id, on ? 'ON' : 'OFF', on ? 'on' : 'off');
+  const btn = document.getElementById('btn-' + tool.id);
+  if (btn) btn.textContent = on ? 'Turn Off' : 'Turn On';
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function setState(id, text, cls) {
+  const el = document.getElementById('state-' + id);
+  if (el) { el.textContent = text; el.className = 'tool-state' + (cls ? ' ' + cls : ''); }
+}
+
+function setAllButtons(forcedOff) {
+  const inStandby = engineMode === 'STANDBY';
+  const inRunning = engineMode === 'RUNNING';
+  TOOLS.forEach(t => {
+    const btn = document.getElementById('btn-' + t.id);
+    if (!btn) return;
+    const isToggle = t.durationMs === 0;
+    btn.disabled = forcedOff || (!inStandby && !isToggle);
+  });
+  // Cooldown start button — only in STANDBY and not already running
+  const ecBtn = document.getElementById('btn-EXTRA_COOLDOWN');
+  const ecActive = !!(liveData && liveData.extra_cooldown_active);
+  if (ecBtn) ecBtn.disabled = forcedOff || !inStandby || ecActive;
+}
+
+// ── WS integration ────────────────────────────────────────────
+const _base = window.applyData;
+window.applyData = function(d) {
+  _base(d);
+  liveData = d;
+  if (!d.mode) return;
+  engineMode = d.mode;
+
+  const mb = document.getElementById('mode-badge');
+  if (mb) { mb.textContent = d.mode; mb.className = 'mode-badge ' + d.mode; }
+  const lw = document.getElementById('lock-warn');
+  if (lw) lw.style.display = (d.mode !== 'STANDBY') ? '' : 'none';
+  if (!activeTick) setAllButtons(false);
+
+  // Toggle state badges
+  TOOLS.forEach(t => { if (t.toggleKey) refreshToggleState(t); });
+
+  // Dev mode section visibility
+  const devOn     = !!d.dev_mode;
+  const devSec    = document.getElementById('dev-section');
+  const devDiv    = document.getElementById('dev-divider');
+  const devLabel  = document.getElementById('dev-mode-label');
+  if (devSec)   devSec.style.display  = devOn ? '' : 'none';
+  if (devDiv)   devDiv.style.display  = devOn ? '' : 'none';
+  if (devLabel) {
+    devLabel.textContent = devOn ? 'ON' : 'OFF';
+    devLabel.className   = 'tool-state ' + (devOn ? 'fault' : 'off');
+  }
+  const devCard = document.getElementById('card-dev-mode');
+  if (devCard) devCard.style.opacity = devOn ? '1' : '.75';
+  const devBtn = document.getElementById('btn-dev-mode');
+  if (devBtn) devBtn.textContent = devOn ? 'Disable Dev Mode' : 'Enable Dev Mode';
+
+  // Safety checks state badge
+  const skipSafety  = !!d.skip_safety_checks;
+  const safetyState = document.getElementById('state-TOGGLE_SAFETY_CHECKS');
+  if (safetyState) {
+    safetyState.textContent  = skipSafety ? 'BYPASSED' : 'Active';
+    safetyState.className    = 'tool-state ' + (skipSafety ? 'fault' : 'on');
+  }
+  // Safety button label
+  const safetyBtn = document.getElementById('btn-TOGGLE_SAFETY_CHECKS');
+  if (safetyBtn) safetyBtn.textContent = skipSafety ? 'Re-enable' : 'Bypass';
+
+  // Bench mode state badge
+  const benchOn    = !!d.bench_mode;
+  const benchState = document.getElementById('state-TOGGLE_BENCH_MODE');
+  if (benchState) {
+    benchState.textContent = benchOn ? 'ACTIVE' : 'OFF';
+    benchState.className   = 'tool-state ' + (benchOn ? 'fault' : 'off');
+  }
+  const benchBtn = document.getElementById('btn-TOGGLE_BENCH_MODE');
+  if (benchBtn) {
+    benchBtn.textContent = benchOn ? 'Disable Bench Mode' : 'Enable Bench Mode';
+    benchBtn.disabled = (d.mode !== 'STANDBY');
+  }
+
+  // Config restore button — standby only
+  const cfgRestoreBtn = document.getElementById('cfg-restore-btn');
+  if (cfgRestoreBtn) cfgRestoreBtn.disabled = (d.mode !== 'STANDBY');
+
+  // Config version mismatch banner
+  // Shown when the saved config was written by an older firmware version;
+  // new fields will have compile-time defaults and may need review.
+  let cvmBanner = document.getElementById('cfg-version-mismatch-banner');
+  if (d.config_version_mismatch) {
+    if (!cvmBanner) {
+      cvmBanner = document.createElement('div');
+      cvmBanner.id = 'cfg-version-mismatch-banner';
+      cvmBanner.style.cssText =
+        'background:rgba(255,196,0,.10);border:1px solid rgba(255,196,0,.45);' +
+        'border-radius:6px;padding:.55rem .85rem;margin-bottom:.8rem;' +
+        'font-size:.78rem;color:var(--yellow);line-height:1.5';
+      cvmBanner.innerHTML =
+        '<b>⚠ Config version mismatch</b><br>' +
+        'Your saved settings were written by an older firmware. New parameters have been ' +
+        'set to factory defaults — review <a href="/config.html" style="color:inherit">Config</a> ' +
+        'and <a href="/hardware.html" style="color:inherit">Hardware</a> before starting the engine.';
+      const main = document.querySelector('main');
+      if (main) main.insertBefore(cvmBanner, main.firstChild);
+    }
+  } else if (cvmBanner) {
+    cvmBanner.remove();
+  }
+
+  // Extra Cooldown card state
+  const ecActive = !!d.extra_cooldown_active;
+  const startUi  = document.getElementById('cooldown-start-ui');
+  const stopUi   = document.getElementById('cooldown-stop-ui');
+  const ecState  = document.getElementById('state-EXTRA_COOLDOWN');
+  if (startUi) startUi.style.display = ecActive ? 'none' : '';
+  if (stopUi)  stopUi.style.display  = ecActive ? '' : 'none';
+  if (ecState) {
+    ecState.textContent = ecActive ? 'RUNNING' : 'OFF';
+    ecState.className   = 'tool-state ' + (ecActive ? 'active' : 'off');
+  }
+  const ecBtn = document.getElementById('btn-EXTRA_COOLDOWN');
+  if (ecBtn) ecBtn.disabled = (d.mode !== 'STANDBY') || ecActive;
+};
+
+// ── Dev mode toggle ───────────────────────────────────────────
+function toggleDevMode() {
+  const on = !!(liveData && liveData.dev_mode);
+  const msg = on
+    ? 'Disable dev mode?'
+    : 'Enable dev mode?\n\nThis unlocks the safety bypass controls.\nOnly use for bench testing — never for engine operation.';
+  if (!confirm(msg)) return;
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: 'TOGGLE_DEV_MODE' }),
+    headers: { 'Content-Type': 'application/json' }
+  }).catch(e => alert('Network error: ' + e));
+}
+
+// ── Safety checks bypass (dev mode only) ─────────────────────
+function toggleSafetyChecks() {
+  const fw  = !!(liveData && liveData.dev_mode_fw);
+  const on  = !!(liveData && liveData.skip_safety_checks);
+  if (!fw) {
+    alert('Safety bypass is only available in firmware compiled with OT_DEV_MODE.\nRecompile with that flag to enable this feature.');
+    return;
+  }
+  const msg = on
+    ? 'Re-enable safety checks? (recommended)'
+    : '⚠ DISABLE ALL SAFETY CHECKS?\n\nThe engine will NOT protect against:\n• Overspeed\n• Overtemperature\n• Oil pressure loss\n• Flameout\n\nFor bench testing only — NEVER with fuel flowing.\n\nAre you absolutely sure?';
+  if (!confirm(msg)) return;
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: 'TOGGLE_SAFETY_CHECKS' }),
+    headers: { 'Content-Type': 'application/json' }
+  }).catch(e => alert('Network error: ' + e));
+}
+
+// ── Bench mode toggle ─────────────────────────────────────────
+function toggleBenchMode() {
+  const on   = !!(liveData && liveData.bench_mode);
+  const mode = liveData && liveData.mode;
+  if (mode !== 'STANDBY') { alert('Bench mode can only be changed in STANDBY.'); return; }
+  const msg = on
+    ? 'Disable bench mode and return to normal operation?'
+    : 'Enable BENCH MODE?\n\nAll sequencer blocks will complete on their configured timeout with NO sensor verification.\n\nSafety faults are bypassed. The engine will NOT protect itself.\n\nUse only to test actuator wiring and sequence timing — NEVER with fuel or a running engine.\n\nAre you sure?';
+  if (!confirm(msg)) return;
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: 'TOGGLE_BENCH_MODE' }),
+    headers: { 'Content-Type': 'application/json' }
+  }).catch(e => alert('Network error: ' + e));
+}
+
+// ── Load config to sync tool durations ───────────────────────
+function getNestedVal(obj, dotPath) {
+  return dotPath.split('.').reduce((cur, k) => (cur && typeof cur === 'object' ? cur[k] : undefined), obj);
+}
+
+fetch('/api/config')
+  .then(r => r.json())
+  .then(cfg => {
+    TOOLS.forEach(t => {
+      if (!t.configKey) return;
+      const v = getNestedVal(cfg, t.configKey);
+      if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
+    });
+    renderTools();
+  })
+  .catch(() => renderTools());
+
+
+// ── Config backup ─────────────────────────────────────────────
+function backupConfig() {
+  const msg = document.getElementById('cfg-backup-msg');
+  // Fetch both config and hardware data to attach metadata
+  Promise.all([fetch('/api/ecu_config'), fetch('/api/data')])
+    .then(([cfgRes, dataRes]) => {
+      if (!cfgRes.ok) throw new Error('HTTP ' + cfgRes.status);
+      return Promise.all([cfgRes.json(), dataRes.ok ? dataRes.json() : Promise.resolve({})]);
+    })
+    .then(([cfg, live]) => {
+      cfg._backup_meta = {
+        timestamp:    new Date().toISOString(),
+        fw_version:   live.fw_version || 'unknown',
+        profile:      (cfg.hardware || {}).profile_id || 'unknown',
+        uptime_s:     live.uptime_s  || 0
+      };
+      const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
+      const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'ecu_config_' + ts + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      document.getElementById('cfg-backup-state').textContent = 'Downloaded';
+      document.getElementById('cfg-backup-state').className   = 'tool-state done';
+      if (msg) { msg.textContent = 'Config downloaded successfully.'; msg.style.color = 'var(--green)'; msg.style.display = ''; }
+      setTimeout(() => {
+        document.getElementById('cfg-backup-state').textContent = 'Ready';
+        document.getElementById('cfg-backup-state').className   = 'tool-state off';
+        if (msg) msg.style.display = 'none';
+      }, 3000);
+    })
+    .catch(e => {
+      if (msg) { msg.textContent = 'Backup failed: ' + e.message; msg.style.color = 'var(--red)'; msg.style.display = ''; }
+    });
+}
+
+// ── Factory reset ─────────────────────────────────────────────
+function factoryReset() {
+  if (!confirm('⚠ Factory Reset\n\nThis will ERASE:\n• All engine config\n• Hardware pin assignments\n• Flight logs\n\nThe device will reboot to factory defaults.\n\nThis cannot be undone. Are you sure?')) return;
+  const msg = document.getElementById('factory-reset-msg');
+  const btn = document.getElementById('btn-factory-reset');
+  if (btn) btn.disabled = true;
+  fetch('/api/factory_reset', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        if (msg) { msg.textContent = 'Reset sent — device rebooting…'; msg.style.color = 'var(--yellow)'; msg.style.display = ''; }
+        setTimeout(() => location.reload(), 8000);
+      } else {
+        if (msg) { msg.textContent = d.error || 'Reset failed'; msg.style.color = 'var(--red)'; msg.style.display = ''; }
+        if (btn) btn.disabled = false;
+      }
+    })
+    .catch(e => {
+      if (msg) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'var(--red)'; msg.style.display = ''; }
+      if (btn) btn.disabled = false;
+    });
+}
+
+// ── Config restore ────────────────────────────────────────────
+function restoreConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const msg = document.getElementById('cfg-backup-msg');
+  const btn = document.getElementById('cfg-restore-btn');
+  if (engineMode !== 'STANDBY') {
+    alert('Engine must be in STANDBY to restore config.');
+    input.value = '';
+    return;
+  }
+  if (!confirm('Restore config from "' + file.name + '"?\n\nThis will overwrite ALL settings and hardware config, then reboot.')) {
+    input.value = '';
+    return;
+  }
+  btn.disabled = true;
+  document.getElementById('cfg-backup-state').textContent = 'Restoring…';
+  document.getElementById('cfg-backup-state').className   = 'tool-state active';
+  const reader = new FileReader();
+  reader.onload = ev => {
+    fetch('/api/ecu_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: ev.target.result
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        document.getElementById('cfg-backup-state').textContent = 'Done — rebooting…';
+        document.getElementById('cfg-backup-state').className   = 'tool-state done';
+        if (msg) { msg.textContent = 'Config restored. Device is rebooting.'; msg.style.color = 'var(--green)'; msg.style.display = ''; }
+      } else {
+        throw new Error(d.error || 'Unknown error');
+      }
+    })
+    .catch(e => {
+      document.getElementById('cfg-backup-state').textContent = 'Error';
+      document.getElementById('cfg-backup-state').className   = 'tool-state fault';
+      if (msg) { msg.textContent = 'Restore failed: ' + e.message; msg.style.color = 'var(--red)'; msg.style.display = ''; }
+      btn.disabled = false;
+    });
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function startOTA(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn   = document.getElementById('ota-btn');
+  const state = document.getElementById('ota-state');
+  const track = document.getElementById('ota-prog-track');
+  const fill  = document.getElementById('ota-prog-fill');
+  const msg   = document.getElementById('ota-msg');
+
+  btn.disabled = true;
+  track.style.display = '';
+  state.textContent = 'Uploading…'; state.className = 'tool-state active';
+  msg.style.display = 'none';
+
+  const form = new FormData();
+  form.append('firmware', file, file.name);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/update');
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = (e.loaded / e.total * 100).toFixed(0);
+      fill.style.width = pct + '%';
+      state.textContent = 'Uploading ' + pct + '%';
+    }
+  };
+  xhr.onload = () => {
+    try {
+      const r = JSON.parse(xhr.responseText);
+      if (r.ok) {
+        fill.style.width = '100%'; fill.classList.remove('running');
+        state.textContent = 'Done — rebooting…'; state.className = 'tool-state done';
+        msg.textContent = 'Firmware flashed successfully. Reconnect in a few seconds.';
+        msg.style.color = 'var(--green)'; msg.style.display = '';
+      } else {
+        throw new Error(r.error || 'Unknown error');
+      }
+    } catch(e) {
+      state.textContent = 'Error'; state.className = 'tool-state fault';
+      msg.textContent = 'Upload failed: ' + e.message;
+      msg.style.color = 'var(--red)'; msg.style.display = '';
+      btn.disabled = false;
+    }
+  };
+  xhr.onerror = () => {
+    state.textContent = 'Error'; state.className = 'tool-state fault';
+    msg.textContent = 'Network error — is the device still connected?';
+    msg.style.color = 'var(--red)'; msg.style.display = '';
+    btn.disabled = false;
+  };
+  xhr.send(form);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+#pragma once
+#include "ISensor.h"
+#include <SPI.h>
+#include <Arduino.h>
+
+// ============================================================
+//  MAX31855TempSensor — K-type thermocouple, direct SPI
+//
+//  No Adafruit library — reads 32 bits directly via SPI.
+//  Bit layout (per datasheet):
+//    31–18  Thermocouple temp (13-bit + sign, 0.25°C/LSB)
+//    16     Fault bit (1 = any fault present)
+//    3      SCV: short to VCC
+//    2      SCG: short to GND
+//    1      OC:  open circuit
+// ============================================================
+
+class MAX31855TempSensor : public ISensor {
+public:
+    MAX31855TempSensor(int clkPin, int csPin, int misoPin, const char* sensorName)
+        : _clk(clkPin), _cs(csPin), _miso(misoPin), _name(sensorName) {}
+
+    void begin(int clk, int cs, int miso) {
+        _clk = clk; _cs = cs; _miso = miso;
+        begin();
+    }
+
+    void begin() override {
+        pinMode(_cs, OUTPUT);
+        digitalWrite(_cs, HIGH);
+        // Software SPI — no conflicts with other SPI devices or bus sharing issues
+        pinMode(_clk,  OUTPUT);
+        pinMode(_miso, INPUT);
+        _temp    = 0;
+        _healthy = false;
+        _lastMs  = 0;
+    }
+
+    void update() override {
+        unsigned long now = millis();
+        if (now - _lastMs < READ_INTERVAL_MS) return;
+        _lastMs = now;
+
+        uint32_t raw = _read32();
+
+        // Fault bits — bit 16 is the summary fault flag
+        if (raw & 0x00010000UL) {
+            _healthy = false;
+            return;
+        }
+
+        // Bits 31–18: thermocouple temperature (14-bit two's complement, 0.25°C LSB)
+        int16_t tc = (int16_t)(raw >> 18);
+        // Sign-extend 14-bit value to 16-bit
+        if (tc & 0x2000) tc |= 0xC000;
+
+        _temp = tc * 0.25f;
+        // MAX31855 physical range: -200 to +1350 °C
+        // Values outside this range indicate hardware / wiring fault
+        if (_temp < -200.0f || _temp > 1350.0f) {
+            _healthy = false;
+            return;
+        }
+        _healthy = true;
+    }
+
+    float       getValue()  override { return _temp; }
+    bool        isHealthy() override { return _healthy; }
+    const char* name()      override { return _name; }
+
+private:
+    static constexpr unsigned long READ_INTERVAL_MS = 100;
+
+    int         _clk, _cs, _miso;
+    const char* _name;
+    float       _temp    = 0;
+    bool        _healthy = false;
+    unsigned long _lastMs = 0;
+
+    uint32_t _read32() {
+        uint32_t val = 0;
+        digitalWrite(_cs, LOW);
+        delayMicroseconds(1);
+        for (int i = 31; i >= 0; i--) {
+            digitalWrite(_clk, LOW);
+            delayMicroseconds(1);
+            if (digitalRead(_miso)) val |= (1UL << i);
+            digitalWrite(_clk, HIGH);
+            delayMicroseconds(1);
+        }
+        digitalWrite(_cs, HIGH);
+        return val;
+    }
+};

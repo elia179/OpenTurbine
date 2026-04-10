@@ -1,0 +1,15 @@
+# PlatformIO build directories
+.pio
+.pio2
+.pio3
+
+# VSCode generated files
+.vscode/.browse.c_cpp.db*
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch
+
+# Flash output logs (build artefacts)
+flash_output.txt
+flash_fw_output.txt
+flash_fs_output.txt

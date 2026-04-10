@@ -1,0 +1,289 @@
+#pragma once
+#include <ArduinoJson.h>
+#include "../engine/EngineData.h"
+
+// ============================================================
+//  Config — loads config.json from LittleFS, validates profile ID
+//
+//  Boot sequence:
+//    1. load()
+//    2. If no file → generateDefaults() + save() + proceed
+//    3. If profile_id mismatch → set mode=FAULT, block engine ops
+//    4. If OK → populate config values into runtime structs
+//
+//  During STARTUP/RUNNING/SHUTDOWN: all write() calls rejected
+//  unless OT_DEV_MODE is defined.
+// ============================================================
+
+class Config {
+public:
+    static constexpr const char* PATH        = "/ecu_config.json";
+    static constexpr const char* LEGACY_PATH = "/config.json";
+    static constexpr const char* SECTION     = "settings";
+
+    // ── Engine parameters ─────────────────────────────────────
+    static float rpmLimit;
+    static float minRpm;
+    static float totLimit;
+    static float totCooldownTarget;
+    static float totSafeMargin;
+
+    // ── Oil parameters ────────────────────────────────────────
+    static float oilStartupPressure;
+    static float oilStartupPct;      // pump duty % for OilPrime when no oil pressure sensor
+    static float oilStartupMinBar;
+    static float oilRunningMin;
+    static float oilMapMin;          // fixed running pressure OR throttle-map idle target
+    static float oilMapMax;          // throttle-map full-throttle target
+    static bool  oilUseThrottleMap;  // false = fixed at oilMapMin; true = lerp with throttle
+    static float oilAdjustScale;
+    static float oilMinPct;
+    static int   oilFailsafeDelayMs;
+    static float oilFailsafePct;
+
+    // ── Sequence parameters ───────────────────────────────────
+    static int   startupOilArmTimeoutMs;
+    static float startRpmThreshold;
+    static float preIgnRpm;
+    static int   preIgnSparkMs;
+    static int   flameTimeoutMs;
+    static int   flameCheckIntervalMs;
+    static float spoolRpmTarget;
+    static int   spoolTimeoutMs;
+    static int   safetyHoldMs;
+    static float safetyHoldFinalRpm;
+    static float shutdownRpmDropThreshold;
+    static int   shutdownRpmDropTimeoutMs;
+    static int   shutdownCooldownTimeoutMs;
+    static int   shutdownFinalStopTimeoutMs;
+
+    // ── Throttle parameters ───────────────────────────────────
+    static float throttleRampUpMs;
+    static float throttleRampDownMs;
+    static float throttleIdleMinPct;
+    static float throttleIdleMaxPct;
+    static float throttleExpo;       // 0=linear, 0.3=mild expo, 1.0=max expo (reduces sensitivity near zero)
+
+    // ── Dynamic idle ──────────────────────────────────────────
+    static float idleTargetRpm;
+    static float idleRampUpMs;
+    static float idleRampDownMs;
+    static float idleDeadbandRpm;
+    static float idleRpmLimit;
+    static float idleMinMultiplier;
+    static bool  idleUseN2;          // false = N1 (default), true = N2
+    static float idleIGain;          // integral gain (accumulated error → throttle %)
+    static float idleIMax;           // max integral windup (fraction, e.g. 0.15 = ±15% authority)
+
+    // ── Safety ────────────────────────────────────────────────
+    static int   safetyCheckIntervalMs;
+    static float flameoutShutdownMs;
+    static float totRiseRateLimitDegPerSec;  // °C/s — 0 = disabled
+    static float titLimit;                   // °C TIT overtemp limit (0 = disabled)
+    static float oilTempLimit;              // °C oil temp limit (0 = disabled)
+    static float fuelPressMin;             // bar minimum fuel pressure (0 = disabled)
+    static float battVoltMin;              // V minimum battery voltage (0 = disabled)
+    static float surgeDetectRpmVariance;   // N1 variance threshold for surge detection (0 = disabled)
+
+    // ── Relight ───────────────────────────────────────────────
+    static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
+    static float    relightMinRpm;       // min N1 to attempt relight (falls below → fault)
+    static int      relightMaxAttempts;  // max relight attempts before faulting (0 = unlimited)
+
+    // ── Tool test durations (standby diagnostics) ─────────────
+    static uint32_t toolFuelPrimeMs;
+    static uint32_t toolOilPrimeMs;
+    static uint32_t toolIgnTestMs;
+    static uint32_t toolStartTestMs;
+    static uint32_t toolFuelSolTestMs;
+
+    // ── Telemetry intervals ───────────────────────────────────
+    static uint32_t wsIntervalMs;        // WebSocket push rate (ms)
+    static uint32_t snapshotIntervalMs;  // FlightRecorder RUNNING_SNAP rate (ms)
+
+    // ── Starter assist ────────────────────────────────────────
+    static float starterAssistPct;       // assist duty % (e.g. 15 or 30)
+    static float starterAssistExitRpm;   // disengage above this N1 RPM
+
+    // ── Starter slew rate & demand ───────────────────────────
+    static float starterRampPctPerSec;   // starter ESC ramp rate % per second during StarterSpin
+    static float starterDemand;          // starter ESC demand % during StarterSpin (0-100)
+
+    // ── Oil zero / disconnect fault ───────────────────────────
+    static float oilZeroBar;             // oil pressure below this → OIL_ZERO fault
+
+    // ── Oil controller deadband ───────────────────────────────
+    static float oilPressureDeadband;    // bar: suppress output change when |error| < this
+
+    // ── Standby oil feed (windmill protection) ────────────────
+    static float standbyOilRpmLimit;     // N1 above this in STANDBY → activate oil feed
+    static float standbyOilFeedPct;      // oil pump % to run during standby feed
+
+    // ── Limp mode ─────────────────────────────────────────────
+    static float limpMaxThrottlePct;     // throttle cap (%) when limp mode is active
+
+    // ── Misc ──────────────────────────────────────────────────
+    static bool  igniterOnStart;         // fire igniter while START held during RUNNING
+
+    // ── Cooldown hardware selection ───────────────────────────
+    static bool  cooldownUseStarter;          // spin starter motor during CooldownSpin block
+    static bool  cooldownUseOilPump;          // run oil pump during CooldownSpin block
+    static float cooldownStarterPct;          // starter speed % during CooldownSpin (0-100)
+    static float cooldownOilPct;              // oil pump % during CooldownSpin (no pressure sensor)
+    static float cooldownOilPressureTarget;   // oil pressure target bar (pressure-fed systems)
+
+    // ── Flame confirm ─────────────────────────────────────────
+    static int   flameRequiredCount;     // consecutive flame detections needed (FlameConfirm)
+
+    // ── Cooldown skip ─────────────────────────────────────────
+    static int   cooldownSkipHoldMs;     // hold both buttons this long in SHUTDOWN to skip cooldown
+
+    // ── Throttle / fuel ESC idle range ────────────────────────
+    static float fuelPumpIdleMinPct;     // throttle % at idle input minimum (~8%)
+    static float fuelPumpIdleMaxPct;     // throttle % at idle input maximum (~18%)
+
+    // ── New sequence block params ─────────────────────────────
+    static int   timedDelayMs;           // TimedDelay block duration (ms)
+    static float modifiedIdleMultiplier; // ModifiedIdle block throttle multiplier
+
+    // ── FlameConfirm exit actions ─────────────────────────────
+    static bool  flameConfirmTurnOffIgniter;  // cut igniter on FlameConfirm exit (default true)
+
+    // ── SafetyHold exit actions ───────────────────────────────
+    static bool  safetyHoldTurnOffStarter;    // zero starter demand on SafetyHold exit
+    static bool  safetyHoldTurnOffStarterEn;  // clear starter enable relay on SafetyHold exit
+    static bool  safetyHoldTurnOffIgniter;    // cut igniter on SafetyHold exit
+
+    // ── Spool exit actions ────────────────────────────────────
+    static bool  spoolCutStarterOnExit;       // zero starter demand when spool RPM reached (default true)
+    static bool  spoolCutStarterEnOnExit;     // de-assert starter enable relay on spool exit (default true)
+
+    // ── Hot start protection ──────────────────────────────────
+    static float hotStartTotThreshold;   // °C; abort startup if TOT above this (0 = disabled)
+
+    // ── Post-stop oil scavenge ────────────────────────────────
+    static int   finalStopOilScavengeMs; // extra oil pump runtime after N1=0 in FinalStop (0 = off)
+    static bool  oilPrimeUseScavengePump;    // run scavenge pump during OilPrime block
+    static bool  cooldownUseScavengePump;    // run scavenge pump during CooldownSpin block
+
+    // ── Afterburner tuning ────────────────────────────────────
+    // Trigger / ready-check
+    static float abMinN1;              // minimum N1 to attempt AB ignition
+    static float abMaxN1;              // maximum N1 above which AB will not fire (compressor too fast)
+    static float abMaxTotForLight;     // maximum TOT to attempt lighting (°C); 0=disabled
+    static float abThrottleThreshold;  // throttle fraction (0–1) to trigger when source=throttle
+    // Ignition
+    static bool  abUseTorch;           // spike main fuel through turbine (torch method)
+    static bool  abUseIgniter;         // fire AB igniter (igniter2) on ignition
+    static float abTorchSpikePct;      // main fuel pump spike % during torch
+    static int   abTorchDurationMs;    // torch spike duration
+    static float abTorchTotLimit;      // cut torch if TOT exceeds this (°C); 0=disabled
+    // Flame confirmation
+    static int   abFlameMode;          // 0=sensor, 1=TOT_rise, 2=timed
+    static float abTotRiseDegC;        // TOT rise required for TOT_rise mode
+    static int   abTotRiseWindowMs;    // time window for TOT rise
+    static int   abAssumeIgnitedMs;    // timed mode: wait this long then assume lit
+    static int   abFlameTimeoutMs;     // overall timeout to confirm flame before fault
+    // Running
+    static float abPumpMinPct;         // AB pump minimum % when running
+    static float abPumpMaxPct;         // AB pump maximum % when running
+    static bool  abPumpFollowThrottle; // scale pump between min/max with throttle demand
+    static float abMainFuelOffsetPct;  // add this to main throttle demand while AB running
+    static int   abStabilizeMs;        // hold time in ABStabilize block
+    static float abStabilizeMaxTot;    // TOT limit during stabilize; abort if exceeded
+
+    // ── RPM sensor health thresholds ─────────────────────────
+    static float rpmJumpThreshold;       // fraction: relative RPM step > this → JUMP fault
+    static int   rpmZeroStuckTicks;      // consecutive zero ticks before ZERO_STUCK fault
+
+    // ── Cluster display limits ────────────────────────────────
+    static float n1WarnRpm;              // N1 warning RPM for cluster gauge yellow zone
+    static float n2WarnRpm;              // N2 warning threshold for ClusterSerial
+    static float totWarnC;               // TOT warning threshold for cluster (°C); 0 = use totLimit - totSafeMargin
+    static float oilWarnBar;             // Oil pressure warning threshold for cluster (bar); 0 = use oilRunningMin
+    static bool  clusterEnabled;         // Enable cluster serial output at runtime
+
+    // ── Display options ───────────────────────────────────────
+    static bool  pressureSensorsEnabled; // Show P1/P2 pressure sensors on dashboard
+
+    // ── RC PWM input calibration ──────────────────────────────
+    // GPIO pin selection is done at compile time in hardware_profile.h
+    // (OT_IDLE_POT_RC_PWM / OT_THROTTLE_POS_RC_PWM).
+    // These runtime values calibrate pulse width only.
+    static int   rcMinUs;          // pulse width = 0 % (typically 1000)
+    static int   rcMaxUs;          // pulse width = 100 % (typically 2000)
+    static int   rcFailsafeMs;     // mark invalid if no pulse within this ms
+
+    // ── Power turbine governor (turboshaft / APU) ─────────────
+    static float governorTargetRpm;      // N2 target RPM (speed-hold)
+    static float governorBandRpm;        // deadband ± RPM around target
+    static float governorKp;             // proportional gain (throttle %/RPM error)
+    static float governorPitchKp;        // pitch demand fraction per RPM error (turboprop mode)
+    static int   govHoldTimeoutMs;       // GovernorHold block max wait (ms)
+    // FuelPumpRamp / FuelPump2Set block params
+    static float fp2StartPct;            // FuelPumpRamp start % (0–100)
+    static float fp2EndPct;              // FuelPumpRamp end % (0–100)
+    static int   fp2RampMs;              // FuelPumpRamp ramp duration (ms)
+    static float fp2DemandPct;           // FuelPump2Set fixed demand % (0–100)
+    static float propPitchIdleDeg;       // prop pitch at idle (fine pitch, low drag)
+    static float propPitchMaxDeg;        // prop pitch at full power (coarse)
+
+    // ── Glow plug preheating ──────────────────────────────────
+    static int   glowPreheatMs;          // total preheat duration (ms)
+    static float glowPreheatMaxPct;      // peak duty cycle during preheat (%)
+    static float glowHoldPct;            // hold duty once preheated (%)
+
+    // ── Hour meter / run statistics ───────────────────────────
+    static uint32_t totalRunSeconds;         // accumulated engine-on time (persisted)
+
+    // ── Session data logger ───────────────────────────────────
+    static constexpr uint32_t SLOG_N1   = 1u << 0;
+    static constexpr uint32_t SLOG_N2   = 1u << 1;
+    static constexpr uint32_t SLOG_TOT  = 1u << 2;
+    static constexpr uint32_t SLOG_OIL  = 1u << 3;
+    static constexpr uint32_t SLOG_P1   = 1u << 4;
+    static constexpr uint32_t SLOG_P2   = 1u << 5;
+    static constexpr uint32_t SLOG_THR  = 1u << 6;
+    static constexpr uint32_t SLOG_MODE = 1u << 7;
+    static constexpr uint32_t SLOG_DEFAULT = SLOG_N1 | SLOG_N2 | SLOG_TOT | SLOG_OIL;
+    static uint32_t sessionLogMask;
+    static uint32_t sessionLogIntervalMs;  // session CSV row interval (default 500 = 2 Hz)
+
+    // ── Calibration ───────────────────────────────────────────
+    static int   throttleMinRaw;
+    static int   throttleMaxRaw;
+    static int   flameThreshold;
+    static float oilPolyA, oilPolyB, oilPolyC, oilPolyD;
+    static float oilPolyXMin, oilPolyXMax;
+    static float p1ZeroBar;            // P1 reading at atmospheric (0 bar gauge) — subtracted from raw bar value
+    static float p2ZeroBar;            // P2 reading at atmospheric (0 bar gauge) — subtracted from raw bar value
+    static int   fuelPressRawMin;      // ADC raw count at 0 bar (open-line / zero-pressure capture)
+    static int   fuelPressRawMax;      // ADC raw count at known reference pressure
+    static float fuelPressValMax;      // Reference pressure in bar (at fuelPressRawMax)
+
+    // ── Profile ID (read-only after load) ─────────────────────
+    static char    profileId[64];
+    static bool    profileMatch;
+
+    // ── Config version ────────────────────────────────────────
+    static constexpr uint8_t CONFIG_VERSION = 1;
+
+    // ── API ───────────────────────────────────────────────────
+    static void load();
+    static void save();
+    static bool isLocked();
+
+    // Serialize current config to JSON string (for web download)
+    static size_t toJson(char* buf, size_t len);
+    // Serialize into an existing document (for PATCH merge)
+    static void   toJson(JsonDocument& doc);
+
+    // Parse and apply JSON from web upload
+    static bool fromJson(const char* json, size_t len);
+    static bool fromJson(const JsonDocument& doc);  // PATCH merge variant
+
+private:
+    static void _applyDefaults();
+    static void _fromDoc(const JsonDocument& doc);
+    static void _toDoc(JsonDocument& doc);
+};

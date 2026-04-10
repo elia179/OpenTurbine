@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenTurbine — Log</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <a href="/hardware.html">Hardware</a>
+  <a href="/calibration.html">Calibration</a>
+  <a href="/config.html">Config</a>
+  <a href="/sequence.html">Sequence</a>
+  <a href="/">Dashboard</a>
+  <a href="/log.html" class="active">Log</a>
+  <a href="/tools.html">Tools</a>
+  <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
+</nav>
+<main>
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.9rem;flex-wrap:wrap">
+    <h2 style="font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin:0">Flight Log</h2>
+    <span id="log-count" style="font-size:.72rem;color:var(--dim);margin-left:.3rem"></span>
+    <div style="display:flex;gap:.4rem;margin-left:auto;flex-wrap:wrap">
+      <button onclick="loadLog()">Refresh</button>
+      <button onclick="downloadLog('json')">JSON</button>
+      <button onclick="downloadLog('csv')">CSV</button>
+      <button onclick="clearLog()" class="danger">Clear</button>
+    </div>
+  </div>
+
+  <div class="tab-strip">
+    <button class="tab-btn active" id="tab-summary" onclick="showTab('summary')">Summary</button>
+    <button class="tab-btn"        id="tab-events"  onclick="showTab('events')">All Events</button>
+    <button class="tab-btn"        id="tab-session" onclick="showTab('session')">Session Data</button>
+  </div>
+
+  <!-- Summary tab -->
+  <div id="pane-summary">
+    <div id="runs-container">
+      <div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">Loading…</div>
+    </div>
+  </div>
+
+  <!-- All Events tab -->
+  <div id="pane-events" style="display:none">
+    <div class="log-wrap">
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th style="width:4.5rem">Time (s)</th>
+            <th style="width:9rem">Event</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="log-body">
+          <tr><td colspan="3" class="empty-msg">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Session Data tab -->
+  <div id="pane-session" style="display:none">
+    <div style="display:flex;gap:.75rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:.9rem">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.8rem 1.1rem;flex:1;min-width:240px">
+        <div style="font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Logged Sensors</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem .9rem">
+          <label class="slog-chk"><input type="checkbox" data-bit="n1">N1 RPM</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="n2">N2 RPM</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="tot">TOT °C</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="oil">Oil bar</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="p1">P1 bar</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="p2">P2 bar</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="throttle">Throttle %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
+        </div>
+        <div style="margin-top:.65rem;font-size:.7rem;color:var(--dim)">Changes take effect after next power-on.</div>
+        <button onclick="saveSessionCfg()" style="margin-top:.55rem">Save Selection</button>
+        <span id="session-save-msg" style="font-size:.72rem;color:var(--green);margin-left:.5rem;display:none">Saved</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.4rem">
+        <button onclick="downloadSessionLog()">Download CSV</button>
+        <div id="session-rows" style="font-size:.72rem;color:var(--dim);margin-top:.2rem"></div>
+      </div>
+    </div>
+    <div style="font-size:.72rem;color:var(--dim);padding:.5rem 0">
+      Session log rate is configurable on the <a href="/config.html#tm_sl" style="color:var(--dim);text-decoration:underline">Config page</a> (default 2 Hz). File is kept until manually cleared.
+    </div>
+
+    <!-- In-browser CSV preview -->
+    <div style="margin-top:.75rem">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+        <span style="font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em">Session Preview</span>
+        <button onclick="loadSessionPreview()" style="font-size:.72rem;padding:.25rem .75rem">Refresh</button>
+        <span id="session-preview-msg" style="font-size:.72rem;color:var(--dim)"></span>
+      </div>
+
+      <!-- Mini chart -->
+      <div id="session-chart-wrap" style="display:none;margin-bottom:.75rem">
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem;font-size:.72rem">
+          <span style="color:var(--dim)">Plot:</span>
+          <label id="chart-lbl-n1"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-n1"  checked onchange="redrawChart()"> <span style="color:#4ea4f5">N1 RPM</span></label>
+          <label id="chart-lbl-tot" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-tot" checked onchange="redrawChart()"> <span style="color:#f59c3a">TOT °C</span></label>
+          <label id="chart-lbl-n2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-n2"       onchange="redrawChart()"> <span style="color:#52d98a">N2 RPM</span></label>
+          <label id="chart-lbl-oil" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-oil"      onchange="redrawChart()"> <span style="color:#d9785e">Oil bar</span></label>
+          <label id="chart-lbl-thr" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-thr"      onchange="redrawChart()"> <span style="color:#c97adb">Throttle %</span></label>
+        </div>
+        <canvas id="session-chart" style="width:100%;height:200px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></canvas>
+      </div>
+
+      <div id="session-preview-wrap" style="overflow-x:auto;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;display:none">
+        <table id="session-preview-table" style="width:100%;border-collapse:collapse;font-size:.72rem;font-family:inherit">
+        </table>
+      </div>
+      <div id="session-preview-empty" style="font-size:.78rem;color:var(--dim);display:none">No session data yet — data is recorded once the engine enters RUNNING.</div>
+    </div>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+// ── Tab switching ─────────────────────────────────────────────
+function showTab(tab) {
+  ['summary','events','session'].forEach(t => {
+    document.getElementById('pane-' + t).style.display = tab === t ? '' : 'none';
+    document.getElementById('tab-'  + t).className = 'tab-btn' + (tab === t ? ' active' : '');
+  });
+  if (tab === 'session') { loadSessionCfg(); loadSessionPreview(); }
+}
+
+// ── Event helpers ─────────────────────────────────────────────
+function evClass(ev) {
+  if (!ev) return '';
+  if (ev.includes('FAULT'))    return 'ev-fault';
+  if (ev.includes('RUNNING'))  return 'ev-running';
+  if (ev.includes('BLOCK'))    return 'ev-block';
+  if (ev.includes('BOOT'))     return 'ev-boot';
+  if (ev.includes('START'))    return 'ev-startup';
+  if (ev.includes('SHUTDOWN') || ev.includes('ABORT')) return 'ev-shutdown';
+  if (ev.includes('CALIBRATION') || ev.includes('CONFIG')) return 'ev-cal';
+  if (ev.includes('RELIGHT')) return 'ev-startup';
+  return '';
+}
+
+function evBadge(ev) {
+  const cls = evClass(ev);
+  return `<span class="ev-badge ${cls}">${ev || '?'}</span>`;
+}
+
+function formatDetails(entry) {
+  return Object.entries(entry)
+    .filter(([k]) => k !== 't' && k !== 'ev')
+    .map(([k, v]) => `<span style="color:var(--dim)">${k}:</span> ${v}`)
+    .join('&ensp;');
+}
+
+function fmtDuration(secs) {
+  if (secs === null || secs === undefined || secs < 0) return '—';
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return m > 0 ? m + 'm ' + s + 's' : s + 's';
+}
+
+// ── Run grouping ──────────────────────────────────────────────
+// A "run" opens on START_ATTEMPT and closes on NORMAL_SHUTDOWN,
+// FAULT_SHUTDOWN, or ABORT.  Peak N1 / TOT collected from all events.
+function parseRuns(events) {
+  const runs = [];
+  let cur = null;
+  let runNum = 0;
+
+  for (const e of events) {
+    if (e.ev === 'START_ATTEMPT') {
+      if (cur) { runs.push(cur); }   // close unclosed run
+      runNum++;
+      cur = {
+        num:     runNum,
+        tStart:  e.t,
+        tEnd:    null,
+        peakN1:  e.n1  || 0,
+        peakTOT: e.tot || 0,
+        outcome: 'IN_PROGRESS',
+        outCode: '',
+        events:  [e]
+      };
+    } else if (cur) {
+      cur.events.push(e);
+      if (e.n1  !== undefined && e.n1  > cur.peakN1)  cur.peakN1  = e.n1;
+      if (e.tot !== undefined && e.tot > cur.peakTOT) cur.peakTOT = e.tot;
+
+      if (e.ev === 'NORMAL_SHUTDOWN') {
+        cur.outcome = 'NORMAL_SHUTDOWN'; cur.tEnd = e.t; runs.push(cur); cur = null;
+      } else if (e.ev === 'FAULT_SHUTDOWN') {
+        cur.outcome = 'FAULT'; cur.outCode = e.code || ''; cur.tEnd = e.t; runs.push(cur); cur = null;
+      } else if (e.ev === 'ABORT') {
+        cur.outcome = 'ABORT'; cur.outCode = e.block || ''; cur.tEnd = e.t; runs.push(cur); cur = null;
+      }
+    }
+  }
+  if (cur) runs.push(cur);   // still-open run
+  return runs.reverse();     // newest first
+}
+
+// ── Render run cards ──────────────────────────────────────────
+function renderSummary(runs) {
+  const c = document.getElementById('runs-container');
+  if (!runs.length) {
+    c.innerHTML = '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">No engine runs recorded yet</div>';
+    return;
+  }
+
+  c.innerHTML = runs.map((r, i) => {
+    const dur    = r.tEnd !== null
+                     ? fmtDuration(r.tEnd - r.tStart)
+                     : r.outcome === 'IN_PROGRESS' ? 'in progress' : '—';
+    const n1Str  = r.peakN1  > 0 ? Math.round(r.peakN1).toLocaleString()  + ' RPM' : '—';
+    const totStr = r.peakTOT > 0 ? r.peakTOT.toFixed(1) + ' °C'                    : '—';
+    const tStr   = r.tStart  !== undefined ? r.tStart + 's'                         : '—';
+
+    let outClass, outLabel;
+    switch (r.outcome) {
+      case 'NORMAL_SHUTDOWN': outClass = 'ok';      outLabel = '✓ Normal shutdown'; break;
+      case 'FAULT': {
+        outClass = 'fault';
+        // Find the FAULT event (not FAULT_SHUTDOWN) to show sensor values at fault time
+        const faultEv = r.events.find(e => e.ev === 'FAULT');
+        let faultDetail = r.outCode || '?';
+        if (faultEv) {
+          const parts = [];
+          if (faultEv.n1  !== undefined) parts.push('N1 ' + Math.round(faultEv.n1).toLocaleString() + ' RPM');
+          if (faultEv.tot !== undefined) parts.push('TOT ' + Number(faultEv.tot).toFixed(0) + ' °C');
+          if (faultEv.oil !== undefined) parts.push('Oil ' + Number(faultEv.oil).toFixed(2) + ' bar');
+          if (parts.length) faultDetail += ' — ' + parts.join(', ');
+        }
+        outLabel = '✗ Fault: ' + faultDetail;
+        break;
+      }
+      case 'ABORT':           outClass = 'abort';   outLabel = '⚠ Abort: ' + (r.outCode || '?'); break;
+      default:                outClass = 'running'; outLabel = '▶ In progress'; break;
+    }
+
+    const evRows = r.events.map(e => {
+      const faultBlock = (e.ev === 'FAULT_SHUTDOWN' || e.ev === 'ABORT') && e.block
+        ? `<span style="font-size:.67rem;color:var(--dim);margin-left:.35rem">${e.block}</span>` : '';
+      return `<tr>
+        <td style="color:var(--dim);padding:.3rem .6rem">${e.t !== undefined ? e.t : '—'}</td>
+        <td style="padding:.3rem .6rem">${evBadge(e.ev)}${faultBlock}</td>
+        <td style="font-size:.68rem;color:var(--text);padding:.3rem .6rem">${formatDetails(e)}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="run-card">
+      <div class="run-header" onclick="toggleRun(${i})">
+        <div class="run-num">Run #${r.num}</div>
+        <div class="run-outcome ${outClass}">${outLabel}</div>
+        <div class="run-stats">
+          <div class="run-stat">
+            <div class="run-stat-label">Started</div>
+            <div class="run-stat-val">${tStr}</div>
+          </div>
+          <div class="run-stat">
+            <div class="run-stat-label">Duration</div>
+            <div class="run-stat-val">${dur}</div>
+          </div>
+          <div class="run-stat">
+            <div class="run-stat-label">Peak N1</div>
+            <div class="run-stat-val">${n1Str}</div>
+          </div>
+          <div class="run-stat">
+            <div class="run-stat-label">Peak TOT</div>
+            <div class="run-stat-val">${totStr}</div>
+          </div>
+          <div class="run-stat">
+            <div class="run-stat-label">Events</div>
+            <div class="run-stat-val">${r.events.length}</div>
+          </div>
+        </div>
+        <span class="run-expand-btn" id="run-exp-${i}">Details ▾</span>
+      </div>
+      <div class="run-detail" id="run-det-${i}">
+        <table class="log-table" style="font-size:.72rem">
+          <thead><tr>
+            <th style="width:4.5rem">Time (s)</th>
+            <th style="width:9rem">Event</th>
+            <th>Details</th>
+          </tr></thead>
+          <tbody>${evRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleRun(i) {
+  const det = document.getElementById('run-det-' + i);
+  const btn = document.getElementById('run-exp-' + i);
+  if (!det) return;
+  const open = det.classList.toggle('open');
+  if (btn) btn.textContent = open ? 'Details ▴' : 'Details ▾';
+}
+
+// ── Render flat event table ───────────────────────────────────
+function renderEvents(events) {
+  const tbody = document.getElementById('log-body');
+  if (!events.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-msg">No events recorded yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = [...events].reverse().map(e => {
+    const faultBlock = (e.ev === 'FAULT_SHUTDOWN' || e.ev === 'ABORT') && e.block
+      ? `<span style="font-size:.67rem;color:var(--dim);margin-left:.35rem">${e.block}</span>` : '';
+    return `<tr>
+      <td style="color:var(--dim)">${e.t !== undefined ? e.t : '—'}</td>
+      <td>${evBadge(e.ev)}${faultBlock}</td>
+      <td style="font-size:.7rem;color:var(--text)">${formatDetails(e)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Load ──────────────────────────────────────────────────────
+function loadLog() {
+  document.getElementById('runs-container').innerHTML =
+    '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">Loading…</div>';
+  document.getElementById('log-body').innerHTML =
+    '<tr><td colspan="3" class="empty-msg">Loading…</td></tr>';
+
+  fetch('/api/log')
+    .then(r => r.json())
+    .then(events => {
+      if (!Array.isArray(events)) events = [];
+      document.getElementById('log-count').textContent =
+        events.length ? events.length + ' events' : '';
+      renderSummary(parseRuns(events));
+      renderEvents(events);
+    })
+    .catch(() => {
+      document.getElementById('runs-container').innerHTML =
+        '<div style="text-align:center;color:var(--red);padding:2.5rem;font-size:.8rem">Error loading log</div>';
+      document.getElementById('log-body').innerHTML =
+        '<tr><td colspan="3" class="empty-msg" style="color:var(--red)">Error loading log</td></tr>';
+    });
+}
+
+function downloadLog(fmt) {
+  const url  = fmt === 'csv' ? '/api/log/csv' : '/api/log';
+  const name = fmt === 'csv' ? 'flight_log.csv' : 'flight_log.json';
+  fetch(url).then(r => r.blob()).then(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = name;
+    a.click();
+  });
+}
+
+function clearLog() {
+  if (!confirm('Clear all log records?')) return;
+  fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify({ cmd: 'CLEAR_LOG' }),
+    headers: { 'Content-Type': 'application/json' }
+  }).then(() => loadLog());
+}
+
+// ── Session Data tab ──────────────────────────────────────────
+const SLOG_BITS = ['n1','n2','tot','oil','p1','p2','throttle','mode'];
+
+function loadSessionCfg() {
+  fetch('/api/config').then(r => r.json()).then(cfg => {
+    const sl = cfg.session_log || {};
+    SLOG_BITS.forEach(bit => {
+      const el = document.querySelector('[data-bit="' + bit + '"]');
+      if (el) el.checked = !!sl[bit];
+    });
+  }).catch(() => {});
+  // Also show row count hint
+  fetch('/api/session/log').then(r => r.text()).then(csv => {
+    const rows = csv.trim().split('\n').length - 1; // minus header
+    const el = document.getElementById('session-rows');
+    if (el) el.textContent = rows + ' rows logged this session';
+  }).catch(() => {
+    const el = document.getElementById('session-rows');
+    if (el) el.textContent = 'No session log yet';
+  });
+}
+
+function saveSessionCfg() {
+  fetch('/api/config').then(r => r.json()).then(cfg => {
+    if (!cfg.session_log) cfg.session_log = {};
+    SLOG_BITS.forEach(bit => {
+      const el = document.querySelector('[data-bit="' + bit + '"]');
+      cfg.session_log[bit] = el ? el.checked : false;
+    });
+    return fetch('/api/config', {
+      method: 'POST',
+      body: JSON.stringify(cfg),
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }).then(() => {
+    const msg = document.getElementById('session-save-msg');
+    if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2000); }
+  }).catch(e => alert('Save failed: ' + e));
+}
+
+function downloadSessionLog() {
+  fetch('/api/session/log').then(r => {
+    if (!r.ok) { alert('No session log available yet'); return; }
+    return r.blob();
+  }).then(b => {
+    if (!b) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'session_' + Date.now() + '.csv';
+    a.click();
+  });
+}
+
+// ── Session CSV data (parsed, available for chart) ────────────
+let _sessionHeaders = [];
+let _sessionRows    = [];
+
+function loadSessionPreview() {
+  const msg   = document.getElementById('session-preview-msg');
+  const wrap  = document.getElementById('session-preview-wrap');
+  const empty = document.getElementById('session-preview-empty');
+  const table = document.getElementById('session-preview-table');
+  if (msg)   msg.textContent = 'Loading…';
+  if (wrap)  wrap.style.display = 'none';
+  if (empty) empty.style.display = 'none';
+
+  fetch('/api/session/log').then(r => {
+    if (!r.ok) throw new Error('no log');
+    return r.text();
+  }).then(csv => {
+    const lines = csv.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) {
+      if (empty) empty.style.display = '';
+      if (msg)   msg.textContent = '';
+      document.getElementById('session-chart-wrap').style.display = 'none';
+      return;
+    }
+    _sessionHeaders = lines[0].split(',');
+    _sessionRows    = lines.slice(1).map(l => l.split(','));
+
+    // Show last 50 data rows in table
+    const dataRows = _sessionRows.slice(-50);
+    let html = '<thead><tr style="background:var(--surface);position:sticky;top:0">';
+    _sessionHeaders.forEach(h => { html += '<th style="padding:.3rem .5rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>'; });
+    html += '</tr></thead><tbody>';
+    dataRows.forEach((cells, ri) => {
+      html += '<tr style="background:' + (ri % 2 ? 'var(--surface)' : 'var(--bg)') + '">';
+      cells.forEach(c => { html += '<td style="padding:.25rem .5rem;border-bottom:1px solid var(--border);white-space:nowrap">' + c + '</td>'; });
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    if (table) table.innerHTML = html;
+    if (wrap)  wrap.style.display = '';
+    if (msg)   msg.textContent = _sessionRows.length + ' rows';
+
+    // Show chart if useful columns exist
+    _updateChartControls();
+    redrawChart();
+  }).catch(() => {
+    if (empty) empty.style.display = '';
+    if (msg)   msg.textContent = '';
+  });
+}
+
+// Chart column config: [csv_header, checkbox_id, label_id, hex_color, scale_fn]
+const CHART_COLS = [
+  ['n1_rpm',   'chart-cb-n1',  'chart-lbl-n1',  '#4ea4f5', v => v / 1000],  // RPM → kRPM
+  ['tot_c',    'chart-cb-tot', 'chart-lbl-tot',  '#f59c3a', v => v],
+  ['n2_rpm',   'chart-cb-n2',  'chart-lbl-n2',  '#52d98a', v => v / 1000],
+  ['oil_bar',  'chart-cb-oil', 'chart-lbl-oil', '#d9785e', v => v * 100],  // bar → ×100 for scale
+  ['thr_pct',  'chart-cb-thr', 'chart-lbl-thr', '#c97adb', v => v],
+];
+
+function _updateChartControls() {
+  let hasAny = false;
+  CHART_COLS.forEach(([hdr,, lblId]) => {
+    const lbl = document.getElementById(lblId);
+    const has = _sessionHeaders.includes(hdr);
+    if (lbl) lbl.style.display = has ? '' : 'none';
+    if (has) hasAny = true;
+  });
+  document.getElementById('session-chart-wrap').style.display = hasAny ? '' : 'none';
+}
+
+function redrawChart() {
+  const canvas = document.getElementById('session-chart');
+  if (!canvas || !_sessionRows.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = canvas.offsetWidth  * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = canvas.offsetWidth, H = canvas.offsetHeight;
+  const PAD = { top: 12, bottom: 24, left: 42, right: 12 };
+  const cw = W - PAD.left - PAD.right;
+  const ch = H - PAD.top  - PAD.bottom;
+
+  // Background
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--surface').trim() || '#1e1e2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Determine which columns to draw
+  const active = CHART_COLS.filter(([hdr, cbId]) => {
+    const cb = document.getElementById(cbId);
+    return _sessionHeaders.includes(hdr) && cb && cb.checked;
+  });
+  if (!active.length) return;
+
+  // Build series: array of {col, scaledVals, color}
+  const tIdx = _sessionHeaders.indexOf('t_ms');
+  const series = active.map(([hdr, cbId, , color, scaleFn]) => {
+    const colIdx = _sessionHeaders.indexOf(hdr);
+    const vals = _sessionRows.map(r => {
+      const v = parseFloat(r[colIdx]);
+      return isNaN(v) ? null : scaleFn(v);
+    });
+    return { color, vals };
+  });
+
+  // Global min/max across all series
+  const allVals = series.flatMap(s => s.vals.filter(v => v !== null));
+  let vMin = Math.min(...allVals);
+  let vMax = Math.max(...allVals);
+  if (vMax === vMin) { vMax += 1; vMin -= 1; }
+  const vRange = vMax - vMin;
+
+  const n = _sessionRows.length;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.top + ch - i * (ch / 4);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cw, y); ctx.stroke();
+    // Y axis labels
+    const lv = vMin + i * (vRange / 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(lv.toFixed(lv < 100 ? 1 : 0), PAD.left - 4, y + 3);
+  }
+
+  // Time axis label
+  if (tIdx >= 0 && _sessionRows.length > 1) {
+    const t0 = parseInt(_sessionRows[0][tIdx]) || 0;
+    const t1 = parseInt(_sessionRows[_sessionRows.length - 1][tIdx]) || 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('0 s', PAD.left, H - 6);
+    ctx.textAlign = 'right';
+    ctx.fillText(((t1 - t0) / 1000).toFixed(0) + ' s', PAD.left + cw, H - 6);
+  }
+
+  // Draw each series
+  series.forEach(({ color, vals }) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    let first = true;
+    vals.forEach((v, i) => {
+      if (v === null) { first = true; return; }
+      const x = PAD.left + (i / (n - 1)) * cw;
+      const y = PAD.top  + ch - ((v - vMin) / vRange) * ch;
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else        ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+}
+
+loadLog();
+</script>
+</body>
+</html>

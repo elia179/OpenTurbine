@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenTurbine — Calibration</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <a href="/hardware.html">Hardware</a>
+  <a href="/calibration.html" class="active">Calibration</a>
+  <a href="/config.html">Config</a>
+  <a href="/sequence.html">Sequence</a>
+  <a href="/">Dashboard</a>
+  <a href="/log.html">Log</a>
+  <a href="/tools.html">Tools</a>
+  <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
+</nav>
+<main>
+  <!-- Pre-flight checklist -->
+  <div class="card" style="margin-bottom:1.5rem">
+    <div class="label" style="margin-bottom:.6rem">Pre-Flight Checklist — complete before first run</div>
+    <p style="font-size:.78rem;color:var(--dim);margin-bottom:.75rem">
+      Check each item below. This list does not affect the ECU — it is a reminder guide only.
+      Tick all items before pressing START for the first time on a new build or after maintenance.
+    </p>
+    <ul class="checklist" id="checklist">
+      <li><input type="checkbox" onchange="checklistTick(this)"> Oil calibration done (zero, min, max pressures set)</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Throttle calibration done (min and max ADC values set)</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Flame sensor threshold set (threshold marker between idle noise and flame level)</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> N1 RPM limit set correctly for your engine model</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> TOT limit set correctly for your engine model</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Oil prime test passed — oil flows and pressure is visible</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Igniter test passed — spark confirmed</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Fuel prime test passed — fuel flows from nozzle</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Starter spin test passed — starter spins freely</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> All fuel and oil connections checked for leaks</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Engine area clear of bystanders and flammable material</li>
+      <li><input type="checkbox" onchange="checklistTick(this)"> Fire extinguisher within reach</li>
+    </ul>
+    <div style="margin-top:.75rem;font-size:.78rem;color:var(--dim)" id="checklist-status">0 of 12 items checked</div>
+  </div>
+
+  <h2 style="margin-bottom:1.2rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Live Sensor Readings &amp; Calibration</h2>
+
+  <!-- Oil pressure -->
+  <div class="sensor-row">
+    <div class="sensor-name"><span id="oil-h-cal" class="dot"></span> Oil Pressure</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-oil-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">bar</div><div class="sv-val" id="cal-oil">—</div></div>
+      <div class="sv-item"><div class="sv-label">Pump %</div><div class="sv-val" id="cal-oil-pct">—</div></div>
+      <div class="sv-item"><div class="sv-label">Status</div><div class="sv-val" id="cal-oil-h">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-oil" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 bar</span><span>6 bar</span></div>
+
+    <div class="wizard">
+      <div class="wizard-title">Oil Pressure Calibration (cubic polynomial)</div>
+
+      <!-- Step indicator -->
+      <div id="oil-steps" style="display:flex;gap:.4rem;align-items:center;margin-bottom:.75rem">
+        <span id="oil-step-ind-1" class="step-dot active">1</span>
+        <span id="oil-step-ind-2" class="step-dot">2</span>
+        <span id="oil-step-ind-3" class="step-dot">3</span>
+      </div>
+
+      <!-- Step 1: Choose starting pump %, click Start → auto-zero captured -->
+      <div id="oil-step-1">
+        <div class="wizard-steps">
+          Set your starting pump speed, then click <b>Start Calibration</b>.<br>
+          The pump will turn off briefly to auto-capture the zero-pressure point,
+          then spin up to your chosen speed.
+        </div>
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.5rem">
+          <span style="font-size:.78rem;color:var(--dim)">Starting pump %</span>
+          <input type="number" id="oil-pump-pct" value="40" min="10" max="100" step="5" style="width:80px">
+          <button id="btn-oil-start" onclick="oilCalStart()">Start Calibration</button>
+        </div>
+        <div id="oil-zero-status" style="font-size:.75rem;color:var(--yellow);margin-top:.4rem;display:none"></div>
+      </div>
+
+      <!-- Step 2: Add points at different pump speeds -->
+      <div id="oil-step-2" style="display:none">
+        <div class="wizard-steps">
+          Adjust pump % to a stable pressure, read your gauge, enter bar value, click Capture.<br>
+          Need ≥3 more points (4 total with auto-zero). More points = better fit.
+        </div>
+        <!-- Pump speed control -->
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0">
+          <span style="font-size:.78rem;color:var(--dim)">Pump %</span>
+          <input type="number" id="oil-pump-pct2" value="40" min="0" max="100" step="5" style="width:80px">
+          <button onclick="oilSetPump()">Set pump</button>
+          <button onclick="oilCalStop()" style="color:var(--dim)">Stop pump</button>
+        </div>
+        <!-- Pressure capture -->
+        <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem">
+          <input type="number" id="oil-pval" placeholder="bar (e.g. 3.5)" step="0.1" min="0" max="10">
+          <button onclick="captureOilPoint()">Capture point</button>
+          <button onclick="clearOilPoints()" style="color:var(--dim)">Clear all</button>
+        </div>
+        <pre id="oil-pts" style="font-size:.7rem;color:var(--dim);background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:.5rem;min-height:2.5rem">Waiting for first point…</pre>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem">
+          <button id="btn-oil-to-3" onclick="oilGoStep3()" disabled>Compute Fit →</button>
+          <button onclick="oilCalStop();oilGoStep(1);" style="color:var(--dim)">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Review cubic fit, save -->
+      <div id="oil-step-3" style="display:none">
+        <div class="wizard-steps" id="oil-fit-summary" style="line-height:1.7">Computing…</div>
+        <div style="display:flex;gap:.5rem;margin-top:.6rem">
+          <button id="btn-oil-save" onclick="saveOilCal()">Save to Config</button>
+          <button onclick="oilGoStep(2)" style="color:var(--dim)">Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flame -->
+  <div class="sensor-row">
+    <div class="sensor-name"><span id="flame-h-cal" class="dot"></span> Flame / Ignition</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-flame-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">State</div><div class="sv-val" id="cal-flame">—</div></div>
+      <div class="sv-item"><div class="sv-label">Threshold</div><div class="sv-val" id="cal-flame-thr">—</div></div>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-track"><div class="bar-fill" id="bar-flame" style="width:0%"></div></div>
+      <div class="thr-mark" id="flame-thr-mark" style="display:none"></div>
+    </div>
+    <div class="bar-range"><span>0</span><span>4095 ADC</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Flame Threshold Calibration</div>
+      <div class="wizard-steps">1. With no flame present, click <b>Capture noise floor</b> (averages ~1 s).<br>Threshold = noise floor × multiplier (default 3×). Adjust multiplier if needed, then save.<br><span style="color:var(--yellow)">⚠ Ensure the igniter is OFF before capturing — an active igniter raises the noise floor and gives a falsely high threshold.</span></div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button id="btn-flame-noise" onclick="captureFlameNoise()">Capture noise floor</button>
+        <button onclick="saveFlameThreshold()" id="btn-flame-save" disabled>Save threshold</button>
+        <button id="btn-flame-clear" onclick="clearFlame()" style="color:var(--dim)">Clear</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.4rem;flex-wrap:wrap">
+        <label style="font-size:.75rem;color:var(--dim);display:flex;align-items:center;gap:.4rem">
+          <input type="checkbox" id="flame-noise-ign">
+          fire igniter while sampling
+        </label>
+        <span style="font-size:.75rem;color:var(--dim)">multiplier:</span>
+        <input type="number" id="flame-multiplier" value="3" min="1" max="10" step="0.5" style="width:70px"
+               oninput="recomputeFlameThreshold()">
+      </div>
+      <div id="flame-status" style="font-size:.75rem;color:var(--dim)"></div>
+      <div style="margin-top:.5rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+        <span style="font-size:.75rem;color:var(--dim)">Or set threshold directly:</span>
+        <input type="number" id="flame-thr-direct" min="0" max="4095" step="1" style="width:90px"
+               placeholder="0–4095">
+        <button onclick="saveFlameThresholdDirect()">Set threshold</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fuel pressure sensor -->
+  <div class="sensor-row" id="fuelpress-cal-row" style="display:none">
+    <div class="sensor-name">Fuel Pressure Sensor <span id="fuelpress-h-cal" class="dot"></span></div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-fuelpress-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">Pressure bar</div><div class="sv-val" id="cal-fuelpress">—</div></div>
+      <div class="sv-item"><div class="sv-label">Cal range</div><div class="sv-val" id="cal-fuelpress-range">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-fuelpress" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 bar</span><span id="fuelpress-bar-max">10 bar</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Fuel Pressure Two-Point Calibration</div>
+      <div class="wizard-steps">
+        1. With fuel pump off / line depressurised, click <b>Capture Zero</b>.<br>
+        2. Apply a known reference pressure (e.g. 3 bar from a gauge), enter the value below, then click <b>Capture Ref</b>.<br>
+        3. Click <b>Save</b> to write calibration to config.
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.6rem">
+        <button onclick="fpCapZero()">Capture Zero</button>
+        <label style="font-size:.8rem;color:var(--dim)">Ref pressure:
+          <input type="number" id="fp-ref-bar" value="3" min="0.1" max="20" step="0.1" style="width:80px;margin-left:.3rem"> bar
+        </label>
+        <button onclick="fpCapRef()">Capture Ref</button>
+      </div>
+      <div id="fp-pts-status" style="font-size:.75rem;color:var(--dim);margin-bottom:.5rem"></div>
+      <div class="wiz-buttons">
+        <button onclick="fpSaveCal()" id="btn-fp-save" disabled>Save Calibration</button>
+        <button onclick="fpClearCal()" style="color:var(--dim)">Clear</button>
+      </div>
+      <div id="fp-save-status" style="font-size:.75rem;color:var(--dim);margin-top:.4rem"></div>
+    </div>
+  </div>
+
+  <!-- P1 pressure sensor -->
+  <div class="sensor-row" id="p1-cal-row">
+    <div class="sensor-name">P1 Pressure Sensor</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Gauge bar</div><div class="sv-val" id="cal-p1">—</div></div>
+      <div class="sv-item"><div class="sv-label">Zero offset</div><div class="sv-val" id="cal-p1-zero">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-p1" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 bar</span><span>10 bar</span></div>
+    <div class="wizard">
+      <div class="wizard-title">P1 Zero Calibration (atmospheric / 0 bar gauge)</div>
+      <div class="wizard-steps">
+        1. Ensure the P1 sensor port is open to atmosphere (zero gauge pressure).<br>
+        2. Click <b>Capture Zero</b> — the current raw reading is saved as the zero offset.<br>
+        3. Future readings will have this offset subtracted so 0 bar = atmospheric.
+      </div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="captureZero('p1')">Capture Zero</button>
+        <button onclick="clearZero('p1')" style="color:var(--dim)">Clear</button>
+      </div>
+      <div id="p1-zero-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+  </div>
+
+  <!-- P2 pressure sensor -->
+  <div class="sensor-row" id="p2-cal-row">
+    <div class="sensor-name">P2 Pressure Sensor</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Gauge bar</div><div class="sv-val" id="cal-p2">—</div></div>
+      <div class="sv-item"><div class="sv-label">Zero offset</div><div class="sv-val" id="cal-p2-zero">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-p2" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 bar</span><span>10 bar</span></div>
+    <div class="wizard">
+      <div class="wizard-title">P2 Zero Calibration (atmospheric / 0 bar gauge)</div>
+      <div class="wizard-steps">
+        1. Ensure the P2 sensor port is open to atmosphere (zero gauge pressure).<br>
+        2. Click <b>Capture Zero</b> — the current raw reading is saved as the zero offset.<br>
+        3. Future readings will have this offset subtracted so 0 bar = atmospheric.
+      </div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="captureZero('p2')">Capture Zero</button>
+        <button onclick="clearZero('p2')" style="color:var(--dim)">Clear</button>
+      </div>
+      <div id="p2-zero-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+  </div>
+
+  <!-- Idle Input -->
+  <div class="sensor-row">
+    <div class="sensor-name">Idle Input</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label" id="idle-raw-label">Raw ADC</div><div class="sv-val" id="cal-idle-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">Position %</div><div class="sv-val" id="cal-idle-pct">—</div></div>
+      <div class="sv-item"><div class="sv-label">Throttle %</div><div class="sv-val" id="cal-idle-thr">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-idle" style="width:0%"></div></div>
+    <div class="bar-range"><span id="idle-range-lo">0</span><span id="idle-range-hi">4095</span></div>
+  </div>
+
+  <!-- Oil Temp NTC (shown only when oil temp sensor is NTC type) -->
+  <div class="sensor-row" id="oiltemp-cal-row" style="display:none">
+    <div class="sensor-name">Oil Temperature</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Temperature</div><div class="sv-val" id="cal-oiltemp">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-oiltemp" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 °C</span><span>150 °C</span></div>
+    <div class="wizard">
+      <div class="wizard-title">NTC Thermistor Calibration</div>
+      <div class="wizard-steps">
+        Enter your NTC thermistor datasheet values. These are physical constants of the thermistor — check your datasheet or measure with a multimeter.<br>
+        <span style="color:var(--dim)">Beta and R0 are on the thermistor datasheet. R_Fixed is your pull-up resistor to 3.3 V.</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin:.5rem 0">
+        <div>
+          <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">Beta coefficient</div>
+          <input type="number" id="ntc-beta" min="1000" max="10000" step="1" placeholder="3950" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+        </div>
+        <div>
+          <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">R₀ at 25 °C (Ω)</div>
+          <input type="number" id="ntc-r0" min="100" max="100000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+        </div>
+        <div>
+          <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">Pull-up R (Ω)</div>
+          <input type="number" id="ntc-rfixed" min="100" max="100000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+        </div>
+      </div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="saveNtcCal()">Save</button>
+      </div>
+      <div id="ntc-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+  </div>
+
+  <!-- Battery Voltage (shown only when battery voltage monitor is fitted) -->
+  <div class="sensor-row" id="battvolt-cal-row" style="display:none">
+    <div class="sensor-name">Battery Voltage</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Voltage</div><div class="sv-val" id="cal-battvolt">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-battvolt-raw">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-battvolt" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 V</span><span id="battvolt-bar-max">16 V</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Voltage Divider Calibration</div>
+      <div class="wizard-steps">
+        1. Connect a multimeter to the battery/bus terminal.<br>
+        2. Enter the measured voltage below and click <b>Capture &amp; Compute</b>.<br>
+        3. The divider ratio is calculated automatically and saved.
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin:.5rem 0;flex-wrap:wrap">
+        <div style="font-size:.72rem;color:var(--dim)">Measured voltage (V):</div>
+        <input type="number" id="bv-known-v" min="0" max="60" step="0.1" placeholder="12.0" style="width:6rem;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+      </div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="captureBattVolt()">Capture &amp; Compute</button>
+        <button onclick="saveBattVoltDivider()" id="btn-bv-save" disabled>Save</button>
+      </div>
+      <div id="bv-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+  </div>
+
+  <!-- Torque Sensor (shown only when torque sensor is fitted) -->
+  <div class="sensor-row" id="torque-cal-row" style="display:none">
+    <div class="sensor-name">Torque</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Torque</div><div class="sv-val" id="cal-torque">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-torque-raw">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-torque" style="width:0%"></div></div>
+    <div class="bar-range"><span>0</span><span id="torque-bar-max">— Nm</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Torque Sensor Zero &amp; Scale</div>
+      <div class="wizard-steps">
+        1. With no load applied, click <b>Capture Zero</b> to zero the sensor.<br>
+        2. Enter the full-scale output of your sensor (Nm at maximum voltage) and click <b>Save Scale</b>.
+      </div>
+      <div style="display:flex;align-items:center;gap:.5rem;margin:.5rem 0;flex-wrap:wrap">
+        <div style="font-size:.72rem;color:var(--dim)">Full-scale Nm (at 3.3 V):</div>
+        <input type="number" id="torque-fullscale" min="0" max="10000" step="1" placeholder="100" style="width:6rem;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+      </div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="captureTorqueZero()">Capture Zero</button>
+        <button onclick="saveTorqueScale()" id="btn-torque-save">Save Scale</button>
+      </div>
+      <div id="torque-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+  </div>
+
+  <!-- Throttle Input -->
+  <div class="sensor-row">
+    <div class="sensor-name">Throttle Input</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label" id="th-raw-label">Raw ADC</div><div class="sv-val" id="cal-th-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">Position</div><div class="sv-val" id="cal-th-pct">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-th" style="width:0%"></div></div>
+    <div class="bar-range"><span id="th-lo">—</span><span id="th-hi">—</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Throttle Input Min / Max Calibration</div>
+      <div class="wizard-steps" id="th-wiz-steps">Move throttle to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.</div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="captureThMin()">Capture Min</button>
+        <button onclick="captureThMax()">Capture Max</button>
+        <button onclick="saveThrottle()" id="btn-th-save" disabled>Save</button>
+      </div>
+      <div id="th-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+<script>
+let live = {};
+let oilPts = [];
+let flameNoise = null;
+let thMin = null, thMax = null;
+let cfg = {};
+
+// Input types reported by firmware ('adc', 'servo', or 'none')
+let throttleInputType = 'adc';
+let idleInputType     = 'adc';
+
+let fpRawZero = null, fpRawRef = null;
+
+fetch('/api/config').then(r=>r.json()).then(c => {
+  cfg = c;
+  // Show fuel press cal row if fitted
+  const fpRow = document.getElementById('fuelpress-cal-row');
+  if (fpRow) fpRow.style.display = (c.hardware?.sensors?.fuel_press?.enabled) ? '' : 'none';
+  // Restore fuel press cal state
+  const fpMin = c.calibration?.fuel_press_raw_min ?? 0;
+  const fpMax = c.calibration?.fuel_press_raw_max ?? 4095;
+  const fpVal = c.calibration?.fuel_press_val_max ?? 10;
+  if (fpMin !== 0 || fpMax !== 4095) {
+    fpRawZero = fpMin; fpRawRef = fpMax;
+    document.getElementById('fp-pts-status').textContent =
+      'Saved: zero=' + fpMin + ' raw, ref=' + fpMax + ' raw @ ' + fpVal + ' bar';
+    document.getElementById('btn-fp-save').disabled = false;
+  }
+  setText('fuelpress-bar-max', fpVal.toFixed(1) + ' bar');
+  setText('cal-fuelpress-range', fpMin + ' – ' + fpMax + ' raw');
+  // Load saved P1/P2 zero offsets
+  const p1z = c.calibration?.p1_zero_bar;
+  const p2z = c.calibration?.p2_zero_bar;
+  document.getElementById('cal-p1-zero').textContent = p1z !== undefined ? p1z.toFixed(3) + ' bar' : '—';
+  document.getElementById('cal-p2-zero').textContent = p2z !== undefined ? p2z.toFixed(3) + ' bar' : '—';
+  // Show/hide P1/P2 rows based on pressure_sensors_enabled
+  const pEn = !!(c.display?.pressure_sensors);
+  ['p1-cal-row','p2-cal-row'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = pEn ? '' : 'none';
+  });
+
+  const thr = c.calibration?.flame_threshold;
+  document.getElementById('cal-flame-thr').textContent = thr ?? '—';
+  if (thr !== undefined) document.getElementById('flame-thr-direct').value = thr;
+  updateFlameThrMark(thr);
+  const mn = c.calibration?.throttle_min_raw, mx = c.calibration?.throttle_max_raw;
+  if (mn !== undefined && mx !== undefined) {
+    thMin = mn; thMax = mx;
+    document.getElementById('th-lo').textContent = mn;
+    document.getElementById('th-hi').textContent = mx;
+    document.getElementById('btn-th-save').disabled = false;
+  }
+}).catch(()=>{});
+
+loadNtcValues();
+
+// Update input-type-dependent UI labels — called once on first live data
+function applyInputTypeLabels(d) {
+  const thType   = d.throttle_input_type ?? 'adc';
+  const idleType = d.idle_input_type     ?? 'adc';
+
+  if (thType !== throttleInputType) {
+    throttleInputType = thType;
+    const isServo = thType === 'servo';
+    setText('th-raw-label', isServo ? 'Servo Signal' : 'Raw ADC');
+    // Update calibration wizard hint
+    const steps = document.getElementById('th-wiz-steps');
+    if (steps) steps.innerHTML = isServo
+      ? 'Move throttle to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.<br><span style="color:var(--dim)">Values captured in µs (servo signal).</span>'
+      : 'Move throttle to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.';
+    // Range labels will be updated in the live update loop
+  }
+  if (idleType !== idleInputType) {
+    idleInputType = idleType;
+    const isServo = idleType === 'servo';
+    setText('idle-raw-label', isServo ? 'Servo Signal' : 'Raw ADC');
+  }
+}
+
+function updateFlameThrMark(thr) {
+  const mark = document.getElementById('flame-thr-mark');
+  if (!mark) return;
+  if (thr == null || isNaN(thr)) { mark.style.display = 'none'; return; }
+  mark.style.left = Math.max(0, Math.min(100, (thr / 4095) * 100)) + '%';
+  mark.style.display = '';
+}
+
+// Extend the global applyData from app.js
+const _base = window.applyData;
+window.applyData = function(d) {
+  _base(d);
+  live = d;
+
+  // Update labels when input type is first received
+  if (d.throttle_input_type !== undefined || d.idle_input_type !== undefined) {
+    applyInputTypeLabels(d);
+  }
+
+  // Fuel pressure
+  if (d.has_fuel_press) {
+    setText('cal-fuelpress-raw', d.fuel_press_raw ?? '—');
+    if (d.fuel_press !== undefined) {
+      const fpValMax = cfg.calibration?.fuel_press_val_max ?? 10;
+      setText('cal-fuelpress', Number(d.fuel_press).toFixed(2) + ' bar');
+      setDot('fuelpress-h-cal', d.fuel_press_healthy);
+      bar('bar-fuelpress', d.fuel_press, 0, fpValMax, d.fuel_press_healthy);
+    }
+  }
+
+  // P1 / P2
+  if (d.p1 !== undefined) {
+    setText('cal-p1', Number(d.p1).toFixed(3) + ' bar');
+    bar('bar-p1', d.p1, 0, 10, true);
+  }
+  if (d.p2 !== undefined) {
+    setText('cal-p2', Number(d.p2).toFixed(3) + ' bar');
+    bar('bar-p2', d.p2, 0, 10, true);
+  }
+
+  setText('cal-oil-raw', d.oil_raw ?? '—');
+  setText('cal-oil',     d.oil !== undefined ? Number(d.oil).toFixed(3) + ' bar' : '—');
+  setText('cal-oil-pct', d.oil_pct !== undefined ? d.oil_pct + ' %' : '—');
+  setText('cal-oil-h',   d.oil_healthy ? 'OK' : 'fault');
+  setDot('oil-h-cal',    d.oil_healthy);
+  bar('bar-oil', d.oil ?? 0, 0, 6, d.oil_healthy);
+
+  setText('cal-flame-raw', d.flame_raw ?? '—');
+  setText('cal-flame',     d.flame ? 'FLAME ●' : 'no flame');
+  setDot('flame-h-cal',    d.flame);
+  bar('bar-flame', d.flame_raw ?? 0, 0, 4095, true);
+
+  // ── Idle input ────────────────────────────────────────────────
+  const rcMin = cfg.rc?.rc_min_us ?? 1000;
+  const rcMax = cfg.rc?.rc_max_us ?? 2000;
+  if (idleInputType === 'servo') {
+    // Servo signal: show µs, bar over rcMin–rcMax
+    const us = d.idle_input_us ?? rcMin;
+    setText('cal-idle-raw', us + ' µs');
+    const idlePosP = Math.round(((us - rcMin) / (rcMax - rcMin)) * 100);
+    setText('cal-idle-pct', Math.max(0, Math.min(100, idlePosP)) + '%');
+    setText('idle-range-lo', rcMin + ' µs');
+    setText('idle-range-hi', rcMax + ' µs');
+    bar('bar-idle', us, rcMin, rcMax, true);
+  } else {
+    // ADC: show counts, bar over 0–4095
+    const idleRaw = d.idle_input_raw ?? 0;
+    setText('cal-idle-raw', d.idle_input_raw !== undefined ? d.idle_input_raw : '—');
+    const idlePosP = Math.round((idleRaw / 4095) * 100);
+    setText('cal-idle-pct', idlePosP + '%');
+    setText('idle-range-lo', '0');
+    setText('idle-range-hi', '4095');
+    bar('bar-idle', idleRaw, 0, 4095, true);
+  }
+  // Idle→throttle % mapping (same regardless of signal type)
+  {
+    const idleNorm = idleInputType === 'servo'
+      ? Math.max(0, Math.min(1, ((d.idle_input_us ?? rcMin) - rcMin) / (rcMax - rcMin)))
+      : Math.max(0, Math.min(1, (d.idle_input_raw ?? 0) / 4095));
+    const idleThLo = cfg.throttle?.idle_min_pct ?? 8;
+    const idleThHi = cfg.throttle?.idle_max_pct ?? 18;
+    setText('cal-idle-thr', (idleThLo + idleNorm * (idleThHi - idleThLo)).toFixed(1) + '%');
+  }
+
+  // ── Oil temp / batt volt / torque rows ───────────────────────
+  const oiltRow   = document.getElementById('oiltemp-cal-row');
+  const bvRow     = document.getElementById('battvolt-cal-row');
+  const torqRow   = document.getElementById('torque-cal-row');
+  if (oiltRow)  oiltRow.style.display  = d.has_oil_temp     ? '' : 'none';
+  if (bvRow)    bvRow.style.display    = d.has_batt_voltage  ? '' : 'none';
+  if (torqRow)  torqRow.style.display  = d.has_torque        ? '' : 'none';
+
+  if (d.has_oil_temp && d.oil_temp !== undefined) {
+    setText('cal-oiltemp', Number(d.oil_temp).toFixed(1) + ' °C');
+    bar('bar-oiltemp', d.oil_temp, 0, 150, d.oil_temp_healthy !== false);
+  }
+  if (d.has_batt_voltage && d.batt_voltage !== undefined) {
+    setText('cal-battvolt',     Number(d.batt_voltage).toFixed(2) + ' V');
+    setText('cal-battvolt-raw', d.batt_voltage_raw ?? '—');
+    bar('bar-battvolt', d.batt_voltage, 0, 16, true);
+  }
+  if (d.has_torque && d.torque !== undefined) {
+    setText('cal-torque',     Number(d.torque).toFixed(1) + ' Nm');
+    setText('cal-torque-raw', d.torque_raw ?? '—');
+    bar('bar-torque', d.torque, 0, parseFloat(document.getElementById('torque-fullscale')?.value || '100'), true);
+  }
+
+  // ── Throttle input ────────────────────────────────────────────
+  if (throttleInputType === 'servo') {
+    // Servo signal: show µs
+    const us = d.throttle_input_us ?? rcMin;
+    setText('cal-th-raw', us + ' µs');
+    // Set bar range labels to µs if not yet set by captured min/max
+    if (thMin === null && thMax === null) {
+      document.getElementById('th-lo').textContent = rcMin + ' µs';
+      document.getElementById('th-hi').textContent = rcMax + ' µs';
+    }
+    if (thMin !== null && thMax !== null) {
+      const pct = Math.round(((us - thMin) / (thMax - thMin)) * 100);
+      setText('cal-th-pct', Math.max(0, Math.min(100, pct)) + '%');
+      bar('bar-th', us, thMin, thMax, true);
+    } else {
+      bar('bar-th', us, rcMin, rcMax, true);
+    }
+  } else {
+    // ADC: show counts
+    const raw = d.throttle_input_raw;
+    setText('cal-th-raw', raw !== undefined ? raw : '—');
+    if (thMin !== null && thMax !== null && raw !== undefined) {
+      const pct = Math.round(((raw - thMin) / (thMax - thMin)) * 100);
+      setText('cal-th-pct', Math.max(0, Math.min(100, pct)) + '%');
+      bar('bar-th', raw, thMin, thMax, true);
+    }
+  }
+};
+
+function bar(id, val, lo, hi, healthy) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const pct = hi > lo ? Math.max(0, Math.min(100, ((val-lo)/(hi-lo))*100)) : 0;
+  el.style.width = pct + '%';
+  el.className = 'bar-fill' + (!healthy ? ' fault' : pct > 90 ? ' warn' : '');
+}
+
+// ── Fuel pressure calibration wizard ─────────────────────────
+function fpCapZero() {
+  const raw = live.fuel_press_raw;
+  if (raw === undefined) { alert('No fuel pressure raw data yet'); return; }
+  fpRawZero = raw;
+  document.getElementById('fp-pts-status').textContent =
+    'Zero captured: ' + raw + ' raw' + (fpRawRef !== null ? ' | ref: ' + fpRawRef + ' raw — ready to save' : ' | now capture reference point');
+  document.getElementById('btn-fp-save').disabled = (fpRawRef === null);
+}
+
+function fpCapRef() {
+  const raw = live.fuel_press_raw;
+  if (raw === undefined) { alert('No fuel pressure raw data yet'); return; }
+  fpRawRef = raw;
+  document.getElementById('fp-pts-status').textContent =
+    'Ref captured: ' + raw + ' raw' + (fpRawZero !== null ? ' | zero: ' + fpRawZero + ' raw — ready to save' : ' | now capture zero point');
+  document.getElementById('btn-fp-save').disabled = (fpRawZero === null);
+}
+
+function fpSaveCal() {
+  if (fpRawZero === null || fpRawRef === null) { alert('Capture both points first'); return; }
+  if (fpRawRef <= fpRawZero) { alert('Reference raw must be greater than zero raw'); return; }
+  const refBar = parseFloat(document.getElementById('fp-ref-bar').value) || 3.0;
+  patchConfig({
+    calibration: {
+      fuel_press_raw_min: fpRawZero,
+      fuel_press_raw_max: fpRawRef,
+      fuel_press_val_max: refBar
+    }
+  }, 'Fuel pressure calibration saved (' + fpRawZero + '–' + fpRawRef + ' raw = 0–' + refBar + ' bar)');
+  if (!cfg.calibration) cfg.calibration = {};
+  cfg.calibration.fuel_press_raw_min = fpRawZero;
+  cfg.calibration.fuel_press_raw_max = fpRawRef;
+  cfg.calibration.fuel_press_val_max = refBar;
+  setText('cal-fuelpress-range', fpRawZero + ' – ' + fpRawRef + ' raw');
+  setText('fuelpress-bar-max', refBar.toFixed(1) + ' bar');
+  document.getElementById('fp-save-status').textContent = 'Saved.';
+}
+
+function fpClearCal() {
+  fpRawZero = null; fpRawRef = null;
+  patchConfig({ calibration: { fuel_press_raw_min: 0, fuel_press_raw_max: 4095, fuel_press_val_max: 10 } },
+    'Fuel pressure calibration cleared');
+  document.getElementById('fp-pts-status').textContent = 'Calibration cleared — defaults restored (0–4095 raw = 0–10 bar)';
+  document.getElementById('btn-fp-save').disabled = true;
+  document.getElementById('fp-save-status').textContent = '';
+  setText('cal-fuelpress-range', '0 – 4095 raw');
+  setText('fuelpress-bar-max', '10 bar');
+}
+
+// ── Oil calibration wizard ────────────────────────────────────
+let oilCalActive = false;
+let oilFit = { a:0, b:0, c:0, d:0, x0:0, x1:4095 };
+
+function oilGoStep(n) {
+  [1,2,3].forEach(i => {
+    const s = document.getElementById('oil-step-' + i);
+    const d = document.getElementById('oil-step-ind-' + i);
+    if (s) s.style.display = (i === n) ? '' : 'none';
+    if (d) d.className = 'step-dot' + (i < n ? ' complete' : i === n ? ' active' : '');
+  });
+}
+
+function oilCalStart() {
+  const pct = parseInt(document.getElementById('oil-pump-pct').value) || 40;
+  const statusEl = document.getElementById('oil-zero-status');
+  const startBtn = document.getElementById('btn-oil-start');
+
+  // Turn pump off first to capture zero-pressure point
+  statusEl.textContent = 'Turning pump off — capturing zero pressure in 3 s…';
+  statusEl.style.display = '';
+  startBtn.disabled = true;
+
+  fetch('/api/command', { method:'POST',
+    body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: 0 }),
+    headers: { 'Content-Type':'application/json' }
+  }).then(() => {
+    // Wait 3 s for pressure to settle at zero
+    setTimeout(() => {
+      const raw0 = live.oil_raw;
+      if (raw0 === undefined) {
+        statusEl.textContent = 'No live ADC data — check connection.';
+        startBtn.disabled = false;
+        return;
+      }
+      // Auto-insert zero-pressure point
+      oilPts = [{ raw: raw0, b: 0.0 }];
+      renderOilPts();
+      statusEl.textContent = `Zero captured: raw=${raw0} → 0.00 bar`;
+
+      // Now spin up to chosen %
+      document.getElementById('oil-pump-pct2').value = pct;
+      fetch('/api/command', { method:'POST',
+        body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: pct }),
+        headers: { 'Content-Type':'application/json' }
+      });
+      oilCalActive = true;
+      oilGoStep(2);
+    }, 3000);
+  }).catch(e => {
+    statusEl.textContent = 'Error: ' + e;
+    startBtn.disabled = false;
+  });
+}
+
+function oilSetPump() {
+  const pct = parseInt(document.getElementById('oil-pump-pct2').value) || 0;
+  fetch('/api/command', { method:'POST',
+    body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: pct }),
+    headers: { 'Content-Type':'application/json' }
+  });
+}
+
+function oilCalStop() {
+  fetch('/api/command', { method:'POST',
+    body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: 0 }),
+    headers: { 'Content-Type':'application/json' }
+  });
+  oilCalActive = false;
+  // Reset step-1 button
+  const btn = document.getElementById('btn-oil-start');
+  if (btn) btn.disabled = false;
+  const st = document.getElementById('oil-zero-status');
+  if (st) st.style.display = 'none';
+}
+
+function captureOilPoint() {
+  const b = parseFloat(document.getElementById('oil-pval').value);
+  if (isNaN(b) || b < 0) { alert('Enter a valid bar value (e.g. 3.5)'); return; }
+  const raw = live.oil_raw;
+  if (raw === undefined) { alert('No live oil ADC yet'); return; }
+  oilPts.push({ raw, b });
+  document.getElementById('oil-pval').value = '';
+  renderOilPts();
+  // Need ≥4 total points (zero + 3 manual)
+  document.getElementById('btn-oil-to-3').disabled = oilPts.length < 4;
+}
+
+function clearOilPoints() {
+  // Keep the auto-captured zero if present
+  oilPts = oilPts.filter(p => p.b === 0.0 && oilCalActive).slice(0, 1);
+  renderOilPts();
+  document.getElementById('btn-oil-to-3').disabled = true;
+}
+
+function renderOilPts() {
+  const el = document.getElementById('oil-pts');
+  if (oilPts.length === 0) { el.textContent = 'Waiting for first point…'; return; }
+  el.textContent = oilPts.map((p,i) =>
+    `  ${i+1}. raw=${Math.round(p.raw)}  →  ${p.b.toFixed(2)} bar${i===0 && p.b===0?' (auto-zero)':''}`
+  ).join('\n');
+}
+
+// ── Gauss-Jordan 4×4 solver ───────────────────────────────────
+function solve4x4(Am, bv) {
+  // deep copy
+  const A = Am.map(r => [...r]);
+  const b = [...bv];
+  const N = 4;
+  for (let i = 0; i < N; i++) {
+    let piv = i, maxAbs = Math.abs(A[i][i]);
+    for (let r = i + 1; r < N; r++) {
+      const v = Math.abs(A[r][i]);
+      if (v > maxAbs) { maxAbs = v; piv = r; }
+    }
+    if (maxAbs < 1e-18) return null;
+    if (piv !== i) { [A[i], A[piv]] = [A[piv], A[i]]; [b[i], b[piv]] = [b[piv], b[i]]; }
+    const inv = 1.0 / A[i][i];
+    for (let c = i; c < N; c++) A[i][c] *= inv;
+    b[i] *= inv;
+    for (let r = 0; r < N; r++) {
+      if (r === i) continue;
+      const f = A[r][i];
+      if (Math.abs(f) < 1e-18) continue;
+      for (let c = i; c < N; c++) A[r][c] -= f * A[i][c];
+      b[r] -= f * b[i];
+    }
+  }
+  return b;
+}
+
+function computeOilCubicFit(pts) {
+  const n = pts.length;
+  if (n < 4) return null;
+  let S0=0,S1=0,S2=0,S3=0,S4=0,S5=0,S6=0;
+  let Sy=0,Sxy=0,Sx2y=0,Sx3y=0;
+  for (const p of pts) {
+    const x=p.raw, y=p.b;
+    const x2=x*x, x3=x2*x, x4=x3*x, x5=x4*x, x6=x5*x;
+    S0+=1; S1+=x; S2+=x2; S3+=x3; S4+=x4; S5+=x5; S6+=x6;
+    Sy+=y; Sxy+=x*y; Sx2y+=x2*y; Sx3y+=x3*y;
+  }
+  const A = [[S6,S5,S4,S3],[S5,S4,S3,S2],[S4,S3,S2,S1],[S3,S2,S1,S0]];
+  const rhs = [Sx3y, Sx2y, Sxy, Sy];
+  const sol = solve4x4(A, rhs);
+  if (!sol) return null;
+  return { a: sol[0], b: sol[1], c: sol[2], d: sol[3] };
+}
+
+function oilGoStep3() {
+  if (oilPts.length < 4) return;
+  const fit = computeOilCubicFit(oilPts);
+  if (!fit) { alert('Fit failed — points may be collinear. Add more spread.'); return; }
+  oilFit.a = fit.a; oilFit.b = fit.b; oilFit.c = fit.c; oilFit.d = fit.d;
+  oilFit.x0 = Math.min(...oilPts.map(p => p.raw));
+  oilFit.x1 = Math.max(...oilPts.map(p => p.raw));
+
+  // Compute residuals and R²
+  const yMean = oilPts.reduce((s, p) => s + p.b, 0) / oilPts.length;
+  let ssTot = 0, ssRes = 0;
+  const maxErr = Math.max(...oilPts.map(p => {
+    const x = p.raw;
+    const est = ((fit.a*x+fit.b)*x+fit.c)*x+fit.d;
+    const res = est - p.b;
+    ssTot += (p.b - yMean) ** 2;
+    ssRes += res ** 2;
+    return Math.abs(res);
+  })).toFixed(3);
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 1;
+  const r2Color = r2 >= 0.999 ? 'var(--green)' : r2 >= 0.99 ? 'var(--yellow)' : 'var(--red)';
+
+  document.getElementById('oil-fit-summary').innerHTML =
+    `<b>Cubic fit</b>: y = a·x³ + b·x² + c·x + d<br>` +
+    `a = ${fit.a.toExponential(4)}<br>` +
+    `b = ${fit.b.toExponential(4)}<br>` +
+    `c = ${fit.c.toExponential(4)}<br>` +
+    `d = ${fit.d.toFixed(4)}<br>` +
+    `Range: raw ${oilFit.x0} – ${oilFit.x1} &nbsp;|&nbsp; ` +
+    `Max residual: <b>${maxErr} bar</b> &nbsp;|&nbsp; ` +
+    `R² = <b style="color:${r2Color}">${r2.toFixed(5)}</b> &nbsp;|&nbsp; ${oilPts.length} pts`;
+
+  oilCalStop();
+  oilGoStep(3);
+}
+
+function saveOilCal() {
+  patchConfig({
+    calibration: {
+      oil_poly: { a:oilFit.a, b:oilFit.b, c:oilFit.c, d:oilFit.d,
+                  x_min:oilFit.x0, x_max:oilFit.x1 }
+    }
+  }, 'Oil cubic calibration saved');
+  oilGoStep(1);
+  oilPts = [];
+  renderOilPts();
+  document.getElementById('btn-oil-to-3').disabled = true;
+  const btn = document.getElementById('btn-oil-start');
+  if (btn) btn.disabled = false;
+}
+
+// ── Flame calibration ─────────────────────────────────────────
+const _flameBtns = () => ['btn-flame-noise','btn-flame-save','btn-flame-clear']
+  .map(id => document.getElementById(id)).filter(Boolean);
+
+async function captureFlameNoise() {
+  const statusEl = document.getElementById('flame-status');
+  const fireIgn  = document.getElementById('flame-noise-ign')?.checked;
+  const btns     = _flameBtns();
+  btns.forEach(b => b.disabled = true);
+
+  try {
+    if (fireIgn) {
+      statusEl.textContent = 'Starting igniter…';
+      await fetch('/api/command', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({cmd:'IGN_TEST'})
+      });
+      await new Promise(r => setTimeout(r, 300)); // let igniter run + EMI settle
+    }
+
+    const samples = [];
+    for (let i = 0; i < 12; i++) {
+      statusEl.textContent = `Sampling… ${i+1}/12`;
+      const d = await fetch('/api/data').then(r => r.json()).catch(() => ({}));
+      if (d.flame_raw !== undefined) samples.push(d.flame_raw);
+      await new Promise(r => setTimeout(r, 83)); // ~12 samples over 1 s
+    }
+
+    if (samples.length === 0) {
+      statusEl.textContent = 'No flame data — check connection.';
+      return;
+    }
+    flameNoise = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+    updateFlameStatus();
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e;
+  } finally {
+    btns.forEach(b => b.disabled = false);
+    recomputeFlameThreshold();
+  }
+}
+function recomputeFlameThreshold() {
+  if (flameNoise === null) return;
+  const mult = parseFloat(document.getElementById('flame-multiplier')?.value) || 3;
+  const thr  = Math.round(flameNoise * mult);
+  const msg  = `Noise floor: ${flameNoise}  ×${mult}  → Threshold: ${thr}`;
+  document.getElementById('flame-status').textContent = msg;
+  const btn = document.getElementById('btn-flame-save');
+  if (btn) { btn.disabled = false; btn.dataset.thr = thr; }
+  updateFlameThrMark(thr);
+}
+function updateFlameStatus() {
+  recomputeFlameThreshold();
+}
+function saveFlameThreshold() {
+  const thr = parseInt(document.getElementById('btn-flame-save').dataset.thr);
+  if (isNaN(thr)) return;
+  patchConfig({ calibration: { flame_threshold: thr } }, `Flame threshold set to ${thr}`);
+  document.getElementById('cal-flame-thr').textContent = thr;
+  if (cfg.calibration) cfg.calibration.flame_threshold = thr;
+  else cfg.calibration = { flame_threshold: thr };
+  updateFlameThrMark(thr);
+}
+function saveFlameThresholdDirect() {
+  const thr = parseInt(document.getElementById('flame-thr-direct').value);
+  if (isNaN(thr) || thr < 0 || thr > 4095) return;
+  patchConfig({ calibration: { flame_threshold: thr } }, `Flame threshold set to ${thr}`);
+  document.getElementById('cal-flame-thr').textContent = thr;
+  if (cfg.calibration) cfg.calibration.flame_threshold = thr;
+  else cfg.calibration = { flame_threshold: thr };
+  updateFlameThrMark(thr);
+}
+function clearFlame() {
+  flameNoise = null;
+  document.getElementById('flame-status').textContent = '';
+  document.getElementById('btn-flame-save').disabled = true;
+  updateFlameThrMark(null);
+}
+
+// ── Throttle calibration ──────────────────────────────────────
+// For ADC input: captures raw ADC counts.
+// For servo signal input: captures µs pulse width.
+function _thCurrentValue() {
+  if (throttleInputType === 'servo') return live.throttle_input_us;
+  return live.throttle_input_raw;
+}
+function _thUnit() {
+  return throttleInputType === 'servo' ? ' µs' : '';
+}
+function captureThMin() {
+  const val = _thCurrentValue();
+  if (val === undefined) { alert('No throttle data yet'); return; }
+  thMin = val;
+  document.getElementById('th-lo').textContent = val + _thUnit();
+  renderThStatus();
+}
+function captureThMax() {
+  const val = _thCurrentValue();
+  if (val === undefined) { alert('No throttle data yet'); return; }
+  thMax = val;
+  document.getElementById('th-hi').textContent = val + _thUnit();
+  renderThStatus();
+}
+function renderThStatus() {
+  const u = _thUnit();
+  let msg = '';
+  if (thMin !== null) msg += `Min: ${thMin}${u}   `;
+  if (thMax !== null) msg += `Max: ${thMax}${u}`;
+  document.getElementById('th-status').textContent = msg;
+  document.getElementById('btn-th-save').disabled = thMin === null || thMax === null;
+}
+function saveThrottle() {
+  patchConfig({ calibration: { throttle_min_raw: thMin, throttle_max_raw: thMax } },
+    `Throttle calibrated: ${thMin} – ${thMax}${_thUnit()}`);
+}
+
+// ── P1 / P2 zero calibration ─────────────────────────────────
+function captureZero(ch) {
+  const val = live[ch];  // current gauge bar (already offset-subtracted in firmware)
+  if (val === undefined) { alert('No live ' + ch.toUpperCase() + ' data yet'); return; }
+  // The raw bar from sensor — add back current zero to get the true raw offset
+  const currentZero = parseFloat(cfg.calibration?.[(ch + '_zero_bar')] || 0);
+  const newZero = currentZero + val;  // raw = gaugeBar + currentZero
+  patchConfig({ calibration: { [ch + '_zero_bar']: newZero } },
+    ch.toUpperCase() + ' zero set to ' + newZero.toFixed(3) + ' bar');
+  document.getElementById('cal-' + ch + '-zero').textContent = newZero.toFixed(3) + ' bar';
+  if (!cfg.calibration) cfg.calibration = {};
+  cfg.calibration[ch + '_zero_bar'] = newZero;
+  document.getElementById(ch + '-zero-status').textContent =
+    'Captured: raw offset = ' + newZero.toFixed(3) + ' bar';
+}
+
+function clearZero(ch) {
+  patchConfig({ calibration: { [ch + '_zero_bar']: 0 } },
+    ch.toUpperCase() + ' zero cleared');
+  document.getElementById('cal-' + ch + '-zero').textContent = '0.000 bar';
+  if (cfg.calibration) cfg.calibration[ch + '_zero_bar'] = 0;
+  document.getElementById(ch + '-zero-status').textContent = 'Zero offset cleared';
+}
+
+// ── Hardware patch (no reboot) ────────────────────────────────
+function patchHardware(patch, onOk) {
+  fetch('/api/hardware').then(r=>r.json()).then(hw => {
+    function merge(t, s) {
+      for (const k in s) {
+        if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]))
+          merge(t[k] = t[k] || {}, s[k]);
+        else t[k] = s[k];
+      }
+    }
+    merge(hw, patch);
+    return fetch('/api/hardware', {method:'PATCH', body:JSON.stringify(patch),
+      headers:{'Content-Type':'application/json'}});
+  }).then(r=>r.json()).then(d => {
+    if (d.ok) onOk();
+    else alert('Save failed: ' + JSON.stringify(d));
+  }).catch(e => alert('Error: ' + e));
+}
+
+// ── NTC oil temp calibration ──────────────────────────────────
+function loadNtcValues() {
+  fetch('/api/hardware').then(r=>r.json()).then(hw => {
+    const oilt = hw.sensors?.oil_temp || {};
+    const beta = oilt.ntc_beta ?? 3950;
+    const r0   = oilt.ntc_r0   ?? 10000;
+    const rf   = oilt.ntc_r_fixed ?? 10000;
+    const betaEl = document.getElementById('ntc-beta');
+    const r0El   = document.getElementById('ntc-r0');
+    const rfEl   = document.getElementById('ntc-rfixed');
+    if (betaEl) betaEl.value = beta;
+    if (r0El)   r0El.value   = r0;
+    if (rfEl)   rfEl.value   = rf;
+  }).catch(()=>{});
+}
+function saveNtcCal() {
+  const beta = parseFloat(document.getElementById('ntc-beta').value);
+  const r0   = parseFloat(document.getElementById('ntc-r0').value);
+  const rf   = parseFloat(document.getElementById('ntc-rfixed').value);
+  if (isNaN(beta) || isNaN(r0) || isNaN(rf) || beta <= 0 || r0 <= 0 || rf <= 0) {
+    alert('Enter valid positive values for all three fields.'); return;
+  }
+  patchHardware({ sensors: { oil_temp: { ntc_beta: beta, ntc_r0: r0, ntc_r_fixed: rf } } }, () => {
+    document.getElementById('ntc-status').textContent =
+      'Saved: Beta=' + beta + '  R₀=' + r0 + ' Ω  R_fixed=' + rf + ' Ω';
+  });
+}
+
+// ── Battery voltage calibration ───────────────────────────────
+let _bvComputedDivider = null;
+function captureBattVolt() {
+  const known = parseFloat(document.getElementById('bv-known-v').value);
+  if (isNaN(known) || known <= 0) { alert('Enter the measured voltage first.'); return; }
+  const raw = live.batt_voltage_raw;
+  if (raw === undefined || raw <= 0) { alert('No battery voltage ADC data yet — check wiring.'); return; }
+  const vAdc = (raw / 4095.0) * 3.3;
+  if (vAdc < 0.01) { alert('ADC reading too low to compute divider reliably.'); return; }
+  // ADC full scale = 3.3 V → Vbatt = (raw/4095) * 3.3 * divider
+  _bvComputedDivider = known / vAdc;
+  _bvComputedDivider = Math.round(_bvComputedDivider * 100) / 100;
+  document.getElementById('bv-status').textContent =
+    'Raw ADC: ' + raw + '  Measured: ' + known + ' V  → Divider: ' + _bvComputedDivider;
+  document.getElementById('btn-bv-save').disabled = false;
+}
+function saveBattVoltDivider() {
+  if (_bvComputedDivider === null) return;
+  patchHardware({ sensors: { batt_voltage: { divider: _bvComputedDivider } } }, () => {
+    document.getElementById('bv-status').textContent =
+      'Saved divider = ' + _bvComputedDivider;
+    document.getElementById('btn-bv-save').disabled = true;
+    _bvComputedDivider = null;
+  });
+}
+
+// ── Torque sensor calibration ─────────────────────────────────
+let _torqueZeroRaw = null;
+function captureTorqueZero() {
+  const raw = live.torque_raw;
+  if (raw === undefined) { alert('No torque ADC data yet.'); return; }
+  _torqueZeroRaw = raw;
+  // Convert raw to volts: offset_V = raw/4095 * 3.3, then offset_Nm = offset_V * scale
+  // Store as Nm offset (requires knowing scale first, but we store raw and recompute on save)
+  document.getElementById('torque-status').textContent =
+    'Zero captured: ' + raw + ' raw ADC — now enter full-scale Nm and click Save Scale.';
+}
+function saveTorqueScale() {
+  const fullScale = parseFloat(document.getElementById('torque-fullscale').value);
+  if (isNaN(fullScale) || fullScale <= 0) { alert('Enter a valid full-scale Nm value.'); return; }
+  const scaleNmPerV = fullScale / 3.3;   // Nm per volt (sensor output 0–3.3 V = 0–fullScale Nm)
+  let offsetNm = 0;
+  if (_torqueZeroRaw !== null) {
+    const zeroV = (_torqueZeroRaw / 4095.0) * 3.3;
+    offsetNm = zeroV * scaleNmPerV;
+  }
+  patchHardware({ sensors: { torque: { scale: scaleNmPerV, offset: offsetNm } } }, () => {
+    const msg = 'Saved: scale=' + scaleNmPerV.toFixed(2) + ' Nm/V' +
+      (_torqueZeroRaw !== null ? '  offset=' + offsetNm.toFixed(2) + ' Nm' : '');
+    document.getElementById('torque-status').textContent = msg;
+    document.getElementById('torque-bar-max').textContent = fullScale + ' Nm';
+    _torqueZeroRaw = null;
+  });
+}
+
+// ── Config patch ──────────────────────────────────────────────
+function patchConfig(patch, msg) {
+  fetch('/api/config').then(r=>r.json()).then(c => {
+    function merge(t, s) {
+      for (const k in s) {
+        if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]))
+          merge(t[k] = t[k] || {}, s[k]);
+        else t[k] = s[k];
+      }
+    }
+    merge(c, patch);
+    return fetch('/api/config', {method:'POST', body:JSON.stringify(c),
+      headers:{'Content-Type':'application/json'}});
+  }).then(r=>r.json()).then(d => {
+    if (d.ok) alert(msg + '\nNote: some calibration changes require restart to take effect.');
+    else alert('Save failed: ' + JSON.stringify(d));
+  }).catch(e => alert('Error: ' + e));
+}
+
+// ── Pre-flight checklist ──────────────────────────────────────
+function checklistTick(cb) {
+  cb.closest('li').classList.toggle('checked', cb.checked);
+  const items = document.querySelectorAll('#checklist input[type=checkbox]');
+  const checked = document.querySelectorAll('#checklist input[type=checkbox]:checked').length;
+  const st = document.getElementById('checklist-status');
+  if (st) st.textContent = checked + ' of ' + items.length + ' items checked';
+}
+</script>
+</body>
+</html>

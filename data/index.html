@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenTurbine</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <a href="/hardware.html">Hardware</a>
+  <a href="/calibration.html">Calibration</a>
+  <a href="/config.html">Config</a>
+  <a href="/sequence.html">Sequence</a>
+  <a href="/" class="active">Dashboard</a>
+  <a href="/log.html">Log</a>
+  <a href="/tools.html">Tools</a>
+  <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
+</nav>
+
+<main>
+  <div style="font-size:.67rem;color:var(--dim);text-align:right;margin-bottom:.3rem;display:flex;justify-content:space-between;align-items:center">
+    <span id="fw-version" style="color:var(--dim);opacity:.5"></span>
+    <span>New? <a href="/hardware.html" style="color:var(--dim);text-decoration:underline">Start with Hardware setup →</a></span>
+  </div>
+
+  <!-- Getting Started banner (shown on first run, STANDBY, not yet dismissed) -->
+  <div id="getting-started-banner" class="gs-banner" style="display:none">
+    <div class="gs-header">
+      <span class="gs-title">Getting Started</span>
+      <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Dismiss">×</button>
+    </div>
+    <ol class="gs-steps">
+      <li><a href="/hardware.html">⚙ Set up hardware</a></li>
+      <li><a href="/calibration.html">🔧 Calibrate sensors</a></li>
+      <li><a href="/config.html">📋 Review safety limits</a></li>
+      <li><a href="/tools.html">🔨 Run a dry test</a></li>
+      <li><span class="gs-step-text">▶ Start engine</span></li>
+    </ol>
+  </div>
+
+  <div id="dev-banner" class="dev-banner" style="display:none">
+    ⚠ DEV MODE — safety locks disabled &nbsp;
+    <a href="/config.html" style="color:var(--yellow);text-decoration:underline">→ Live Config Edit</a>
+  </div>
+  <div id="bench-banner" style="display:none;background:rgba(240,100,0,.12);border:1px solid rgba(240,100,0,.6);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:#f64;font-weight:700;text-align:center">
+    ⚠ BENCH MODE ACTIVE — Sequence runs on timers only, no sensor verification, safety bypassed.
+    <a href="/tools.html" style="color:#f64;text-decoration:underline;font-weight:400;margin-left:.5rem">Disable in Tools →</a>
+  </div>
+  <!-- Config version mismatch banner (new firmware fields got default values) -->
+  <div id="config-version-banner" style="display:none;background:rgba(255,196,0,0.07);border:1px solid rgba(255,196,0,0.4);border-radius:7px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--yellow);line-height:1.6">
+    <strong>⚠ Config version mismatch</strong> — your saved config is from an older firmware version.
+    New settings are using built-in defaults which may not match your engine.<br>
+    <b>Recommended:</b> Go to <a href="/calibration.html" style="color:var(--yellow);text-decoration:underline">Calibration</a> and re-run sensor calibration, then verify all settings on the <a href="/config.html" style="color:var(--yellow);text-decoration:underline">Config</a> page before starting the engine.
+  </div>
+
+  <!-- Profile ID mismatch banner -->
+  <div id="profile-mismatch-banner">
+    <strong>⚠ Profile ID Mismatch — Engine operations locked</strong>
+    The config file on this ECU was saved for a different hardware profile.
+    This means settings may not match your hardware and it's not safe to start the engine.<br>
+    <b>How to fix:</b> Go to <a href="/hardware.html" style="color:var(--yellow)">Hardware</a> and update the <em>Profile ID / WiFi SSID</em> field to match the name your board was built for, then save and reboot.
+    Or download your current config, edit the profile_id value, and re-upload it.
+  </div>
+  <div id="profile-error" class="error-banner" style="display:none">Profile ID mismatch — engine operations locked</div>
+
+  <!-- Fault/abort description card -->
+  <div id="fault-card" style="display:none">
+    <div class="fault-title">⚠ Fault / Abort</div>
+    <div class="fault-desc" id="fault-desc-text"></div>
+  </div>
+
+  <!-- Sequence progress (shown during STARTUP / SHUTDOWN) -->
+  <section id="seq-progress-section" style="display:none;margin-bottom:1rem">
+    <div class="card" style="padding:.75rem 1rem">
+      <div class="label">Sequence step <span id="seq-step-text" style="color:var(--text);font-size:.85rem;margin-left:.5rem"></span></div>
+      <div style="font-size:1rem;font-weight:600;margin:.2rem 0;color:var(--yellow)" id="seq-block-name">—</div>
+      <div id="seq-wait-reason" style="font-size:.77rem;color:var(--dim);margin-bottom:.3rem;min-height:1em"></div>
+      <div class="seq-progress-bar-wrap">
+        <div class="seq-progress-bar" id="seq-progress-bar" style="width:0%"></div>
+      </div>
+      <div id="seq-timeline-strip" style="display:none;margin-top:.6rem;flex-wrap:wrap;gap:.3rem"></div>
+    </div>
+  </section>
+
+  <!-- Post-run summary (auto-populated after each run, dismissed by user) -->
+  <section id="run-summary-card" style="display:none;margin-bottom:1rem">
+    <div class="card" style="padding:.75rem 1rem;border-color:var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem">
+        <div class="label" id="run-summary-title">Last Run Summary</div>
+        <button onclick="dismissRunSummary()" style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:1.1rem;padding:0;line-height:1" title="Dismiss">×</button>
+      </div>
+      <div id="run-summary-stats" style="display:flex;flex-wrap:wrap;gap:.5rem 1.2rem;font-size:.83rem;margin-bottom:.5rem"></div>
+      <div id="run-summary-timeline" style="display:none;margin-top:.4rem">
+        <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);margin-bottom:.3rem">Sequence</div>
+        <div id="run-summary-timeline-strip" style="display:flex;flex-wrap:wrap;gap:.3rem"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Unit toggle -->
+  <div style="display:flex;justify-content:flex-end;align-items:center;gap:.4rem;font-size:.7rem;color:var(--dim);margin-bottom:.5rem">
+    Units:
+    <button id="unit-temp-btn"  onclick="setTempUnit(tempUnit()==='C'?'F':'C')"
+      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">°F</button>
+    <button id="unit-press-btn" onclick="setPressUnit(pressUnit()==='bar'?'psi':'bar')"
+      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
+  </div>
+
+  <!-- Big sensors: N1 + TOT -->
+  <section class="grid-2">
+    <div class="card big" id="n1-card">
+      <div class="label"><span id="lbl-n1">N1 RPM</span> <span id="n1-health" class="dot"></span></div>
+      <div class="value" id="n1">—</div>
+      <div class="peak-val">max <span id="max-n1">—</span></div>
+      <canvas class="sparkline" id="n1-sparkline"></canvas>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="n1-gauge-bar" style="width:0%"></div></div>
+      <span id="n1-abs-label" class="gauge-abs-label">— / — RPM</span>
+      <span id="n1-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+    </div>
+    <div class="card big" id="tot-card">
+      <div class="label"><span id="lbl-tot">TOT</span> <span data-unit="temp">°C</span> <span id="tot-health" class="dot"></span></div>
+      <div class="value" id="tot">—</div>
+      <div class="peak-val">max <span id="max-tot">—</span> · rate <span id="tot-rise-rate-val">—</span></div>
+      <canvas class="sparkline" id="tot-sparkline"></canvas>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="tot-gauge-bar" style="width:0%"></div></div>
+      <span id="tot-abs-label" class="gauge-abs-label">— / — °C</span>
+      <span id="tot-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+    </div>
+  </section>
+
+  <!-- N2 + Oil + Flame row -->
+  <section class="grid-3">
+    <div class="card" id="n2-card">
+      <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
+      <div class="value small" id="n2">—</div>
+      <div class="peak-val">max <span id="max-n2">—</span></div>
+    </div>
+    <div class="card" id="oil-card">
+      <div class="label"><span id="lbl-oil">Oil Press</span> (<span data-unit="press">bar</span>) <span id="oil-health" class="dot"></span></div>
+      <div class="value small" id="oil">—</div>
+      <div class="oil-sub">demand: <span id="oil-demand-val">—</span> <span data-unit="press">bar</span></div>
+      <div class="oil-sub" id="oil-min-bar-row" style="display:none">min: <span id="oil-min-bar-val">—</span> <span data-unit="press">bar</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="oil-gauge-bar" style="width:0%"></div></div>
+      <span id="oil-abs-label" class="gauge-abs-label">— / — bar</span>
+      <span id="oil-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+    </div>
+    <div class="card" id="flame-card">
+      <div class="label">Flame <span id="flame-dot" class="dot"></span></div>
+      <div class="flame-bar-wrap">
+        <div class="flame-bar-track">
+          <div class="flame-bar-fill" id="flame-bar-fill" style="width:0%"></div>
+          <div class="flame-thr-mark" id="flame-thr-mark" style="left:50%"></div>
+        </div>
+        <div class="flame-bar-labels">
+          <span>0</span>
+          <span id="flame-thr-label" style="color:var(--yellow)">thr: —</span>
+          <span>4095</span>
+        </div>
+      </div>
+      <div class="flame-raw-val" id="flame-raw-val">— ADC</div>
+    </div>
+  </section>
+
+  <!-- P1 / P2 pressure sensors (hidden until enabled in Config → Display) -->
+  <section id="pressure-section" class="grid-2" style="display:none">
+    <div class="card">
+      <div class="label"><span id="lbl-p1">P1</span> bar</div>
+      <div class="value small" id="p1">—</div>
+      <div class="peak-val">max <span id="max-p1">—</span></div>
+    </div>
+    <div class="card">
+      <div class="label"><span id="lbl-p2">P2</span> bar</div>
+      <div class="value small" id="p2">—</div>
+      <div class="peak-val">max <span id="max-p2">—</span></div>
+    </div>
+  </section>
+
+  <!-- Extended sensors: Oil Temp / Battery Voltage / Torque + Power (shown only when fitted) -->
+  <section id="ext-sensors-section" class="grid-3" style="display:none">
+    <div class="card" id="oil-temp-card" style="display:none">
+      <div class="label"><span id="lbl-oil-temp">Oil Temp</span> <span data-unit="temp">°C</span> <span id="oil-temp-health" class="dot"></span></div>
+      <div class="value small" id="oil-temp">—</div>
+      <div class="peak-val">max <span id="max-oil-temp">—</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="oil-temp-gauge-bar" style="width:0%"></div></div>
+      <canvas class="sparkline" id="oil-temp-sparkline"></canvas>
+    </div>
+    <div class="card" id="batt-card" style="display:none">
+      <div class="label">Battery V <span id="batt-health" class="dot"></span></div>
+      <div class="value small" id="batt-voltage">—</div>
+      <div class="peak-val">min limit: <span id="batt-volt-min">—</span> V</div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="batt-gauge-bar" style="width:0%"></div></div>
+      <canvas class="sparkline" id="batt-sparkline"></canvas>
+    </div>
+    <div class="card" id="torque-card" style="display:none">
+      <div class="label">Torque Nm <span id="torque-health" class="dot"></span></div>
+      <div class="value small" id="torque">—</div>
+      <div class="peak-val">power: <span id="turbo-power">—</span> kW</div>
+      <canvas class="sparkline" id="torque-sparkline"></canvas>
+    </div>
+    <div class="card" id="glow-current-card" style="display:none">
+      <div class="label">Glow Plug Current <span id="glow-hot-dot" class="dot" title="Hot"></span></div>
+      <div class="value small" id="glow-current-val">—</div>
+      <div class="peak-val">A &nbsp;·&nbsp; <span id="glow-hot-label" style="color:var(--dim)">—</span></div>
+    </div>
+    <div class="card" id="igniter-current-card" style="display:none">
+      <div class="label">Igniter / Coil Current</div>
+      <div class="value small" id="igniter-current-val">—</div>
+      <div class="peak-val">A</div>
+    </div>
+    <div class="card" id="fuel-flow-card" style="display:none">
+      <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span></div>
+      <div class="value small" id="fuel-flow-val">—</div>
+      <div class="peak-val">units/s</div>
+    </div>
+  </section>
+
+  <!-- Surge warning (shown only when surge is detected) -->
+  <div id="surge-warn-banner" style="display:none;background:var(--red);color:#fff;padding:.5rem 1rem;border-radius:.5rem;margin-bottom:.5rem;font-weight:bold;text-align:center">
+    ⚠ COMPRESSOR SURGE DETECTED — Engine shutting down
+  </div>
+
+  <!-- DI channel state badges (shown only when at least one DI pin is configured) -->
+  <div id="di-states-wrap" style="display:none;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem"></div>
+
+  <!-- Governor status (shown only when governor enabled) -->
+  <section id="governor-section" style="display:none;margin-bottom:.5rem">
+    <div class="card small">
+      <div class="label">Power Turbine Governor</div>
+      <div class="oil-sub">N2 target: <span id="gov-target-rpm">—</span> RPM &nbsp;|&nbsp; N2 actual: <span id="gov-n2-actual">—</span> RPM</div>
+    </div>
+  </section>
+
+  <!-- Advanced actuator status row (glow, bleed, prop pitch, fuel pump 2) -->
+  <section id="adv-act-section" style="display:none;margin-bottom:.5rem">
+    <div class="card small" style="gap:.45rem">
+      <div class="label">Advanced Actuators</div>
+      <div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--dim)">
+        <div id="adv-glow" style="display:none">
+          Glow plug <span id="glow-pct" style="color:var(--text);font-weight:600">0</span>%
+          <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
+            <div class="gauge-bar" id="glow-gauge-bar" style="width:0%;background:var(--yellow)"></div>
+          </div>
+        </div>
+        <div id="adv-bleed" style="display:none">
+          Bleed valve <span id="bleed-state" style="font-weight:600">CLOSED</span>
+        </div>
+        <div id="adv-pitch" style="display:none">
+          Prop pitch <span id="pitch-pct" style="color:var(--text);font-weight:600">0</span>%
+          <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
+            <div class="gauge-bar" id="pitch-gauge-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="adv-fp2" style="display:none">
+          Fuel pump 2 <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span>%
+          <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
+            <div class="gauge-bar" id="fp2-gauge-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Mode + controls -->
+  <section class="mode-row">
+    <div id="mode-badge" class="mode-badge">STANDBY</div>
+    <div class="controls-wrap">
+      <div class="controls">
+        <button id="btn-start" onclick="showStartConfirm()">START</button>
+        <button id="btn-stop"  onclick="sendCmd('/api/stop')" class="danger">STOP</button>
+      </div>
+      <div id="stop-switch-warn" class="stop-warn">⚠ stop switch active</div>
+    </div>
+  </section>
+
+  <!-- Afterburner card — shown only when hasAfterburner -->
+  <section id="ab-section" style="display:none;margin-bottom:1rem">
+    <div class="card small" style="display:flex;flex-direction:column">
+      <div class="label">Afterburner <span id="ab-sol-dot" class="dot" title="AB Solenoid"></span></div>
+      <div class="ab-mode-val ab-mode-Off" id="ab-mode-val">OFF</div>
+      <div class="ab-indicators">
+        <div class="ab-ind"><span id="ab-arm-dot" class="dot" title="Arm switch"></span> ARM</div>
+        <div class="ab-ind"><span id="ab-flame-dot" class="dot" title="AB flame sensor"></span> FLAME</div>
+        <div class="ab-ind"><span id="ab-trig-dot" class="dot" title="Trigger active"></span> TRIG</div>
+      </div>
+      <div class="ab-controls">
+        <button id="btn-ab-fire" class="ab-fire-btn" onclick="sendAbCmd('AB_FIRE')" disabled>FIRE</button>
+        <button id="btn-ab-stop" class="ab-stop-btn" onclick="sendAbCmd('AB_STOP')" disabled>AB STOP</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Telemetry cards -->
+  <section class="grid-2 telemetry">
+    <div class="card small">
+      <div class="label">Throttle Demand</div>
+      <div class="value small" id="throttle-demand">—</div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
+      <div class="oil-sub" id="throttle-input-row" style="display:none">input: <span id="throttle-input-pct">—</span>%</div>
+      <div class="oil-sub">floor: <span id="throttle-idle-floor">—</span>%
+        <span id="throttle-di-wrap" style="display:none"> · DI: <span id="throttle-di-rpm">—</span> rpm</span>
+      </div>
+    </div>
+    <div class="card small">
+      <div class="label">Oil Pump Output %</div>
+      <div class="value small" id="oil-pct">—</div>
+      <div class="oil-sub" id="oil-failsafe-note" style="display:none;color:var(--red)">⚠ sensor failsafe</div>
+    </div>
+    <div class="card small" style="grid-column:1/-1">
+      <div class="label">Last Event</div>
+      <div class="last-event-val" id="last-event">—</div>
+    </div>
+    <div class="card small">
+      <div class="label">Uptime</div>
+      <div class="value small" id="uptime">—</div>
+    </div>
+    <div class="card small">
+      <div class="label">Hour Meter</div>
+      <div class="hour-meter">
+        Runs: <span id="hour-run-count">—</span>
+        &nbsp; Total: <span id="hour-run-time">—</span>
+      </div>
+    </div>
+    <div class="card small" id="relight-card">
+      <div class="label">Relight</div>
+      <div class="value small" id="relight-status">—</div>
+      <div class="oil-sub" id="manual-relight-note" style="display:none;color:var(--yellow)">Throttle held above idle — relight active</div>
+    </div>
+    <div class="card small" id="extra-cooldown-card" style="display:none">
+      <div class="label">Extra Cooldown</div>
+      <div class="value small" style="color:var(--yellow)">Running…</div>
+    </div>
+  </section>
+</main>
+
+<!-- Config Export / Import -->
+<div style="max-width:900px;margin:1rem auto;padding:0 1rem">
+  <div style="border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;background:var(--surface)">
+    <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.5rem">ECU Config — Export / Import</div>
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+      <a href="/api/ecu_config" download="ecu_config.json"
+         style="font-size:.82rem;padding:.35rem .9rem;border:1px solid var(--border);border-radius:5px;color:var(--text);text-decoration:none;background:var(--bg)">
+        Download ecu_config.json
+      </a>
+      <label style="font-size:.82rem;padding:.35rem .9rem;border:1px solid var(--accent);border-radius:5px;color:var(--accent);cursor:pointer;background:var(--bg)">
+        Upload ecu_config.json
+        <input type="file" accept=".json" style="display:none" onchange="uploadEcuConfig(this)">
+      </label>
+      <span id="ecu-upload-status" style="font-size:.78rem;color:var(--dim)"></span>
+    </div>
+    <div style="font-size:.68rem;color:var(--dim);margin-top:.4rem">Contains all settings: hardware pinout, config parameters and sequences in one file. Logs are stored separately.</div>
+  </div>
+</div>
+
+<!-- Start confirmation dialog -->
+<div id="start-confirm-overlay" style="display:none">
+  <div id="start-confirm-box">
+    <h3>Start Engine?</h3>
+    <p>This will begin the startup sequence. Make sure the area is clear and the engine is ready to run.</p>
+    <div class="btns">
+      <button onclick="confirmStart()">Confirm Start</button>
+      <button class="danger" onclick="cancelStart()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showStartConfirm() {
+  document.getElementById('start-confirm-overlay').style.display = 'flex';
+}
+function confirmStart() {
+  document.getElementById('start-confirm-overlay').style.display = 'none';
+  // Guard: verify startup sequence is non-empty before sending start
+  fetch('/api/hardware').then(r => r.json()).then(hw => {
+    const seq = hw.startup_seq || [];
+    if (seq.length === 0) {
+      alert('⚠ Startup sequence is empty.\n\nGo to the Sequence page and add blocks (at minimum: OilPrime → StarterSpin → FlameConfirm) before starting.');
+      return;
+    }
+    _doStart();
+  }).catch(() => _doStart()); // if fetch fails, proceed and let firmware handle it
+}
+function _doStart() {
+  sendCmd('/api/start');
+  // Spinner/feedback state: disable button and change text
+  const btn = document.getElementById('btn-start');
+  if (btn) {
+    btn._originalText = btn.textContent;
+    btn.textContent = 'Starting\u2026';
+    btn.disabled = true;
+    // Fallback: re-enable after 3 seconds if telemetry hasn't already done so
+    btn._startTimeout = setTimeout(function() {
+      if (btn.disabled && btn.textContent === 'Starting\u2026') {
+        btn.textContent = btn._originalText || 'START';
+        btn.disabled = false;
+      }
+    }, 3000);
+  }
+}
+function cancelStart() {
+  document.getElementById('start-confirm-overlay').style.display = 'none';
+}
+// Close on overlay click
+document.getElementById('start-confirm-overlay').addEventListener('click', function(e) {
+  if (e.target === this) cancelStart();
+});
+
+// Getting Started banner dismiss
+function dismissGettingStarted() {
+  try { localStorage.setItem('ot_gs_dismissed', '1'); } catch(e) {}
+  const banner = document.getElementById('getting-started-banner');
+  if (banner) banner.style.display = 'none';
+}
+</script>
+
+<script>
+function uploadEcuConfig(input) {
+  const file = input.files[0]; if (!file) return;
+  const st = document.getElementById('ecu-upload-status');
+  st.textContent = 'Uploading…';
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const res = await fetch('/api/ecu_config', { method:'POST',
+        headers:{'Content-Type':'application/json'}, body: e.target.result });
+      const j = await res.json();
+      if (j.ok) {
+        st.textContent = 'Uploaded — rebooting…';
+        st.style.color = 'var(--accent)';
+      } else {
+        st.textContent = 'Error: ' + (j.error || 'unknown');
+        st.style.color = '#f55';
+      }
+    } catch(err) { st.textContent = 'Upload failed: ' + err; st.style.color = '#f55'; }
+  };
+  reader.readAsText(file);
+}
+</script>
+
+<script src="/app.js"></script>
+</body>
+</html>

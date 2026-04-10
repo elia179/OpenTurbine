@@ -1,0 +1,2103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenTurbine — Sequence</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+#seq-validation-banner { margin-bottom: .6rem; }
+.seq-val-error, .seq-val-warn {
+  display: flex; align-items: flex-start; gap: .55rem;
+  padding: .45rem .7rem; border-radius: 6px; margin-bottom: .35rem;
+  font-size: .75rem; line-height: 1.45;
+}
+.seq-val-error { background: rgba(220,50,50,.10); border: 1px solid rgba(220,50,50,.45); color: #f06060; }
+.seq-val-warn  { background: rgba(255,180,0,.08);  border: 1px solid rgba(255,180,0,.40);  color: #ffc840; }
+.seq-val-icon  { font-size: .85rem; flex-shrink: 0; margin-top: .05rem; }
+.seq-val-block { font-weight: 600; margin-right: .25rem; }
+.seq-val-start-blocked {
+  background: rgba(220,50,50,.13); border: 1px solid rgba(220,50,50,.6);
+  color: #f06060; border-radius: 7px; padding: .5rem .8rem;
+  font-size: .78rem; font-weight: 600; margin-bottom: .5rem;
+}
+</style>
+</head>
+<body>
+<nav>
+  <a href="/hardware.html">Hardware</a>
+  <a href="/calibration.html">Calibration</a>
+  <a href="/config.html">Config</a>
+  <a href="/sequence.html" class="active">Sequence</a>
+  <a href="/">Dashboard</a>
+  <a href="/log.html">Log</a>
+  <a href="/tools.html">Tools</a>
+</nav>
+<main>
+<h1 style="margin-bottom:.25rem">Sequence Editor</h1>
+<p style="color:var(--dim);font-size:.78rem;margin-bottom:1rem">
+  Edit startup and shutdown sequences. Each block shows its control structure, condition, and configurable parameters.
+  Changes to <em>sequence order</em> require Hardware → Save &amp; Reboot.
+  Changes to <em>parameters only</em> apply after Config → Save.
+</p>
+
+<div id="seq-validation-banner"></div>
+
+<div class="seq-tabs">
+  <button class="seq-tab active" onclick="switchTab('startup')">Startup</button>
+  <button class="seq-tab"        onclick="switchTab('shutdown')">Shutdown</button>
+  <button class="seq-tab" id="tab-btn-afterburner" onclick="switchTab('afterburner')">Afterburner</button>
+</div>
+
+<div id="tab-startup">
+  <div class="block-list" id="list-startup"></div>
+  <div class="add-row" style="margin-top:.75rem">
+    <select id="add-startup-sel" onchange="updateBlockPreview('startup')"></select>
+    <button class="add-btn" onclick="addBlock('startup')">+ Add block</button>
+    <button class="add-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text)" onclick="openCustomBlockDialog('startup')">+ Custom block</button>
+  </div>
+  <div id="preview-startup" style="font-size:.72rem;color:var(--dim);margin-top:.35rem;min-height:1.4rem;line-height:1.5"></div>
+</div>
+<div id="tab-shutdown" style="display:none">
+  <div class="block-list" id="list-shutdown"></div>
+  <div class="add-row" style="margin-top:.75rem">
+    <select id="add-shutdown-sel" onchange="updateBlockPreview('shutdown')"></select>
+    <button class="add-btn" onclick="addBlock('shutdown')">+ Add block</button>
+    <button class="add-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text)" onclick="openCustomBlockDialog('shutdown')">+ Custom block</button>
+  </div>
+  <div id="preview-shutdown" style="font-size:.72rem;color:var(--dim);margin-top:.35rem;min-height:1.4rem;line-height:1.5"></div>
+</div>
+<div id="tab-afterburner" style="display:none">
+
+  <!-- Entry criteria info box, populated by buildAbCriteriaHtml() -->
+  <div id="ab-lightup-criteria" class="ab-criteria-box" style="margin-bottom:.85rem;display:none"></div>
+
+  <!-- Fault behavior info -->
+  <div style="margin-bottom:.85rem;padding:.6rem .85rem;border:1px solid rgba(255,196,0,0.3);border-radius:7px;font-size:.75rem;color:var(--dim);line-height:1.55;background:rgba(255,196,0,0.05)">
+    <strong style="color:var(--yellow)">Fault behavior:</strong>
+    If Light Up faults (ignition not confirmed), the AB solenoid closes, AB pump stops and AB igniter turns off immediately.
+    The main engine continues running normally. AB state resets — you can retry from the dashboard.
+  </div>
+
+  <!-- Light Up section -->
+  <div class="ab-section-hdr">Light Up Sequence</div>
+  <p style="font-size:.72rem;color:var(--dim);margin:.35rem 0 .65rem">
+    Runs when afterburner trigger is activated. Default: ABCheckReady → ABSolOpen → ABPumpOn → ABIgnite → ABFlameConfirm → ABStabilize.
+    If empty, the built-in default sequence is used.
+  </p>
+  <div class="block-list" id="list-afterburner"></div>
+  <div class="add-row" style="margin-top:.75rem">
+    <select id="add-afterburner-sel" onchange="updateBlockPreview('afterburner')"></select>
+    <button class="add-btn" onclick="addBlock('afterburner')">+ Add block</button>
+    <button class="add-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text)" onclick="openCustomBlockDialog('afterburner')">+ Custom block</button>
+  </div>
+  <div id="preview-afterburner" style="font-size:.72rem;color:var(--dim);margin-top:.35rem;min-height:1.4rem;line-height:1.5"></div>
+
+  <!-- Light Off section -->
+  <div class="ab-section-hdr" style="margin-top:1.75rem">Light Off Sequence</div>
+  <div id="ab-shutoff-criteria" class="ab-criteria-box" style="margin-bottom:.65rem;display:none"></div>
+  <p style="font-size:.72rem;color:var(--dim);margin:.35rem 0 .65rem">
+    Runs when afterburner trigger is released / deactivated. Default: ABSolClose → ABPumpOff.
+  </p>
+  <div class="block-list" id="list-ab-shut"></div>
+  <div class="add-row" style="margin-top:.75rem">
+    <select id="add-ab-shut-sel" onchange="updateBlockPreview('ab-shut')"></select>
+    <button class="add-btn" onclick="addBlock('ab-shut')">+ Add block</button>
+    <button class="add-btn" style="background:var(--surface);border:1px solid var(--border);color:var(--text)" onclick="openCustomBlockDialog('ab-shut')">+ Custom block</button>
+  </div>
+  <div id="preview-ab-shut" style="font-size:.72rem;color:var(--dim);margin-top:.35rem;min-height:1.4rem;line-height:1.5"></div>
+</div>
+
+<!-- Custom block dialog -->
+<div id="custom-dlg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:200;align-items:flex-start;justify-content:center;overflow-y:auto;padding:1.5rem 0">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.4rem;width:min(560px,96vw);margin:auto;display:flex;flex-direction:column;gap:.85rem">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h3 style="margin:0;font-size:.95rem" id="cblk-dlg-title">New Custom Block</h3>
+      <button onclick="closeCustomBlockDialog()" style="background:none;border:1px solid var(--border);border-radius:4px;color:var(--dim);padding:.2rem .5rem;cursor:pointer;font-size:.82rem">✕</button>
+    </div>
+
+    <!-- 1: Identity -->
+    <div class="cblk-section">
+      <div class="cblk-section-title">Identity</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:.55rem">
+        <div class="cblk-field">
+          <label>Block name</label>
+          <input id="cblk-label" type="text" placeholder="e.g. Preheat Fan">
+        </div>
+        <div class="cblk-field">
+          <label>Type</label>
+          <select id="cblk-type" onchange="updateCustomBlockTypeUI()">
+            <option value="action">ACTION — instant</option>
+            <option value="wait">WAIT — fixed timer</option>
+            <option value="while">WHILE — wait for condition</option>
+          </select>
+        </div>
+      </div>
+      <div class="cblk-field">
+        <label>Description <span style="color:var(--dim);text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input id="cblk-desc" type="text" placeholder="What does this block do?">
+      </div>
+    </div>
+
+    <!-- 2: Steps (for action type) -->
+    <div class="cblk-section" id="cblk-steps-section">
+      <div class="cblk-section-title" style="align-items:center;display:flex;justify-content:space-between;flex-wrap:wrap;gap:.35rem">
+        <span>Steps — what this block does</span>
+        <div style="display:flex;gap:.4rem">
+          <button class="cblk-add-btn" onclick="addCustomStep('set_act')">+ Set actuator</button>
+          <button class="cblk-add-btn" onclick="addCustomStep('delay_ms')" style="background:rgba(0,240,160,0.08);border-color:rgba(0,240,160,0.3);color:var(--green)">+ Delay</button>
+        </div>
+      </div>
+      <div id="cblk-outputs" style="display:flex;flex-direction:column;gap:.35rem"></div>
+      <div id="cblk-outputs-empty" style="font-size:.72rem;color:var(--dim);padding:.2rem 0">
+        No steps yet — add "Set actuator" to control outputs, or "Delay" to pause between actions.
+      </div>
+    </div>
+
+    <!-- 3: Condition (WHILE only) -->
+    <div class="cblk-section" id="cblk-cond-section" style="display:none">
+      <div class="cblk-section-title">Condition — wait while this is true</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.55rem;align-items:end">
+        <div class="cblk-field">
+          <label>Sensor</label>
+          <select id="cblk-cond-sensor" onchange="updateCustomCondUI()"></select>
+        </div>
+        <div class="cblk-field" style="width:80px">
+          <label>Operator</label>
+          <select id="cblk-cond-op" onchange="updateCustomCondPreview()">
+            <option value="<">&lt;</option>
+            <option value=">">&gt;</option>
+            <option value="<=">&lt;=</option>
+            <option value=">=">&gt;=</option>
+          </select>
+        </div>
+        <div class="cblk-field">
+          <label>Threshold <span id="cblk-cond-unit" style="color:var(--accent);text-transform:none;letter-spacing:0"></span></label>
+          <input id="cblk-cond-val" type="number" value="100" step="1" oninput="updateCustomCondPreview()">
+        </div>
+      </div>
+      <div id="cblk-cond-preview" class="cblk-preview" style="display:none"></div>
+    </div>
+
+    <!-- 4: Timer -->
+    <div class="cblk-section" id="cblk-timer-section" style="display:none">
+      <div class="cblk-section-title">Timer</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem">
+        <div class="cblk-field">
+          <label id="cblk-timer-label">Duration (ms)</label>
+          <input id="cblk-dur" type="number" value="1000" min="100" max="600000" step="100">
+        </div>
+        <div class="cblk-field" id="cblk-timeout-action-wrap" style="display:none">
+          <label>On timeout</label>
+          <select id="cblk-timeout-action">
+            <option value="abort">Abort (safe — no fuel)</option>
+            <option value="fault">Fault shutdown</option>
+            <option value="continue">Continue anyway</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer buttons -->
+    <div style="display:flex;gap:.6rem;justify-content:flex-end;padding-top:.15rem">
+      <button onclick="closeCustomBlockDialog()" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--text);padding:.38rem 1rem;cursor:pointer;font-size:.82rem">Cancel</button>
+      <button onclick="confirmCustomBlock()" style="background:var(--accent);border:none;border-radius:5px;color:#000;padding:.38rem 1.1rem;cursor:pointer;font-size:.82rem;font-weight:600" id="cblk-confirm-btn">Add Block</button>
+    </div>
+
+  </div>
+</div>
+
+<div id="block-info-panel" style="display:none"></div>
+
+<div class="seq-save-bar">
+  <button class="save-btn" id="save-btn" onclick="saveAll()">Save &amp; Reboot</button>
+  <div class="save-status" id="save-status">Load config from device to begin</div>
+</div>
+</main>
+
+<div class="reboot-overlay" id="reboot-overlay">
+  <div class="spin"></div>
+  <h2>Rebooting…</h2>
+  <p>Device is applying new configuration.<br>Reconnecting in <span id="reboot-count">10</span>s…</p>
+</div>
+
+<script>
+// ── Block definitions ──────────────────────────────────────────────────────
+// type: 'while'=waits for condition  'action'=instant  'wait'=timer  'check'=verify+fault
+// timeout_action: 'fault'|'abort'|'continue'|null
+const BLOCKS = {
+  OilPrime: {
+    label:'Oil Prime', type:'while', badgeClass:'badge-while',
+    condition: hw => hwCfg.sensors?.oil_press?.enabled
+      ? `oil >= ${hw.oil_arm_min_bar ?? 1.5} bar`
+      : `timer (no pressure sensor)`,
+    timeout_action:'abort',
+    desc:'Turns oil pump ON and pre-lubricates bearings. WITH pressure sensor: waits until oil ≥ arm threshold, aborts on timeout (safe — no fuel or ignition active). WITHOUT pressure sensor: runs pump at fixed duty % for the configured timeout, then completes automatically.',
+    hwWarnings:[
+      { check: hw => !!hw.actuators?.oil_pump?.enabled,
+        msg: '⚠ No oil pump actuator configured — this block cannot actually pump oil. Add an oil pump in Hardware Config → Actuators.' },
+    ],
+    params:[
+      // ── With oil pressure sensor ──────────────────────────────────────────
+      {key:'startup_oil_demand', label:'Oil pressure target', unit:'bar', type:'float', min:0, max:10, step:0.1, def:2.5,
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
+        configKey:'startup_oil_demand'},
+      {key:'oil_arm_min_bar',    label:'Arm threshold',       unit:'bar', type:'float', min:0, max:10, step:0.1, def:1.5,
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled},
+      // ── Without oil pressure sensor ───────────────────────────────────────
+      {key:'startup_oil_pct',    label:'Pump duty %',         unit:'%',  type:'float', min:0, max:100, step:5, def:80,
+        visibleIf: hw => !hw.sensors?.oil_press?.enabled,
+        configKey:'startup_oil_pct',
+        desc:'Pump runs at this fixed duty since no pressure sensor is fitted. Run timeout (below) determines how long the block holds.'},
+      // ── Common ────────────────────────────────────────────────────────────
+      {key:'oil_arm_timeout_ms', label:'Timeout', unit:'ms', type:'int', min:500, max:30000, step:100, def:3000, configKey:'oil_arm_timeout_ms'},
+      {key:'oil_prime_use_scavenge', label:'Run scavenge pump', type:'bool', def:false,
+        configKey:'oil_prime_use_scavenge',
+        visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
+    ]
+  },
+  StarterSpin: {
+    label:'Starter Spin', type:'while', badgeClass:'badge-while',
+    condition: hw => `N1 < ${hw.pre_ign_rpm ?? 5000} rpm`,
+    timeout_action:'fault',
+    desc:'Asserts starter enable relay (if fitted), then ramps starter demand from 0 to target %. Waits for N1 to reach pre-ignition RPM. Starter enable delay (hardware config) is applied before the starter spins. On timeout → FAULT SHUTDOWN. Outputs: starterEnabled=true, starterDemand ramping to target.',
+    hwWarnings:[
+      { check: hw => !!hw.actuators?.starter?.enabled,
+        msg: '⚠ No starter actuator configured — starter output will have no physical effect. Add a starter in Hardware Config → Actuators.',
+        level: 'error' },
+      { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        msg: '⚠ No N1 RPM sensor — block cannot verify target RPM. It will run for the full timeout, then FAULT SHUTDOWN. Enable bench mode for timer-only testing.' },
+    ],
+    params:[
+      {key:'starter_demand',      label:'Starter demand',unit:'%',   type:'float', min:0,   max:100,   step:1,   def:60,    configKey:'starter_demand'},
+      {key:'ramp_pct_per_s',     label:'Ramp rate',     unit:'%/s', type:'float', min:0,   max:200,   step:5,   def:30,    configKey:'ramp_pct_per_s',
+        visibleIf: hw => hw.actuators?.starter?.type !== 2},
+      {key:'pre_ign_rpm',        label:'Target N1',     unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000,  configKey:'pre_ign_rpm',
+        visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        desc:'Starter runs until N1 exceeds this RPM. Without N1 sensor this condition cannot be checked — the block will run for the full timeout.'},
+      {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
+        desc:'Maximum spin time before fault. If no N1 sensor is fitted, the timeout determines when the block exits.'},
+      {key:'oil_startup_min_bar',label:'Oil min',       unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled},
+    ]
+  },
+  PreIgnSpark: {
+    label:'Pre-Ignition Spark', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Turns igniter ON and waits the configured spark duration. The igniter remains on when this block exits — place FuelOpen immediately after so fuel ignites on contact. Outputs: igniterOn=true (stays on after block).',
+    params:[
+      {key:'pre_ign_spark_ms', label:'Spark duration', unit:'ms', type:'int', min:100, max:10000, step:100, def:1500, configKey:'pre_ign_spark_ms'},
+    ]
+  },
+  FuelOpen: {
+    label:'Fuel Open', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Opens the fuel solenoid and sets the internal fuelEverOpened flag (used by Cooldown block to decide if cooling is needed). Instant action. Outputs: fuelSolOpen=true.',
+    params:[]
+  },
+  FlameConfirm: {
+    label:'Flame Confirm', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => !!hw.sensors?.flame?.enabled,
+    condition: hw => `flame count < ${hw.flame_required_count ?? 3}`,
+    timeout_action:'abort',
+    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout → ABORT (fuel solenoid closes, engine safe to leave). On exit: optionally sets igniterOn=false (checkbox below). Does NOT cut fuel or starter.',
+    hwWarnings:[
+      { check: hw => !!hw.sensors?.flame?.enabled,
+        msg: '🚫 No flame sensor configured — flame count will never increment. This block will always timeout and ABORT. Use TempConfirm as a replacement if a temperature sensor is fitted.',
+        level: 'error' },
+    ],
+    params:[
+      {key:'flame_required_count',   label:'Required detections',unit:'',   type:'int',  min:1,    max:20,    step:1,   def:3,    configKey:'flame_required_count'},
+      {key:'flame_check_interval_ms',label:'Check interval',     unit:'ms', type:'int',  min:50,   max:2000,  step:50,  def:300,  configKey:'flame_check_interval_ms'},
+      {key:'flame_timeout_ms',       label:'Timeout',            unit:'ms', type:'int',  min:1000, max:30000, step:500, def:5000, configKey:'flame_timeout_ms'},
+      {key:'flame_turn_off_igniter', label:'Turn off igniter on exit',      type:'bool', def:true, configKey:'flame_turn_off_igniter'},
+    ]
+  },
+  TempConfirm: {
+    label:'Temp Confirm', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => !!hw.sensors?.tot?.enabled,
+    condition: hw => `TOT < ${hw.temp_confirm_target ?? 200}°C`,
+    timeout_action:'abort',
+    desc:'Waits until TOT rises above the configured threshold. Use as an alternative to or alongside FlameConfirm when a flame sensor is not fitted. On timeout → ABORT. Does NOT change any actuator state.',
+    hwWarnings:[
+      { check: hw => !!hw.sensors?.tot?.enabled,
+        msg: '🚫 No temperature (TOT) sensor configured — TOT will never rise above ambient. This block will always timeout and ABORT.',
+        level: 'error' },
+    ],
+    params:[
+      {key:'temp_confirm_target',  label:'Target TOT',unit:'°C', type:'float', min:0, max:1000, step:10, def:200},
+      {key:'temp_confirm_timeout', label:'Timeout',   unit:'ms', type:'int',   min:1000, max:60000, step:1000, def:10000},
+    ]
+  },
+  TimedDelay: {
+    label:'Timed Delay', type:'wait', badgeClass:'badge-wait',
+    condition: hw => `${hw.timed_delay_ms ?? 1000} ms`,
+    timeout_action:null,
+    desc:'Pauses the sequence for the configured duration. No actuator changes — all outputs remain in whatever state the previous block left them.',
+    params:[
+      {key:'timed_delay_ms', label:'Delay', unit:'ms', type:'int', min:100, max:60000, step:100, def:1000, configKey:'timed_delay_ms'},
+    ]
+  },
+  FuelPumpIdle: {
+    label:'Fuel Pump → Idle Input', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Sets the throttle/fuel ESC demand from the idle input (pot or RC channel). Maps raw input (0–4095) linearly to the Min%–Max% range. If no idle channel is fitted, uses Min% as a fixed idle — set Min% = Max% for a precise hardcoded idle without a physical channel. Completes immediately.',
+    params:[
+      {key:'fp_idle_min_pct',      label:'Min pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:8,     configKey:'fp_idle_min_pct'},
+      {key:'fp_idle_max_pct',      label:'Max pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:18,    configKey:'fp_idle_max_pct'},
+      {key:'fp_idle_sol_open',     label:'Open fuel solenoid on start',  type:'bool', def:false, configKey:'fp_idle_sol_open'},
+      {key:'fp_idle_sol_close',    label:'Close fuel solenoid on exit',  type:'bool', def:false, configKey:'fp_idle_sol_close'},
+    ]
+  },
+  ModifiedIdle: {
+    label:'Modified Idle', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Sets throttle demand = idle input mapped through throttle idle range (Config → Throttle) × multiplier. Use multiplier > 1.0 for a slightly higher idle on first spool. Completes immediately. throttleDemand is reset to 0 when the engine enters RUNNING. Outputs: throttleDemand set to scaled value.',
+    params:[
+      {key:'modified_idle_multiplier', label:'Multiplier', unit:'×', type:'float', min:0.1, max:5, step:0.05, def:1.0, configKey:'modified_idle_multiplier'},
+    ]
+  },
+  Spool: {
+    label:'Spool', type:'while', badgeClass:'badge-while',
+    condition: hw => `N1 < ${hw.rpm_target ?? 32000} rpm`,
+    timeout_action:'fault',
+    desc:'Sets throttleDemand to idle_min_pct and holds until N1 reaches target RPM. Flame monitor is active — if flame is lost the engine faults. On timeout → FAULT SHUTDOWN. The running oil minimum is enforced from this block onward. On exit: optionally cuts starter demand and/or starter enable relay (checkboxes below). Outputs: throttleDemand = idle_min_pct (held until block exits).',
+    hwWarnings:[
+      { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        msg: '⚠ No N1 RPM sensor — Spool cannot verify target RPM has been reached. Block will run until timeout → FAULT SHUTDOWN.' },
+    ],
+    params:[
+      {key:'idle_min_pct',              label:'Idle throttle',              unit:'%',  type:'float', min:0,    max:50,     step:0.5,  def:8,     configKey:'idle_min_pct'},
+      {key:'rpm_target',                label:'Target N1',                  unit:'rpm',type:'float', min:1000, max:200000, step:500,  def:32000, configKey:'rpm_target'},
+      {key:'rpm_timeout_ms',            label:'Timeout',                    unit:'ms', type:'int',   min:1000, max:120000, step:1000, def:12000, configKey:'rpm_timeout_ms'},
+      {key:'oil_running_min',           label:'Running oil min',            unit:'bar',type:'float', min:0,    max:10,     step:0.1,  def:2.8,   configKey:'oil_running_min',
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
+        desc:'Oil pressure minimum enforced from Spool start through running. Shared with SafetyHold — edit in either block or in Config → Oil → Running Min.'},
+      {key:'spool_cut_starter_on_exit', label:'Cut starter demand on exit',            type:'bool',                                  def:true,  configKey:'spool_cut_starter_on_exit'},
+      {key:'spool_cut_starter_en_on_exit',label:'Cut starter enable relay on exit',    type:'bool',                                  def:true,  configKey:'spool_cut_starter_en_on_exit',
+        visibleIf: hw => !!hw.actuators?.starter_enable?.enabled || !!hw.has_starter_en},
+    ]
+  },
+  SafetyHold: {
+    label:'Safety Hold', type:'check', badgeClass:'badge-check',
+    condition: hw => `${hw.safety_hold_ms ?? 1000} ms hold`,
+    timeout_action:'fault',
+    desc:'Holds for the configured duration and verifies N1 ≥ target RPM and oil pressure ≥ minimum. If either check fails → FAULT SHUTDOWN. On successful exit: optionally cuts starter demand, starter enable relay, and igniter (checkboxes below). After this block the engine enters RUNNING state.',
+    hwWarnings:[
+      { check: hw => (!!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm) || !!hw.sensors?.oil_press?.enabled,
+        msg: '⚠ No N1 RPM or oil pressure sensor — SafetyHold has nothing to verify. It will hold for the configured duration and complete without performing any safety checks.' },
+    ],
+    params:[
+      {key:'safety_hold_ms', label:'Hold duration',unit:'ms', type:'int',   min:100,  max:10000,  step:100, def:1000,  configKey:'safety_hold_ms'},
+      {key:'final_check_rpm',label:'Verify N1 >=', unit:'rpm',type:'float', min:1000, max:200000, step:500, def:31000, configKey:'final_check_rpm',
+        visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        desc:'Fault if N1 is below this after the hold. Not checked when no N1 RPM sensor is fitted.'},
+      {key:'oil_running_min',label:'Verify oil >=',unit:'bar',type:'float', min:0,    max:10,     step:0.1, def:2.8,   configKey:'oil_running_min',
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
+        desc:'Same threshold as Spool running oil min — both read Config → Oil → Running Min.'},
+      {key:'safety_turn_off_starter',    label:'Turn off starter on exit',             type:'bool', def:false, configKey:'safety_turn_off_starter'},
+      {key:'safety_turn_off_starter_en', label:'Turn off starter enable relay on exit',type:'bool', def:false, configKey:'safety_turn_off_starter_en',
+        visibleIf: hw => !!hw.actuators?.starter_enable?.enabled || !!hw.has_starter_en},
+      {key:'safety_turn_off_igniter',    label:'Turn off igniter on exit',             type:'bool', def:false, configKey:'safety_turn_off_igniter'},
+    ]
+  },
+  AirstarterOn: {
+    label:'Airstarter On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.airstarter_sol?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Open the airstarter solenoid to allow compressed air to drive the starter.',
+    params:[]
+  },
+  AirstarterOff: {
+    label:'Airstarter Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.airstarter_sol?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Close the airstarter solenoid.',
+    params:[]
+  },
+  CoolFanOn: {
+    label:'Cooling Fan On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.cool_fan?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Enable the cooling fan.',
+    params:[]
+  },
+  CoolFanOff: {
+    label:'Cooling Fan Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.cool_fan?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Disable the cooling fan.',
+    params:[]
+  },
+  // ── Explicit actuator control blocks ────────────────────────────────────
+  IgniterOn: {
+    label:'Igniter On', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Switch igniter on. Use before FuelOpen for pre-heat, or during a relight attempt.',
+    params:[]
+  },
+  IgniterOff: {
+    label:'Igniter Off', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Switch igniter off. Use after spool is established or after a failed attempt.',
+    params:[]
+  },
+  FuelSolClose: {
+    label:'Fuel Solenoid Close', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Close the fuel solenoid. Use to cut fuel without triggering full emergency stop.',
+    params:[]
+  },
+  StarterEnOn: {
+    label:'Starter Enable On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en,
+    condition: null, timeout_action:null,
+    desc:'Assert the starter enable relay/gate. Required on hardware with a separate starter arm circuit.',
+    params:[]
+  },
+  StarterEnOff: {
+    label:'Starter Enable Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en,
+    condition: null, timeout_action:null,
+    desc:'De-assert the starter enable relay.',
+    params:[]
+  },
+  OilPumpOn: {
+    label:'Oil Pump On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.oil_pump?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Start oil pump at specified demand. Use for pre-lubrication before cranking, or manual oil feed.',
+    params:[
+      {key:'oil_pump_on_pct', label:'Demand', unit:'%', type:'float', min:0, max:100, step:5, def:80},
+    ]
+  },
+  OilPumpOff: {
+    label:'Oil Pump Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.oil_pump?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Stop the oil pump. For post-stop oil cut-off or dry cranking.',
+    params:[]
+  },
+  OilScavengeOn: {
+    label:'Scavenge On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Activates the dedicated oil scavenge pump. Use during startup priming, warmup holds, or anywhere you need scavenge running independently of the main oil pressure loop.',
+    params:[]
+  },
+  OilScavengeOff: {
+    label:'Scavenge Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Deactivates the oil scavenge pump.',
+    params:[]
+  },
+  StarterOff: {
+    label:'Starter Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => !!hw.actuators?.starter?.enabled,
+    condition: null, timeout_action:null,
+    desc:'Set starter demand to zero. Use after spool is established to disengage the starter motor.',
+    params:[]
+  },
+  // ── Shutdown blocks ─────────────────────────────────────────────────────
+  ImmediateCut: {
+    label:'Immediate Cut', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Instant emergency cut. Sets: throttleDemand=0, fuelSolOpen=false, igniterOn=false, starterDemand=0, starterEnabled=false. Use as first shutdown block.',
+    params:[]
+  },
+  RPMDrop: {
+    label:'RPM Drop', type:'while', badgeClass:'badge-while',
+    condition: hw => `N1 > ${hw.rpm_drop_threshold ?? 5000} rpm`,
+    timeout_action:'continue',
+    desc:'Waits for N1 to fall below the threshold RPM before proceeding to cooldown. Ensures the starter motor is not fighting against residual turbine spin. On timeout → continues anyway. No actuator changes.',
+    hwWarnings:[
+      { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        msg: '⚠ No N1 RPM sensor — RPM drop cannot be verified. Block will proceed after timeout (safe — timeout action is continue).' },
+    ],
+    params:[
+      {key:'rpm_drop_threshold', label:'RPM threshold',unit:'rpm',type:'float',min:100, max:50000, step:100,  def:5000,   configKey:'rpm_drop_threshold'},
+      {key:'rpm_drop_timeout_ms',label:'Timeout',      unit:'ms', type:'int',  min:1000,max:60000, step:1000, def:15000,  configKey:'rpm_drop_timeout_ms'},
+    ]
+  },
+  CooldownSpin: {
+    label:'Cooldown', type:'while', badgeClass:'badge-while',
+    condition: hw => `TOT > ${hw.tot_cooldown_target ?? 150}°C`,
+    timeout_action:'continue',
+    desc:'Spin starter and/or run oil pump to cool EGT below target. Skipped if fuel was never opened. Proceeds on timeout. With oil pressure sensor: pump is regulated to target pressure; without: runs at fixed %.',
+    hwWarnings:[
+      { check: hw => !!hw.sensors?.tot?.enabled,
+        msg: '⚠ No temperature sensor — cooldown cannot verify EGT has dropped. Block will run for the full timeout then continue (safe).' },
+    ],
+    params:[
+      {key:'tot_cooldown_target',       label:'TOT target',              unit:'°C', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
+      {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:200000, configKey:'cooldown_timeout_ms'},
+      {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter'},
+      {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct'},
+      // Note: when a starter enable relay is fitted (hasStarterEn), the firmware asserts it
+      // automatically when cooldown_use_starter = true. The checkbox below is informational.
+      {key:'cooldown_starter_en_relay', label:'Starter enable relay asserted automatically', type:'bool', def:true,
+        visibleIf: hw => (!!hw.actuators?.starter_enable?.enabled || !!hw.has_starter_en)
+                      && !!(hw.actuators?.starter?.enabled || hw.has_starter),
+        desc:'When a dedicated starter enable relay is fitted, it is always asserted before the starter motor runs. This is handled automatically — no action needed.'},
+      {key:'cooldown_use_oil_pump',     label:'Run oil pump',                       type:'bool',                                  def:true,   configKey:'cooldown_use_oil'},
+      {key:'cooldown_oil_pct',          label:'Oil pump %',              unit:'%',  type:'float',min:0,    max:100,    step:5,     def:30,     configKey:'cooldown_oil_pct',
+        visibleIf: hw => !hw.sensors?.oil_press?.enabled},
+      {key:'cooldown_oil_pressure_bar', label:'Oil pressure target',     unit:'bar',type:'float',min:0.5,  max:10,     step:0.1,   def:2.0,    configKey:'cooldown_oil_pressure_bar',
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled},
+      {key:'cooldown_use_scavenge', label:'Run scavenge pump', type:'bool', def:false,
+        configKey:'cooldown_use_scavenge',
+        visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
+    ]
+  },
+  FinalStop: {
+    label:'Final Stop', type:'while', badgeClass:'badge-while',
+    condition: hw => (hwCfg.sensors?.n1_rpm?.enabled || hwCfg.has_n1_rpm)
+      ? `N1 > ${hw.rpm_zero_threshold ?? 100} rpm`
+      : `timer (no N1 sensor)`,
+    timeout_action:'continue',
+    desc:'Wait for complete stop. Main oil pump cuts when N1 reaches zero (or on timeout). If a scavenge pump is fitted and scavenge time > 0, it continues running to flush hot oil from bearings. Without N1 sensor: completes immediately (N1 health = unhealthy = treated as stopped) then runs scavenge if configured.',
+    params:[
+      {key:'rpm_zero_threshold',    label:'Stop threshold',   unit:'rpm',type:'float',min:0,   max:1000,  step:10,   def:100,
+        visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        desc:'N1 below this is treated as "stopped". Without N1 sensor the block exits on timeout.'},
+      {key:'final_stop_timeout_ms', label:'Timeout',          unit:'ms', type:'int',  min:1000,max:60000, step:1000, def:10000, configKey:'final_stop_timeout_ms'},
+      {key:'oil_scavenge_ms', label:'Scavenge pump run time', unit:'ms', type:'int',
+        min:0, max:120000, step:1000, def:0, configKey:'oil_scavenge_ms',
+        visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
+    ]
+  },
+  // ── Extended / optional blocks ───────────────────────────────────────────
+  FuelPulse: {
+    label:'Fuel Pulse', type:'wait', badgeClass:'badge-wait',
+    condition: hw => `fuel ${hw.fuel_pulse_ms ?? 200}ms`,
+    timeout_action:null,
+    desc:'Opens the fuel solenoid for a brief pulse to wet the atomiser or clear the dead-leg before ignition. Does NOT set fuelEverOpened — use before PreIgnSpark as a pre-prime step. The solenoid closes after pulseMs; the block then waits offMs before completing.',
+    params:[
+      {key:'fuel_pulse_ms', label:'Pulse duration', unit:'ms', type:'int', min:50,  max:2000, step:50,  def:200},
+      {key:'fuel_off_ms',   label:'Wait after close',unit:'ms',type:'int', min:0,   max:5000, step:100, def:300},
+    ]
+  },
+  WaitTOTCool: {
+    label:'Wait TOT Cool', type:'while', badgeClass:'badge-while',
+    condition: hw => `TOT < ${hw.wait_tot_target ?? 150}°C`,
+    timeout_action:'continue',
+    desc:'Holds the sequence until TOT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout → continues (does not abort). If TOT sensor is unhealthy, completes immediately.',
+    params:[
+      {key:'wait_tot_target',  label:'Target TOT',unit:'°C',type:'float',min:0,   max:500,    step:10,   def:150},
+      {key:'wait_tot_timeout', label:'Timeout',   unit:'ms', type:'int',  min:5000,max:600000, step:5000, def:120000},
+    ]
+  },
+  ThrottleSet: {
+    label:'Throttle Set', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Immediately sets throttleDemand to a fixed percentage and completes. Use for a precise idle hold, warm-up step, or test point. If the throttle slew controller is active it will ramp to this setpoint.',
+    params:[
+      {key:'throttle_set_pct', label:'Throttle %', unit:'%', type:'float', min:0, max:100, step:1, def:10},
+    ]
+  },
+  PreHeat: {
+    label:'Pre-Heat', type:'wait', badgeClass:'badge-wait',
+    condition: hw => `igniter ${hw.preheat_ms ?? 3000}ms`,
+    timeout_action:null,
+    desc:'Fires the igniter for a fixed duration without opening fuel. Designed for glow-plug systems that need thermal pre-heat before fuel introduction. The igniter remains ON when the block exits — place FuelOpen immediately after so fuel ignites on contact.',
+    params:[
+      {key:'preheat_ms', label:'Pre-heat time',unit:'ms', type:'int', min:500, max:30000, step:500, def:3000},
+    ]
+  },
+  // ── Afterburner blocks ───────────────────────────────────────────────────
+  ABPumpOn: {
+    label:'AB Pump On', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Enable the afterburner fuel pump.',
+    params:[]
+  },
+  ABPumpOff: {
+    label:'AB Pump Off', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Disable the afterburner fuel pump.',
+    params:[]
+  },
+  ABIgnOn: {
+    label:'AB Igniter On', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Enable the afterburner igniter (igniter 2).',
+    params:[]
+  },
+  ABIgnOff: {
+    label:'AB Igniter Off', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Disable the afterburner igniter.',
+    params:[]
+  },
+  ABSolOpen: {
+    label:'AB Solenoid Open', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Open the afterburner fuel solenoid (abSolOpen = true).',
+    params:[]
+  },
+  ABSolClose: {
+    label:'AB Solenoid Close', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Close the afterburner fuel solenoid (abSolOpen = false).',
+    params:[]
+  },
+  ABCheckReady: {
+    label:'AB Check Ready', type:'check', badgeClass:'badge-check',
+    condition: hw => 'N1 / TOT / throttle gates',
+    timeout_action:'abort',
+    desc:'Gate block: checks N1 min/max, TOT limit, and throttle minimum before proceeding with AB ignition. Aborts if any condition fails.',
+    params:[
+      {key:'ab_min_n1',          label:'Min N1',          unit:'rpm',type:'float',min:0,     max:200000,step:500,  def:30000, configKey:'ab_min_n1'},
+      {key:'ab_max_n1',          label:'Max N1 (0=off)',   unit:'rpm',type:'float',min:0,     max:200000,step:500,  def:0,     configKey:'ab_max_n1'},
+      {key:'ab_max_tot_for_light',label:'Max TOT (0=off)', unit:'°C', type:'float',min:0,     max:1000,  step:10,   def:0,     configKey:'ab_max_tot_for_light'},
+      {key:'ab_throttle_thr',    label:'Min Throttle',     unit:'0–1',type:'float',min:0,     max:1,     step:0.05, def:0,     configKey:'ab_throttle_thr'},
+    ]
+  },
+  ABIgnite: {
+    label:'AB Ignite', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action:null,
+    desc:'Fire AB ignition: torch (spike main fuel through turbine), AB igniter, or both. Completes after torch duration.',
+    params:[
+      {key:'ab_use_torch',   label:'Use Torch',      unit:'', type:'bool', def:true,  configKey:'ab_use_torch'},
+      {key:'ab_use_igniter', label:'Use AB Igniter', unit:'', type:'bool', def:false, configKey:'ab_use_igniter'},
+      {key:'ab_torch_pct',   label:'Torch Spike %',  unit:'%',  type:'float',min:0, max:100,  step:5,  def:30,  configKey:'ab_torch_pct',
+        showWhen: (pv,bn) => pv[bn+'.ab_use_torch'] !== false},
+      {key:'ab_torch_ms',    label:'Torch Duration', unit:'ms', type:'int',  min:0, max:2000, step:50, def:400, configKey:'ab_torch_ms',
+        showWhen: (pv,bn) => pv[bn+'.ab_use_torch'] !== false},
+      {key:'ab_torch_tl',    label:'TOT Limit °C (0=off)', unit:'°C', type:'float', min:0, max:1000, step:10, def:0, configKey:'ab_torch_tl',
+        showWhen: (pv,bn) => pv[bn+'.ab_use_torch'] !== false},
+    ]
+  },
+  ABFlameConfirm: {
+    label:'AB Flame Confirm', type:'while', badgeClass:'badge-while',
+    condition: hw => 'Waiting for AB flame confirmation',
+    timeout_action:'fault',
+    desc:'Waits for AB flame confirmation. Select mode below. Faults on timeout.',
+    params:[
+      {key:'ab_flame_mode',     label:'Flame Mode', type:'select',
+        options:[{v:0,l:'Flame Sensor'},{v:1,l:'TOT Rise'},{v:2,l:'Timed (no sensor)'}],
+        def:2, configKey:'ab_flame_mode'},
+      {key:'ab_tot_rise',       label:'TOT Rise',            unit:'°C',type:'float',min:0, max:200,  step:5,   def:30,   configKey:'ab_tot_rise',
+        showWhen: (pv,bn) => (pv[bn+'.ab_flame_mode']??2) == 1},
+      {key:'ab_tot_rise_win',   label:'TOT Rise Window',     unit:'ms',type:'int',  min:0, max:10000,step:200, def:2000, configKey:'ab_tot_rise_win',
+        showWhen: (pv,bn) => (pv[bn+'.ab_flame_mode']??2) == 1},
+      {key:'ab_assume_ms',      label:'Assume Lit',          unit:'ms',type:'int',  min:0, max:5000, step:100, def:1500, configKey:'ab_assume_ms',
+        showWhen: (pv,bn) => (pv[bn+'.ab_flame_mode']??2) == 2},
+      {key:'ab_flame_timeout',  label:'Overall Timeout',     unit:'ms',type:'int',  min:0, max:15000,step:200, def:3000, configKey:'ab_flame_timeout'},
+    ]
+  },
+  ABStabilize: {
+    label:'AB Stabilize', type:'while', badgeClass:'badge-while',
+    condition: hw => `Hold ${hw.ab_stab_ms ?? 1000} ms, monitor TOT`,
+    timeout_action:'complete',
+    desc:'Hold after lighting. Monitors TOT — faults if too hot. On completion, sets AB state to Running.',
+    params:[
+      {key:'ab_stab_ms',        label:'Hold Time',       unit:'ms', type:'int',  min:100, max:10000,step:100,def:1000,configKey:'ab_stab_ms'},
+      {key:'ab_stab_max_tot',   label:'Max TOT (0=off)', unit:'°C', type:'float',min:0,   max:1000, step:10, def:0,   configKey:'ab_stab_max_tot'},
+    ]
+  },
+
+  // ── Advanced hardware blocks ────────────────────────────────
+  BleedOpen: {
+    label:'Bleed Valve Open', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Opens the compressor bleed valve immediately (one tick). Use at the start of startup sequences to reduce surge risk during spool-up. Outputs: bleedValveOpen=true.',
+    params:[],
+    visibleIf: hw => !!hw.actuators?.bleed_valve?.enabled,
+  },
+  BleedClose: {
+    label:'Bleed Valve Close', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Closes the compressor bleed valve immediately (one tick). Use after spool-up is complete to restore full pressure recovery. Outputs: bleedValveOpen=false.',
+    params:[],
+    visibleIf: hw => !!hw.actuators?.bleed_valve?.enabled,
+  },
+  GlowPreheat: {
+    label:'Glow Preheat', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Ramps glow plug power linearly from 0 to maxPct over preheatMs, then holds at holdPct. If a glow current sensor is fitted and "Wait until hot" is checked, the block keeps holding at holdPct until the current drops below the ready threshold (plug is thermally saturated) instead of completing immediately after the ramp. The plug stays at holdPct when this block exits.',
+    params:[
+      {key:'glow_preheat_ms',      label:'Preheat duration',  unit:'ms', type:'int',   min:500,  max:60000, step:500, def:10000, configKey:'glow_preheat_ms'},
+      {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:10,   max:100,   step:5,   def:80,    configKey:'glow_preheat_max_pct'},
+      {key:'glow_hold_pct',        label:'Hold duty',         unit:'%',  type:'float', min:0,    max:100,   step:5,   def:30,    configKey:'glow_hold_pct'},
+      {key:'glow_wait_until_hot',  label:'Wait until hot (requires current sensor)', type:'bool', def:false, configKey:'glow_wait_until_hot',
+       visibleIf: hw => !!(hw.sensors?.glow_current?.enabled)},
+    ],
+    visibleIf: hw => !!hw.actuators?.glow_plug?.enabled,
+  },
+  FuelPumpRamp: {
+    label:'Fuel Pump 2 Ramp', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Ramps fuel pump 2 demand linearly from startPct to endPct over rampMs. Completes when the ramp finishes. Useful for turboshaft pre-metering or staged fuel delivery. Outputs: fuelPump2Demand at endPct (on exit).',
+    params:[
+      {key:'fp2_start_pct',      label:'Start %',                     unit:'%',  type:'float', min:0,  max:100,   step:1,   def:0,    configKey:'fp2_start_pct'},
+      {key:'fp2_end_pct',        label:'End %',                       unit:'%',  type:'float', min:0,  max:100,   step:1,   def:80,   configKey:'fp2_end_pct'},
+      {key:'fp2_ramp_ms',        label:'Ramp duration',               unit:'ms', type:'int',   min:100,max:60000, step:100, def:3000, configKey:'fp2_ramp_ms'},
+    ],
+    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled,
+  },
+  FuelPump2Set: {
+    label:'Fuel Pump 2 Set', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Sets fuel pump 2 demand to a fixed value immediately (one tick). Use for known set-points after a ramp or as a quick preset. Outputs: fuelPump2Demand=demandPct.',
+    params:[
+      {key:'fp2_demand_pct',     label:'Demand %',                    unit:'%',  type:'float', min:0, max:100, step:1, def:0, configKey:'fp2_demand_pct'},
+    ],
+    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled,
+  },
+  GovernorHold: {
+    label:'Governor Hold', type:'while', badgeClass:'badge-while',
+    condition: hw => `N2 within ${hw.gov_hold_band_rpm ?? 500} rpm of target`,
+    timeout_action:'complete',
+    desc:'Waits until N2 (power turbine) is within bandRpm of the governor target RPM, or until timeoutMs elapses. On timeout, proceeds normally (engine is already in RUNNING — governor will continue to regulate). Use after entering RUNNING to confirm the governor has taken control. Outputs: none (monitoring only).',
+    params:[
+      {key:'gov_hold_timeout_ms', label:'Timeout', unit:'ms',  type:'int',   min:1000, max:60000, step:500,  def:10000, configKey:'gov_hold_timeout_ms'},
+      {key:'gov_hold_band_rpm',   label:'Band',    unit:'rpm', type:'float', min:10,   max:5000,  step:50,   def:500,   configKey:'gov_hold_band_rpm'},
+    ],
+    visibleIf: hw => !!hw.controllers?.governor?.enabled,
+  },
+};
+
+// ── Config section mapping ─────────────────────────────────────────────────
+// Maps param configKey → JSON path in config.json (section + key)
+// Used to read/write the right config.json field for each block param.
+// The "section" is doc["sequence"]["startup"] or doc["sequence"]["shutdown"] etc.
+const CONFIG_SECTIONS = {
+  // startup sequence params (doc.sequence.startup.*)
+  startup_oil_demand:      {sec:'oil',              key:'startup_pressure'},   // bar target (with sensor)
+  startup_oil_pct:         {sec:'oil',              key:'startup_pct'},        // pump % (without sensor)
+  oil_arm_timeout_ms:      {sec:'sequence.startup', key:'oil_arm_timeout_ms'},
+  starter_demand:          {sec:'sequence.startup', key:'starter_demand'},
+  pre_ign_rpm:             {sec:'sequence.startup', key:'pre_ign_rpm'},
+  pre_ign_spark_ms:        {sec:'sequence.startup', key:'pre_ign_spark_ms'},
+  flame_required_count:    {sec:'sequence.startup', key:'flame_required_count'},
+  flame_check_interval_ms: {sec:'sequence.startup', key:'flame_check_interval_ms'},
+  flame_timeout_ms:        {sec:'sequence.startup', key:'flame_timeout_ms'},
+  rpm_target:              {sec:'sequence.startup', key:'rpm_target'},
+  rpm_timeout_ms:          {sec:'sequence.startup', key:'rpm_timeout_ms'},
+  idle_min_pct:            {sec:'throttle',          key:'idle_min_pct'},
+  safety_hold_ms:          {sec:'sequence.startup', key:'safety_hold_ms'},
+  final_check_rpm:         {sec:'sequence.startup', key:'final_check_rpm'},
+  // shutdown params (doc.sequence.shutdown.*)
+  rpm_drop_threshold:      {sec:'sequence.shutdown', key:'rpm_drop_threshold'},
+  rpm_drop_timeout_ms:     {sec:'sequence.shutdown', key:'rpm_drop_timeout_ms'},
+  tot_cooldown_target:     {sec:'engine',            key:'tot_cooldown_target'},
+  cooldown_starter_pct:        {sec:'sequence.shutdown', key:'cooldown_starter_pct'},
+  cooldown_oil_pct:            {sec:'sequence.shutdown', key:'cooldown_oil_pct'},
+  cooldown_timeout_ms:         {sec:'sequence.shutdown', key:'cooldown_timeout_ms'},
+  cooldown_use_starter:        {sec:'sequence.shutdown', key:'cooldown_use_starter'},
+  cooldown_use_oil:            {sec:'sequence.shutdown', key:'cooldown_use_oil'},
+  cooldown_oil_pressure_bar:   {sec:'sequence.shutdown', key:'cooldown_oil_pressure_bar'},
+  final_stop_timeout_ms:   {sec:'sequence.shutdown', key:'final_stop_timeout_ms'},
+  ramp_pct_per_s:          {sec:'starter_assist',    key:'ramp_pct_per_s'},  // reuses starter section
+  // new blocks
+  timed_delay_ms:          {sec:'sequence.startup', key:'timed_delay_ms'},
+  modified_idle_multiplier:{sec:'sequence.startup', key:'modified_idle_multiplier'},
+  fp_idle_min_pct:         {sec:'fuel_pump',        key:'idle_min_pct'},
+  fp_idle_max_pct:         {sec:'fuel_pump',        key:'idle_max_pct'},
+  // FlameConfirm / SafetyHold exit action bools
+  flame_turn_off_igniter:     {sec:'sequence.startup', key:'flame_turn_off_igniter'},
+  safety_turn_off_starter:    {sec:'sequence.startup', key:'safety_turn_off_starter'},
+  safety_turn_off_starter_en: {sec:'sequence.startup', key:'safety_turn_off_starter_en'},
+  safety_turn_off_igniter:    {sec:'sequence.startup', key:'safety_turn_off_igniter'},
+  // Spool / SafetyHold oil minimum (maps to Config::oilRunningMin — shared threshold)
+  oil_running_min:              {sec:'oil',              key:'running_min'},
+  // Spool exit action bools
+  spool_cut_starter_on_exit:    {sec:'sequence.startup', key:'spool_cut_starter_on_exit'},
+  spool_cut_starter_en_on_exit: {sec:'sequence.startup', key:'spool_cut_starter_en_on_exit'},
+  // Oil scavenge pump sequence params
+  oil_prime_use_scavenge: {sec:'sequence.startup', key:'oil_prime_use_scavenge'},
+  cooldown_use_scavenge:  {sec:'sequence.shutdown', key:'cooldown_use_scavenge'},
+  // Advanced block params (stored in cfg.glow_plug.*, cfg.sequence.startup.*, cfg.governor.*)
+  glow_preheat_ms:       {sec:'glow_plug',        key:'preheat_ms'},
+  glow_preheat_max_pct:  {sec:'glow_plug',        key:'preheat_max_pct'},
+  glow_hold_pct:         {sec:'glow_plug',        key:'hold_pct'},
+  glow_wait_until_hot:   {sec:'glow_plug',        key:'wait_until_hot'},
+  fp2_start_pct:         {sec:'sequence.startup', key:'fp2_start_pct'},
+  fp2_end_pct:           {sec:'sequence.startup', key:'fp2_end_pct'},
+  fp2_ramp_ms:           {sec:'sequence.startup', key:'fp2_ramp_ms'},
+  fp2_demand_pct:        {sec:'sequence.startup', key:'fp2_demand_pct'},
+  fp_idle_sol_open:      {sec:'sequence.startup', key:'fp_idle_sol_open'},
+  fp_idle_sol_close:     {sec:'sequence.startup', key:'fp_idle_sol_close'},
+  gov_hold_timeout_ms:   {sec:'sequence.startup', key:'gov_hold_timeout_ms'},
+  gov_hold_band_rpm:     {sec:'governor',         key:'band_rpm'},
+  // AB sequence params (stored in cfg.afterburner.*)
+  ab_min_n1:           {sec:'afterburner', key:'min_n1'},
+  ab_max_n1:           {sec:'afterburner', key:'max_n1'},
+  ab_max_tot_for_light:{sec:'afterburner', key:'max_tot_for_light'},
+  ab_throttle_thr:     {sec:'afterburner', key:'throttle_threshold'},
+  ab_use_torch:        {sec:'afterburner', key:'use_torch'},
+  ab_use_igniter:      {sec:'afterburner', key:'use_igniter'},
+  ab_torch_pct:        {sec:'afterburner', key:'torch_spike_pct'},
+  ab_torch_ms:         {sec:'afterburner', key:'torch_duration_ms'},
+  ab_torch_tl:         {sec:'afterburner', key:'torch_tot_limit'},
+  ab_flame_mode:       {sec:'afterburner', key:'flame_mode'},
+  ab_tot_rise:         {sec:'afterburner', key:'tot_rise_deg_c'},
+  ab_tot_rise_win:     {sec:'afterburner', key:'tot_rise_window_ms'},
+  ab_assume_ms:        {sec:'afterburner', key:'assume_ignited_ms'},
+  ab_flame_timeout:    {sec:'afterburner', key:'flame_timeout_ms'},
+  ab_stab_ms:          {sec:'afterburner', key:'stabilize_ms'},
+  ab_stab_max_tot:     {sec:'afterburner', key:'stabilize_max_tot'},
+  ab_pump_min_pct:     {sec:'afterburner', key:'pump_min_pct'},
+  ab_pump_max_pct:     {sec:'afterburner', key:'pump_max_pct'},
+  ab_pump_follow:      {sec:'afterburner', key:'pump_follow_throttle'},
+  ab_main_offset:      {sec:'afterburner', key:'main_fuel_offset_pct'},
+};
+
+// Available block names per tab
+const STARTUP_BLOCKS     = [
+  // Core sequence
+  'OilPrime','StarterSpin','PreIgnSpark','FuelOpen','FlameConfirm','TempConfirm',
+  'TimedDelay','FuelPumpIdle','ModifiedIdle','Spool','SafetyHold',
+  // Extended / optional
+  'FuelPulse','PreHeat','ThrottleSet','WaitTOTCool',
+  // Actuator control
+  'IgniterOn','IgniterOff','FuelSolClose',
+  'StarterEnOn','StarterEnOff','StarterOff',
+  'OilPumpOn','OilPumpOff','OilScavengeOn','OilScavengeOff',
+  'AirstarterOn','AirstarterOff','CoolFanOn','CoolFanOff',
+  // Advanced hardware
+  'BleedOpen','BleedClose','GlowPreheat','FuelPumpRamp','FuelPump2Set','GovernorHold',
+];
+const SHUTDOWN_BLOCKS    = [
+  // Core sequence
+  'ImmediateCut','RPMDrop','CooldownSpin','FinalStop','TimedDelay',
+  // Extended / optional
+  'WaitTOTCool','ThrottleSet',
+  // Actuator control
+  'FuelSolClose','IgniterOff','IgniterOn',
+  'StarterOff','StarterEnOff','StarterEnOn',
+  'OilPumpOff','OilPumpOn','OilScavengeOn','OilScavengeOff',
+  'CoolFanOn','CoolFanOff','AirstarterOn','AirstarterOff',
+  // Advanced hardware
+  'BleedOpen','BleedClose','FuelPump2Set',
+];
+// AB ignition sequence blocks (ab_seq)
+const AFTERBURNER_BLOCKS = [
+  'ABCheckReady','ABSolOpen','ABPumpOn','ABIgnite','ABFlameConfirm','ABStabilize',
+  'ABIgnOn','ABIgnOff','TimedDelay','CoolFanOn',
+];
+// AB light-off sequence blocks (ab_shut_seq)
+const AB_SHUT_BLOCKS = [
+  'ABSolClose','ABPumpOff','ABIgnOff','TimedDelay','CoolFanOn','CoolFanOff',
+];
+
+// User-defined custom blocks (stored in hwCfg.custom_blocks or local state)
+let customBlocks = {};
+
+// ── Block info map — describes what config each block uses ─────────────────
+const BLOCK_INFO = {
+  OilPrime: {
+    desc: 'Turns the oil pump ON and waits until oil pressure exceeds the arm threshold. Safe to abort — no fuel or ignition active.',
+    links: [
+      { label: 'Startup Oil Target',   url: '/config.html#oil' },
+      { label: 'Arm Minimum Pressure', url: '/config.html#oil' },
+      { label: 'Oil Startup Timeout',  url: '/config.html#oil' },
+    ]
+  },
+  StarterSpin: {
+    desc: 'Enables starter relay and ramps starter demand until N1 reaches pre-ignition RPM. Fault shutdown on timeout.',
+    links: [
+      { label: 'Starter Demand %',      url: '/config.html#starter-assist-section' },
+      { label: 'Ramp Rate (%/s)',        url: '/config.html#starter-assist-section' },
+      { label: 'RPM Limit',             url: '/config.html#engine-limits' },
+    ]
+  },
+  PreIgnSpark: {
+    desc: 'Fires the igniter for the configured spark duration. Igniter stays ON when block exits — place FuelOpen immediately after.',
+    links: [
+      { label: 'Pre-Ignition Spark Duration', url: '/config.html#startup' },
+    ]
+  },
+  FuelOpen: {
+    desc: 'Opens the fuel solenoid. Sets fuelEverOpened flag so CooldownSpin knows cooling is needed.',
+    links: []
+  },
+  FlameConfirm: {
+    desc: 'Waits until the flame sensor fires N consecutive times within the check interval, confirming self-sustained combustion.',
+    links: [
+      { label: 'Flameout Delay (Safety Monitor)', url: '/config.html#safety-monitor' },
+    ]
+  },
+  TempConfirm: {
+    desc: 'Waits until TOT rises above the configured threshold. Alternative to FlameConfirm when no flame sensor is fitted.',
+    links: [
+      { label: 'TOT Limit',      url: '/config.html#engine-limits' },
+      { label: 'Cooldown Target', url: '/config.html#engine-limits' },
+    ]
+  },
+  Spool: {
+    desc: 'Holds throttle at idle_min_pct and waits for N1 to reach target RPM. Flame monitor active — flameout causes fault.',
+    links: [
+      { label: 'Throttle Idle Min %', url: '/config.html#throttle' },
+      { label: 'Throttle Open Speed', url: '/config.html#throttle' },
+      { label: 'Running Oil Min',     url: '/config.html#oil' },
+    ]
+  },
+  SafetyHold: {
+    desc: 'Holds for the configured duration and verifies N1 and oil pressure are above minimums before entering RUNNING.',
+    links: [
+      { label: 'Min RPM',         url: '/config.html#engine-limits' },
+      { label: 'Running Oil Min', url: '/config.html#oil' },
+    ]
+  },
+  CooldownSpin: {
+    desc: 'Spins starter and/or runs oil pump to cool EGT below target temperature. Skipped if fuel was never opened.',
+    links: [
+      { label: 'Cooldown Target TOT', url: '/config.html#engine-limits' },
+      { label: 'TOT Limit',          url: '/config.html#engine-limits' },
+    ]
+  },
+  FinalStop: {
+    desc: 'Waits for N1 to reach zero. Oil pump cuts; scavenge pump continues if configured.',
+    links: [
+      { label: 'Oil Scavenge ms', url: '/config.html#post-stop-oil-scavenge' },
+    ]
+  },
+  RPMDrop: {
+    desc: 'Waits for N1 to fall below threshold RPM before proceeding to cooldown. Continues on timeout.',
+    links: [
+      { label: 'Min RPM', url: '/config.html#engine-limits' },
+    ]
+  },
+  ImmediateCut: {
+    desc: 'Emergency cut: zeros throttle, closes fuel solenoid, turns off igniter and starter instantly.',
+    links: []
+  },
+  FuelPumpIdle: {
+    desc: 'Maps idle input (pot or RC) to fuel/throttle ESC demand using the configured idle min/max range.',
+    links: [
+      { label: 'Throttle / Fuel ESC Idle Min %', url: '/config.html#throttle-fuel-esc-idle-range' },
+      { label: 'Throttle / Fuel ESC Idle Max %', url: '/config.html#throttle-fuel-esc-idle-range' },
+    ]
+  },
+  ModifiedIdle: {
+    desc: 'Sets throttle demand = idle input × multiplier. Use for a slightly higher idle on first spool.',
+    links: [
+      { label: 'Throttle Idle Min %', url: '/config.html#throttle' },
+      { label: 'Throttle Idle Max %', url: '/config.html#throttle' },
+    ]
+  },
+  TimedDelay: {
+    desc: 'Pauses the sequence for the configured duration. No actuator changes.',
+    links: []
+  },
+  PreHeat: {
+    desc: 'Fires the igniter for a fixed duration without opening fuel. For glow-plug systems needing thermal pre-heat.',
+    links: [
+      { label: 'Glow Plug Preheat', url: '/config.html#glow-cfg-section' },
+    ]
+  },
+  ABCheckReady: {
+    desc: 'Gate block: checks N1, TOT, and throttle conditions before proceeding with AB ignition.',
+    links: [
+      { label: 'AB Ignition Conditions', url: '/config.html#ab-cfg-section' },
+    ]
+  },
+  ABIgnite: {
+    desc: 'Fires AB ignition — torch (fuel spike through turbine), AB igniter, or both.',
+    links: [
+      { label: 'Afterburner Ignition Method', url: '/config.html#ab-ign-section' },
+    ]
+  },
+  ABFlameConfirm: {
+    desc: 'Waits for AB flame confirmation using sensor, TOT rise, or timed mode.',
+    links: [
+      { label: 'AB Running Config', url: '/config.html#ab-run-section' },
+    ]
+  },
+  ABStabilize: {
+    desc: 'Hold period after AB lights. Monitors TOT — faults if too hot. Transitions to AB Running on exit.',
+    links: [
+      { label: 'AB Running Config', url: '/config.html#ab-run-section' },
+    ]
+  },
+  GlowPreheat: {
+    desc: 'Ramps glow plug power from 0 to maxPct over preheatMs, then holds at holdPct.',
+    links: [
+      { label: 'Glow Plug Preheat', url: '/config.html#glow-cfg-section' },
+    ]
+  },
+  GovernorHold: {
+    desc: 'Waits until N2 is within bandRpm of the governor target RPM before completing.',
+    links: [
+      { label: 'Power Turbine Governor', url: '/config.html#governor-cfg-section' },
+    ]
+  },
+  FuelPumpRamp: {
+    desc: 'Ramps fuel pump 2 demand linearly from startPct to endPct over rampMs.',
+    links: []
+  },
+  FuelPump2Set: {
+    desc: 'Sets fuel pump 2 demand to a fixed value immediately.',
+    links: []
+  },
+};
+
+// ── Block info panel ───────────────────────────────────────────────────────
+let _infoPanelBlock = null;
+
+function showBlockInfo(bname) {
+  const info = BLOCK_INFO[bname];
+  const panel = document.getElementById('block-info-panel');
+  if (!panel) return;
+  if (!info) {
+    panel.style.display = 'none';
+    _infoPanelBlock = null;
+    return;
+  }
+  _infoPanelBlock = bname;
+  const def = BLOCKS[bname] || {};
+  const linksHtml = info.links.length
+    ? '<div class="bip-links-label">Config fields used:</div><div class="bip-links">' +
+      info.links.map(l => `<a class="bip-link" href="${l.url}">${l.label}</a>`).join('') +
+      '</div>'
+    : '<div class="bip-links-label" style="color:var(--dim)">No external config fields — all parameters are set directly on this block.</div>';
+  panel.innerHTML = `
+    <div class="bip-header">
+      <span class="bip-name">${def.label ?? bname}</span>
+      <button class="bip-close" onclick="hideBlockInfo()">✕</button>
+    </div>
+    <div class="bip-desc">${info.desc}</div>
+    ${linksHtml}`;
+  panel.style.display = '';
+}
+
+function hideBlockInfo() {
+  const panel = document.getElementById('block-info-panel');
+  if (panel) panel.style.display = 'none';
+  _infoPanelBlock = null;
+}
+
+// ── App state ──────────────────────────────────────────────────────────────
+let hwCfg = {};    // full hardware.json
+let cfg   = {};    // full config.json (flat)
+let paramVals = {}; // local edits: key = 'blockName.paramKey', value = number
+let activeTab = 'startup';
+let engineMode = 'STANDBY';
+let ws;
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  hideBlockInfo();
+  const tabs = ['startup','shutdown','afterburner'];
+  document.querySelectorAll('.seq-tab').forEach((btn) => {
+    const t = btn.getAttribute('onclick')?.match(/switchTab\('(\w+)'\)/)?.[1];
+    if (t) btn.classList.toggle('active', t === tab);
+  });
+  tabs.forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+}
+
+// ── Load data from device ──────────────────────────────────────────────────
+async function loadAll() {
+  setSaveStatus('Loading…');
+  try {
+    const [hwRes, cfgRes] = await Promise.all([
+      fetch('/api/hardware'), fetch('/api/config')
+    ]);
+    if (!hwRes.ok)  throw new Error('Hardware config unavailable (' + hwRes.status + ')');
+    if (!cfgRes.ok) throw new Error('Config unavailable (' + cfgRes.status + ')');
+    hwCfg = await hwRes.json();
+    cfg   = await cfgRes.json();
+    // Rebuild runtime custom block defs from raw stored defs
+    customBlocks = {};
+    if (hwCfg.custom_blocks) {
+      for (const [k, def] of Object.entries(hwCfg.custom_blocks)) {
+        customBlocks[k] = buildRuntimeBlockDef(k, def);
+      }
+    }
+    buildParamVals();
+    renderWithLiveIdle('startup');
+    renderWithLiveIdle('shutdown');
+    renderWithLiveIdle('afterburner');
+    renderWithLiveIdle('ab-shut');
+    populateAddSelects();
+    buildAbCriteriaHtml();
+    // Show/hide afterburner tab based on hardware feature flag
+    const abTabBtn = document.getElementById('tab-btn-afterburner');
+    if (abTabBtn) abTabBtn.style.display = hwCfg.has_afterburner ? '' : 'none';
+    setSaveStatus('Ready — edit parameters then save');
+  } catch(e) {
+    setSaveStatus('⚠ Load failed: ' + e.message);
+  }
+}
+
+// Build paramVals from cfg (config.json) with configKey mapping
+function buildParamVals() {
+  // Walk each block and each param, read from cfg using section path
+  const allBlocks = {...BLOCKS, ...customBlocks};
+  for (const [bname, bdef] of Object.entries(allBlocks)) {
+    for (const p of bdef.params) {
+      const vk = bname + '.' + p.key;
+      if (p.configKey) {
+        // Read from cfg using configKey (which matches the JSON key in config sections)
+        const v = findConfigVal(p.configKey);
+        paramVals[vk] = (v !== undefined) ? v : p.def;
+      } else {
+        // No configKey — use default (preserve existing bool values across renders)
+        if (paramVals[vk] === undefined) paramVals[vk] = p.def;
+      }
+    }
+  }
+}
+
+function findConfigVal(key) {
+  const map = CONFIG_SECTIONS[key];
+  if (!map) return undefined;
+  const parts = map.sec.split('.');
+  let obj = cfg;
+  for (const p of parts) obj = obj?.[p];
+  return obj?.[map.key];
+}
+
+function setConfigVal(key, val) {
+  const map = CONFIG_SECTIONS[key];
+  if (!map) return;
+  const parts = map.sec.split('.');
+  let obj = cfg;
+  for (let i=0; i<parts.length; i++) {
+    if (obj[parts[i]] === undefined) obj[parts[i]] = {};
+    if (i < parts.length-1) obj = obj[parts[i]];
+    else obj[parts[i]][map.key] = val;
+  }
+}
+
+// ── Render a sequence tab ──────────────────────────────────────────────────
+function seqKey(tab) {
+  if (tab === 'startup')   return 'startup_seq';
+  if (tab === 'shutdown')  return 'shutdown_seq';
+  if (tab === 'ab-shut')   return 'ab_shut_seq';
+  return 'ab_seq';  // 'afterburner'
+}
+
+function render(tab, idleRaw) {
+  const key = seqKey(tab);
+  const seq  = hwCfg[key] || [];
+  const list = document.getElementById('list-' + tab);
+  list.innerHTML = '';
+  seq.forEach((bname, idx) => {
+    const card = buildCard(bname, idx, tab, seq.length);
+    list.appendChild(card);
+  });
+  // Append final state summary card — pass live idle raw if available
+  const stateCard = buildFinalStateCard(tab, seq, idleRaw);
+  if (stateCard) list.appendChild(stateCard);
+}
+
+function renderWithLiveIdle(tab) {
+  fetch('/api/data').then(r => r.json()).then(d => {
+    render(tab, d.idle_input_raw ?? null);
+  }).catch(() => render(tab, null));
+}
+
+// ── Final state summary card ───────────────────────────────────────────────
+function buildFinalStateCard(tab, seq, idleRaw) {
+  if (!seq || seq.length === 0) return null;
+
+  const state = {
+    throttle:  '0%',
+    fuelSol:   'closed',
+    igniter:   'off',
+    starter:   'off',
+    starterEn: 'off',
+    oilPump:   'off',
+  };
+
+  if (tab === 'startup') {
+    for (const bname of seq) {
+      if (bname === 'OilPrime')     state.oilPump   = 'on — pressure ctrl';
+      if (bname === 'StarterSpin')  { state.starter = 'on'; state.starterEn = 'on'; }
+      if (bname === 'PreIgnSpark')  state.igniter   = 'on';
+      if (bname === 'FuelOpen')     state.fuelSol   = 'open';
+      if (bname === 'FuelPumpIdle') {
+        const mn = paramVals['FuelPumpIdle.fp_idle_min_pct'] ?? 8;
+        const mx = paramVals['FuelPumpIdle.fp_idle_max_pct'] ?? 18;
+        state.throttle = `${mn}–${mx}%  (from idle input)`;
+      }
+      if (bname === 'ModifiedIdle') {
+        const mul = paramVals['ModifiedIdle.modified_idle_multiplier'] ?? 1.0;
+        const mn  = cfg?.throttle?.idle_min_pct ?? 8;
+        const mx  = cfg?.throttle?.idle_max_pct ?? 18;
+        state.throttle = `${mn}–${mx}% x${mul}  (reset to 0 on RUNNING)`;
+      }
+      if (bname === 'Spool') {
+        const pct = paramVals['Spool.idle_min_pct'] ?? cfg?.sequence?.startup?.idle_min_pct ?? 8;
+        state.throttle = `${pct}%  (idle, held during spool)`;
+        // Update starter/enable state based on exit action checkboxes
+        if (paramVals['Spool.spool_cut_starter_on_exit'] ?? true)    state.starter   = 'off';
+        if (paramVals['Spool.spool_cut_starter_en_on_exit'] ?? true)  state.starterEn = 'off';
+      }
+      if (bname === 'FlameConfirm') {
+        if (paramVals['FlameConfirm.flame_turn_off_igniter'] ?? true) state.igniter = 'off';
+      }
+      if (bname === 'SafetyHold') {
+        if (paramVals['SafetyHold.safety_turn_off_starter']    ?? false) state.starter   = 'off';
+        if (paramVals['SafetyHold.safety_turn_off_starter_en'] ?? false) state.starterEn = 'off';
+        if (paramVals['SafetyHold.safety_turn_off_igniter']    ?? false) state.igniter   = 'off';
+      }
+    }
+    // After startup completes (RUNNING), throttle tracks idle input
+    if (seq.includes('SafetyHold')) {
+      const mn = paramVals['Spool.idle_min_pct'] ?? paramVals['FuelPumpIdle.fp_idle_min_pct']
+              ?? cfg?.throttle?.idle_min_pct ?? cfg?.fuel_pump?.idle_min_pct ?? 8;
+      const mx = paramVals['FuelPumpIdle.fp_idle_max_pct']
+              ?? cfg?.throttle?.idle_max_pct ?? cfg?.fuel_pump?.idle_max_pct ?? 18;
+      if (idleRaw != null) {
+        const norm = Math.max(0, Math.min(1, idleRaw / 4095));
+        const pct  = (mn + norm * (mx - mn)).toFixed(1);
+        state.throttle = `${pct}%  (idle input at ${Math.round(norm*100)}%, operator controlled)`;
+      } else {
+        state.throttle = `${mn}–${mx}%  (idle minimum–maximum, operator controlled)`;
+      }
+    }
+
+  } else if (tab === 'shutdown') {
+    // enterStandby() zeros everything after shutdown sequence
+    state.throttle  = '0%';
+    state.fuelSol   = 'closed';
+    state.igniter   = 'off';
+    state.starter   = 'off';
+    state.starterEn = 'off';
+    state.oilPump   = 'off';
+  } else if (tab === 'afterburner') {
+    // After Light Up completes → AB Running
+    const ab = cfg?.afterburner ?? {};
+    const minP = ab.pump_min_pct ?? 80;
+    const maxP = ab.pump_max_pct ?? 100;
+    const follow = ab.pump_follow_throttle ?? false;
+    const pumpStr = follow ? `${minP}–${maxP}%  (follows throttle)` : `${maxP}%  (fixed)`;
+    const offStr  = (ab.main_fuel_offset_pct ?? 0) !== 0 ? `+${ab.main_fuel_offset_pct}%` : 'none';
+    const abRows = [
+      { label:'AB Solenoid',        val:'open' },
+      { label:'AB Fuel Pump',       val: pumpStr },
+      { label:'AB Igniter',         val:'off  (fired during sequence)' },
+      { label:'Main Fuel Offset',   val: offStr },
+    ];
+    const rowsHtml2 = abRows.map(r =>
+      `<div class="fs-row"><span class="fs-label">${r.label}</span><span class="fs-val">${r.val}</span></div>`
+    ).join('');
+    const card2 = document.createElement('div');
+    card2.className = 'final-state-card';
+    card2.id = 'final-state-afterburner';
+    card2.innerHTML = `<div class="fs-header">After Light Up → AB Running</div><div class="fs-grid">${rowsHtml2}</div>`;
+    return card2;
+  } else if (tab === 'ab-shut') {
+    // After Light Off completes → AB Off
+    const abOffRows = [
+      { label:'AB Solenoid',  val:'closed' },
+      { label:'AB Fuel Pump', val:'off' },
+      { label:'AB Igniter',   val:'off' },
+      { label:'Main engine',  val:'continues running normally' },
+    ];
+    const rowsHtml3 = abOffRows.map(r =>
+      `<div class="fs-row"><span class="fs-label">${r.label}</span><span class="fs-val">${r.val}</span></div>`
+    ).join('');
+    const card3 = document.createElement('div');
+    card3.className = 'final-state-card';
+    card3.id = 'final-state-ab-shut';
+    card3.innerHTML = `<div class="fs-header">After Light Off → AB Off</div><div class="fs-grid">${rowsHtml3}</div>`;
+    return card3;
+  }
+
+  const rows = [
+    { label:'Throttle / Fuel ESC', val: state.throttle },
+    { label:'Fuel Solenoid',       val: state.fuelSol },
+    { label:'Igniter',             val: state.igniter },
+    { label:'Starter',             val: state.starter },
+    { label:'Starter Enable',      val: state.starterEn },
+    { label:'Oil Pump',            val: state.oilPump },
+  ];
+
+  const rowsHtml = rows.map(r =>
+    `<div class="fs-row"><span class="fs-label">${r.label}</span><span class="fs-val">${r.val}</span></div>`
+  ).join('');
+
+  const card = document.createElement('div');
+  card.className = 'final-state-card';
+  card.id = 'final-state-' + tab;
+  card.innerHTML = `
+    <div class="fs-header">Final state after ${tab === 'startup' ? 'Startup complete (RUNNING)' : 'Shutdown complete (STANDBY)'}</div>
+    <div class="fs-grid">${rowsHtml}</div>`;
+  return card;
+}
+
+// ── AB entry/exit criteria info panels ────────────────────────────────────
+function buildAbCriteriaHtml() {
+  const ab  = cfg?.afterburner ?? {};
+  const src = hwCfg.ab_trigger?.source ?? hwCfg.abTriggerSource ?? 0; // 0=manual,1=throttle,2=switch
+
+  // Light-up entry conditions
+  const upLines = [];
+  if (src === 0)       upLines.push('<strong>Trigger:</strong> Manual only (from dashboard FIRE button)');
+  else if (src === 1)  upLines.push(`<strong>Trigger:</strong> Throttle ≥ ${((ab.throttle_threshold??0)*100).toFixed(0)}%`);
+  else if (src === 2)  upLines.push('<strong>Trigger:</strong> Dedicated AB switch');
+  if ((ab.min_n1 ?? 0) > 0)              upLines.push(`<strong>Min N1:</strong> ${ab.min_n1} rpm`);
+  if ((ab.max_n1 ?? 0) > 0)              upLines.push(`<strong>Max N1:</strong> ${ab.max_n1} rpm`);
+  if ((ab.max_tot_for_light ?? 0) > 0)   upLines.push(`<strong>Max TOT to light:</strong> ${ab.max_tot_for_light}°C`);
+
+  const upBox = document.getElementById('ab-lightup-criteria');
+  if (upBox) {
+    if (upLines.length) {
+      upBox.innerHTML = '<span style="font-size:.7rem;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.06em">Light-up entry conditions</span> &nbsp;—&nbsp; ' + upLines.join(' &nbsp;·&nbsp; ');
+      upBox.style.display = '';
+    } else {
+      upBox.style.display = 'none';
+    }
+  }
+
+  // Light-off exit conditions
+  const offLines = [];
+  if (src === 0)       offLines.push('<strong>Shutdown:</strong> Manual only (from dashboard AB STOP button)');
+  else if (src === 1)  offLines.push(`<strong>Shutdown when:</strong> Throttle drops below ${((ab.throttle_threshold??0)*100).toFixed(0)}%`);
+  else if (src === 2)  offLines.push('<strong>Shutdown when:</strong> AB switch released');
+
+  const offBox = document.getElementById('ab-shutoff-criteria');
+  if (offBox) {
+    if (offLines.length) {
+      offBox.innerHTML = '<span style="font-size:.7rem;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.06em">Light-off trigger</span> &nbsp;—&nbsp; ' + offLines.join(' &nbsp;·&nbsp; ');
+      offBox.style.display = '';
+    } else {
+      offBox.style.display = 'none';
+    }
+  }
+}
+
+function buildCard(bname, idx, tab, total) {
+  const def = BLOCKS[bname] || customBlocks[bname];
+  const card = document.createElement('div');
+  card.className = 'block-card';
+  card.dataset.block = bname;
+  card.dataset.idx   = idx;
+  card.dataset.tab   = tab;
+
+  // Build condition text for WHILE blocks
+  const hw = flattenHw();
+  const condText = def ? (def.condition ? def.condition(hw) : null) : null;
+
+  // Timeout badge
+  let toPill = '';
+  if (def?.timeout_action === 'fault')    toPill = `<span class="timeout-pill fault">⏱ FAULT</span>`;
+  else if (def?.timeout_action === 'abort')   toPill = `<span class="timeout-pill abort">⏱ ABORT</span>`;
+  else if (def?.timeout_action === 'continue')toPill = `<span class="timeout-pill cont">⏱ continue</span>`;
+
+  const badge = def ? `<span class="block-badge ${def.badgeClass}">${def.type.toUpperCase()}</span>` : '';
+  const condHtml = condText ? `<span class="block-cond">${condText}</span>` : '';
+
+  card.innerHTML = `
+  <div class="block-header" onclick="toggleParams(this)">
+    ${badge}
+    <span class="block-name">${def?.label ?? bname}</span>
+    ${condHtml}
+    ${toPill}
+    <div class="block-actions" onclick="event.stopPropagation()">
+      <button class="blk-btn" onclick="moveBlock('${tab}',${idx},-1)" ${idx===0?'disabled':''}>▲</button>
+      <button class="blk-btn" onclick="moveBlock('${tab}',${idx},+1)" ${idx===total-1?'disabled':''}>▼</button>
+      ${customBlocks[bname] ? `<button class="blk-btn" onclick="editCustomBlock('${bname}','${tab}')">Edit</button>` : ''}
+      ${BLOCK_INFO[bname] ? `<button class="blk-btn bip-btn" title="What does this block use?" onclick="showBlockInfo('${bname}')">?</button>` : ''}
+      <button class="blk-btn del" onclick="removeBlock('${tab}',${idx})">✕</button>
+    </div>
+  </div>
+  ${buildParamsHtml(bname)}`;
+
+  return card;
+}
+
+// Flatten relevant hw/config values for condition labels
+function flattenHw() {
+  const su = cfg?.sequence?.startup ?? {};
+  const sd = cfg?.sequence?.shutdown ?? {};
+  const en = cfg?.engine ?? {};
+  const ms = cfg?.misc ?? {};
+  return {
+    oil_arm_min_bar:      paramVals['OilPrime.oil_arm_min_bar'] ?? 1.5,
+    pre_ign_rpm:          su.pre_ign_rpm ?? 5000,
+    flame_required_count: su.flame_required_count ?? 3,
+    post_ign_dwell_ms:    ms.post_ign_dwell_ms ?? su.post_ign_dwell_ms ?? 1000,
+    timed_delay_ms:       paramVals['TimedDelay.timed_delay_ms'] ?? 1000,
+    temp_confirm_target:  paramVals['TempConfirm.temp_confirm_target'] ?? 200,
+    rpm_target:           su.rpm_target ?? 32000,
+    safety_hold_ms:       su.safety_hold_ms ?? 1000,
+    rpm_drop_threshold:   sd.rpm_drop_threshold ?? 5000,
+    tot_cooldown_target:  en.tot_cooldown_target ?? 150,
+    rpm_zero_threshold:   sd.rpm_zero_threshold ?? 100,
+  };
+}
+
+function _buildHwWarningHtml(def) {
+  if (!def?.hwWarnings?.length) return '';
+  return (def.hwWarnings)
+    .filter(w => !w.check(hwCfg))
+    .map(w => {
+      const isError = w.level === 'error';
+      const bg  = isError ? 'rgba(220,50,50,.1)'  : 'rgba(255,180,0,.08)';
+      const bdr = isError ? 'rgba(220,50,50,.55)' : 'rgba(255,180,0,.45)';
+      const col = isError ? '#f06060'             : '#ffc840';
+      return `<div style="font-size:.7rem;color:${col};background:${bg};border:1px solid ${bdr};border-radius:5px;padding:.35rem .65rem;margin-bottom:.4rem;line-height:1.5">${w.msg}</div>`;
+    })
+    .join('');
+}
+
+function buildParamsHtml(bname) {
+  const def = BLOCKS[bname] || customBlocks[bname];
+  const warningHtml = _buildHwWarningHtml(def);
+  if (!def || def.params.length === 0) {
+    return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em></div>`;
+  }
+  const inputs = def.params.map(p => {
+    // visibleIf — skip this param if hw condition is false
+    if (p.visibleIf && !p.visibleIf(hwCfg)) return '';
+    const vk  = bname + '.' + p.key;
+    const val = paramVals[vk] ?? p.def;
+    // showWhen — compute initial visibility
+    const isVisible = !p.showWhen || p.showWhen(paramVals, bname);
+    const hiddenStyle = isVisible ? '' : ' style="display:none"';
+    if (p.type === 'bool') {
+      const checked = val ? 'checked' : '';
+      // Starter checkbox: when checked, oil pump checkbox is ghosted+forced-on
+      const isOilPump   = (bname === 'CooldownSpin' && p.key === 'cooldown_use_oil_pump');
+      const starterOn   = isOilPump && (paramVals['CooldownSpin.cooldown_use_starter'] ?? true);
+      const disabledAttr = starterOn ? 'disabled' : '';
+      const displayVal   = starterOn ? 'Yes (required by starter)' : (val ? 'Yes' : 'No');
+      const boolDescHtml = p.desc ? `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-bottom:.18rem">${p.desc}</span>` : '';
+      return `<div class="param-field" id="pf-${bname}-${p.key}"${hiddenStyle}>
+        <span class="param-label">${p.label}</span>
+        ${boolDescHtml}<div style="display:flex;align-items:center;gap:.45rem;padding:.32rem 0">
+          <input type="checkbox" id="p-${bname}-${p.key}" ${checked} ${disabledAttr}
+            onchange="onParamChangeBool('${bname}','${p.key}','${p.configKey??''}',this.checked)">
+          <label for="p-${bname}-${p.key}" style="font-size:.78rem;color:var(--dim);cursor:pointer">${displayVal}</label>
+        </div>
+      </div>`;
+    }
+    if (p.type === 'select') {
+      const opts = (p.options || []).map(o =>
+        `<option value="${o.v}" ${val == o.v ? 'selected' : ''}>${o.l}</option>`
+      ).join('');
+      const selDescHtml = p.desc ? `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-bottom:.18rem">${p.desc}</span>` : '';
+      return `<div class="param-field" id="pf-${bname}-${p.key}"${hiddenStyle}>
+        <span class="param-label">${p.label}</span>
+        ${selDescHtml}<select class="param-input" id="p-${bname}-${p.key}"
+          onchange="onParamChangeSelect('${bname}','${p.key}','${p.configKey??''}',this.value)">${opts}</select>
+      </div>`;
+    }
+    const descHtml = p.desc ? `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-bottom:.18rem">${p.desc}</span>` : '';
+    return `<div class="param-field" id="pf-${bname}-${p.key}"${hiddenStyle}>
+      <span class="param-label">${p.label}${p.unit ? ` <span class="param-unit">(${p.unit})</span>` : ''}</span>
+      ${descHtml}<input class="param-input" type="number" id="p-${bname}-${p.key}"
+        min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+        oninput="onParamChange('${bname}','${p.key}','${p.configKey??''}',this.value)">
+    </div>`;
+  }).join('');
+  return `<div class="block-params">
+    <div class="block-desc">${def.desc}</div>
+    ${warningHtml}<div class="param-grid">${inputs}</div>
+  </div>`;
+}
+
+function toggleParams(header) {
+  const panel = header.nextElementSibling;
+  panel.classList.toggle('open');
+}
+
+function onParamChange(bname, pkey, configKey, rawVal) {
+  const allBlocks = {...BLOCKS, ...customBlocks};
+  const pdef = allBlocks[bname]?.params?.find(p => p.key === pkey);
+  if (!pdef) return;
+  const val = pdef.type === 'float' ? parseFloat(rawVal) : parseInt(rawVal);
+  const vk  = bname + '.' + pkey;
+  paramVals[vk] = val;
+  if (configKey) setConfigVal(configKey, val);
+  refreshParamVisibility(bname);
+}
+
+function onParamChangeSelect(bname, pkey, configKey, rawVal) {
+  const val = parseInt(rawVal);
+  const vk  = bname + '.' + pkey;
+  paramVals[vk] = val;
+  if (configKey) setConfigVal(configKey, val);
+  refreshParamVisibility(bname);
+}
+
+function refreshParamVisibility(bname) {
+  const def = BLOCKS[bname] || customBlocks[bname];
+  if (!def) return;
+  def.params.forEach(p => {
+    if (!p.showWhen) return;
+    const show = p.showWhen(paramVals, bname);
+    const el   = document.getElementById('pf-' + bname + '-' + p.key);
+    if (el) el.style.display = show ? '' : 'none';
+  });
+}
+
+function onParamChangeBool(bname, pkey, configKey, checked) {
+  const vk = bname + '.' + pkey;
+  paramVals[vk] = checked;
+  // Update sibling label text
+  const lbl = document.querySelector(`label[for="p-${bname}-${pkey}"]`);
+  if (lbl) lbl.textContent = checked ? 'Yes' : 'No';
+  if (configKey) setConfigVal(configKey, checked);
+
+  // CooldownSpin: when starter is toggled, ghost/force oil pump checkbox
+  if (bname === 'CooldownSpin' && pkey === 'cooldown_use_starter') {
+    const oilCb  = document.getElementById('p-CooldownSpin-cooldown_use_oil_pump');
+    const oilLbl = document.querySelector('label[for="p-CooldownSpin-cooldown_use_oil_pump"]');
+    if (oilCb) {
+      if (checked) {
+        // Starter on → force oil pump on and disable the checkbox
+        oilCb.checked  = true;
+        oilCb.disabled = true;
+        paramVals['CooldownSpin.cooldown_use_oil_pump'] = true;
+        setConfigVal('cooldown_use_oil', true);
+        if (oilLbl) oilLbl.textContent = 'Yes (required by starter)';
+      } else {
+        // Starter off → re-enable oil pump checkbox
+        oilCb.disabled = false;
+        const cur = paramVals['CooldownSpin.cooldown_use_oil_pump'] ?? true;
+        if (oilLbl) oilLbl.textContent = cur ? 'Yes' : 'No';
+      }
+    }
+  }
+  refreshParamVisibility(bname);
+}
+
+// ── Sequence order edits ───────────────────────────────────────────────────
+function moveBlock(tab, idx, dir) {
+  const key = seqKey(tab);
+  const seq = hwCfg[key];
+  if (!seq) return;
+  const ni = idx + dir;
+  if (ni < 0 || ni >= seq.length) return;
+  [seq[idx], seq[ni]] = [seq[ni], seq[idx]];
+  renderWithLiveIdle(tab);
+}
+
+function removeBlock(tab, idx) {
+  hwCfg[seqKey(tab)].splice(idx, 1);
+  renderWithLiveIdle(tab);
+}
+
+function addBlock(tab) {
+  const sel   = document.getElementById('add-' + tab + '-sel');
+  const bname = sel.value;
+  if (!bname) return;
+  const key = seqKey(tab);
+  if (!hwCfg[key]) hwCfg[key] = [];
+  hwCfg[key].push(bname);
+  renderWithLiveIdle(tab);
+}
+
+const _typeLabel = {while:'WHILE', action:'ACTION', wait:'WAIT', check:'CHECK'};
+
+function populateAddSelects() {
+  const lists = {startup: STARTUP_BLOCKS, shutdown: SHUTDOWN_BLOCKS, afterburner: AFTERBURNER_BLOCKS, 'ab-shut': AB_SHUT_BLOCKS};
+  ['startup','shutdown','afterburner','ab-shut'].forEach(tab => {
+    const sel = document.getElementById('add-' + tab + '-sel');
+    sel.innerHTML = '<option value="">— select block to add —</option>';
+    const allBlocks = {...BLOCKS, ...customBlocks};
+    const blockList = lists[tab];
+    blockList.forEach(b => {
+      const def = allBlocks[b];
+      // Hide blocks whose hardware requirement is not met
+      if (def?.visibleIf && !def.visibleIf(hwCfg)) return;
+      const o = document.createElement('option');
+      o.value = b;
+      const tag = def ? `[${(_typeLabel[def.type] ?? def.type.toUpperCase())}] ` : '';
+      o.text = tag + (def?.label ?? b);
+      sel.appendChild(o);
+    });
+    Object.entries(customBlocks).forEach(([k, def]) => {
+      const o = document.createElement('option');
+      o.value = k; o.text = '[CUSTOM] ' + def.label;
+      sel.appendChild(o);
+    });
+  });
+}
+
+function updateBlockPreview(tab) {
+  const sel   = document.getElementById('add-' + tab + '-sel');
+  const prev  = document.getElementById('preview-' + tab);
+  if (!prev) return;
+  const bname = sel?.value;
+  const def   = bname ? (BLOCKS[bname] || customBlocks[bname]) : null;
+  if (!bname || !def) { prev.innerHTML = ''; return; }
+  const typeMap = {while:'WHILE — waits for condition', action:'ACTION — instant, completes in one tick', wait:'WAIT — fixed timer', check:'CHECK — verify then fault or complete'};
+  const typeStr = typeMap[def.type] ?? def.type.toUpperCase();
+  prev.innerHTML = `<strong style="color:var(--text)">${typeStr}</strong> &nbsp;·&nbsp; ${def.desc ?? ''}`;
+}
+
+// ── Custom block dialog ────────────────────────────────────────────────────
+let _customDlgTab = 'startup';
+let _cblkSteps    = [];   // [{type:'set_act',act,val} | {type:'delay_ms',val}]
+let _editingKey   = null; // null = new block, string = editing existing
+
+// Migrate old outputs format → steps format
+function _migrateOutputsToSteps(outputs) {
+  return (outputs || []).map(o => ({type:'set_act', act:o.act, val:o.val}));
+}
+
+// ── Sensor / actuator lists from hwCfg ────────────────────────────────────
+function getEnabledSensors() {
+  const s  = hwCfg.sensors    || {};
+  const hw = hwCfg;
+  const list = [];
+  if (s.n1_rpm?.enabled)        list.push({key:'n1_rpm',       label:'N1 RPM',           unit:'rpm',  def:5000, step:100});
+  if (s.n2_rpm?.enabled)        list.push({key:'n2_rpm',       label:'N2 RPM',           unit:'rpm',  def:5000, step:100});
+  if (s.tot?.enabled)           list.push({key:'tot',          label:'TOT',              unit:'°C',   def:200,  step:5});
+  if (s.tit?.enabled)           list.push({key:'tit',          label:'TIT',              unit:'°C',   def:300,  step:5});
+  if (s.oil_press?.enabled)     list.push({key:'oil_press',    label:'Oil Pressure',     unit:'bar',  def:2.0,  step:0.1});
+  if (s.flame?.enabled)         list.push({key:'flame',        label:'Flame Detected',   unit:'',     def:1,    bool:true});
+  if (s.throttle_input?.enabled)list.push({key:'throttle_in',  label:'Throttle Pot',     unit:'%',    def:0,    step:1});
+  if (s.idle_input?.enabled)    list.push({key:'idle_in',      label:'Idle Pot',         unit:'%',    def:0,    step:1});
+  if (s.p1?.enabled)            list.push({key:'p1',           label:'P1 Pressure',      unit:'bar',  def:0,    step:0.1});
+  if (s.p2?.enabled)            list.push({key:'p2',           label:'P2 Pressure',      unit:'bar',  def:0,    step:0.1});
+  if (s.fuel_flow?.enabled)     list.push({key:'fuel_flow',    label:'Fuel Flow',        unit:'',     def:0,    step:1});
+  return list;
+}
+
+function getEnabledActuators() {
+  const a    = hwCfg.actuators || {};
+  const hasAB = hwCfg.has_afterburner || false;
+  const list = [];
+  const isOnOff = act => !act || act.type === 2;
+  // Always-present outputs (if hardware enabled)
+  if (a.throttle?.enabled)       list.push({key:'throttle',       label:'Throttle %',                   mode: isOnOff(a.throttle)    ? 'relay':'pct'});
+  if (a.starter?.enabled)        list.push({key:'starter',        label:'Starter Demand %',             mode: isOnOff(a.starter)     ? 'relay':'pct'});
+  if (a.starter_en?.enabled)     list.push({key:'starter_en',     label:'Starter Enable Relay',         mode:'relay'});
+  if (a.oil_pump?.enabled)       list.push({key:'oil_pump',       label:'Oil Pump %',                   mode: isOnOff(a.oil_pump)    ? 'relay':'pct'});
+  if (a.fuel_sol?.enabled)       list.push({key:'fuel_sol',       label:'Fuel Solenoid',                mode:'relay'});
+  if (a.igniter?.enabled)        list.push({key:'igniter',        label:'Igniter 1',                    mode:'relay'});
+  if (a.igniter2?.enabled)       list.push({key:'igniter2',       label: hasAB ? 'AB Igniter (Ign.2)' : 'Igniter 2', mode:'relay'});
+  if (a.airstarter_sol?.enabled) list.push({key:'airstarter_sol', label:'Airstarter Solenoid',          mode:'relay'});
+  if (a.cool_fan?.enabled)       list.push({key:'cool_fan',       label:'Cooling Fan %',                mode: isOnOff(a.cool_fan)    ? 'relay':'pct'});
+  // AB / optional outputs
+  if (a.ab_sol?.enabled)         list.push({key:'ab_sol',         label: hasAB ? 'AB Fuel Solenoid' : 'Fuel Sol. 2', mode:'relay'});
+  if (a.ab_pump?.enabled)        list.push({key:'ab_pump',        label: hasAB ? 'AB Fuel Pump %'   : 'Fuel Pump 2 %', mode: isOnOff(a.ab_pump) ? 'relay':'pct'});
+  return list;
+}
+
+// ── Dialog open / close ───────────────────────────────────────────────────
+function openCustomBlockDialog(tab) {
+  _customDlgTab = tab;
+  _cblkSteps    = [];
+  _editingKey   = null;
+  document.getElementById('cblk-dlg-title').textContent = 'New Custom Block';
+  document.getElementById('cblk-confirm-btn').textContent = 'Add Block';
+  document.getElementById('cblk-label').value = '';
+  document.getElementById('cblk-desc').value  = '';
+  document.getElementById('cblk-type').value  = 'action';
+  document.getElementById('cblk-dur').value   = 1000;
+  document.getElementById('cblk-timeout-action').value = 'abort';
+  document.getElementById('cblk-cond-val').value = 100;
+  _buildCondSensorSelect(null);
+  updateCustomBlockTypeUI();
+  _renderStepRows();
+  document.getElementById('custom-dlg').style.display = 'flex';
+}
+
+function editCustomBlock(key, tab) {
+  const def = hwCfg.custom_blocks?.[key];
+  if (!def) return;
+  _customDlgTab = tab;
+  // Support old outputs format and new steps format
+  _cblkSteps = JSON.parse(JSON.stringify(
+    def.steps ? def.steps : _migrateOutputsToSteps(def.outputs)
+  ));
+  _editingKey   = key;
+  document.getElementById('cblk-dlg-title').textContent = 'Edit Custom Block';
+  document.getElementById('cblk-confirm-btn').textContent = 'Update Block';
+  document.getElementById('cblk-label').value = def.label || '';
+  document.getElementById('cblk-desc').value  = def.desc  || '';
+  document.getElementById('cblk-type').value  = def.type  || 'action';
+  document.getElementById('cblk-dur').value   = def.timeout_ms || def.duration_ms || 1000;
+  document.getElementById('cblk-timeout-action').value = def.timeout_action || 'abort';
+  _buildCondSensorSelect(def.condition?.sensor || null);
+  if (def.condition) {
+    document.getElementById('cblk-cond-op').value  = def.condition.op    || '<';
+    document.getElementById('cblk-cond-val').value = def.condition.value ?? 100;
+  }
+  updateCustomBlockTypeUI();
+  _renderStepRows();
+  document.getElementById('custom-dlg').style.display = 'flex';
+}
+
+function closeCustomBlockDialog() {
+  document.getElementById('custom-dlg').style.display = 'none';
+}
+
+// ── Condition sensor select ───────────────────────────────────────────────
+function _buildCondSensorSelect(selectedKey) {
+  const sel = document.getElementById('cblk-cond-sensor');
+  const sensors = getEnabledSensors();
+  sel.innerHTML = sensors.length
+    ? sensors.map(s => `<option value="${s.key}" ${s.key===selectedKey?'selected':''}>${s.label}</option>`).join('')
+    : '<option value="">No sensors enabled</option>';
+  updateCustomCondUI();
+}
+
+function updateCustomCondUI() {
+  const sensors = getEnabledSensors();
+  const key = document.getElementById('cblk-cond-sensor').value;
+  const s = sensors.find(s => s.key === key);
+  document.getElementById('cblk-cond-unit').textContent = s?.unit ? `(${s.unit})` : '';
+  if (s?.bool) {
+    document.getElementById('cblk-cond-op').innerHTML = '<option value="==">==</option>';
+    document.getElementById('cblk-cond-val').max = 1; document.getElementById('cblk-cond-val').min = 0;
+  } else {
+    document.getElementById('cblk-cond-op').innerHTML =
+      `<option value="<">&lt;</option><option value=">">&gt;</option><option value="<=">&lt;=</option><option value=">=">&gt;=</option>`;
+  }
+  updateCustomCondPreview();
+}
+
+function updateCustomCondPreview() {
+  const sensors = getEnabledSensors();
+  const sKey = document.getElementById('cblk-cond-sensor').value;
+  const s    = sensors.find(s => s.key === sKey);
+  const op   = document.getElementById('cblk-cond-op').value;
+  const val  = document.getElementById('cblk-cond-val').value;
+  const prev = document.getElementById('cblk-cond-preview');
+  if (s) {
+    prev.style.display = '';
+    prev.textContent = `WHILE ${s.label} ${op} ${val}${s.unit ? ' ' + s.unit : ''}`;
+  } else {
+    prev.style.display = 'none';
+  }
+}
+
+// ── Type UI visibility ────────────────────────────────────────────────────
+function updateCustomBlockTypeUI() {
+  const type = document.getElementById('cblk-type').value;
+  // Steps section: visible for action and while (while can also have steps on completion)
+  document.getElementById('cblk-steps-section').style.display   = type !== 'wait' ? '' : 'none';
+  document.getElementById('cblk-cond-section').style.display    = type === 'while' ? '' : 'none';
+  document.getElementById('cblk-timer-section').style.display   = type !== 'action' ? '' : 'none';
+  document.getElementById('cblk-timeout-action-wrap').style.display = type === 'while' ? '' : 'none';
+  document.getElementById('cblk-timer-label').textContent =
+    type === 'wait' ? 'Duration (ms)' : 'Timeout (ms)';
+  if (type === 'while') updateCustomCondPreview();
+}
+
+// ── Steps list ───────────────────────────────────────────────────────────
+function _renderStepRows() {
+  const acts = getEnabledActuators();
+  const container = document.getElementById('cblk-outputs');
+  const empty     = document.getElementById('cblk-outputs-empty');
+  container.innerHTML = '';
+  _cblkSteps.forEach((step, i) => {
+    const row = document.createElement('div');
+    row.className = 'cblk-output-row';
+    const isDelay = step.type === 'delay_ms';
+    const upBtn   = i > 0 ? `<button class="cblk-mv-btn" onclick="moveStep(${i},-1)" title="Move up">▲</button>` : '<span class="cblk-mv-btn"></span>';
+    const dnBtn   = i < _cblkSteps.length-1 ? `<button class="cblk-mv-btn" onclick="moveStep(${i},1)" title="Move down">▼</button>` : '<span class="cblk-mv-btn"></span>';
+    if (isDelay) {
+      row.innerHTML = `
+        <div style="display:flex;gap:3px">${upBtn}${dnBtn}</div>
+        <span class="cblk-step-badge" style="background:rgba(0,240,160,0.1);color:var(--green);border:1px solid rgba(0,240,160,0.3)">DELAY</span>
+        <input type="number" min="10" max="600000" step="50" value="${step.val??500}"
+          oninput="updateStepVal(${i},+this.value)" placeholder="ms" style="text-align:center;max-width:90px">
+        <span style="font-size:.7rem;color:var(--dim);align-self:center">ms</span>
+        <button class="cblk-rm-btn" onclick="removeStep(${i})">✕</button>`;
+    } else {
+      const act = acts.find(a => a.key === step.act);
+      const mode = act?.mode ?? 'relay';
+      const actOpts = acts.map(a =>
+        `<option value="${a.key}" ${a.key===step.act?'selected':''}>${a.label}</option>`
+      ).join('');
+      const valCtrl = mode === 'relay'
+        ? `<select onchange="updateStepVal(${i},+this.value)" style="max-width:80px">
+             <option value="1" ${step.val?'selected':''}>ON</option>
+             <option value="0" ${!step.val?'selected':''}>OFF</option>
+           </select>`
+        : `<input type="number" min="0" max="100" step="5" value="${step.val??50}"
+             oninput="updateStepVal(${i},+this.value)" placeholder="%" style="text-align:center;max-width:72px">
+           <span style="font-size:.7rem;color:var(--dim);align-self:center">%</span>`;
+      row.innerHTML = `
+        <div style="display:flex;gap:3px">${upBtn}${dnBtn}</div>
+        <span class="cblk-step-badge" style="background:rgba(56,200,255,0.1);color:var(--blue);border:1px solid rgba(56,200,255,0.3)">SET</span>
+        <select onchange="updateStepAct(${i},this.value)" style="flex:1;min-width:0">${actOpts}</select>
+        ${valCtrl}
+        <button class="cblk-rm-btn" onclick="removeStep(${i})">✕</button>`;
+    }
+    container.appendChild(row);
+  });
+  empty.style.display = _cblkSteps.length ? 'none' : '';
+}
+
+function addCustomStep(type) {
+  if (type === 'delay_ms') {
+    _cblkSteps.push({type:'delay_ms', val:500});
+  } else {
+    const acts = getEnabledActuators();
+    if (!acts.length) { alert('No actuators enabled in hardware configuration.'); return; }
+    _cblkSteps.push({type:'set_act', act: acts[0].key, val: acts[0].mode === 'relay' ? 1 : 50});
+  }
+  _renderStepRows();
+}
+function removeStep(i) {
+  _cblkSteps.splice(i, 1);
+  _renderStepRows();
+}
+function moveStep(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= _cblkSteps.length) return;
+  [_cblkSteps[i], _cblkSteps[j]] = [_cblkSteps[j], _cblkSteps[i]];
+  _renderStepRows();
+}
+function updateStepAct(i, key) {
+  const acts = getEnabledActuators();
+  const act  = acts.find(a => a.key === key);
+  _cblkSteps[i] = {type:'set_act', act: key, val: act?.mode === 'relay' ? 1 : 50};
+  _renderStepRows();
+}
+function updateStepVal(i, val) {
+  _cblkSteps[i].val = val;
+}
+
+// ── Build runtime block def from raw stored def ───────────────────────────
+function buildRuntimeBlockDef(key, def) {
+  const badgeMap = {action:'badge-action', wait:'badge-wait', while:'badge-while'};
+  const sensors  = getEnabledSensors();
+  const acts     = getEnabledActuators();
+  let condFn = null;
+  if (def.condition) {
+    const s = sensors.find(s => s.key === def.condition.sensor);
+    const sLabel = s ? s.label : def.condition.sensor;
+    const unit   = s?.unit ?? '';
+    condFn = () => `${sLabel} ${def.condition.op} ${def.condition.value}${unit?' '+unit:''}`;
+  } else if (def.type === 'wait') {
+    condFn = () => `${def.duration_ms ?? 1000} ms`;
+  }
+  const timerKey = def.type === 'while' ? 'timeout_ms' : 'duration_ms';
+  const timerDef = def.type === 'while' ? (def.timeout_ms ?? 10000) : (def.duration_ms ?? 1000);
+  // Build step summary for description (supports new steps[] and legacy outputs[])
+  const rawSteps = def.steps ? def.steps : _migrateOutputsToSteps(def.outputs);
+  const stepLines = rawSteps.map((s, idx) => {
+    if (s.type === 'delay_ms') return `${idx+1}. DELAY ${s.val} ms`;
+    const a = acts.find(a => a.key === s.act);
+    const valStr = a?.mode === 'relay' ? (s.val ? 'ON' : 'OFF') : `${s.val}%`;
+    return `${idx+1}. SET ${a?.label ?? s.act} → ${valStr}`;
+  });
+  const fullDesc = [def.desc, ...stepLines].filter(Boolean).join('\n');
+  return {
+    label: def.label,
+    type: def.type,
+    badgeClass: badgeMap[def.type] || 'badge-action',
+    condition: condFn,
+    timeout_action: def.timeout_action || null,
+    desc: fullDesc || def.label,
+    params: def.type !== 'action'
+      ? [{key: timerKey, label: def.type==='while'?'Timeout':'Duration',
+          unit:'ms', type:'int', min:100, max:600000, step:100, def:timerDef}]
+      : [],
+    _custom: true,
+    _def: def,
+  };
+}
+
+// ── Confirm (add / update) ────────────────────────────────────────────────
+function confirmCustomBlock() {
+  const label = document.getElementById('cblk-label').value.trim();
+  if (!label) { alert('Enter a block name.'); return; }
+  const type = document.getElementById('cblk-type').value;
+  const desc = document.getElementById('cblk-desc').value.trim();
+  if (type === 'action' && _cblkSteps.length === 0) {
+    alert('Add at least one step (Set Actuator or Delay) before saving an action block.');
+    return;
+  }
+
+  const rawDef = { label, type, desc, steps: JSON.parse(JSON.stringify(_cblkSteps)) };
+
+  if (type === 'while') {
+    const sKey = document.getElementById('cblk-cond-sensor').value;
+    if (!sKey) { alert('Select a sensor for the condition.'); return; }
+    rawDef.condition = {
+      sensor: sKey,
+      op:     document.getElementById('cblk-cond-op').value,
+      value:  parseFloat(document.getElementById('cblk-cond-val').value) || 0,
+    };
+    rawDef.timeout_ms      = parseInt(document.getElementById('cblk-dur').value) || 10000;
+    rawDef.timeout_action  = document.getElementById('cblk-timeout-action').value;
+  } else if (type === 'wait') {
+    rawDef.duration_ms = parseInt(document.getElementById('cblk-dur').value) || 1000;
+  }
+
+  const key = _editingKey || ('custom_' + Date.now());
+  if (!hwCfg.custom_blocks) hwCfg.custom_blocks = {};
+  hwCfg.custom_blocks[key] = rawDef;
+  customBlocks[key] = buildRuntimeBlockDef(key, rawDef);
+
+  if (!_editingKey) {
+    const sk = seqKey(_customDlgTab);
+    if (!hwCfg[sk]) hwCfg[sk] = [];
+    hwCfg[sk].push(key);
+  }
+
+  closeCustomBlockDialog();
+  populateAddSelects();
+  renderWithLiveIdle('startup'); renderWithLiveIdle('shutdown'); renderWithLiveIdle('afterburner'); renderWithLiveIdle('ab-shut');
+}
+
+// ── Sequence validation ────────────────────────────────────────────────────
+function _validateSequence(blocks) {
+  const warnings = [];
+  const has = b => blocks.includes(b);
+
+  // Must have flame confirmation — otherwise ignition failure goes undetected
+  if (!has('FlameConfirm') && !has('TempConfirm')) {
+    warnings.push('No flame/temperature confirmation block. Without FlameConfirm or TempConfirm the sequence cannot verify combustion before handing off to RUNNING.');
+  }
+  // Should have oil priming — running without it risks bearing damage
+  if (!has('OilPrime')) {
+    warnings.push('No OilPrime block. Oil lubrication is not guaranteed before ignition. Add OilPrime early in the sequence to protect engine bearings.');
+  }
+  // Spool without a SafetyHold means no final RPM/oil sanity check before RUNNING
+  if (has('Spool') && !has('SafetyHold')) {
+    warnings.push('Spool block present but no SafetyHold. Consider adding SafetyHold after Spool to verify N1 and oil pressure before entering RUNNING.');
+  }
+  // FuelOpen before StarterSpin risks unspun fuel ingestion
+  if (has('FuelOpen') && has('StarterSpin')) {
+    const fuelIdx   = blocks.indexOf('FuelOpen');
+    const startIdx  = blocks.indexOf('StarterSpin');
+    if (fuelIdx < startIdx) {
+      warnings.push('FuelOpen appears before StarterSpin. Fuel will be injected before the starter spins — this risks unburned fuel pooling. Move StarterSpin before FuelOpen.');
+    }
+  }
+  // SafetyHold without Spool — valid but unusual
+  if (has('SafetyHold') && !has('Spool')) {
+    warnings.push('SafetyHold present but no Spool block. Without Spool the starter keeps running indefinitely. This may be intentional for air-start configurations.');
+  }
+  return warnings;
+}
+
+// ── Save ───────────────────────────────────────────────────────────────────
+async function saveAll() {
+  if (engineMode !== 'STANDBY') {
+    setSaveStatus('⚠ Engine must be in STANDBY to save');
+    return;
+  }
+  // Validate that the startup sequence is not empty
+  const startupBlocks = hwCfg['startup_seq'] || [];
+  if (startupBlocks.length === 0) {
+    setSaveStatus('⚠ Startup sequence is empty — add blocks before saving');
+    alert('⚠ Startup sequence is empty.\n\nAdd at minimum: OilPrime → StarterSpin → FlameConfirm\nbefore saving. An empty startup sequence will allow the engine to start with no safety or control blocks.');
+    return;
+  }
+  // Validate sequence safety: warn if critical blocks are missing
+  const seqWarnings = _validateSequence(startupBlocks);
+  if (seqWarnings.length > 0) {
+    const proceed = confirm(
+      '⚠ Sequence warnings:\n\n' + seqWarnings.map(w => '• ' + w).join('\n') +
+      '\n\nSave anyway?'
+    );
+    if (!proceed) return;
+  }
+  setSaveStatus('Saving config…');
+  // 1. Save config.json (block params)
+  try {
+    const cfgRes = await fetch('/api/config', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(cfg)
+    });
+    if (!cfgRes.ok) { setSaveStatus('⚠ Config save failed'); return; }
+  } catch(e) { setSaveStatus('⚠ ' + e.message); return; }
+
+  setSaveStatus('Saving hardware (sequence order)…');
+  // 2. Save hardware.json (sequence order)
+  try {
+    const hwRes = await fetch('/api/hardware', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(hwCfg)
+    });
+    if (!hwRes.ok) { setSaveStatus('⚠ Hardware save failed'); return; }
+    const resp = await hwRes.json();
+    if (resp.reboot) startRebootCountdown();
+  } catch(e) { setSaveStatus('⚠ ' + e.message); }
+}
+
+function startRebootCountdown() {
+  const overlay = document.getElementById('reboot-overlay');
+  const cnt     = document.getElementById('reboot-count');
+  overlay.classList.add('show');
+  let n = 10;
+  cnt.textContent = n;
+  const t = setInterval(() => {
+    n--;
+    cnt.textContent = n;
+    if (n <= 0) {
+      clearInterval(t);
+      reconnect();
+    }
+  }, 1000);
+}
+
+function reconnect(attempts=0) {
+  fetch('/api/data').then(() => {
+    document.getElementById('reboot-overlay').classList.remove('show');
+    loadAll();
+  }).catch(() => {
+    if (attempts < 20) setTimeout(() => reconnect(attempts+1), 1000);
+    else document.getElementById('reboot-count').textContent = 'Reload page';
+  });
+}
+
+function setSaveStatus(msg) {
+  document.getElementById('save-status').textContent = msg;
+}
+
+// ── WebSocket for engine mode ──────────────────────────────────────────────
+function startWS() {
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.mode !== undefined) {
+        engineMode = d.mode;
+        const btn = document.getElementById('save-btn');
+        const active = (engineMode === 'STANDBY');
+        btn.disabled = !active;
+        if (!active) setSaveStatus(`⚠ Engine is ${engineMode} — stop engine to save`);
+      }
+      if (d.seq_issues !== undefined) _applySeqValidation(d);
+    } catch(_){}
+  };
+  ws.onclose = () => setTimeout(startWS, 3000);
+}
+
+// ── Sequence validation banner ─────────────────────────────────────────────
+function _applySeqValidation(d) {
+  const issues   = d.seq_issues   || [];
+  const hasErr   = d.seq_has_errors || false;
+  const banner   = document.getElementById('seq-validation-banner');
+  if (!banner) return;
+
+  if (issues.length === 0) { banner.innerHTML = ''; return; }
+
+  let html = '';
+  if (hasErr) {
+    html += `<div class="seq-val-start-blocked">` +
+      `&#9888; START is blocked — one or more sequence errors must be resolved. ` +
+      `Enable <b>Bench Mode</b> in Tools to override for testing without hardware.` +
+      `</div>`;
+  }
+  for (const iss of issues) {
+    const cls  = iss.error ? 'seq-val-error' : 'seq-val-warn';
+    const icon = iss.error ? '&#10060;' : '&#9888;';
+    html += `<div class="${cls}">` +
+      `<span class="seq-val-icon">${icon}</span>` +
+      `<span><span class="seq-val-block">${iss.block}:</span>${iss.msg}</span>` +
+      `</div>`;
+  }
+  banner.innerHTML = html;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+loadAll();
+startWS();
+</script>
+</body>
+</html>

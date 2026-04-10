@@ -1,0 +1,3126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenTurbine — Hardware</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <a href="/hardware.html" class="active">Hardware</a>
+  <a href="/calibration.html">Calibration</a>
+  <a href="/config.html">Config</a>
+  <a href="/sequence.html">Sequence</a>
+  <a href="/">Dashboard</a>
+  <a href="/log.html">Log</a>
+  <a href="/tools.html">Tools</a>
+  <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
+</nav>
+
+<div class="rebooting-overlay" id="reboot-overlay">
+  <div class="spinner"></div>
+  <div>Device rebooting — reconnecting…</div>
+  <div id="reboot-timer" style="font-size:.85rem;color:var(--dim)"></div>
+</div>
+
+<main>
+  <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem;line-height:1.5">
+    <strong style="color:var(--text)">New build?</strong> Start here — define what sensors and actuators are fitted.
+    Then go to <a href="/config.html" style="color:var(--accent)">Config</a> to set engine parameters,
+    <a href="/calibration.html" style="color:var(--accent)">Calibration</a> to zero your sensors,
+    and <a href="/sequence.html" style="color:var(--accent)">Sequence</a> to tune your startup steps.
+  </p>
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
+    <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
+    <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
+  </div>
+  <p id="standby-warn">Engine is not in STANDBY — hardware changes are locked.</p>
+
+  <!-- ── System Profile ───────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">System Profile</div>
+    <div class="hw-item-card">
+      <div class="hw-grid">
+        <div class="hw-field">
+          <span class="hw-label">Profile ID / WiFi SSID</span>
+          <span class="hw-desc">Name of this engine. Used as the Wi-Fi AP SSID. Default: OpenTurbine.</span>
+          <input type="text" id="f-profile-id" maxlength="63" placeholder="OpenTurbine" oninput="set('profile_id',this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">WiFi AP Password</span>
+          <span class="hw-desc">Password for the Wi-Fi access point. Leave blank for open network (not recommended).</span>
+          <div style="display:flex;gap:.35rem;align-items:center">
+            <input type="password" id="f-wifi-password" maxlength="63" placeholder="(open network)"
+              oninput="set('wifi_password',this.value)" style="flex:1">
+            <button type="button" id="btn-wifi-pw-toggle" onclick="toggleWifiPassword()"
+              title="Show/hide password"
+              style="font-size:1rem;padding:.28rem .5rem;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--surface-2);color:var(--dim);cursor:pointer;line-height:1;min-width:2rem;text-transform:none;letter-spacing:0;font-weight:400;display:flex;align-items:center;justify-content:center">
+              <svg id="btn-wifi-pw-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Description</span>
+          <span class="hw-desc">Human-readable label, e.g. "Test bench JT-1".</span>
+          <input type="text" id="f-profile-desc" maxlength="63" oninput="set('profile_desc',this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Features ─────────────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">System Features</div>
+    <!-- Engine type quick-setup presets -->
+    <div style="margin-bottom:.75rem;padding:.6rem .75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">
+      <div style="font-size:.64rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;font-weight:600">Engine Type Preset</div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">
+        <button onclick="applyEnginePreset('turbojet')"     style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Turbojet</button>
+        <button onclick="applyEnginePreset('turbojet_ab')"  style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Turbojet + Afterburner</button>
+        <button onclick="applyEnginePreset('twin_shaft')"   style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Twin-shaft Turbojet</button>
+        <button onclick="applyEnginePreset('free_turbine')" style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Free Turbine</button>
+        <button onclick="applyEnginePreset('turboprop')"    style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Turboprop</button>
+        <button onclick="applyEnginePreset('show_all')"     style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Something else (show all)</button>
+      </div>
+      <div id="eng-preset-desc" style="font-size:.67rem;color:var(--dim);line-height:1.4">Select your engine type to pre-configure sensors and actuators. All options can still be changed individually below.</div>
+    </div>
+  </div>
+
+  <!-- ── Switches ─────────────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Physical Switches</div>
+
+    <!-- Stop Switch -->
+    <div class="hw-item-card">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:.5rem">Stop Switch</div>
+      <div class="hw-grid">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <span class="hw-desc">Push button or switch connected to this GPIO.</span>
+          <select id="f-stop-pin" onchange="setNested('controls','stop_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Active polarity</span>
+          <span class="hw-desc">Active LOW = button shorts pin to GND (pull-up). Most common.</span>
+          <select id="f-stop-pol" onchange="setNested('controls','stop_active_h',this.value==='1')">
+            <option value="0">Active LOW</option>
+            <option value="1">Active HIGH</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard and fault log. Leave blank for default "Stop".</span>
+          <input type="text" id="f-stop-label" maxlength="31" placeholder="Stop"
+            oninput="setLabel('stop',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Start Switch -->
+    <div class="hw-item-card">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:.5rem">Start Switch</div>
+      <div class="hw-grid">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <span class="hw-desc">Push button or switch connected to this GPIO.</span>
+          <select id="f-start-pin" onchange="setNested('controls','start_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Active polarity</span>
+          <span class="hw-desc">Active LOW = button shorts pin to GND (pull-up). Most common.</span>
+          <select id="f-start-pol" onchange="setNested('controls','start_active_h',this.value==='1')">
+            <option value="0">Active LOW</option>
+            <option value="1">Active HIGH</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard. Leave blank for default "Start".</span>
+          <input type="text" id="f-start-label" maxlength="31" placeholder="Start"
+            oninput="setLabel('start',this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Sensors ──────────────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Sensors</div>
+
+    <div class="hw-sub">Speed</div>
+
+    <!-- N1 RPM -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-n1rpm" onchange="setSensorEnabled('n1_rpm','n1rpm',this.checked)">
+        <b>N1 RPM</b> <span style="font-size:.65rem;color:var(--dim)">(hall sensor, PCNT)</span>
+      </div>
+      <div class="hw-grid" id="grp-n1rpm">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <select id="f-n1-pin" onchange="setSensor('n1_rpm','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Pulses / Rev</span>
+          <span class="hw-desc">Hall sensor pulses per shaft revolution.</span>
+          <input type="number" id="f-n1-ppr" min="0.01" step="0.001" oninput="setSensor('n1_rpm','ppr',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "Main Shaft", "Gas Gen"). Default: N1.</span>
+          <input type="text" id="f-n1-label" maxlength="31" placeholder="N1"
+            oninput="setLabel('n1',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- N2 RPM (shown only when two-shaft / multi-shaft engine) -->
+    <div class="hw-item-card" id="section-n2rpm">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-n2rpm" onchange="setSensorEnabled('n2_rpm','n2rpm',this.checked)">
+        <b>N2 RPM</b> <span style="font-size:.65rem;color:var(--dim)">(hall sensor, PCNT)</span>
+      </div>
+      <div class="hw-grid" id="grp-n2rpm">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <select id="f-n2-pin" onchange="setSensor('n2_rpm','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Pulses / Rev</span>
+          <input type="number" id="f-n2-ppr" min="0.01" step="0.001" oninput="setSensor('n2_rpm','ppr',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "Power Turbine", "Output Shaft"). Default: N2.</span>
+          <input type="text" id="f-n2-label" maxlength="31" placeholder="N2"
+            oninput="setLabel('n2',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Temperature</div>
+
+    <!-- TOT -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-tot" onchange="setSensorEnabled('tot','tot',this.checked)">
+        <b>Turbine Outlet Temp (TOT)</b> <span style="font-size:.65rem;color:var(--dim)">(K-type TC)</span>
+      </div>
+      <div class="hw-grid" id="grp-tot">
+        <div class="hw-field">
+          <span class="hw-label">Chip type</span>
+          <span class="hw-desc">MAX6675 = 3-wire read-only. MAX31855 = 4-wire full-duplex with fault reporting.</span>
+          <select id="f-tot-chip" onchange="setTotChip(this.value)">
+            <option value="max6675">MAX6675 (3-wire, K-type only)</option>
+            <option value="max31855">MAX31855 (4-wire, K-type + fault)</option>
+            <option value="max31856">MAX31856 (4-wire, any TC type)</option>
+          </select>
+        </div>
+        <div class="hw-field"><span class="hw-label">CLK pin</span>
+          <select id="f-tot-clk" onchange="setSensor('tot','clk',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">CS pin</span>
+          <select id="f-tot-cs" onchange="setSensor('tot','cs',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">MISO pin</span>
+          <select id="f-tot-miso" onchange="setSensor('tot','miso',+this.value)"></select></div>
+        <div class="hw-field" id="grp-tot-mosi" style="display:none">
+          <span class="hw-label">MOSI pin</span>
+          <span class="hw-desc">Required for MAX31855 / MAX31856 full-duplex SPI.</span>
+          <select id="f-tot-mosi" onchange="setSensor('tot','mosi',+this.value)"></select>
+        </div>
+        <div class="hw-field" id="grp-tot-tctype" style="display:none">
+          <span class="hw-label">TC Type (MAX31856)</span>
+          <span class="hw-desc">Thermocouple wire type. K-type is most common in hobby turbines. Check the datasheet or colour code of your thermocouple if unsure.</span>
+          <select id="f-tot-tctype" onchange="setSensor('tot','tc_type',this.value)">
+            <option value="K">K (most common)</option>
+            <option value="J">J</option>
+            <option value="N">N</option>
+            <option value="T">T</option>
+            <option value="E">E</option>
+            <option value="R">R</option>
+            <option value="S">S</option>
+            <option value="B">B</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "T4", "EGT", "Compressor Outlet"). Default: TOT.</span>
+          <input type="text" id="f-tot-label" maxlength="31" placeholder="TOT"
+            oninput="setLabel('tot',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- TIT -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-tit" onchange="setSensorEnabled('tit','tit',this.checked)">
+        <b>Turbine Inlet Temp (TIT)</b> <span style="font-size:.65rem;color:var(--dim)">(K-type TC)</span>
+      </div>
+      <div class="hw-grid" id="grp-tit">
+        <div class="hw-field">
+          <span class="hw-label">Chip type</span>
+          <span class="hw-desc">MAX6675 = 3-wire read-only. MAX31855 = 4-wire full-duplex with fault reporting.</span>
+          <select id="f-tit-chip" onchange="setTitChip(this.value)">
+            <option value="max6675">MAX6675 (3-wire, K-type only)</option>
+            <option value="max31855">MAX31855 (4-wire, K-type + fault)</option>
+            <option value="max31856">MAX31856 (4-wire, any TC type)</option>
+          </select>
+        </div>
+        <div class="hw-field"><span class="hw-label">CLK pin</span>
+          <select id="f-tit-clk" onchange="setSensor('tit','clk',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">CS pin</span>
+          <select id="f-tit-cs" onchange="setSensor('tit','cs',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">MISO pin</span>
+          <select id="f-tit-miso" onchange="setSensor('tit','miso',+this.value)"></select></div>
+        <div class="hw-field" id="grp-tit-mosi" style="display:none">
+          <span class="hw-label">MOSI pin</span>
+          <span class="hw-desc">Required for MAX31855 / MAX31856 full-duplex SPI.</span>
+          <select id="f-tit-mosi" onchange="setSensor('tit','mosi',+this.value)"></select>
+        </div>
+        <div class="hw-field" id="grp-tit-tctype" style="display:none">
+          <span class="hw-label">TC Type (MAX31856)</span>
+          <span class="hw-desc">Thermocouple wire type. K-type is most common in hobby turbines. Check the datasheet or colour code of your thermocouple if unsure.</span>
+          <select id="f-tit-tctype" onchange="setSensor('tit','tc_type',this.value)">
+            <option value="K">K (most common)</option>
+            <option value="J">J</option>
+            <option value="N">N</option>
+            <option value="T">T</option>
+            <option value="E">E</option>
+            <option value="R">R</option>
+            <option value="S">S</option>
+            <option value="B">B</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "T2", "Combustor Inlet Temp"). Default: TIT.</span>
+          <input type="text" id="f-tit-label" maxlength="31" placeholder="TIT"
+            oninput="setLabel('tit',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Pressure &amp; Flow</div>
+
+    <!-- Oil Pressure -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-oilpress" onchange="setSensorEnabled('oil_press','oilpress',this.checked)">
+        <b>Oil Pressure</b> <span style="font-size:.65rem;color:var(--dim)">(ADC poly-cal)</span>
+      </div>
+      <div class="hw-grid" id="grp-oilpress">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <span class="hw-desc">Must be GPIO 32–39. ADC2 conflicts with Wi-Fi.</span>
+          <select id="f-oilpress-pin" onchange="setSensor('oil_press','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "Lube Pressure", "Bearing Press"). Default: Oil Press.</span>
+          <input type="text" id="f-oilpress-label" maxlength="31" placeholder="Oil Press"
+            oninput="setLabel('oil_press',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Fuel Flow -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-fuelflow" onchange="setSensorEnabled('fuel_flow','fuelflow',this.checked)">
+        <b>Fuel Flow</b> <span style="font-size:.65rem;color:var(--dim)">(ADC linear)</span>
+      </div>
+      <div class="hw-grid" id="grp-fuelflow">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <select id="f-fuelflow-pin" onchange="setSensor('fuel_flow','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard. Default: Fuel Flow.</span>
+          <input type="text" id="f-fuelflow-label" maxlength="31" placeholder="Fuel Flow"
+            oninput="setLabel('fuel_flow',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- P1 -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-p1" onchange="setSensorEnabled('p1','p1',this.checked)">
+        <b>P1 Pressure</b> <span style="font-size:.65rem;color:var(--dim)">(ADC linear)</span>
+      </div>
+      <div class="hw-grid" id="grp-p1">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <select id="f-p1-pin" onchange="setSensor('p1','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "Compressor Inlet", "Intake Press"). Default: P1.</span>
+          <input type="text" id="f-p1-label" maxlength="31" placeholder="P1"
+            oninput="setLabel('p1',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- P2 -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-p2" onchange="setSensorEnabled('p2','p2',this.checked)">
+        <b>P2 Pressure</b> <span style="font-size:.65rem;color:var(--dim)">(ADC linear)</span>
+      </div>
+      <div class="hw-grid" id="grp-p2">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <select id="f-p2-pin" onchange="setSensor('p2','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "Compressor Outlet", "Exhaust Press"). Default: P2.</span>
+          <input type="text" id="f-p2-label" maxlength="31" placeholder="P2"
+            oninput="setLabel('p2',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Oil Temperature -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-oiltemp" onchange="setSensorEnabled('oil_temp','oiltemp',this.checked)">
+        <b>Oil Temperature</b> <span style="font-size:.65rem;color:var(--dim)">(NTC or thermocouple)</span>
+      </div>
+      <div id="grp-oiltemp">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field">
+            <span class="hw-label">Sensor type</span>
+            <span class="hw-desc">NTC = ADC thermistor (wire to ADC1 pin). Others = SPI chips (CLK/CS/MISO required).</span>
+            <select id="f-oiltemp-chip" onchange="setOilTempChip(this.value)">
+              <option value="ntc">NTC Thermistor (ADC)</option>
+              <option value="max6675">MAX6675 (K-type TC)</option>
+              <option value="max31855">MAX31855 (K-type TC + fault)</option>
+              <option value="max31856">MAX31856 (any TC type)</option>
+            </select>
+          </div>
+        </div>
+        <!-- NTC: ADC pin only -->
+        <div id="grp-oiltemp-ntc" class="hw-grid">
+          <div class="hw-field">
+            <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+            <span class="hw-desc">GPIO 32–39. Wire NTC + fixed resistor voltage divider to this pin.</span>
+            <select id="f-oiltemp-pin" onchange="setSensor('oil_temp','pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">B coefficient (Beta)</span>
+            <span class="hw-desc">Thermistor B constant. Usually printed on the datasheet. Typical 10 kΩ NTC: 3950.</span>
+            <input type="number" id="f-ntc-beta" min="1000" max="10000" step="10"
+              oninput="setSensor('oil_temp','ntc_beta',+this.value)">
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">NTC resistance at 25 °C (Ω)</span>
+            <span class="hw-desc">Thermistor resistance at 25 °C. Typical hobby NTC: 10000 Ω (10 kΩ).</span>
+            <input type="number" id="f-ntc-r0" min="100" max="1000000" step="100"
+              oninput="setSensor('oil_temp','ntc_r0',+this.value)">
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Pull-up resistor (Ω)</span>
+            <span class="hw-desc">Fixed resistor in the voltage divider between 3.3 V and the NTC. Match the resistor you wired in. Typical: 10000 Ω (10 kΩ).</span>
+            <input type="number" id="f-ntc-rfixed" min="100" max="1000000" step="100"
+              oninput="setSensor('oil_temp','ntc_r_fixed',+this.value)">
+          </div>
+        </div>
+        <!-- SPI: CLK/CS/MISO(/MOSI) -->
+        <div id="grp-oiltemp-spi" class="hw-grid" style="display:none">
+          <div class="hw-field"><span class="hw-label">CLK pin</span>
+            <select id="f-oiltemp-clk" onchange="setSensor('oil_temp','clk',+this.value)"></select></div>
+          <div class="hw-field"><span class="hw-label">CS pin</span>
+            <select id="f-oiltemp-cs" onchange="setSensor('oil_temp','cs',+this.value)"></select></div>
+          <div class="hw-field"><span class="hw-label">MISO pin</span>
+            <select id="f-oiltemp-miso" onchange="setSensor('oil_temp','miso',+this.value)"></select></div>
+          <div class="hw-field" id="grp-oiltemp-mosi" style="display:none">
+            <span class="hw-label">MOSI pin</span>
+            <span class="hw-desc">Required for MAX31855 / MAX31856.</span>
+            <select id="f-oiltemp-mosi" onchange="setSensor('oil_temp','mosi',+this.value)"></select>
+          </div>
+          <div class="hw-field" id="grp-oiltemp-tctype" style="display:none">
+            <span class="hw-label">TC Type (MAX31856)</span>
+            <select id="f-oiltemp-tctype" onchange="setSensor('oil_temp','tc_type',this.value)">
+              <option value="K">K (most common)</option>
+              <option value="J">J</option>
+              <option value="N">N</option>
+              <option value="T">T</option>
+              <option value="E">E</option>
+              <option value="R">R</option>
+              <option value="S">S</option>
+              <option value="B">B</option>
+            </select>
+          </div>
+        </div>
+        <div class="hw-grid" style="margin-top:.4rem">
+          <div class="hw-field">
+            <span class="hw-label">Display label</span>
+            <span class="hw-desc">Name shown in dashboard (e.g. "Gearbox Temp", "Bearing Temp"). Default: Oil Temp.</span>
+            <input type="text" id="f-oiltemp-label" maxlength="31" placeholder="Oil Temp"
+              oninput="setLabel('oil_temp',this.value)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fuel Pressure -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-fuelpress" onchange="setSensorEnabled('fuel_press','fuelpress',this.checked)">
+        <b>Fuel Pressure</b> <span style="font-size:.65rem;color:var(--dim)">(ADC linear, calibrated in Calibration page)</span>
+      </div>
+      <div class="hw-grid" id="grp-fuelpress">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <span class="hw-desc">Must be GPIO 32–39. Calibrate in Calibration → Fuel Pressure.</span>
+          <select id="f-fuelpress-pin" onchange="setSensor('fuel_press','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard. Default: Fuel Press.</span>
+          <input type="text" id="f-fuelpress-label" maxlength="31" placeholder="Fuel Press"
+            oninput="setLabel('fuel_press',this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Battery / Bus Voltage -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-battvolt" onchange="setSensorEnabled('batt_voltage','battvolt',this.checked)">
+        <b>Battery / Bus Voltage</b> <span style="font-size:.65rem;color:var(--dim)">(ADC + resistor divider)</span>
+      </div>
+      <div class="hw-grid" id="grp-battvolt">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <span class="hw-desc">GPIO 32–39. Wire battery through a voltage divider to keep below 3.3 V.</span>
+          <select id="f-battvolt-pin" onchange="setSensor('batt_voltage','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Divider ratio</span>
+          <span class="hw-desc">Vbatt / Vpin ratio. Example: 10 kΩ + 47 kΩ gives ratio = 5.7. Calculate: (R1 + R2) / R2.</span>
+          <input type="number" id="f-battvolt-div" min="1" max="20" step="0.1"
+            oninput="setSensor('batt_voltage','divider',+this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Torque Sensor -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-torque" onchange="setSensorEnabled('torque','torque',this.checked)">
+        <b>Torque Sensor</b> <span style="font-size:.65rem;color:var(--dim)">(ADC, 0–3.3 V output)</span>
+      </div>
+      <div class="hw-grid" id="grp-torque">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <span class="hw-desc">GPIO 32–39. Most torque sensors output 0.5–4.5 V; use a divider to fit 3.3 V.</span>
+          <select id="f-torque-pin" onchange="setSensor('torque','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Scale (Nm / V)</span>
+          <span class="hw-desc">Sensor sensitivity in Nm per volt. Check datasheet. Example: 50 Nm/V.</span>
+          <input type="number" id="f-torque-scale" min="0" step="0.1"
+            oninput="setSensor('torque','scale',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Zero offset (Nm)</span>
+          <span class="hw-desc">Output at 0 V input (usually 0). Adjust if sensor has a non-zero offset voltage.</span>
+          <input type="number" id="f-torque-offset" step="0.1"
+            oninput="setSensor('torque','offset',+this.value)">
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Input Channels</div>
+
+    <!-- Flame Detector -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-flame" onchange="setSensorEnabled('flame','flame',this.checked)">
+        <b>Flame Detector</b> <span style="font-size:.65rem;color:var(--dim)">(ADC threshold)</span>
+      </div>
+      <div class="hw-grid" id="grp-flame">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <span class="hw-desc">Must be GPIO 32–39.</span>
+          <select id="f-flame-pin" onchange="setSensor('flame','pin',+this.value)"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Throttle Input -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-thinput" onchange="setSensorEnabled('throttle_input','thinput',this.checked)">
+        <b>Throttle Input</b> <span style="font-size:.65rem;color:var(--dim)">(pot or RC servo)</span>
+      </div>
+      <div class="hw-grid" id="grp-thinput">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <select id="f-thinput-pin" onchange="setSensor('throttle_input','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">RC PWM mode</span>
+          <span class="hw-desc">Enable if wired to RC servo signal (1000–2000 µs).</span>
+          <div class="hw-toggle" style="margin-top:.25rem">
+            <input type="checkbox" id="f-thinput-rcpwm" onchange="setSensor('throttle_input','rc_pwm',this.checked)">
+            <span>RC PWM input</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Idle Input -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-idiinput" onchange="setSensorEnabled('idle_input','idiinput',this.checked)">
+        <b>Idle Input</b> <span style="font-size:.65rem;color:var(--dim)">(pot or RC servo)</span>
+      </div>
+      <div style="font-size:.63rem;color:var(--dim);margin-bottom:.45rem;line-height:1.4">
+        Optional. If not enabled, the <em>FuelPumpIdle</em> sequence block uses a fixed percentage — set Min% and Max% to the same value for a precise hardcoded idle without a physical channel.
+      </div>
+      <div class="hw-grid" id="grp-idiinput">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <select id="f-idiinput-pin" onchange="setSensor('idle_input','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">RC PWM mode</span>
+          <div class="hw-toggle" style="margin-top:.25rem">
+            <input type="checkbox" id="f-idiinput-rcpwm" onchange="setSensor('idle_input','rc_pwm',this.checked)">
+            <span>RC PWM input</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="hw-sub">Current Sensing</div>
+    <div style="font-size:.63rem;color:var(--dim);margin-bottom:.55rem;line-height:1.4">
+      Wire an ACS712/ACS758 (or similar Hall-effect sensor) in series with the output. These output ~1.65 V at 0 A and shift by their rated mV/A sensitivity. Use ADC1 pins only (GPIO 32–39).
+    </div>
+
+    <!-- Glow plug current sensor -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-glowcurrent" onchange="setGlowCurrentEnabled(this.checked)">
+        <b>Glow Plug Current Sensor</b>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.45rem">
+        When fitted, the <em>GlowPreheat</em> sequencer block can wait until the plug is actually hot (current drops as resistance rises) instead of relying on a fixed timer.
+      </span>
+      <div class="hw-grid" id="grp-glowcurrent">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <select id="f-glowcur-pin" onchange="setSensor('glow_current','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Sensitivity (mV/A)</span>
+          <span class="hw-desc">ACS712-5A = 185, ACS712-20A = 100, ACS712-30A = 66.</span>
+          <input type="number" id="f-glowcur-mva" min="10" max="500" step="1" oninput="setSensor('glow_current','mv_per_a',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Zero voltage (V)</span>
+          <span class="hw-desc">Output voltage at 0 A. Typically VCC/2 = 1.65 V.</span>
+          <input type="number" id="f-glowcur-zerov" min="0" max="3.3" step="0.01" oninput="setSensor('glow_current','zero_v',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Ready threshold (A)</span>
+          <span class="hw-desc">Plug is considered hot when current drops below this. Typical 3–5 A depending on plug type.</span>
+          <input type="number" id="f-glowcur-ready" min="0.1" max="20" step="0.1" oninput="setSensor('glow_current','ready_amps',+this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Igniter current sensor -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-igncurrent" onchange="setIgniterCurrentEnabled(this.checked)">
+        <b>Igniter / Coil Current Sensor</b>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.45rem">
+        When fitted and igniter mode is set to <em>Car Coil</em>: dwell is controlled by current saturation instead of a fixed timer. Also enables over-current fault detection. <strong style="color:var(--yellow)">Required</strong> for Car Coil mode.
+      </span>
+      <div class="hw-grid" id="grp-igncurrent">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <select id="f-igncur-pin" onchange="setSensor('igniter_current','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Sensitivity (mV/A)</span>
+          <span class="hw-desc">ACS712-20A = 100, ACS712-30A = 66, ACS758-50A = 40.</span>
+          <input type="number" id="f-igncur-mva" min="10" max="500" step="1" oninput="setSensor('igniter_current','mv_per_a',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Zero voltage (V)</span>
+          <span class="hw-desc">Output voltage at 0 A. Typically 1.65 V.</span>
+          <input type="number" id="f-igncur-zerov" min="0" max="3.3" step="0.01" oninput="setSensor('igniter_current','zero_v',+this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Actuators ─────────────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Actuators</div>
+
+    <div class="hw-sub">Throttle</div>
+
+    <!-- Throttle ESC -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-throttle" onchange="setActEnabled('throttle','throttle',this.checked)">
+        <b>Throttle Motor / ESC</b>
+      </div>
+      <div id="grp-throttle">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field">
+            <span class="hw-label">GPIO pin</span>
+            <select id="f-thr-pin" onchange="setAct('throttle','pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">ESC type</span>
+            <select id="f-thr-type" onchange="setThrType(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
+              <option value="1">Motor PWM</option>
+              <option value="2">On / Off (relay / MOSFET)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-thr-servo">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <span class="hw-desc">Typically 1000 µs = idle/stop.</span>
+              <input type="number" id="f-thr-min" min="500" max="2500" oninput="setAct('throttle','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <span class="hw-desc">Typically 2000 µs = full throttle.</span>
+              <input type="number" id="f-thr-max" min="500" max="2500" oninput="setAct('throttle','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-thr-ledc" style="display:none">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">PWM frequency (Hz)</span>
+              <input type="number" id="f-thr-lfreq" min="100" max="80000" oninput="setAct('throttle','ledc_freq',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-thr-lbits" min="8" max="14" oninput="setAct('throttle','ledc_bits',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Invert signal</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-thr-inv" onchange="setAct('throttle','inverted',this.checked)">
+                <span>Inverted</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-thr-onoff" style="display:none">
+          <span>ON/OFF RELAY / MOSFET</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-thr-acth" onchange="setAct('throttle','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Starting</div>
+
+    <!-- Starter ESC -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-starter" onchange="setActEnabled('starter','starter',this.checked)">
+        <b>Starter Motor / ESC</b>
+      </div>
+      <div id="grp-starter">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field">
+            <span class="hw-label">GPIO pin</span>
+            <select id="f-str-pin" onchange="setAct('starter','pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">ESC type</span>
+            <select id="f-str-type" onchange="setStrType(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
+              <option value="1">Motor PWM</option>
+              <option value="2">On / Off (relay / MOSFET)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-str-servo">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <span class="hw-desc">Arming/idle (usually 1000 µs).</span>
+              <input type="number" id="f-str-min" min="500" max="2500" oninput="setAct('starter','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <span class="hw-desc">Full speed (usually 1500–2000 µs).</span>
+              <input type="number" id="f-str-max" min="500" max="2500" oninput="setAct('starter','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-str-ledc" style="display:none">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-str-lfreq" min="100" max="80000" oninput="setAct('starter','ledc_freq',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-str-lbits" min="8" max="14" oninput="setAct('starter','ledc_bits',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Invert signal</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-str-inv" onchange="setAct('starter','inverted',this.checked)">
+                <span>Inverted</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-str-onoff" style="display:none">
+          <span>ON/OFF RELAY / MOSFET</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-str-acth" onchange="setAct('starter','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-str-assist">
+          <span>STARTER ASSIST</span>
+          <div class="hw-field" style="margin-top:.35rem">
+            <span class="hw-desc">Allow starter to briefly re-engage at low idle RPM. Only useful for servo/PWM starters (not relay). Configure speed and exit RPM in Config.</span>
+            <div class="hw-toggle" style="margin-top:.25rem">
+              <input type="checkbox" id="f-str-assist" onchange="setAct('starter','assist_enabled',this.checked)">
+              <span>Enable starter assist</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Starter Enable Relay -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-starteren" onchange="setActEnabled('starter_en','starteren',this.checked)">
+        <b>Starter Enable Relay</b> <span style="font-size:.65rem;color:var(--dim)">(switches main power to starter)</span>
+      </div>
+      <div class="hw-grid" id="grp-starteren">
+        <div class="hw-field"><span class="hw-label">GPIO pin</span>
+          <select id="f-sen-pin" onchange="setAct('starter_en','pin',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">Active polarity</span>
+          <div class="hw-toggle" style="margin-top:.25rem">
+            <input type="checkbox" id="f-sen-acth" onchange="setAct('starter_en','active_h',this.checked)">
+            <span>Active HIGH</span>
+          </div>
+        </div>
+        <div class="hw-field"><span class="hw-label">Enable delay (ms)</span>
+          <span class="hw-desc">Wait after relay closes before starter may spin. Default: 1000 ms.</span>
+          <input type="number" id="f-sen-delay" min="0" max="5000" step="100" oninput="setAct('starter_en','delay_ms',+this.value)">
+        </div>
+      </div>
+    </div>
+
+    <!-- Airstarter Solenoid -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-airstarter" onchange="setActEnabled('airstarter_sol','airstarter',this.checked)">
+        <b>Airstarter Solenoid</b> <span style="font-size:.65rem;color:var(--dim)">(pneumatic air starter valve)</span>
+      </div>
+      <div class="hw-grid" id="grp-airstarter">
+        <div class="hw-field"><span class="hw-label">GPIO pin</span>
+          <select id="f-airs-pin" onchange="setAct('airstarter_sol','pin',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">Active polarity</span>
+          <div class="hw-toggle" style="margin-top:.25rem">
+            <input type="checkbox" id="f-airs-acth" onchange="setAct('airstarter_sol','active_h',this.checked)">
+            <span>Active HIGH</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Fuel</div>
+
+    <!-- Fuel Solenoid -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-fuelsol" onchange="setActEnabled('fuel_sol','fuelsol',this.checked)">
+        <b>Fuel Solenoid</b>
+      </div>
+      <div class="hw-grid" id="grp-fuelsol">
+        <div class="hw-field"><span class="hw-label">GPIO pin</span>
+          <select id="f-fsol-pin" onchange="setAct('fuel_sol','pin',+this.value)"></select></div>
+        <div class="hw-field"><span class="hw-label">Active polarity</span>
+          <span class="hw-desc">GPIO level that opens the solenoid.</span>
+          <div class="hw-toggle" style="margin-top:.25rem">
+            <input type="checkbox" id="f-fsol-acth" onchange="setAct('fuel_sol','active_h',this.checked)">
+            <span>Active HIGH</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Oil</div>
+
+    <!-- Oil Pump -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-oilpump" onchange="setActEnabled('oil_pump','oilpump',this.checked)">
+        <b>Oil Pump Motor / ESC</b>
+      </div>
+      <div id="grp-oilpump">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-op-pin" onchange="setAct('oil_pump','pin',+this.value)"></select></div>
+          <div class="hw-field">
+            <span class="hw-label">Drive type</span>
+            <select id="f-op-type" onchange="setOpType(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
+              <option value="1">Motor PWM</option>
+              <option value="2">On / Off (relay / MOSFET)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-op-servo" style="display:none">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <input type="number" id="f-op-min" min="500" max="2500" oninput="setAct('oil_pump','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <input type="number" id="f-op-max" min="500" max="2500" oninput="setAct('oil_pump','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-op-pwm">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-op-freq" min="100" max="40000" oninput="setAct('oil_pump','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-op-bits" min="8" max="14" oninput="setAct('oil_pump','res_bits',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-op-onoff" style="display:none">
+          <span>ON/OFF POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-op-acth" onchange="setAct('oil_pump','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Oil Scavenge Pump -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-oilscav" onchange="setActEnabled('oil_scavenge_pump','oilscav',this.checked)">
+        <b>Oil Scavenge Pump</b> <span style="font-size:.65rem;color:var(--dim)">(return pump)</span>
+      </div>
+      <div id="grp-oilscav">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-oscav-pin" onchange="setAct('oil_scavenge_pump','pin',+this.value)"></select></div>
+          <div class="hw-field">
+            <span class="hw-label">Drive type</span>
+            <select id="f-oscav-type" onchange="setOscavType(+this.value)">
+              <option value="1">Motor PWM</option>
+              <option value="2">On / Off (relay / MOSFET)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-oscav-pwm">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-oscav-freq" min="100" max="40000" oninput="setAct('oil_scavenge_pump','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-oscav-bits" min="8" max="14" oninput="setAct('oil_scavenge_pump','res_bits',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-oscav-onoff" style="display:none">
+          <span>ON/OFF POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-oscav-acth" onchange="setAct('oil_scavenge_pump','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Ignition</div>
+
+    <!-- Igniter -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-igniter" onchange="setActEnabled('igniter','igniter',this.checked)">
+        <b>Igniter</b>
+      </div>
+      <div id="grp-igniter">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-ign-pin" onchange="setAct('igniter','pin',+this.value)"></select></div>
+          <div class="hw-field">
+            <span class="hw-label">Mode</span>
+            <select id="f-ign-mode" onchange="setIgniterMode(this.value)">
+              <option value="relay">Relay / MOSFET (simple on/off)</option>
+              <option value="pwm">Coil PWM (fixed duty cycle)</option>
+              <option value="coil">Car Coil (active dwell switching — requires current sensor)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-ign-relay">
+          <span>RELAY POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-ign-acth" onchange="setAct('igniter','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-ign-pwm" style="display:none">
+          <span>COIL PWM TIMING</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Dwell (ms)</span>
+              <span class="hw-desc">Coil ON time per cycle — fixed duty fraction.</span>
+              <input type="number" id="f-ign-dwell" min="1" max="100" oninput="setAct('igniter','dwell_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Rest (ms)</span>
+              <span class="hw-desc">Coil OFF time per cycle.</span>
+              <input type="number" id="f-ign-rest" min="1" max="100" oninput="setAct('igniter','rest_ms',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-ign-coil" style="display:none">
+          <span>CAR COIL TIMING</span>
+          <div style="font-size:.62rem;color:var(--dim);margin:.25rem 0 .4rem;line-height:1.4">
+            Charges coil for dwell_ms (or until current saturates if a current sensor is wired), then fires the spark and stays off for spark_ms before recharging. Fires continuously while igniterOn is set.
+          </div>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Dwell (ms)</span>
+              <span class="hw-desc">Max charge time. Replaced by current threshold if igniter current sensor is fitted.</span>
+              <input type="number" id="f-ign-coil-dwell" min="1" max="200" oninput="setAct('igniter','dwell_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Spark off (ms)</span>
+              <span class="hw-desc">Coil off time after firing — spark duration.</span>
+              <input type="number" id="f-ign-coil-rest" min="1" max="200" oninput="setAct('igniter','rest_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Saturation current (A)</span>
+              <span class="hw-desc">When igniter current sensor is fitted: dwell ends when coil current reaches this threshold. Typical car coil: 5–12 A.</span>
+              <input type="number" id="f-ign-coil-sat" min="1" max="50" step="0.5" oninput="setAct('igniter','coil_sat_a',+this.value)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Igniter 2 / AB Igniter -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-igniter2" onchange="setActEnabled('igniter2','igniter2',this.checked)">
+        <b id="lbl-igniter2">Igniter 2</b>
+      </div>
+      <div id="grp-igniter2">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-ign2-pin" onchange="setAct('igniter2','pin',+this.value)"></select></div>
+          <div class="hw-field">
+            <span class="hw-label">Mode</span>
+            <select id="f-ign2-mode" onchange="setIgniter2Mode(this.value)">
+              <option value="relay">Relay (full on/off)</option>
+              <option value="pwm">Coil PWM (dwell/rest cycle)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-ign2-relay">
+          <span>RELAY POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-ign2-acth" onchange="setAct('igniter2','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-ign2-pwm" style="display:none">
+          <span>COIL PWM TIMING</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Dwell (ms)</span>
+              <input type="number" id="f-ign2-dwell" min="1" max="100" oninput="setAct('igniter2','dwell_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Rest (ms)</span>
+              <input type="number" id="f-ign2-rest" min="1" max="100" oninput="setAct('igniter2','rest_ms',+this.value)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Afterburner actuators — shown only when hasAfterburner ── -->
+    <div id="section-ab-actuators" style="display:none">
+      <div class="hw-sub">Afterburner</div>
+
+      <!-- AB Fuel Solenoid -->
+      <div class="hw-item-card" id="section-absol">
+        <div class="hw-toggle" style="margin-bottom:.5rem">
+          <input type="checkbox" id="en-absol" onchange="setActEnabled('ab_sol','absol',this.checked)">
+          <b>AB Fuel Solenoid</b>
+        </div>
+        <div class="hw-grid" id="grp-absol">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-abs-pin" onchange="setAct('ab_sol','pin',+this.value)"></select></div>
+          <div class="hw-field"><span class="hw-label">Active polarity</span>
+            <div class="hw-toggle" style="margin-top:.25rem">
+              <input type="checkbox" id="f-abs-acth" onchange="setAct('ab_sol','active_h',this.checked)">
+              <span>Active HIGH</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AB Fuel Pump -->
+      <div class="hw-item-card">
+        <div class="hw-toggle" style="margin-bottom:.5rem">
+          <input type="checkbox" id="en-abpump" onchange="setActEnabled('ab_pump','abpump',this.checked)">
+          <b id="lbl-abpump">Afterburner Fuel Pump Motor / ESC</b>
+        </div>
+        <div id="grp-abpump">
+          <div class="hw-grid" style="margin-bottom:.4rem">
+            <div class="hw-field"><span class="hw-label">GPIO pin</span>
+              <select id="f-abp-pin" onchange="setAct('ab_pump','pin',+this.value)"></select></div>
+            <div class="hw-field">
+              <span class="hw-label">Drive type</span>
+              <select id="f-abp-type" onchange="setAbpType(+this.value)">
+                <option value="0">Servo PWM (1000–2000 µs)</option>
+                <option value="1">Motor PWM</option>
+                <option value="2">On / Off (relay / MOSFET)</option>
+              </select>
+            </div>
+          </div>
+          <div class="act-subgroup" id="grp-abp-servo" style="display:none">
+            <span>SERVO PULSE RANGE</span>
+            <div class="hw-grid">
+              <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+                <input type="number" id="f-abp-min" min="500" max="2500" oninput="setAct('ab_pump','min_us',+this.value)"></div>
+              <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+                <input type="number" id="f-abp-max" min="500" max="2500" oninput="setAct('ab_pump','max_us',+this.value)"></div>
+            </div>
+          </div>
+          <div class="act-subgroup" id="grp-abp-pwm">
+            <span>MOTOR PWM SETTINGS</span>
+            <div class="hw-grid">
+              <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+                <input type="number" id="f-abp-freq" min="100" max="40000" oninput="setAct('ab_pump','freq_hz',+this.value)"></div>
+              <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+                <input type="number" id="f-abp-bits" min="8" max="14" oninput="setAct('ab_pump','res_bits',+this.value)"></div>
+            </div>
+          </div>
+          <div class="act-subgroup" id="grp-abp-onoff" style="display:none">
+            <span>ON/OFF POLARITY</span>
+            <div class="hw-grid">
+              <div class="hw-field"><span class="hw-label">Active polarity</span>
+                <div class="hw-toggle" style="margin-top:.25rem">
+                  <input type="checkbox" id="f-abp-acth" onchange="setAct('ab_pump','active_h',this.checked)">
+                  <span>Active HIGH</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AB Trigger & Arming -->
+      <div class="hw-item-card" id="grp-ab-trigger">
+        <div style="font-size:.8rem;font-weight:700;margin-bottom:.6rem">AB Trigger &amp; Arming</div>
+
+        <div class="hw-field" style="margin-bottom:.6rem">
+          <span class="hw-label">Trigger Source</span>
+          <select id="f-ab-trig-src" onchange="setAbTrigSrc(+this.value)">
+            <option value="0">Manual (web UI / AB_FIRE command only)</option>
+            <option value="1">Throttle position threshold</option>
+            <option value="2">Dedicated toggle switch</option>
+            <option value="3">Analog / RC input</option>
+          </select>
+        </div>
+
+        <!-- Switch pin (source=2) -->
+        <div id="grp-ab-sw" class="hw-grid" style="margin-bottom:.5rem;display:none">
+          <div class="hw-field">
+            <span class="hw-label">Switch GPIO pin</span>
+            <select id="f-ab-sw-pin" onchange="setAbTrig('switch_pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Active polarity</span>
+            <div class="hw-toggle" style="margin-top:.25rem">
+              <input type="checkbox" id="f-ab-sw-acth" onchange="setAbTrigBool('switch_active_h',this.checked)">
+              <span>Active HIGH</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Analog / RC input (source=3) -->
+        <div id="grp-ab-inp" class="hw-grid" style="margin-bottom:.5rem;display:none">
+          <div class="hw-field">
+            <span class="hw-label">Input GPIO pin</span>
+            <select id="f-ab-inp-pin" onchange="setAbTrig('input_pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Trigger threshold (raw ADC)</span>
+            <span class="hw-desc">AB fires when ADC reading exceeds this value. 0–4095.</span>
+            <input type="number" id="f-ab-inp-thr" min="0" max="4095" oninput="setAbTrig('input_threshold',+this.value)">
+          </div>
+        </div>
+
+        <!-- Arm switch (non-manual sources) -->
+        <div id="grp-ab-arm" style="display:none">
+          <div class="hw-toggle" style="margin-bottom:.4rem">
+            <input type="checkbox" id="f-ab-req-arm" onchange="setAbTrigBool('requires_arm',this.checked);updateAbArmUI(this.checked)">
+            <span><b>Require arm switch</b> — both trigger AND arm must be active to fire</span>
+          </div>
+          <div id="grp-ab-arm-pins" class="hw-grid" style="display:none">
+            <div class="hw-field">
+              <span class="hw-label">Arm switch GPIO pin</span>
+              <select id="f-ab-arm-pin" onchange="setAbTrig('arm_pin',+this.value)"></select>
+            </div>
+            <div class="hw-field">
+              <span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-ab-arm-acth" onchange="setAbTrigBool('arm_active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AB Flame Sensor -->
+      <div class="hw-item-card">
+        <div class="hw-toggle" style="margin-bottom:.5rem">
+          <input type="checkbox" id="en-ab-flame" onchange="setAbFlameBool('enabled',this.checked);updateAbFlameUI(this.checked)">
+          <b>Dedicated AB Flame Sensor</b>
+        </div>
+        <span class="hw-desc" style="display:block;margin-bottom:.5rem">
+          Optional. When disabled, AB flame confirmation uses TOT rise or timed assumption (set in Config → Afterburner).
+        </span>
+        <div id="grp-ab-flame" class="hw-grid" style="display:none">
+          <div class="hw-field">
+            <span class="hw-label">Sensor GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+            <select id="f-ab-fl-pin" onchange="setAbFlame('pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Detection threshold (raw ADC)</span>
+            <input type="number" id="f-ab-fl-thr" min="0" max="4095" oninput="setAbFlame('threshold',+this.value)">
+          </div>
+        </div>
+      </div>
+    </div><!-- end section-ab-actuators -->
+
+    <div class="hw-sub">Cooling</div>
+
+    <!-- Cooling Fan -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-coolfan" onchange="setActEnabled('cool_fan','coolfan',this.checked)">
+        <b>Cooling Fan Motor / ESC</b>
+      </div>
+      <div id="grp-coolfan">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-fan-pin" onchange="setAct('cool_fan','pin',+this.value)"></select></div>
+          <div class="hw-field">
+            <span class="hw-label">Drive type</span>
+            <select id="f-fan-type" onchange="setFanType(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
+              <option value="1">Motor PWM</option>
+              <option value="2">On / Off (relay / MOSFET)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-fan-servo" style="display:none">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <input type="number" id="f-fan-min" min="500" max="2500" oninput="setAct('cool_fan','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <input type="number" id="f-fan-max" min="500" max="2500" oninput="setAct('cool_fan','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-fan-pwm" style="display:none">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-fan-freq" min="100" max="40000" oninput="setAct('cool_fan','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-fan-bits" min="8" max="14" oninput="setAct('cool_fan','res_bits',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-fan-onoff">
+          <span>ON/OFF POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-fan-acth" onchange="setAct('cool_fan','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Variable Fuel &amp; Air</div>
+
+    <!-- Fuel Pump 2 (secondary/staged pump, not AB) -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-fuelpump2" onchange="setActEnabled('fuel_pump2','fuelpump2',this.checked)">
+        <b>Fuel Pump 2</b> <span style="font-size:.65rem;color:var(--dim)">(staged / variable feed pump)</span>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.5rem">
+        Secondary variable-speed fuel pump for staged combustion, dual-fuel, or high-flow modes. Controlled via the <code>FuelPumpRamp</code> / <code>FuelPump2Set</code> sequencer blocks. Demand is also available from the dashboard.
+      </span>
+      <div id="grp-fuelpump2">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-fp2-pin" onchange="setAct('fuel_pump2','pin',+this.value)"></select></div>
+          <div class="hw-field">
+            <span class="hw-label">Drive type</span>
+            <select id="f-fp2-type" onchange="setFp2Type(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
+              <option value="1">Motor PWM</option>
+              <option value="2">On / Off (relay / MOSFET)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-fp2-servo">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <span class="hw-desc">0% demand / idle/stop position. Typically 1000 µs.</span>
+              <input type="number" id="f-fp2-min" min="500" max="2500" oninput="setAct('fuel_pump2','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <span class="hw-desc">100% demand / full flow. Typically 2000 µs.</span>
+              <input type="number" id="f-fp2-max" min="500" max="2500" oninput="setAct('fuel_pump2','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-fp2-pwm" style="display:none">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-fp2-freq" min="100" max="40000" oninput="setAct('fuel_pump2','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-fp2-bits" min="8" max="14" oninput="setAct('fuel_pump2','res_bits',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-fp2-onoff" style="display:none">
+          <span>ON/OFF POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-fp2-acth" onchange="setAct('fuel_pump2','active_h',this.checked)">
+                <span>Active HIGH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compressor Bleed Valve -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-bleedvalve" onchange="setActEnabled('bleed_valve','bleedvalve',this.checked)">
+        <b>Compressor Bleed Valve</b> <span style="font-size:.65rem;color:var(--dim)">(relay / solenoid / servo)</span>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.5rem">
+        Opens to dump compressor air at low-power settings (anti-surge, starting assist). Controlled via <code>BleedOpen</code> / <code>BleedClose</code> sequencer blocks.
+      </span>
+      <div id="grp-bleedvalve">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-bleed-pin" onchange="setAct('bleed_valve','pin',+this.value)"></select></div>
+          <div class="hw-field"><span class="hw-label">Output type</span>
+            <select id="f-bleed-type" onchange="setBleedType(+this.value)">
+              <option value="0">On / Off (relay / solenoid)</option>
+              <option value="1">Servo PWM (1000–2000 µs)</option>
+              <option value="2">Motor PWM (LEDC)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-bleed-onoff">
+          <span>ON/OFF POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <span class="hw-desc">HIGH = GPIO high opens the valve (energises solenoid).</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-bleed-acth" onchange="setAct('bleed_valve','active_h',this.checked)">
+                <span>Active HIGH (open)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-bleed-servo" style="display:none">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Closed pulse (µs)</span>
+              <span class="hw-desc">Valve fully closed. Typically 1000 µs.</span>
+              <input type="number" id="f-bleed-min" min="500" max="2500" oninput="setAct('bleed_valve','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Open pulse (µs)</span>
+              <span class="hw-desc">Valve fully open. Typically 2000 µs.</span>
+              <input type="number" id="f-bleed-max" min="500" max="2500" oninput="setAct('bleed_valve','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-bleed-pwm" style="display:none">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-bleed-freq" min="100" max="40000" oninput="setAct('bleed_valve','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-bleed-bits" min="8" max="14" oninput="setAct('bleed_valve','res_bits',+this.value)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Propeller Pitch Actuator -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-proppitch" onchange="setActEnabled('prop_pitch','proppitch',this.checked)">
+        <b>Propeller Pitch Actuator</b> <span style="font-size:.65rem;color:var(--dim)">(turboprop only)</span>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.5rem">
+        Variable-pitch prop actuator for turboprop governor mode. Also enable <b>Power Turbine Governor</b> in Controllers. Demand is set by the governor; can also be set manually by sequencer blocks.
+      </span>
+      <div id="grp-proppitch">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <select id="f-pp-pin" onchange="setAct('prop_pitch','pin',+this.value)"></select></div>
+          <div class="hw-field"><span class="hw-label">Output type</span>
+            <select id="f-pp-type" onchange="setPropPitchType(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
+              <option value="1">Motor PWM (LEDC)</option>
+              <option value="2">On / Off (solenoid / relay)</option>
+            </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-pp-servo">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <span class="hw-desc">Fine pitch / minimum blade angle. Typically 1000 µs.</span>
+              <input type="number" id="f-pp-min" min="500" max="2500" oninput="setAct('prop_pitch','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <span class="hw-desc">Coarse pitch / maximum blade angle. Typically 2000 µs.</span>
+              <input type="number" id="f-pp-max" min="500" max="2500" oninput="setAct('prop_pitch','max_us',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-pp-pwm" style="display:none">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <input type="number" id="f-pp-freq" min="100" max="40000" oninput="setAct('prop_pitch','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <input type="number" id="f-pp-bits" min="8" max="14" oninput="setAct('prop_pitch','res_bits',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-pp-onoff" style="display:none">
+          <span>ON/OFF POLARITY</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Active polarity</span>
+              <div class="hw-toggle" style="margin-top:.25rem">
+                <input type="checkbox" id="f-pp-acth" onchange="setAct('prop_pitch','active_h',this.checked)">
+                <span>Active HIGH (coarse pitch)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Glow Plug -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-glowplug" onchange="setActEnabled('glow_plug','glowplug',this.checked)">
+        <b>Glow Plug</b> <span style="font-size:.65rem;color:var(--dim)">(PWM via MOSFET / relay)</span>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.5rem">
+        Resistive glow element driven at variable duty cycle by the <code>GlowPreheat</code> sequencer block. Preheat/hold profile configured in Config → Glow Plug Preheat.
+      </span>
+      <div id="grp-glowplug">
+        <div class="hw-grid" style="margin-bottom:.4rem">
+          <div class="hw-field"><span class="hw-label">GPIO pin</span>
+            <span class="hw-desc">Drive a logic-level MOSFET gate from this pin. Do not connect directly to glow plug.</span>
+            <select id="f-glow-pin" onchange="setAct('glow_plug','pin',+this.value)"></select></div>
+        </div>
+        <div class="act-subgroup">
+          <span>MOTOR PWM SETTINGS</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
+              <span class="hw-desc">20–100 Hz is typical for resistive elements. 50 Hz default.</span>
+              <input type="number" id="f-glow-freq" min="10" max="5000" oninput="setAct('glow_plug','freq_hz',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
+              <span class="hw-desc">PWM duty resolution. 10 bits (1024 steps) is fine for glow plugs. Higher bits limit maximum frequency.</span>
+              <input type="number" id="f-glow-bits" min="8" max="14" oninput="setAct('glow_plug','res_bits',+this.value)"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hw-sub">Status</div>
+
+    <!-- Status LED -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-statusled" onchange="setActEnabled('status_led','statusled',this.checked)">
+        <b>Status LED</b>
+      </div>
+      <div class="hw-grid" id="grp-statusled">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <span class="hw-desc">GPIO 2 is the onboard LED on most ESP32 dev boards — use that if no external LED is fitted.</span>
+          <select id="f-led-pin" onchange="setAct('status_led','pin',+this.value)"></select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Controllers ───────────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Controllers</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.6rem">
+      <div class="hw-item-card">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-ctrl-oil" onchange="setNested('controllers','oil_loop',this.checked)">
+          <b>Oil Pressure Loop</b>
+        </div>
+        <span class="hw-desc" style="margin-top:.3rem">P-controller keeps oil pressure at the configured target bar.</span>
+      </div>
+      <div class="hw-item-card">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-ctrl-slew" onchange="setNested('controllers','throttle_slew',this.checked)">
+          <b>Throttle Slew Limiter</b>
+        </div>
+        <span class="hw-desc" style="margin-top:.3rem">Rate-limits throttle changes; doubles as overspeed/overtemp protection.</span>
+      </div>
+      <div class="hw-item-card">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-ctrl-idle" onchange="setNested('controllers','dynamic_idle',this.checked)">
+          <b>Dynamic Idle</b>
+        </div>
+        <span class="hw-desc" style="margin-top:.3rem">Maintains a target idle RPM automatically.</span>
+      </div>
+      <div class="hw-item-card">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-ctrl-gov" onchange="setNested('controllers','governor',this.checked)">
+          <b>Power Turbine Governor</b>
+        </div>
+        <span class="hw-desc" style="margin-top:.3rem">P-controller holds N2 (power turbine) at a target RPM by adjusting throttle or prop pitch. Requires N2 RPM sensor. Tune target RPM and gains in Config → Power Turbine Governor.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Cluster Serial ─────────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Cluster / Instrument Serial</div>
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-cluster" onchange="setNested('cluster_serial','enabled',this.checked);updateGroupEnabled('grp-cluster',this.checked)">
+        <b>Cluster Serial Output</b>
+      </div>
+      <div class="hw-grid" id="grp-cluster">
+        <div class="hw-field">
+          <span class="hw-label">TX pin (GPIO)</span>
+          <select id="f-cl-tx" onchange="setNested('cluster_serial','tx_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Baud rate</span>
+          <select id="f-cl-baud" onchange="setNested('cluster_serial','baud',+this.value)">
+            <option value="9600">9600</option>
+            <option value="19200">19200</option>
+            <option value="38400">38400</option>
+            <option value="57600">57600</option>
+            <option value="115200">115200</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Interval (ms)</span>
+          <span class="hw-desc">How often to push status to cluster display.</span>
+          <input type="number" id="f-cl-interval" min="10" max="5000" oninput="setNested('cluster_serial','interval_ms',+this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MAVLink Output ───────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">MAVLink Telemetry Output</div>
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-mavlink" onchange="setNested('mavlink','enabled',this.checked);updateGroupEnabled('grp-mavlink',this.checked)">
+        <b>MAVLink v1 Serial Output</b>
+      </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.5rem">
+        Streams engine data as MAVLink HEARTBEAT + NAMED_VALUE_FLOAT packets. Compatible with Mission Planner, QGroundControl, and similar GCSs. Uses UART2 (TX only). Does not interfere with the cluster serial port.
+      </span>
+      <div class="hw-grid" id="grp-mavlink">
+        <div class="hw-field">
+          <span class="hw-label">TX pin (GPIO)</span>
+          <span class="hw-desc">TX output only — no RX needed. Avoid GPIO 1 (UART0 TX).</span>
+          <select id="f-mav-tx" onchange="setNested('mavlink','tx_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Baud rate</span>
+          <select id="f-mav-baud" onchange="setNested('mavlink','baud',+this.value)">
+            <option value="57600">57600</option>
+            <option value="115200">115200</option>
+            <option value="230400">230400</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Interval (ms)</span>
+          <span class="hw-desc">How often to send a telemetry packet. 100–500 ms typical.</span>
+          <input type="number" id="f-mav-interval" min="50" max="5000" step="50"
+            oninput="setNested('mavlink','interval_ms',+this.value)">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Safety Enables ───────────────────────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Safety Interlocks</div>
+    <p style="font-size:.7rem;color:var(--yellow);margin-bottom:.6rem">
+      ⚠ Disabling safety interlocks can cause equipment damage or injury. Only disable for specific test purposes.
+    </p>
+    <div class="safety-grid">
+      <div class="safety-card" id="sc-overspeed">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-overspeed" onchange="setSafety('overspeed',this.checked,'sc-overspeed')">
+          <b>Overspeed</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">N1 exceeds RPM limit → immediate fault shutdown.</span>
+      </div>
+      <div class="safety-card" id="sc-overtemp">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-overtemp" onchange="setSafety('overtemp',this.checked,'sc-overtemp')">
+          <b>Overtemp</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">TOT exceeds temperature limit → fault shutdown.</span>
+      </div>
+      <div class="safety-card" id="sc-lowoil">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-lowoil" onchange="setSafety('low_oil',this.checked,'sc-lowoil')">
+          <b>Low Oil</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Oil pressure below running minimum → fault shutdown.</span>
+      </div>
+      <div class="safety-card" id="sc-oilzero">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-oilzero" onchange="setSafety('oil_zero',this.checked,'sc-oilzero')">
+          <b>Oil Zero</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Oil pressure near zero → catastrophic leak → immediate fault.</span>
+      </div>
+      <div class="safety-card" id="sc-flameout">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-flameout" onchange="setSafety('flameout',this.checked,'sc-flameout')">
+          <b>Flameout</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Flame lost for &gt; flameout delay → fault shutdown. Relight can prevent this.</span>
+      </div>
+      <div class="safety-card" id="sc-lowfuel">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-lowfuel" onchange="setSafety('low_fuel',this.checked,'sc-lowfuel')">
+          <b>Low Fuel</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Fuel flow sensor reads low → fault shutdown. Requires fuel flow sensor.</span>
+      </div>
+      <div class="safety-card" id="sc-hotstart">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-hotstart" onchange="setSafety('hot_start',this.checked,'sc-hotstart')">
+          <b>Hot Start</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">TOT above threshold when START pressed → abort startup. Threshold in Config → Safety Monitor.</span>
+      </div>
+      <div class="safety-card disabled-safety" id="sc-titovertemp">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-titovertemp" onchange="setSafety('tit_overtemp',this.checked,'sc-titovertemp')">
+          <b>TIT Overtemp</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Turbine inlet temperature exceeds limit → fault shutdown. Requires TIT sensor + Config → TIT Limit.</span>
+      </div>
+      <div class="safety-card disabled-safety" id="sc-oiltemphi">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-oiltemphi" onchange="setSafety('oil_temp_high',this.checked,'sc-oiltemphi')">
+          <b>Oil Temp High</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Oil temperature above limit → fault shutdown. Requires oil temp sensor + Config → Oil Temp Limit.</span>
+      </div>
+      <div class="safety-card disabled-safety" id="sc-fuelpresslo">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-fuelpresslo" onchange="setSafety('fuel_press_low',this.checked,'sc-fuelpresslo')">
+          <b>Low Fuel Pressure</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Fuel pressure drops below minimum → fault shutdown. Requires fuel pressure sensor + Config → Fuel Press Min.</span>
+      </div>
+      <div class="safety-card disabled-safety" id="sc-battlo">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-battlo" onchange="setSafety('batt_low',this.checked,'sc-battlo')">
+          <b>Battery Undervoltage</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">Bus voltage below minimum → fault shutdown. Requires battery voltage sensor + Config → Battery Min V.</span>
+      </div>
+      <div class="safety-card disabled-safety" id="sc-surge">
+        <div class="hw-toggle">
+          <input type="checkbox" id="f-saf-surge" onchange="setSafety('surge',this.checked,'sc-surge')">
+          <b>Surge / Instability</b>
+        </div>
+        <span style="font-size:.63rem;color:var(--dim)">N1 RPM variance exceeds threshold → shutdown. Set variance threshold in Config → Surge Detect Variance. 0 = disabled.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── General-Purpose Digital Inputs ──────────────── -->
+  <div class="hw-section">
+    <div class="hw-title">Digital Inputs</div>
+    <p style="font-size:.7rem;color:var(--dim);margin-bottom:.75rem;line-height:1.5">
+      Up to 4 configurable digital input channels. Use for pressure switches, limit switches, safety interlocks,
+      or any switch that should trigger an action. Each channel can be labelled and assigned a role.
+    </p>
+    <div id="di-channels-wrap"></div>
+  </div>
+
+  <!-- ── Engine preset preview modal ─────────────────── -->
+  <div id="preset-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center">
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:1.25rem 1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+      <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin-bottom:.75rem">Engine Preset Preview</div>
+      <div id="preset-modal-body" style="font-size:.82rem;line-height:1.6;color:var(--text-2);margin-bottom:1rem"></div>
+      <div style="display:flex;gap:.6rem;justify-content:flex-end">
+        <button onclick="closePresetModal()" style="font-size:.76rem;padding:.3rem .9rem">Cancel</button>
+        <button id="preset-modal-apply" onclick="applyPresetConfirmed()" class="primary" style="font-size:.76rem;padding:.3rem .9rem">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Pin conflict banner ──────────────────────────── -->
+  <div id="pin-conflict-banner" class="error-banner" style="display:none;margin-top:.75rem"></div>
+
+  <!-- ── Save-recap modal ─────────────────────────────── -->
+  <div class="save-recap-backdrop" id="save-recap-modal" style="display:none" onclick="if(event.target===this)_cancelSaveRecap()">
+    <div class="save-recap-card">
+      <div class="save-recap-header">
+        <span>Review Changes</span>
+        <button onclick="_cancelSaveRecap()" title="Close">✕</button>
+      </div>
+      <div class="save-recap-subtitle" id="save-recap-subtitle"></div>
+      <div class="save-recap-body" id="save-recap-body"></div>
+      <div class="save-recap-footer">
+        <button onclick="_cancelSaveRecap()">Cancel</button>
+        <button class="primary" id="save-recap-confirm-btn" onclick="_doSave()">Save &amp; Reboot</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Save bar ──────────────────────────────────────── -->
+  <div class="save-bar">
+    <button onclick="resetDefaults()" style="background:rgba(255,196,0,0.08);border-color:var(--yellow);color:var(--yellow)">Reset to Defaults</button>
+    <span class="save-msg" id="save-msg">Loading hardware config…</span>
+    <button id="btn-save" onclick="saveHardware()" disabled>Save &amp; Reboot</button>
+  </div>
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  GPIO PIN DATABASE
+// ═══════════════════════════════════════════════════
+const GPIO_DB = {
+   0: {s:1, a2:1, label:'GPIO0'},
+   1: {u:1,       label:'GPIO1 (UART TX)'},
+   2: {s:1, a2:1, label:'GPIO2'},
+   3: {u:1,       label:'GPIO3 (UART RX)'},
+   4: {      a2:1, label:'GPIO4'},
+   5: {s:1,       label:'GPIO5'},
+   6: {r:1,       label:'GPIO6 (SPI Flash)'},
+   7: {r:1,       label:'GPIO7 (SPI Flash)'},
+   8: {r:1,       label:'GPIO8 (SPI Flash)'},
+   9: {r:1,       label:'GPIO9 (SPI Flash)'},
+  10: {r:1,       label:'GPIO10 (SPI Flash)'},
+  11: {r:1,       label:'GPIO11 (SPI Flash)'},
+  12: {s:1, a2:1, label:'GPIO12'},
+  13: {      a2:1, label:'GPIO13'},
+  14: {      a2:1, label:'GPIO14'},
+  15: {s:1, a2:1, label:'GPIO15'},
+  16: {label:'GPIO16'},
+  17: {label:'GPIO17'},
+  18: {label:'GPIO18'},
+  19: {label:'GPIO19'},
+  21: {label:'GPIO21'},
+  22: {label:'GPIO22'},
+  23: {label:'GPIO23'},
+  25: {a2:1, label:'GPIO25'},
+  26: {a2:1, label:'GPIO26'},
+  27: {a2:1, label:'GPIO27'},
+  32: {adc1:1, label:'GPIO32'},
+  33: {adc1:1, label:'GPIO33'},
+  34: {adc1:1, i:1, label:'GPIO34 (input only)'},
+  35: {adc1:1, i:1, label:'GPIO35 (input only)'},
+  36: {adc1:1, i:1, label:'GPIO36 (input only)'},
+  39: {adc1:1, i:1, label:'GPIO39 (input only)'},
+};
+
+function buildPinOptions(currentVal, mode) {
+  const usedPins = collectUsedPins();
+  let html = '<option value="-1">— Not assigned —</option>';
+  const safe = [], strap = [], inOnly = [], uart = [];
+  for (const [gpio, info] of Object.entries(GPIO_DB).sort((a,b) => +a[0] - +b[0])) {
+    const g = +gpio;
+    if (info.r) continue;
+    if (mode === 'adc') { if (!info.adc1) continue; }
+    else if (mode === 'out') { if (info.i) continue; }
+    const used = usedPins.has(g) && g !== currentVal;
+    let suffix = '';
+    if (used) suffix += ' [IN USE]';
+    if (info.s) { strap.push({g, info, cls:'pin-strap', suffix: suffix + ' ⚠ strap'}); continue; }
+    if (info.u) { uart.push({g, info, cls:'pin-uart', suffix: suffix + ' (UART0)'}); continue; }
+    if (info.i) { inOnly.push({g, info, cls:'pin-inonly', suffix: suffix + ' (input only)'}); continue; }
+    safe.push({g, info, cls:'', suffix});
+  }
+  function render(group, label) {
+    if (!group.length) return '';
+    let s = `<optgroup label="${label}">`;
+    for (const {g, info, cls, suffix} of group) {
+      const sel = g === currentVal ? ' selected' : '';
+      s += `<option value="${g}" class="${cls}"${sel}>GPIO${g}${suffix}</option>`;
+    }
+    return s + '</optgroup>';
+  }
+  html += render(safe, 'Available');
+  if (strap.length)  html += render(strap,   'Strapping pins ⚠');
+  if (inOnly.length && mode !== 'out') html += render(inOnly, 'Input-only');
+  if (uart.length)   html += render(uart,    'UART0 (debug serial)');
+  return html;
+}
+
+function collectUsedPins() {
+  const pins = new Set();
+  const add = (v) => { if (v !== undefined && v !== null && v >= 0) pins.add(+v); };
+  const c = cfg.controls || {};
+  add(c.stop_pin); add(c.start_pin);
+  const s = cfg.sensors || {};
+  for (const k of Object.values(s)) { add(k.pin); add(k.clk); add(k.cs); add(k.miso); }
+  const a = cfg.actuators || {};
+  for (const k of Object.values(a)) add(k.pin);
+  const cl = cfg.cluster_serial || {};
+  add(cl.tx_pin);
+  const mv = cfg.mavlink || {};
+  add(mv.tx_pin);
+  // AB trigger / arming / flame pins
+  const abt = cfg.ab_trigger || {};
+  add(abt.switch_pin); add(abt.input_pin); add(abt.arm_pin);
+  const abfl = cfg.ab_flame || {};
+  add(abfl.pin);
+  // New sensors: oil_temp (SPI pins), batt_voltage, torque, fuel_press
+  const ot = s.oil_temp || {};
+  add(ot.pin); add(ot.clk); add(ot.cs); add(ot.miso); add(ot.mosi);
+  add((s.batt_voltage||{}).pin);
+  add((s.torque||{}).pin);
+  add((s.fuel_press||{}).pin);
+  // New actuators
+  add((a.fuel_pump2||{}).pin);
+  add((a.bleed_valve||{}).pin);
+  add((a.prop_pitch||{}).pin);
+  add((a.glow_plug||{}).pin);
+  // General-purpose DI channels
+  (cfg.di_channels || []).forEach(ch => add(ch.pin));
+  return pins;
+}
+
+function refreshPinSel(id, mode, currentVal) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = buildPinOptions(currentVal, mode);
+  el.value = currentVal !== undefined && currentVal !== null ? currentVal : -1;
+}
+
+function refreshAllPins() {
+  const s = cfg.sensors || {};
+  const a = cfg.actuators || {};
+  const c = cfg.controls  || {};
+  const cl = cfg.cluster_serial || {};
+  const abt = cfg.ab_trigger || {};
+  const abfl = cfg.ab_flame || {};
+
+  refreshPinSel('f-stop-pin',       'in',  c.stop_pin);
+  refreshPinSel('f-start-pin',      'in',  c.start_pin);
+  refreshPinSel('f-n1-pin',         'in',  (s.n1_rpm||{}).pin);
+  refreshPinSel('f-n2-pin',         'in',  (s.n2_rpm||{}).pin);
+  refreshPinSel('f-tot-clk',        'out', (s.tot||{}).clk);
+  refreshPinSel('f-tot-cs',         'out', (s.tot||{}).cs);
+  refreshPinSel('f-tot-miso',       'in',  (s.tot||{}).miso);
+  refreshPinSel('f-tot-mosi',       'out', (s.tot||{}).mosi);
+  refreshPinSel('f-tit-clk',        'out', (s.tit||{}).clk);
+  refreshPinSel('f-tit-cs',         'out', (s.tit||{}).cs);
+  refreshPinSel('f-tit-miso',       'in',  (s.tit||{}).miso);
+  refreshPinSel('f-tit-mosi',       'out', (s.tit||{}).mosi);
+  refreshPinSel('f-oilpress-pin',   'adc', (s.oil_press||{}).pin);
+  refreshPinSel('f-flame-pin',      'adc', (s.flame||{}).pin);
+  refreshPinSel('f-thinput-pin',    'in',  (s.throttle_input||{}).pin);
+  refreshPinSel('f-idiinput-pin',   'in',  (s.idle_input||{}).pin);
+  refreshPinSel('f-fuelflow-pin',   'adc', (s.fuel_flow||{}).pin);
+  refreshPinSel('f-p1-pin',         'adc', (s.p1||{}).pin);
+  refreshPinSel('f-p2-pin',         'adc', (s.p2||{}).pin);
+  refreshPinSel('f-thr-pin',        'out', (a.throttle||{}).pin);
+  refreshPinSel('f-str-pin',        'out', (a.starter||{}).pin);
+  refreshPinSel('f-op-pin',         'out', (a.oil_pump||{}).pin);
+  refreshPinSel('f-oscav-pin',      'out', (a.oil_scavenge_pump||{}).pin);
+  refreshPinSel('f-fsol-pin',       'out', (a.fuel_sol||{}).pin);
+  refreshPinSel('f-ign-pin',        'out', (a.igniter||{}).pin);
+  refreshPinSel('f-ign2-pin',       'out', (a.igniter2||{}).pin);
+  refreshPinSel('f-sen-pin',        'out', (a.starter_en||{}).pin);
+  refreshPinSel('f-abs-pin',        'out', (a.ab_sol||{}).pin);
+  refreshPinSel('f-abp-pin',        'out', (a.ab_pump||{}).pin);
+  refreshPinSel('f-airs-pin',       'out', (a.airstarter_sol||{}).pin);
+  refreshPinSel('f-fan-pin',        'out', (a.cool_fan||{}).pin);
+  refreshPinSel('f-led-pin',        'out', (a.status_led||{}).pin);
+  refreshPinSel('f-cl-tx',          'out', cl.tx_pin);
+  refreshPinSel('f-ab-sw-pin',      'in',  abt.switch_pin);
+  refreshPinSel('f-ab-inp-pin',     'in',  abt.input_pin);
+  refreshPinSel('f-ab-arm-pin',     'in',  abt.arm_pin);
+  refreshPinSel('f-ab-fl-pin',      'adc', abfl.pin);
+
+  // New sensors
+  const ot = s.oil_temp || {};
+  refreshPinSel('f-oiltemp-pin',  'adc', ot.pin);
+  refreshPinSel('f-oiltemp-clk',  'out', ot.clk);
+  refreshPinSel('f-oiltemp-cs',   'out', ot.cs);
+  refreshPinSel('f-oiltemp-miso', 'in',  ot.miso);
+  refreshPinSel('f-oiltemp-mosi', 'out', ot.mosi);
+  refreshPinSel('f-battvolt-pin', 'adc', (s.batt_voltage||{}).pin);
+  refreshPinSel('f-torque-pin',   'adc', (s.torque||{}).pin);
+  refreshPinSel('f-fuelpress-pin','adc', (s.fuel_press||{}).pin);
+  // New actuators
+  refreshPinSel('f-fp2-pin',   'out', (a.fuel_pump2||{}).pin);
+  refreshPinSel('f-bleed-pin', 'out', (a.bleed_valve||{}).pin);
+  refreshPinSel('f-pp-pin',    'out', (a.prop_pitch||{}).pin);
+  refreshPinSel('f-glow-pin',    'out', (a.glow_plug||{}).pin);
+  refreshPinSel('f-mav-tx',      'out', (cfg.mavlink||{}).tx_pin);
+  const s2 = cfg.sensors || {};
+  refreshPinSel('f-glowcur-pin', 'adc', (s2.glow_current||{}).pin);
+  refreshPinSel('f-igncur-pin',  'adc', (s2.igniter_current||{}).pin);
+  // DI channel pin selectors (dynamically rendered)
+  (cfg.di_channels || []).forEach((ch, i) => {
+    refreshPinSel('f-di' + i + '-pin', 'in', ch.pin);
+  });
+  checkPinConflicts();
+}
+
+// ─── General-purpose DI channel renderer ────────────────────
+const DI_ROLES = [
+  { val:'none',           lbl:'None (display only)' },
+  { val:'fault',          lbl:'Fault — trigger engine fault shutdown' },
+  { val:'estop',          lbl:'E-Stop — immediate engine stop' },
+  { val:'inhibit_start',  lbl:'Inhibit Start — block START command' },
+  { val:'sequence_gate',  lbl:'Sequence Gate — WaitForInput block' },
+  { val:'ab_arm',         lbl:'AB Arm — afterburner arm switch (hold active)' },
+  { val:'ab_fire',        lbl:'AB Fire — trigger afterburner ignition (rising edge)' },
+  { val:'limp_mode',      lbl:'Limp Mode — cap throttle while switch is active' },
+];
+const DI_MODES = [
+  { bit:1,  lbl:'STANDBY' },
+  { bit:2,  lbl:'STARTUP' },
+  { bit:4,  lbl:'RUNNING' },
+  { bit:8,  lbl:'SHUTDOWN' },
+];
+
+function renderDiChannels(channels) {
+  const wrap = document.getElementById('di-channels-wrap');
+  if (!wrap) return;
+  let html = '';
+  for (let i = 0; i < 4; i++) {
+    const ch = channels[i] || {};
+    const role = ch.role || 'none';
+    const modes = ch.active_modes !== undefined ? ch.active_modes : 0xFF;
+    const roleOpts = DI_ROLES.map(r =>
+      `<option value="${r.val}"${role===r.val?' selected':''}>${r.lbl}</option>`).join('');
+    const modeChks = DI_MODES.map(m =>
+      `<label style="font-size:.72rem;display:flex;align-items:center;gap:.3rem;cursor:pointer">
+        <input type="checkbox" ${(modes & m.bit) ? 'checked' : ''}
+          onchange="setDiModeBit(${i},${m.bit},this.checked)"> ${m.lbl}
+      </label>`).join('');
+    html += `
+    <div class="hw-item-card" id="di-card-${i}">
+      <div style="font-size:.8rem;font-weight:700;margin-bottom:.5rem;display:flex;align-items:center;gap:.6rem">
+        DI-${i+1}
+        <span id="di-live-${i}" class="dot" title="Current state"></span>
+        ${ch.label ? `<span style="font-size:.7rem;color:var(--accent)">${ch.label}</span>` : ''}
+      </div>
+      <div class="hw-grid">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <span class="hw-desc">Digital input pin. Leave at —None— to disable this channel.</span>
+          <select id="f-di${i}-pin" onchange="setDiChannel(${i},'pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Active polarity</span>
+          <select onchange="setDiChannel(${i},'active_h',this.value==='1')">
+            <option value="0" ${!ch.active_h?'selected':''}>Active LOW (GND = active)</option>
+            <option value="1" ${ch.active_h?'selected':''}>Active HIGH (3.3 V = active)</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Debounce (ms)</span>
+          <span class="hw-desc">Ignore glitches shorter than this. Typical: 20 ms.</span>
+          <input type="number" min="5" max="500" value="${ch.debounce_ms||20}"
+            oninput="setDiChannel(${i},'debounce_ms',+this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Display label</span>
+          <span class="hw-desc">Name shown in dashboard (e.g. "Fuel Shutoff Valve", "Oil Pressure Switch").</span>
+          <input type="text" maxlength="31" placeholder="DI-${i+1}" value="${ch.label||''}"
+            oninput="setDiChannel(${i},'label',this.value); rerenderDiLabel(${i},this.value)">
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Role</span>
+          <span class="hw-desc">What happens when this input becomes active.</span>
+          <select id="f-di${i}-role" onchange="setDiChannel(${i},'role',this.value); updateDiRoleUI(${i},this.value)">
+            ${roleOpts}
+          </select>
+        </div>
+        <div id="di${i}-fault-fields" style="display:${role==='fault'?'contents':'none'}">
+          <div class="hw-field">
+            <span class="hw-label">Fault code</span>
+            <span class="hw-desc">Short code logged in flight recorder (e.g. LOW_OIL_PRESSURE, FUEL_SHUTOFF).</span>
+            <input type="text" maxlength="23" placeholder="e.g. LOW_OIL_PRESS" value="${ch.fault_code||''}"
+              oninput="setDiChannel(${i},'fault_code',this.value)">
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Fault message</span>
+            <span class="hw-desc">Human-readable description shown in the fault log.</span>
+            <input type="text" maxlength="63" placeholder="e.g. Oil pressure switch opened" value="${ch.fault_msg||''}"
+              oninput="setDiChannel(${i},'fault_msg',this.value)">
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Active in modes</span>
+            <span class="hw-desc">Only trigger fault in these modes. Uncheck STARTUP to ignore during startup oil pressure build-up.</span>
+            <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.3rem">${modeChks}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+  wrap.innerHTML = html;
+  refreshAllPins();
+}
+
+function rerenderDiLabel(idx, val) {
+  const span = document.querySelector(`#di-card-${idx} span[style*="accent"]`);
+  if (span) span.textContent = val;
+}
+
+function updateDiRoleUI(idx, role) {
+  const ff = document.getElementById('di' + idx + '-fault-fields');
+  if (ff) ff.style.display = (role === 'fault') ? 'contents' : 'none';
+}
+
+function setDiModeBit(idx, bit, checked) {
+  if (!cfg.di_channels) cfg.di_channels = [{},{},{},{}];
+  while (cfg.di_channels.length < 4) cfg.di_channels.push({});
+  const cur = cfg.di_channels[idx].active_modes !== undefined
+              ? cfg.di_channels[idx].active_modes : 0xFF;
+  cfg.di_channels[idx].active_modes = checked ? (cur | bit) : (cur & ~bit);
+  dirty();
+}
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+let cfg = {};
+let engineMode = 'STANDBY';
+let _profileIdInvalid = false;
+
+let ws;
+function connectWs() {
+  ws = new WebSocket('ws://' + location.host + '/ws');
+  ws.onopen  = () => setConn(true);
+  ws.onclose = () => { setConn(false); setTimeout(connectWs, 2000); };
+  ws.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      engineMode = d.mode || 'STANDBY';
+      updateSaveButton();
+      // Update DI live state dots
+      if (d.di_channels) {
+        d.di_channels.forEach((ch, i) => {
+          const dot = document.getElementById('di-live-' + i);
+          if (dot) {
+            dot.className = 'dot ' + (ch.state ? 'green' : '');
+            dot.title = ch.state ? 'ACTIVE' : 'inactive';
+          }
+        });
+      }
+    } catch(_) {}
+  };
+}
+function setConn(ok) {
+  document.getElementById('conn').className = 'conn-dot ' + (ok ? 'connected' : 'disconnected');
+  document.getElementById('conn-label').textContent = ok ? 'Connected' : 'Disconnected';
+}
+
+async function loadHardware() {
+  document.getElementById('save-msg').textContent = 'Loading…';
+  try {
+    const r = await fetch('/api/hardware');
+    cfg = await r.json();
+    populate();
+    _snapshotFields();   // baseline — any field that diverges from this gets an orange border
+    document.getElementById('save-msg').textContent = 'Loaded — changed fields highlight orange until saved.';
+    document.getElementById('hw-profile-badge').textContent = cfg.profile_id || 'OpenTurbine';
+    updateSaveButton();
+  } catch(e) {
+    document.getElementById('save-msg').textContent = 'Load failed: ' + e;
+  }
+}
+
+function populate() {
+  v('f-profile-id',  cfg.profile_id   || '');
+  v('f-profile-desc',cfg.profile_desc || '');
+  updateFeaturesUI();
+
+  const c = cfg.controls || {};
+  document.getElementById('f-stop-pol').value  = c.stop_active_h  ? '1' : '0';
+  document.getElementById('f-start-pol').value = c.start_active_h ? '1' : '0';
+
+  // Load channel labels
+  const lbs = cfg.labels || {};
+  const sv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  sv('f-stop-label',      lbs.stop       || '');
+  sv('f-start-label',     lbs.start      || '');
+  sv('f-n1-label',        lbs.n1         || '');
+  sv('f-n2-label',        lbs.n2         || '');
+  sv('f-tot-label',       lbs.tot        || '');
+  sv('f-tit-label',       lbs.tit        || '');
+  sv('f-oilpress-label',  lbs.oil_press  || '');
+  sv('f-oiltemp-label',   lbs.oil_temp   || '');
+  sv('f-p1-label',        lbs.p1         || '');
+  sv('f-p2-label',        lbs.p2         || '');
+  sv('f-fuelpress-label', lbs.fuel_press || '');
+  sv('f-fuelflow-label',  lbs.fuel_flow  || '');
+
+  // Render DI channel cards
+  renderDiChannels(cfg.di_channels || []);
+
+  const s = cfg.sensors || {};
+  [
+    ['n1_rpm','n1rpm',['ppr']], ['n2_rpm','n2rpm',['ppr']],
+    ['oil_press','oilpress',[]], ['flame','flame',[]],
+    ['throttle_input','thinput',[]], ['idle_input','idiinput',[]],
+    ['fuel_flow','fuelflow',[]], ['p1','p1',[]], ['p2','p2',[]],
+  ].forEach(([key, pfx, extras]) => {
+    const d = s[key] || {};
+    chk('en-' + pfx, d.enabled || false);
+    updateGroupEnabled('grp-' + pfx, d.enabled || false);
+    for (const f of extras) {
+      const el = document.getElementById('f-' + pfx + '-' + f);
+      if (el && d[f] !== undefined) el.value = d[f];
+    }
+  });
+  chk('f-thinput-rcpwm', (s.throttle_input||{}).rc_pwm || false);
+  chk('f-idiinput-rcpwm', (s.idle_input||{}).rc_pwm || false);
+
+  const tot = s.tot || {};
+  chk('en-tot', tot.enabled || false);
+  updateGroupEnabled('grp-tot', tot.enabled || false);
+  const totChip = tot.chip || 'max6675';
+  document.getElementById('f-tot-chip').value = totChip;
+  updateTotChipUI(totChip);
+  if (tot.tc_type) document.getElementById('f-tot-tctype').value = tot.tc_type;
+
+  const tit = s.tit || {};
+  chk('en-tit', tit.enabled || false);
+  updateGroupEnabled('grp-tit', tit.enabled || false);
+  const titChip = tit.chip || 'max6675';
+  document.getElementById('f-tit-chip').value = titChip;
+  updateTitChipUI(titChip);
+  if (tit.tc_type) document.getElementById('f-tit-tctype').value = tit.tc_type;
+
+  const a = cfg.actuators || {};
+
+  const thr = a.throttle || {};
+  chk('en-throttle', thr.enabled || false);
+  updateGroupEnabled('grp-throttle', thr.enabled || false);
+  const thrType = thr.type ?? 0;
+  document.getElementById('f-thr-type').value = thrType;
+  v('f-thr-min',   thr.min_us   ?? 1000);
+  v('f-thr-max',   thr.max_us   ?? 2000);
+  v('f-thr-lfreq', thr.ledc_freq ?? 10000);
+  v('f-thr-lbits', thr.ledc_bits ?? 12);
+  chk('f-thr-inv',  thr.inverted || false);
+  chk('f-thr-acth', thr.active_h !== false);
+  updateThrTypeUI(thrType);
+
+  const str = a.starter || {};
+  chk('en-starter', str.enabled || false);
+  updateGroupEnabled('grp-starter', str.enabled || false);
+  const strType = str.type ?? 0;
+  document.getElementById('f-str-type').value = strType;
+  v('f-str-min',   str.min_us   ?? 1500);
+  v('f-str-max',   str.max_us   ?? 2000);
+  v('f-str-lfreq', str.ledc_freq ?? 10000);
+  v('f-str-lbits', str.ledc_bits ?? 12);
+  chk('f-str-inv',    str.inverted        || false);
+  chk('f-str-acth',   str.active_h        !== false);
+  chk('f-str-assist', str.assist_enabled  !== false);
+  updateStrTypeUI(strType);
+
+  const op = a.oil_pump || {};
+  chk('en-oilpump', op.enabled || false);
+  updateGroupEnabled('grp-oilpump', op.enabled || false);
+  const opType = op.type !== undefined ? op.type : (op.onoff ? 2 : 1);
+  document.getElementById('f-op-type').value = opType;
+  v('f-op-min',  op.min_us   ?? 1000);
+  v('f-op-max',  op.max_us   ?? 2000);
+  v('f-op-freq', op.freq_hz  ?? '');
+  v('f-op-bits', op.res_bits ?? '');
+  chk('f-op-acth', op.active_h !== false);
+  updateOpTypeUI(opType);
+
+  const osc = a.oil_scavenge_pump || {};
+  chk('en-oilscav', osc.enabled || false);
+  updateGroupEnabled('grp-oilscav', osc.enabled || false);
+  const oscType = osc.type ?? 2;
+  document.getElementById('f-oscav-type').value = oscType;
+  v('f-oscav-freq', osc.freq_hz  ?? 10000);
+  v('f-oscav-bits', osc.res_bits ?? 12);
+  chk('f-oscav-acth', osc.active_h !== false);
+  updateOscavTypeUI(oscType);
+
+  chk('en-fuelsol', (a.fuel_sol||{}).enabled || false);
+  updateGroupEnabled('grp-fuelsol', (a.fuel_sol||{}).enabled || false);
+  chk('f-fsol-acth', (a.fuel_sol||{}).active_h !== false);
+
+  chk('en-igniter', (a.igniter||{}).enabled || false);
+  updateGroupEnabled('grp-igniter', (a.igniter||{}).enabled || false);
+  chk('f-ign-acth', (a.igniter||{}).active_h !== false);
+  v('f-ign-dwell',      (a.igniter||{}).dwell_ms   ?? '');
+  v('f-ign-rest',       (a.igniter||{}).rest_ms    ?? '');
+  v('f-ign-coil-dwell', (a.igniter||{}).dwell_ms   ?? '');
+  v('f-ign-coil-rest',  (a.igniter||{}).rest_ms    ?? '');
+  v('f-ign-coil-sat',   (a.igniter||{}).coil_sat_a ?? '');
+  const ignMode = (a.igniter||{}).coil ? 'coil' : ((a.igniter||{}).pwm ? 'pwm' : 'relay');
+  document.getElementById('f-ign-mode').value = ignMode;
+  updateIgniterModeUI(ignMode);
+
+  const ign2 = a.igniter2 || {};
+  chk('en-igniter2', ign2.enabled || false);
+  updateGroupEnabled('grp-igniter2', ign2.enabled || false);
+  chk('f-ign2-acth', ign2.active_h !== false);
+  v('f-ign2-dwell', ign2.dwell_ms ?? '');
+  v('f-ign2-rest',  ign2.rest_ms  ?? '');
+  const ign2Mode = ign2.pwm ? 'pwm' : 'relay';
+  document.getElementById('f-ign2-mode').value = ign2Mode;
+  updateIgniter2ModeUI(ign2Mode);
+
+  const sen = a.starter_en || {};
+  chk('en-starteren', sen.enabled || false);
+  updateGroupEnabled('grp-starteren', sen.enabled || false);
+  chk('f-sen-acth', sen.active_h !== false);
+  v('f-sen-delay', sen.delay_ms ?? 1000);
+
+  chk('en-absol', (a.ab_sol||{}).enabled || false);
+  updateGroupEnabled('grp-absol', (a.ab_sol||{}).enabled || false);
+  chk('f-abs-acth', (a.ab_sol||{}).active_h !== false);
+
+  const abp = a.ab_pump || {};
+  chk('en-abpump', abp.enabled || false);
+  updateGroupEnabled('grp-abpump', abp.enabled || false);
+  const abpType = abp.type ?? 1;
+  document.getElementById('f-abp-type').value = abpType;
+  v('f-abp-min',  abp.min_us   ?? 1000);
+  v('f-abp-max',  abp.max_us   ?? 2000);
+  v('f-abp-freq', abp.freq_hz  ?? '');
+  v('f-abp-bits', abp.res_bits ?? '');
+  chk('f-abp-acth', abp.active_h !== false);
+  updateAbpTypeUI(abpType);
+
+  const abt = cfg.ab_trigger || {};
+  const abTrigSrc = abt.source ?? 0;
+  const selAbtSrc = document.getElementById('f-ab-trig-src');
+  if (selAbtSrc) selAbtSrc.value = abTrigSrc;
+  chk('f-ab-req-arm', abt.requires_arm || false);
+  chk('f-ab-arm-acth', abt.arm_active_h || false);
+  chk('f-ab-sw-acth', abt.switch_active_h || false);
+  v('f-ab-inp-thr', abt.input_threshold ?? 2048);
+  updateAbTrigUI(abTrigSrc);
+  updateAbArmUI(abt.requires_arm || false);
+
+  const abfl = cfg.ab_flame || {};
+  chk('en-ab-flame', abfl.enabled || false);
+  v('f-ab-fl-thr', abfl.threshold ?? 500);
+  updateAbFlameUI(abfl.enabled || false);
+
+  chk('en-airstarter', (a.airstarter_sol||{}).enabled || false);
+  updateGroupEnabled('grp-airstarter', (a.airstarter_sol||{}).enabled || false);
+  chk('f-airs-acth', (a.airstarter_sol||{}).active_h !== false);
+
+  const fan = a.cool_fan || {};
+  chk('en-coolfan', fan.enabled || false);
+  updateGroupEnabled('grp-coolfan', fan.enabled || false);
+  const fanType = fan.type ?? 2;
+  document.getElementById('f-fan-type').value = fanType;
+  v('f-fan-min',  fan.min_us   ?? 1000);
+  v('f-fan-max',  fan.max_us   ?? 2000);
+  v('f-fan-freq', fan.freq_hz  ?? '');
+  v('f-fan-bits', fan.res_bits ?? '');
+  chk('f-fan-acth', fan.active_h !== false);
+  updateFanTypeUI(fanType);
+
+  chk('en-statusled', (a.status_led||{}).enabled || false);
+  updateGroupEnabled('grp-statusled', (a.status_led||{}).enabled || false);
+
+  const cl = cfg.cluster_serial || {};
+  chk('en-cluster', cl.enabled || false);
+  updateGroupEnabled('grp-cluster', cl.enabled || false);
+  const clBaud = document.getElementById('f-cl-baud');
+  if (clBaud) {
+    const bv = (cl.baud || 115200).toString();
+    for (let o of clBaud.options) if (o.value === bv) { o.selected = true; break; }
+  }
+  v('f-cl-interval', cl.interval_ms ?? '');
+
+  const ct = cfg.controllers || {};
+  chk('f-ctrl-oil',    ct.oil_loop       || false);
+  chk('f-ctrl-slew',   ct.throttle_slew  || false);
+  chk('f-ctrl-idle',   ct.dynamic_idle   || false);
+  chk('f-ctrl-gov',    ct.governor       || false);
+
+  const sf = cfg.safety || {};
+  setSafetyUI('overspeed',    sf.overspeed    !== false, 'sc-overspeed');
+  setSafetyUI('overtemp',     sf.overtemp     !== false, 'sc-overtemp');
+  setSafetyUI('low_oil',      sf.low_oil      !== false, 'sc-lowoil');
+  setSafetyUI('oil_zero',     sf.oil_zero     !== false, 'sc-oilzero');
+  setSafetyUI('flameout',     sf.flameout     !== false, 'sc-flameout');
+  setSafetyUI('low_fuel',     sf.low_fuel     || false,  'sc-lowfuel');
+  setSafetyUI('hot_start',    sf.hot_start    || false,  'sc-hotstart');
+  setSafetyUI('tit_overtemp', sf.tit_overtemp || false,  'sc-titovertemp');
+  setSafetyUI('oil_temp_high',sf.oil_temp_high|| false,  'sc-oiltemphi');
+  setSafetyUI('fuel_press_low',sf.fuel_press_low||false, 'sc-fuelpresslo');
+  setSafetyUI('batt_low',     sf.batt_low     || false,  'sc-battlo');
+  setSafetyUI('surge',        sf.surge        || false,  'sc-surge');
+
+  // New sensors
+  const oilT = s.oil_temp || {};
+  chk('en-oiltemp', oilT.enabled || false);
+  updateGroupEnabled('grp-oiltemp', oilT.enabled || false);
+  const oilTChip = oilT.chip || 'ntc';
+  document.getElementById('f-oiltemp-chip').value = oilTChip;
+  updateOilTempChipUI(oilTChip);
+  if (oilT.tc_type) document.getElementById('f-oiltemp-tctype').value = oilT.tc_type;
+  v('f-ntc-beta',   oilT.ntc_beta    ?? 3950);
+  v('f-ntc-r0',     oilT.ntc_r0      ?? 10000);
+  v('f-ntc-rfixed', oilT.ntc_r_fixed ?? 10000);
+
+  const bv = s.batt_voltage || {};
+  chk('en-battvolt', bv.enabled || false);
+  updateGroupEnabled('grp-battvolt', bv.enabled || false);
+  v('f-battvolt-div', bv.divider ?? 5.7);
+
+  const tq = s.torque || {};
+  chk('en-torque', tq.enabled || false);
+  updateGroupEnabled('grp-torque', tq.enabled || false);
+  v('f-torque-scale',  tq.scale  ?? '');
+  v('f-torque-offset', tq.offset ?? 0);
+
+  const fp = s.fuel_press || {};
+  chk('en-fuelpress', fp.enabled || false);
+  updateGroupEnabled('grp-fuelpress', fp.enabled || false);
+
+  // New actuators
+  const fp2 = a.fuel_pump2 || {};
+  chk('en-fuelpump2', fp2.enabled || false);
+  updateGroupEnabled('grp-fuelpump2', fp2.enabled || false);
+  const fp2Type = fp2.type ?? 0;
+  document.getElementById('f-fp2-type').value = fp2Type;
+  v('f-fp2-min',  fp2.min_us   ?? 1000);
+  v('f-fp2-max',  fp2.max_us   ?? 2000);
+  v('f-fp2-freq', fp2.freq_hz  ?? 10000);
+  v('f-fp2-bits', fp2.res_bits ?? 12);
+  chk('f-fp2-acth', fp2.active_h !== false);
+  updateFp2TypeUI(fp2Type);
+
+  const bleed = a.bleed_valve || {};
+  chk('en-bleedvalve', bleed.enabled || false);
+  updateGroupEnabled('grp-bleedvalve', bleed.enabled || false);
+  const bleedType = bleed.type ?? 0;
+  document.getElementById('f-bleed-type').value = bleedType;
+  updateBleedTypeUI(bleedType);
+  chk('f-bleed-acth', bleed.active_h !== false);
+  v('f-bleed-min',  bleed.min_us  ?? 1000);
+  v('f-bleed-max',  bleed.max_us  ?? 2000);
+  v('f-bleed-freq', bleed.freq_hz  ?? 1000);
+  v('f-bleed-bits', bleed.res_bits ?? 10);
+
+  const pp = a.prop_pitch || {};
+  chk('en-proppitch', pp.enabled || false);
+  updateGroupEnabled('grp-proppitch', pp.enabled || false);
+  const ppType = pp.type ?? 0;
+  document.getElementById('f-pp-type').value = ppType;
+  updatePropPitchTypeUI(ppType);
+  v('f-pp-min',  pp.min_us  ?? 1000);
+  v('f-pp-max',  pp.max_us  ?? 2000);
+  v('f-pp-freq', pp.freq_hz  ?? 1000);
+  v('f-pp-bits', pp.res_bits ?? 10);
+  chk('f-pp-acth', pp.active_h !== false);
+
+  const glow = a.glow_plug || {};
+  chk('en-glowplug', glow.enabled || false);
+  updateGroupEnabled('grp-glowplug', glow.enabled || false);
+  v('f-glow-freq', glow.freq_hz  ?? 50);
+  v('f-glow-bits', glow.res_bits ?? 12);
+
+  const glowCur = (cfg.sensors && cfg.sensors.glow_current) || {};
+  chk('en-glowcurrent', glowCur.enabled || false);
+  updateGroupEnabled('grp-glowcurrent', glowCur.enabled || false);
+  v('f-glowcur-mva',   glowCur.mv_per_a    ?? 185);
+  v('f-glowcur-zerov', glowCur.zero_v      ?? 1.65);
+  v('f-glowcur-ready', glowCur.ready_amps  ?? 3.0);
+
+  const ignCur = (cfg.sensors && cfg.sensors.igniter_current) || {};
+  chk('en-igncurrent', ignCur.enabled || false);
+  updateGroupEnabled('grp-igncurrent', ignCur.enabled || false);
+  updateIgniterModeCoilAvailability(ignCur.enabled || false);
+  v('f-igncur-mva',   ignCur.mv_per_a ?? 100);
+  v('f-igncur-zerov', ignCur.zero_v   ?? 1.65);
+
+  chk('f-ctrl-gov', ct.governor || false);
+
+  const mav = cfg.mavlink || {};
+  chk('en-mavlink', mav.enabled || false);
+  updateGroupEnabled('grp-mavlink', mav.enabled || false);
+  const mavBaud = document.getElementById('f-mav-baud');
+  if (mavBaud) {
+    const mb = (mav.baud || 115200).toString();
+    for (let o of mavBaud.options) if (o.value === mb) { o.selected = true; break; }
+  }
+  v('f-mav-interval', mav.interval_ms ?? 200);
+
+  refreshAllPins();
+  // Re-evaluate changed borders after pin selects have been rebuilt
+  if (Object.keys(_fieldSnap).length) _refreshChangedBorders();
+}
+
+function v(id, val)   { const e=document.getElementById(id); if(e) e.value=val; }
+function chk(id, val) { const e=document.getElementById(id); if(e) e.checked=val; }
+
+function updateGroupEnabled(grpId, enabled) {
+  const el = document.getElementById(grpId);
+  if (!el) return;
+  el.querySelectorAll('input,select').forEach(i => i.disabled = !enabled);
+}
+
+function checkPinWarning(gpio) {
+  const info = GPIO_DB[gpio];
+  if (!info || !info.s) return true;
+  return confirm(
+    `GPIO${gpio} is a strapping pin.\n\n` +
+    `Strapping pins determine ESP32 boot mode at power-on. Using them may cause unexpected resets.\n\n` +
+    `Suggested safe pins: GPIO 16, 17, 18, 19, 21, 22, 23, 25, 26, 27\n\nContinue anyway?`
+  );
+}
+
+function set(key, val) { cfg[key] = val; dirty(); }
+function toggleWifiPassword() {
+  const inp = document.getElementById('f-wifi-password');
+  const btn = document.getElementById('btn-wifi-pw-toggle');
+  if (!inp || !btn) return;
+  const showing = inp.type === 'text';
+  inp.type = showing ? 'password' : 'text';
+  const icon = document.getElementById('btn-wifi-pw-icon');
+  if (showing) {
+    // now hidden — show plain eye
+    if (icon) icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+  } else {
+    // now showing — eye with slash
+    if (icon) icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
+  }
+  btn.title = showing ? 'Show password' : 'Hide password';
+}
+function setNested(group, key, val) {
+  if (!cfg[group]) cfg[group] = {};
+  cfg[group][key] = val;
+  dirty();
+}
+function setLabel(key, val) {
+  if (!cfg.labels) cfg.labels = {};
+  cfg.labels[key] = val;
+  dirty();
+}
+function setDiChannel(idx, key, val) {
+  if (!cfg.di_channels) cfg.di_channels = [{},{},{},{}];
+  while (cfg.di_channels.length < 4) cfg.di_channels.push({});
+  cfg.di_channels[idx][key] = val;
+  if (key === 'pin') refreshAllPins();
+  else dirty();
+}
+function setSensor(sensor, key, val) {
+  if (!cfg.sensors) cfg.sensors = {};
+  if (!cfg.sensors[sensor]) cfg.sensors[sensor] = {};
+  if (['pin','clk','cs','miso','mosi'].includes(key)) {
+    if (!checkPinWarning(val)) { refreshAllPins(); return; }
+  }
+  cfg.sensors[sensor][key] = val;
+  if (['pin','clk','cs','miso','mosi'].includes(key)) refreshAllPins();
+  else dirty();
+}
+function setSensorEnabled(sensor, grpId, val) {
+  setSensor(sensor, 'enabled', val);
+  updateGroupEnabled('grp-' + grpId, val);
+}
+function setAct(act, key, val) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators[act]) cfg.actuators[act] = {};
+  if (key === 'pin') {
+    if (!checkPinWarning(val)) { refreshAllPins(); return; }
+  }
+  cfg.actuators[act][key] = val;
+  if (key === 'pin') refreshAllPins();
+  else dirty();
+}
+function setActEnabled(act, grpId, val) {
+  setAct(act, 'enabled', val);
+  updateGroupEnabled('grp-' + grpId, val);
+}
+function setSafety(key, val, cardId) {
+  setNested('safety', key, val);
+  setSafetyUI(key, val, cardId);
+}
+function setSafetyUI(key, val, cardId) {
+  const map = {
+    overspeed:'f-saf-overspeed', overtemp:'f-saf-overtemp', low_oil:'f-saf-lowoil',
+    oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout', low_fuel:'f-saf-lowfuel',
+    hot_start:'f-saf-hotstart', tit_overtemp:'f-saf-titovertemp', oil_temp_high:'f-saf-oiltemphi',
+    fuel_press_low:'f-saf-fuelpresslo', batt_low:'f-saf-battlo', surge:'f-saf-surge',
+  };
+  chk(map[key], val);
+  const card = document.getElementById(cardId);
+  if (card) card.classList.toggle('disabled-safety', !val);
+}
+
+function setThrType(t) { setAct('throttle','type',t); updateThrTypeUI(t); }
+function updateThrTypeUI(t) {
+  document.getElementById('grp-thr-servo').style.display = t === 0 ? '' : 'none';
+  document.getElementById('grp-thr-ledc').style.display  = t === 1 ? '' : 'none';
+  document.getElementById('grp-thr-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setStrType(t) { setAct('starter','type',t); updateStrTypeUI(t); }
+function updateStrTypeUI(t) {
+  document.getElementById('grp-str-servo').style.display  = t === 0 ? '' : 'none';
+  document.getElementById('grp-str-ledc').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-str-onoff').style.display  = t === 2 ? '' : 'none';
+  // Starter assist only makes sense for controllable (servo/PWM) starters
+  document.getElementById('grp-str-assist').style.display = t === 2 ? 'none' : '';
+}
+function setTotChip(chip) { setSensor('tot','chip',chip); updateTotChipUI(chip); }
+function updateTotChipUI(chip) {
+  const spi = chip !== 'ntc';
+  document.getElementById('grp-tot-mosi').style.display   = (chip === 'max31855' || chip === 'max31856') ? '' : 'none';
+  document.getElementById('grp-tot-tctype').style.display = chip === 'max31856' ? '' : 'none';
+}
+function setTitChip(chip) { setSensor('tit','chip',chip); updateTitChipUI(chip); }
+function updateTitChipUI(chip) {
+  document.getElementById('grp-tit-mosi').style.display   = (chip === 'max31855' || chip === 'max31856') ? '' : 'none';
+  document.getElementById('grp-tit-tctype').style.display = chip === 'max31856' ? '' : 'none';
+}
+function setOilTempChip(chip) { setSensor('oil_temp','chip',chip); updateOilTempChipUI(chip); }
+function updateOilTempChipUI(chip) {
+  const isNtc = chip === 'ntc';
+  document.getElementById('grp-oiltemp-ntc').style.display    = isNtc ? '' : 'none';
+  document.getElementById('grp-oiltemp-spi').style.display    = isNtc ? 'none' : '';
+  document.getElementById('grp-oiltemp-mosi').style.display   = (chip === 'max31855' || chip === 'max31856') ? '' : 'none';
+  document.getElementById('grp-oiltemp-tctype').style.display = chip === 'max31856' ? '' : 'none';
+}
+function setPropPitchType(t) { setAct('prop_pitch','type',t); updatePropPitchTypeUI(t); }
+function updatePropPitchTypeUI(t) {
+  document.getElementById('grp-pp-servo').style.display = t === 0 ? '' : 'none';
+  document.getElementById('grp-pp-pwm').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-pp-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setBleedType(t) { setAct('bleed_valve','type',t); updateBleedTypeUI(t); }
+function updateBleedTypeUI(t) {
+  document.getElementById('grp-bleed-onoff').style.display  = t === 0 ? '' : 'none';
+  document.getElementById('grp-bleed-servo').style.display  = t === 1 ? '' : 'none';
+  document.getElementById('grp-bleed-pwm').style.display    = t === 2 ? '' : 'none';
+}
+function setFp2Type(t) { setAct('fuel_pump2','type',t); updateFp2TypeUI(t); }
+function updateFp2TypeUI(t) {
+  document.getElementById('grp-fp2-servo').style.display = t === 0 ? '' : 'none';
+  document.getElementById('grp-fp2-pwm').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-fp2-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setOpType(t) { setAct('oil_pump','type',t); updateOpTypeUI(t); }
+function updateOpTypeUI(t) {
+  document.getElementById('grp-op-servo').style.display = t === 0 ? '' : 'none';
+  document.getElementById('grp-op-pwm').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-op-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setOscavType(t) { setAct('oil_scavenge_pump','type',t); updateOscavTypeUI(t); }
+function updateOscavTypeUI(t) {
+  document.getElementById('grp-oscav-pwm').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-oscav-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setAbpType(t) { setAct('ab_pump','type',t); updateAbpTypeUI(t); }
+function updateAbpTypeUI(t) {
+  document.getElementById('grp-abp-servo').style.display = t === 0 ? '' : 'none';
+  document.getElementById('grp-abp-pwm').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-abp-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setFanType(t) { setAct('cool_fan','type',t); updateFanTypeUI(t); }
+function updateFanTypeUI(t) {
+  document.getElementById('grp-fan-servo').style.display = t === 0 ? '' : 'none';
+  document.getElementById('grp-fan-pwm').style.display   = t === 1 ? '' : 'none';
+  document.getElementById('grp-fan-onoff').style.display = t === 2 ? '' : 'none';
+}
+function setGlowCurrentEnabled(en) {
+  if (!cfg.sensors) cfg.sensors = {};
+  if (!cfg.sensors.glow_current) cfg.sensors.glow_current = {};
+  cfg.sensors.glow_current.enabled = en;
+  updateGroupEnabled('grp-glowcurrent', en);
+  refreshAllPins(); dirty();
+}
+function setIgniterCurrentEnabled(en) {
+  if (!cfg.sensors) cfg.sensors = {};
+  if (!cfg.sensors.igniter_current) cfg.sensors.igniter_current = {};
+  cfg.sensors.igniter_current.enabled = en;
+  updateGroupEnabled('grp-igncurrent', en);
+  updateIgniterModeCoilAvailability(en);
+  refreshAllPins(); dirty();
+}
+function updateIgniterModeCoilAvailability(sensorEnabled) {
+  const sel = document.getElementById('f-ign-mode');
+  if (!sel) return;
+  const coilOpt = sel.querySelector('option[value="coil"]');
+  if (!coilOpt) return;
+  coilOpt.disabled = !sensorEnabled;
+  if (!sensorEnabled && sel.value === 'coil') {
+    sel.value = 'relay';
+    setIgniterMode('relay');
+  }
+}
+// Override setSensor to handle current sensor paths
+const _baseSensor = setSensor;
+function setSensor(sensorKey, field, val) {
+  if (sensorKey === 'glow_current' || sensorKey === 'igniter_current') {
+    if (!cfg.sensors) cfg.sensors = {};
+    if (!cfg.sensors[sensorKey]) cfg.sensors[sensorKey] = {};
+    cfg.sensors[sensorKey][field] = val;
+    if (field === 'pin') refreshAllPins();
+    dirty();
+    return;
+  }
+  _baseSensor(sensorKey, field, val);
+}
+
+function setIgniterMode(mode) {
+  setAct('igniter','pwm',  mode === 'pwm');
+  setAct('igniter','coil', mode === 'coil');
+  updateIgniterModeUI(mode);
+}
+function updateIgniterModeUI(mode) {
+  document.getElementById('grp-ign-relay').style.display = mode === 'relay' ? '' : 'none';
+  document.getElementById('grp-ign-pwm').style.display   = mode === 'pwm'   ? '' : 'none';
+  document.getElementById('grp-ign-coil').style.display  = mode === 'coil'  ? '' : 'none';
+}
+function setIgniter2Mode(mode) { setAct('igniter2','pwm', mode === 'pwm'); updateIgniter2ModeUI(mode); }
+function updateIgniter2ModeUI(mode) {
+  document.getElementById('grp-ign2-relay').style.display = mode === 'relay' ? '' : 'none';
+  document.getElementById('grp-ign2-pwm').style.display   = mode === 'pwm'   ? '' : 'none';
+}
+
+// ═══════════════════════════════════════════════════
+//  PIN CONFLICT DETECTION
+// ═══════════════════════════════════════════════════
+// Maps each pin select element id → human-readable label for conflict messages
+const PIN_SELECT_LABELS = {
+  'f-stop-pin':       'Stop Switch',
+  'f-start-pin':      'Start Switch',
+  'f-n1-pin':         'N1 RPM',
+  'f-n2-pin':         'N2 RPM',
+  'f-tot-clk':        'TOT CLK',
+  'f-tot-cs':         'TOT CS',
+  'f-tot-miso':       'TOT MISO',
+  'f-tot-mosi':       'TOT MOSI',
+  'f-tit-clk':        'TIT CLK',
+  'f-tit-cs':         'TIT CS',
+  'f-tit-miso':       'TIT MISO',
+  'f-tit-mosi':       'TIT MOSI',
+  'f-oilpress-pin':   'Oil Pressure',
+  'f-flame-pin':      'Flame Detector',
+  'f-thinput-pin':    'Throttle Input',
+  'f-idiinput-pin':   'Idle Input',
+  'f-fuelflow-pin':   'Fuel Flow',
+  'f-p1-pin':         'P1 Pressure',
+  'f-p2-pin':         'P2 Pressure',
+  'f-oiltemp-pin':    'Oil Temp (NTC)',
+  'f-oiltemp-clk':    'Oil Temp CLK',
+  'f-oiltemp-cs':     'Oil Temp CS',
+  'f-oiltemp-miso':   'Oil Temp MISO',
+  'f-oiltemp-mosi':   'Oil Temp MOSI',
+  'f-battvolt-pin':   'Battery Voltage',
+  'f-torque-pin':     'Torque Sensor',
+  'f-fuelpress-pin':  'Fuel Pressure',
+  'f-glowcur-pin':    'Glow Current',
+  'f-igncur-pin':     'Igniter Current',
+  'f-thr-pin':        'Throttle ESC',
+  'f-str-pin':        'Starter ESC',
+  'f-op-pin':         'Oil Pump',
+  'f-oscav-pin':      'Oil Scavenge Pump',
+  'f-fsol-pin':       'Fuel Solenoid',
+  'f-ign-pin':        'Igniter',
+  'f-ign2-pin':       'Igniter 2',
+  'f-sen-pin':        'Starter Enable Relay',
+  'f-abs-pin':        'AB Fuel Solenoid',
+  'f-abp-pin':        'AB Fuel Pump',
+  'f-airs-pin':       'Airstarter Solenoid',
+  'f-fan-pin':        'Cooling Fan',
+  'f-fp2-pin':        'Fuel Pump 2',
+  'f-bleed-pin':      'Bleed Valve',
+  'f-pp-pin':         'Prop Pitch',
+  'f-glow-pin':       'Glow Plug',
+  'f-led-pin':        'Status LED',
+  'f-cl-tx':          'Cluster Serial TX',
+  'f-mav-tx':         'MAVLink TX',
+  'f-ab-sw-pin':      'AB Switch',
+  'f-ab-inp-pin':     'AB Input',
+  'f-ab-arm-pin':     'AB Arm Switch',
+  'f-ab-fl-pin':      'AB Flame Sensor',
+};
+
+let _pinConflictBlocking = false;
+
+function checkPinConflicts() {
+  // Collect all visible/active pin selects and their values
+  const pinMap = new Map(); // gpio -> [label, ...]
+  for (const [selId, label] of Object.entries(PIN_SELECT_LABELS)) {
+    const el = document.getElementById(selId);
+    if (!el || el.disabled) continue;  // skip selects that belong to disabled sensors/actuators
+    const val = parseInt(el.value, 10);
+    if (isNaN(val) || val < 0) continue;
+    if (!pinMap.has(val)) pinMap.set(val, []);
+    pinMap.get(val).push({ selId, label });
+  }
+  // Also check dynamically-rendered DI channel pins
+  for (let i = 0; i < 4; i++) {
+    const el = document.getElementById('f-di' + i + '-pin');
+    if (!el || el.disabled) continue;  // skip disabled DI channels too
+    const val = parseInt(el.value, 10);
+    if (isNaN(val) || val < 0) continue;
+    if (!pinMap.has(val)) pinMap.set(val, []);
+    pinMap.get(val).push({ selId: 'f-di' + i + '-pin', label: 'DI-' + (i + 1) });
+  }
+
+  // Find conflicts (gpio assigned to 2+ selects)
+  const conflicts = [];
+  for (const [gpio, entries] of pinMap.entries()) {
+    if (entries.length > 1) conflicts.push({ gpio, entries });
+  }
+
+  // Highlight conflicting fields
+  const allSelIds = new Set(Object.keys(PIN_SELECT_LABELS));
+  for (let i = 0; i < 4; i++) allSelIds.add('f-di' + i + '-pin');
+  for (const selId of allSelIds) {
+    const el = document.getElementById(selId);
+    if (el) el.style.outline = '';
+  }
+  const conflictingIds = new Set();
+  for (const { entries } of conflicts) {
+    for (const { selId } of entries) conflictingIds.add(selId);
+  }
+  for (const selId of conflictingIds) {
+    const el = document.getElementById(selId);
+    if (el) el.style.outline = '2px solid var(--red)';
+  }
+
+  // Show/hide banner
+  const banner = document.getElementById('pin-conflict-banner');
+  if (conflicts.length > 0) {
+    const msgs = conflicts.map(({ gpio, entries }) => {
+      const names = entries.map(e => e.label).join(' and ');
+      return `⚠ Pin conflict: GPIO ${gpio} assigned to both ${names}`;
+    });
+    banner.innerHTML = msgs.join('<br>');
+    banner.style.display = '';
+    _pinConflictBlocking = true;
+  } else {
+    banner.style.display = 'none';
+    _pinConflictBlocking = false;
+  }
+  updateSaveButton();
+}
+
+// ── Per-field changed-state tracking ─────────────────────────
+// Tracks two sets of elements:
+//   f-*  : regular inputs/selects — orange border on the control itself
+//   en-* : sensor/actuator enable checkboxes — orange border on the
+//           containing .hw-item-card so the whole card highlights
+let _fieldSnap = {};
+
+function _snapshotFields() {
+  _fieldSnap = {};
+  document.querySelectorAll(
+    'input[id^="f-"], select[id^="f-"], textarea[id^="f-"], input[id^="en-"]'
+  ).forEach(el => {
+    _fieldSnap[el.id] = (el.type === 'checkbox') ? el.checked : el.value;
+  });
+}
+
+function _refreshChangedBorders() {
+  // f-* : border on the control itself
+  document.querySelectorAll('input[id^="f-"], select[id^="f-"], textarea[id^="f-"]')
+    .forEach(el => {
+      if (!(el.id in _fieldSnap)) return;
+      const cur = (el.type === 'checkbox') ? el.checked : el.value;
+      el.classList.toggle('field-changed', String(cur) !== String(_fieldSnap[el.id]));
+    });
+  // en-* : border on the nearest .hw-item-card
+  document.querySelectorAll('input[id^="en-"]').forEach(el => {
+    if (!(el.id in _fieldSnap)) return;
+    const changed = String(el.checked) !== String(_fieldSnap[el.id]);
+    let card = el.parentElement;
+    while (card && !card.classList.contains('hw-item-card')) card = card.parentElement;
+    if (card) card.classList.toggle('field-changed', changed);
+  });
+}
+
+function _clearChangedBorders() {
+  document.querySelectorAll('.field-changed').forEach(el => el.classList.remove('field-changed'));
+}
+
+function dirty() {
+  document.getElementById('save-msg').textContent = 'Unsaved changes — save to apply';
+  document.querySelector('.save-bar').classList.add('is-dirty');
+  _refreshChangedBorders();
+  checkPinConflicts();
+  updateSaveButton();
+}
+function clearDirty() {
+  document.querySelector('.save-bar').classList.remove('is-dirty');
+  _snapshotFields();       // new baseline = what was just saved
+  _clearChangedBorders();  // remove all orange borders
+}
+function updateSaveButton() {
+  const locked = (engineMode !== 'STANDBY');
+  const hasConflict = _pinConflictBlocking;
+  const hasProfileError = _profileIdInvalid;
+  document.getElementById('btn-save').disabled = locked || hasConflict || hasProfileError;
+  document.getElementById('standby-warn').style.display = locked ? '' : 'none';
+}
+
+function ensureAbTrig() { if (!cfg.ab_trigger) cfg.ab_trigger = {}; return cfg.ab_trigger; }
+function ensureAbFlame() { if (!cfg.ab_flame) cfg.ab_flame = {}; return cfg.ab_flame; }
+function setAbTrig(key, val)     { ensureAbTrig()[key] = val; refreshAllPins(); dirty(); }
+function setAbTrigBool(key, val) { ensureAbTrig()[key] = val; dirty(); }
+function setAbFlame(key, val)    { ensureAbFlame()[key] = val; refreshAllPins(); dirty(); }
+function setAbFlameBool(key, val){ ensureAbFlame()[key] = val; dirty(); }
+
+function setAbTrigSrc(v) { setAbTrig('source', v); updateAbTrigUI(v); }
+function updateAbTrigUI(src) {
+  const grpSw  = document.getElementById('grp-ab-sw');
+  const grpInp = document.getElementById('grp-ab-inp');
+  const grpArm = document.getElementById('grp-ab-arm');
+  if (grpSw)  grpSw.style.display  = (src === 2) ? '' : 'none';
+  if (grpInp) grpInp.style.display = (src === 3) ? '' : 'none';
+  if (grpArm) grpArm.style.display = (src >= 1)  ? '' : 'none';
+}
+function updateAbArmUI(checked) {
+  const pins = document.getElementById('grp-ab-arm-pins');
+  if (pins) pins.style.display = checked ? '' : 'none';
+}
+function updateAbFlameUI(checked) {
+  const grp = document.getElementById('grp-ab-flame');
+  if (grp) grp.style.display = checked ? '' : 'none';
+}
+
+function setFeature(key, val) {
+  cfg['has_' + key] = val;
+  dirty();
+  updateFeaturesUI();
+}
+
+let _pendingPresetType = null;
+
+function _computePresetChanges(type) {
+  // Returns an array of {field, from, to} describing what would change.
+  // 'show_all' is a display-only action — no config changes to preview.
+  if (type === 'show_all') return null;  // null = special case
+  const changes = [];
+  function boolDesc(v) { return v ? 'enabled' : 'disabled'; }
+  function chkCfg(label, current, next) {
+    if (current !== next) changes.push({ field: label, from: boolDesc(current), to: boolDesc(next) });
+  }
+  const s  = cfg.sensors     || {};
+  const a  = cfg.actuators   || {};
+  const ct = cfg.controllers || {};
+  // Shared helper for all presets
+  function applyPreset(twoShaft, ab, n2, tit, torque, prop, governor) {
+    chkCfg('Two-shaft (N1+N2)',      cfg.has_two_shaft   || false, twoShaft);
+    chkCfg('Afterburner',            cfg.has_afterburner || false, ab);
+    chkCfg('N2 RPM sensor',          (s.n2_rpm    ||{}).enabled || false, n2);
+    chkCfg('TIT sensor',             (s.tit       ||{}).enabled || false, tit);
+    chkCfg('Torque sensor',          (s.torque    ||{}).enabled || false, torque);
+    chkCfg('Prop pitch actuator',    (a.prop_pitch||{}).enabled || false, prop);
+    chkCfg('Power turbine governor', ct.governor || false, governor);
+  }
+  //                          2shaft  AB     N2     TIT    torque prop   gov
+  if      (type === 'turbojet')     applyPreset(false, false, false, false, false, false, false);
+  else if (type === 'turbojet_ab')  applyPreset(false, true,  false, false, false, false, false);
+  else if (type === 'twin_shaft')   applyPreset(true,  false, true,  false, false, false, false);
+  else if (type === 'free_turbine') applyPreset(true,  false, true,  true,  false, false, true);
+  else if (type === 'turboprop')    applyPreset(true,  false, true,  true,  false, true,  true);
+  return changes;
+}
+
+function applyEnginePreset(type) {
+  // 'show_all' is immediate — just enable both feature flags and repopulate
+  if (type === 'show_all') {
+    cfg.has_two_shaft   = true;
+    cfg.has_afterburner = true;
+    dirty();
+    populate();
+    refreshAllPins();
+    const desc = document.getElementById('eng-preset-desc');
+    if (desc) desc.textContent = 'Showing all optional hardware sections. Enable or disable individual sensors and actuators below.';
+    return;
+  }
+  const changes = _computePresetChanges(type);
+  _pendingPresetType = type;
+  const presetNames = {
+    turbojet:    'Turbojet',
+    turbojet_ab: 'Turbojet + Afterburner',
+    twin_shaft:  'Twin-shaft Turbojet',
+    free_turbine:'Free Turbine',
+    turboprop:   'Turboprop',
+  };
+  const body = document.getElementById('preset-modal-body');
+  if (!changes || changes.length === 0) {
+    body.innerHTML = '<span style="color:var(--dim)">No changes — current config already matches this preset.</span>';
+  } else {
+    body.innerHTML = '<div style="margin-bottom:.5rem;color:var(--dim);font-size:.73rem">Fields that will change:</div>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:.8rem">'
+      + changes.map(c =>
+          `<tr><td style="padding:.2rem .5rem .2rem 0;color:var(--text)">${c.field}</td>`
+          + `<td style="padding:.2rem .3rem;color:var(--red);text-decoration:line-through;white-space:nowrap">${c.from}</td>`
+          + `<td style="padding:.2rem 0 .2rem .3rem;color:var(--green);white-space:nowrap">→ ${c.to}</td></tr>`
+        ).join('')
+      + '</table>';
+  }
+  const overlay = document.getElementById('preset-modal-overlay');
+  overlay.style.display = 'flex';
+}
+
+function closePresetModal() {
+  document.getElementById('preset-modal-overlay').style.display = 'none';
+  _pendingPresetType = null;
+}
+
+function applyPresetConfirmed() {
+  const type = _pendingPresetType;
+  closePresetModal();
+  if (!type) return;
+  if (!cfg.sensors)     cfg.sensors     = {};
+  if (!cfg.actuators)   cfg.actuators   = {};
+  if (!cfg.controllers) cfg.controllers = {};
+  function ensS(k, en) { if (!cfg.sensors[k])  cfg.sensors[k]  = {}; cfg.sensors[k].enabled  = en; }
+  function ensA(k, en) { if (!cfg.actuators[k]) cfg.actuators[k] = {}; cfg.actuators[k].enabled = en; }
+  const desc = document.getElementById('eng-preset-desc');
+  //                                        2shaft  AB      N2      TIT     torque  prop    gov
+  const PRESETS = {
+    turbojet:    [false,  false,  false,  false,  false,  false,  false,
+      'Turbojet — single shaft, no afterburner or power turbine output.'],
+    turbojet_ab: [false,  true,   false,  false,  false,  false,  false,
+      'Turbojet + Afterburner — single shaft, AB solenoid, pump and sequencer enabled.'],
+    twin_shaft:  [true,   false,  true,   false,  false,  false,  false,
+      'Twin-shaft Turbojet — N1 + N2 RPM monitoring. No governor or prop pitch (N2 is a measurement only).'],
+    free_turbine:[true,   false,  true,   true,   false,  false,  true,
+      'Free Turbine — N2 drives output shaft. N2 governor and TIT sensor enabled. No prop pitch.'],
+    turboprop:   [true,   false,  true,   true,   false,  true,   true,
+      'Turboprop — free turbine with variable-pitch prop servo, N2 governor and TIT sensor.'],
+  };
+  const p = PRESETS[type];
+  if (!p) return;
+  const [twoShaft, ab, n2, tit, torque, prop, governor, descTxt] = p;
+  cfg.has_two_shaft   = twoShaft;
+  cfg.has_afterburner = ab;
+  ensS('n2_rpm',  n2);
+  ensS('tit',     tit);
+  ensS('torque',  torque);
+  ensA('prop_pitch', prop);
+  cfg.controllers.governor = governor;
+  if (desc) desc.textContent = descTxt;
+  dirty();
+  populate();
+  refreshAllPins();
+}
+function updateFeaturesUI() {
+  const hasAB  = cfg.has_afterburner || false;
+  const has2sh = cfg.has_two_shaft   || false;
+  // N2 sensor
+  const n2sec = document.getElementById('section-n2rpm');
+  if (n2sec) n2sec.style.display = has2sh ? '' : 'none';
+  // AB actuator block
+  const abActSec = document.getElementById('section-ab-actuators');
+  if (abActSec) abActSec.style.display = hasAB ? '' : 'none';
+  // Labels: Igniter 2 / AB Igniter
+  const lblIgn2 = document.getElementById('lbl-igniter2');
+  if (lblIgn2) lblIgn2.textContent = hasAB ? 'AB Igniter (Igniter 2)' : 'Igniter 2';
+  // Labels: AB Fuel Pump / Fuel Pump 2
+  const lblAbp = document.getElementById('lbl-abpump');
+  if (lblAbp) lblAbp.textContent = hasAB ? 'Afterburner Fuel Pump Motor / ESC' : 'Fuel Pump 2 Motor / ESC';
+}
+
+// ── Save-recap helpers ────────────────────────────────────────
+function _getFieldLabel(el) {
+  // en-* : label is the <b> text inside the same .hw-toggle wrapper
+  if (el.id.startsWith('en-')) {
+    let p = el.parentElement;
+    while (p && !p.classList.contains('hw-toggle')) p = p.parentElement;
+    if (p) {
+      const b = p.querySelector('b');
+      if (b) return b.textContent.trim();
+    }
+    return el.id.replace(/^en-/, '').replace(/-/g, ' ');
+  }
+  // f-* : label is in nearest .hw-field → .hw-label
+  let p = el.parentElement;
+  while (p && !p.classList.contains('hw-field')) p = p.parentElement;
+  if (p) {
+    const lbl = p.querySelector('.hw-label');
+    if (lbl) return lbl.textContent.trim().replace(/\s*\(.*\)$/, '');
+  }
+  return el.id.replace(/^f-/, '').replace(/-/g, ' ');
+}
+
+function _formatValue(el, rawVal) {
+  if (el.type === 'checkbox') return (rawVal === true || rawVal === 'true') ? 'Enabled' : 'Disabled';
+  if (el.tagName === 'SELECT') {
+    const opt = Array.from(el.options).find(o => String(o.value) === String(rawVal));
+    return opt ? opt.text.replace(/\s*\[.*?\]/g, '').trim() : (rawVal === '-1' || rawVal === '' ? '— Not assigned —' : rawVal);
+  }
+  return rawVal !== '' && rawVal !== undefined ? String(rawVal) : '(empty)';
+}
+
+function _buildChanges() {
+  const changes = [];
+  document.querySelectorAll(
+    'input[id^="f-"], select[id^="f-"], textarea[id^="f-"], input[id^="en-"]'
+  ).forEach(el => {
+    if (!(el.id in _fieldSnap)) return;
+    const cur  = (el.type === 'checkbox') ? el.checked : el.value;
+    const snap = _fieldSnap[el.id];
+    if (String(cur) === String(snap)) return;
+    if (el.disabled) return;
+    if (el.offsetParent === null) return;  // inside a hidden/collapsed section
+    changes.push({
+      label: _getFieldLabel(el),
+      was:   _formatValue(el, snap),
+      now:   _formatValue(el, cur),
+    });
+  });
+  return changes;
+}
+
+function saveHardware() {
+  const changes = _buildChanges();
+  if (!changes.length) {
+    // Nothing actually changed in the UI (e.g. only type-switch with same value)
+    _doSave();
+    return;
+  }
+  const modal    = document.getElementById('save-recap-modal');
+  const body     = document.getElementById('save-recap-body');
+  const subtitle = document.getElementById('save-recap-subtitle');
+  subtitle.textContent = changes.length + ' field' + (changes.length > 1 ? 's' : '') +
+    ' changed. Hardware saves require a reboot — the device will restart.';
+
+  let rows = changes.map(c =>
+    `<tr>
+      <td>${c.label}</td>
+      <td class="val-was">${c.was}</td>
+      <td class="val-now">${c.now}</td>
+    </tr>`
+  ).join('');
+  body.innerHTML =
+    `<table class="save-recap-table">
+      <thead><tr><th>Setting</th><th>Was</th><th>Now</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  modal.style.display = 'flex';
+}
+
+function _cancelSaveRecap() {
+  document.getElementById('save-recap-modal').style.display = 'none';
+  // Re-enable save button (it was not disabled — but confirm button may have been)
+  const cb = document.getElementById('save-recap-confirm-btn');
+  if (cb) cb.disabled = false;
+}
+
+async function _doSave() {
+  const cb = document.getElementById('save-recap-confirm-btn');
+  if (cb) cb.disabled = true;
+  document.getElementById('save-recap-modal').style.display = 'none';
+  document.getElementById('save-msg').textContent = 'Saving…';
+  document.getElementById('btn-save').disabled = true;
+  try {
+    const r = await fetch('/api/hardware', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(cfg)
+    });
+    const j = await r.json();
+    if (j.ok) {
+      clearDirty();
+      document.getElementById('save-msg').textContent = 'Saved — rebooting…';
+      showRebootOverlay();
+    } else {
+      document.getElementById('save-msg').textContent = 'Save failed: ' + (j.error || 'unknown');
+      updateSaveButton();
+    }
+  } catch(e) {
+    document.getElementById('save-msg').textContent = 'Save failed: ' + e;
+    updateSaveButton();
+  }
+}
+
+function showRebootOverlay() {
+  const ov = document.getElementById('reboot-overlay');
+  ov.style.display = 'flex';
+  let secs = 12;
+  const t = document.getElementById('reboot-timer');
+  const iv = setInterval(() => {
+    secs--;
+    t.textContent = secs > 0 ? 'Reconnecting in ~' + secs + 's…' : 'Reconnecting…';
+    if (secs <= 0) {
+      clearInterval(iv);
+      const poll = setInterval(async () => {
+        try { const r = await fetch('/api/status',{cache:'no-store'}); if(r.ok){clearInterval(poll);location.reload();} } catch(_) {}
+      }, 1000);
+    }
+  }, 1000);
+}
+
+async function resetDefaults() {
+  if (!confirm('Reset hardware configuration to factory defaults?\nChanges are not saved until you click Save & Reboot.')) return;
+  await loadHardware();
+  document.getElementById('save-msg').textContent = 'Defaults loaded — click Save & Reboot to apply.';
+}
+
+window.addEventListener('load', () => {
+  connectWs();
+  loadHardware();
+});
+</script>
+</body>
+</html>
