@@ -31,7 +31,10 @@ public:
             .low_limit  = -1,
             .high_limit = H_LIM,
             .intr_priority = 0,
-            .flags = { .accum_count = 1 }  // auto-accumulate on overflow
+            // accum_count=0: we track wraps manually in int64_t so the
+            // accumulated total never overflows (the IDF's own software
+            // accumulator is int32, which wraps after ~14 days at max RPM).
+            .flags = { .accum_count = 0 }
         };
         ESP_ERROR_CHECK(pcnt_new_unit(&unitCfg, &_unit));
 
@@ -58,6 +61,7 @@ public:
 
         _lastMs    = millis();
         _lastCount = 0;
+        _accumPulses = 0;
         _rpm       = 0;
         _health.clear();
     }
@@ -67,19 +71,24 @@ public:
         unsigned long dt  = now - _lastMs;
         if (dt < UPDATE_INTERVAL_MS) return;
 
-        int raw = 0;
-        pcnt_unit_get_count(_unit, &raw);
+        // Read the raw hardware counter (bounded 0…H_LIM-1).
+        // We use accum_count=0 and accumulate ourselves in int64_t so the
+        // total never wraps — the IDF's own int32 accumulator overflows
+        // after ~14 days at max RPM with typical PPR values.
+        int rawInt = 0;
+        pcnt_unit_get_count(_unit, &rawInt);
 
-        int delta = raw - _lastCount;
-        if (delta < 0) delta += H_LIM;   // handle counter wrap
+        int64_t delta = (int64_t)rawInt - _lastCount;
+        if (delta < 0) delta += H_LIM;   // hardware counter wrapped 0…H_LIM
+        _accumPulses += delta;
 
-        float newRpm = (delta / _ppr) * (60000.0f / dt);
+        float newRpm = ((float)delta / _ppr) * (60000.0f / (float)dt);
 
-        _updateHealth(newRpm, delta, dt);
+        _updateHealth(newRpm, (int)delta, dt);
 
         _rpm       = newRpm;
         _lastMs    = now;
-        _lastCount = raw;
+        _lastCount = (int64_t)rawInt;
     }
 
     float       getValue()  override { return _rpm; }
@@ -93,8 +102,9 @@ public:
     }
 
     // Configurable health thresholds — set from applyConfig() via Hardware.h
-    float jumpThreshold  = 0.40f;  // fraction: 0.40 = 40% relative RPM jump → fault
+    float jumpThreshold  = 0.40f;  // fraction of rpmLimit per second → JUMP fault
     int   zeroStuckLimit = 5;      // ticks at UPDATE_INTERVAL_MS before ZERO_STUCK fault
+    float rpmLimit       = 60000.0f; // engine RPM limit — used to scale jumpThreshold
 
 private:
     static constexpr int           H_LIM              = 30000;
@@ -104,10 +114,11 @@ private:
     float       _ppr;
     const char* _name;
 
-    pcnt_unit_handle_t _unit     = nullptr;
-    unsigned long      _lastMs   = 0;
-    int                _lastCount= 0;
-    float              _rpm      = 0;
+    pcnt_unit_handle_t _unit        = nullptr;
+    unsigned long      _lastMs      = 0;
+    int64_t            _lastCount   = 0;   // last raw hardware counter value (0…H_LIM)
+    int64_t            _accumPulses = 0;   // total pulses since begin() — never overflows
+    float              _rpm         = 0;
     float              _prevRpm  = 0;
     int                _zeroCount= 0;
     RpmHealth          _health;
@@ -123,13 +134,10 @@ private:
             _health.set(RpmHealth::SATURATED);
         }
 
-        // Implausible jump: use absolute RPM/s rate limit rather than a relative
-        // fraction so false positives at low RPM are avoided.
-        // Default jumpThreshold (0.40) now means: max 0.40 × 60000 = 24000 RPM/s.
-        // Reinterpret: jumpThreshold as fraction of rpmLimit (set to e.g. 100000)
-        // per UPDATE_INTERVAL_MS — adjust jumpThreshold in hardware_profile.h if needed.
+        // Implausible jump: max allowed RPM/s = jumpThreshold × rpmLimit.
+        // e.g. jumpThreshold=0.40, rpmLimit=100000 → 40000 RPM/s max rate.
         if (_prevRpm > 500.0f && rpm > 0) {
-            float maxDeltaRpm = jumpThreshold * 60000.0f * (dt / 1000.0f); // RPM limit per interval
+            float maxDeltaRpm = jumpThreshold * rpmLimit * (dt / 1000.0f);
             if (fabsf(rpm - _prevRpm) > maxDeltaRpm) {
                 _health.set(RpmHealth::JUMP);
             }

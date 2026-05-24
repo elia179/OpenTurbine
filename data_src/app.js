@@ -14,8 +14,8 @@ const _unitPrefs = (() => { try { return JSON.parse(localStorage.getItem('ot_uni
 function _saveUP() { try { localStorage.setItem('ot_units', JSON.stringify(_unitPrefs)); } catch {} }
 function tempUnit()   { return _unitPrefs.temp  || 'C'; }
 function pressUnit()  { return _unitPrefs.press || 'bar'; }
-function setTempUnit(v)  { _unitPrefs.temp  = v; _saveUP(); applyUnitLabels(); }
-function setPressUnit(v) { _unitPrefs.press = v; _saveUP(); applyUnitLabels(); }
+function setTempUnit(v)  { _unitPrefs.temp  = v; _saveUP(); applyUnitLabels(); if (_lastData) applyData(_lastData); }
+function setPressUnit(v) { _unitPrefs.press = v; _saveUP(); applyUnitLabels(); if (_lastData) applyData(_lastData); }
 function toDispTemp(c)   { return tempUnit()  === 'F'   ? c * 9/5 + 32  : c; }
 function fromDispTemp(v) { return tempUnit()  === 'F'   ? (v - 32) * 5/9 : v; }
 function toDispPress(b)  { return pressUnit() === 'psi' ? b * 14.5038   : b; }
@@ -66,41 +66,77 @@ function drawSparkline(canvasId, data, color) {
 }
 
 // ── WebSocket live telemetry ──────────────────────────────────
-let ws, wsRetryTimer;
+// Architecture: client-pull model.
+//
+// The server pushes telemetry in response to a tiny "p" message sent by the
+// client every 500 ms.  This ensures the push runs inside the async_tcp task
+// context (WS_EVT_DATA callback) rather than from webTask — eliminating the
+// cross-task notification lag that caused 5-20 s burst-then-silence behaviour.
+//
+// setInterval at 500 ms is reliable for a visible foreground tab; if the tab
+// is backgrounded the rate drops to ~1 s which is acceptable for monitoring.
+let ws = null;
+let _lastMsgMs = 0;
+let _lastConnectMs = 0;
+let _pullTimer = null;
 
 function connect() {
+  if (ws && ws.readyState <= WebSocket.OPEN) return;
+  _lastConnectMs = Date.now();
   ws = new WebSocket('ws://' + location.host + '/ws');
 
   ws.onopen = () => {
     document.getElementById('conn').className = 'conn-dot connected';
     const lbl = document.getElementById('conn-label');
     if (lbl) { lbl.textContent = 'Connected'; lbl.style.color = 'var(--green)'; }
-    clearTimeout(wsRetryTimer);
+    _lastMsgMs = Date.now();
+    // Start sending pull requests — server responds with full telemetry each time.
+    // Server also sends one frame on WS_EVT_CONNECT so the UI populates immediately.
+    // Dashboard needs 10 Hz for smooth live gauges; other pages (log, config, etc.)
+    // only need the connection indicator — 2 s is enough and keeps the ESP32 free
+    // to serve page fetches without queuing behind a flood of WS events.
+    const _pullMs = (location.pathname === '/' || location.pathname === '/index.html') ? 100 : 2000;
+    _pullTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
+    }, _pullMs);
   };
 
   ws.onclose = () => {
+    if (_pullTimer) { clearInterval(_pullTimer); _pullTimer = null; }
     document.getElementById('conn').className = 'conn-dot disconnected';
     const lbl = document.getElementById('conn-label');
     if (lbl) { lbl.textContent = 'Disconnected'; lbl.style.color = 'var(--dim)'; }
-    // Blank all live readings so stale values are never mistaken for current data
     ['n1','n2','tot','oil','p1','p2','oil-temp','batt-voltage','torque'].forEach(id => {
       const el = document.getElementById(id); if (el) el.textContent = '—';
     });
     ['n1-approach-warn','tot-approach-warn','oil-approach-warn'].forEach(id => {
       const el = document.getElementById(id); if (el) el.style.display = 'none';
     });
-    wsRetryTimer = setTimeout(connect, 2000);
+    const wait = 1000 - (Date.now() - _lastConnectMs);
+    if (wait <= 0) {
+      connect();
+    } else {
+      setTimeout(connect, wait);
+    }
   };
 
-  ws.onerror = () => ws.close();
+  ws.onerror = () => { ws.close(); };
 
   ws.onmessage = (ev) => {
+    _lastMsgMs = Date.now();
     try { applyData(JSON.parse(ev.data)); } catch(e) {}
   };
 }
 
 // ── Apply telemetry frame to DOM ──────────────────────────────
+let _lastData = null;
 function applyData(d) {
+  // Merge into _lastData rather than replace — fast frames only carry live
+  // fields; slow fields (has_*, limits, max_oil_temp, etc.) must persist so
+  // that applyData(_lastData) called by the unit-toggle buttons still has them.
+  if (!_lastData) _lastData = {};
+  Object.assign(_lastData, d);
+  d = _lastData;
   // ── Channel labels ─────────────────────────────────────────
   if (d.labels) {
     Object.assign(_labels, d.labels);
@@ -108,11 +144,12 @@ function applyData(d) {
     sl('lbl-n1',         lbl('n1') + ' RPM');
     sl('lbl-n2',         lbl('n2') + ' RPM');
     sl('lbl-tot',        lbl('tot'));
+    sl('lbl-tit',        lbl('tit'));
     sl('lbl-oil',        lbl('oil_press'));
     sl('lbl-oil-temp',   lbl('oil_temp'));
-    sl('lbl-p1',         lbl('p1') + ' bar');
-    sl('lbl-p2',         lbl('p2') + ' bar');
-    sl('lbl-fuel-press', lbl('fuel_press') + ' bar');
+    sl('lbl-p1',         lbl('p1'));         // unit shown by adjacent data-unit="press" span
+    sl('lbl-p2',         lbl('p2'));
+    sl('lbl-fuel-press', lbl('fuel_press'));
     sl('lbl-fuel-flow',  lbl('fuel_flow'));
   }
   // Coerce to Number so .toFixed/.toLocaleString always work even if JSON sent as int
@@ -192,9 +229,27 @@ function applyData(d) {
   const manualRelightNote = document.getElementById('manual-relight-note');
   if (manualRelightNote) manualRelightNote.style.display = d.manual_relight_active ? '' : 'none';
 
-  // Extra cooldown indicator
+  // Extra cooldown indicator + countdown
   const ecCard = document.getElementById('extra-cooldown-card');
   if (ecCard) ecCard.style.display = d.extra_cooldown_active ? '' : 'none';
+  if (d.extra_cooldown_remaining_s !== undefined)
+    setText('extra-cooldown-remaining', d.extra_cooldown_remaining_s);
+
+  // Standby oil feed indicator
+  const standbyOilNote = document.getElementById('standby-oil-feed-note');
+  if (standbyOilNote) standbyOilNote.style.display = d.standby_oil_feed_active ? '' : 'none';
+
+  // System stats — flash + log records
+  if (d.flash_free_kb  !== undefined) setText('sys-flash-free',  d.flash_free_kb);
+  if (d.flash_used_kb  !== undefined) setText('sys-flash-used',  d.flash_used_kb);
+  if (d.flash_total_kb !== undefined) setText('sys-flash-total', d.flash_total_kb);
+  if (d.log_records    !== undefined) setText('sys-log-records', d.log_records);
+  if (d.log_max_records !== undefined) setText('sys-log-max',   d.log_max_records);
+  if (d.boot_count     !== undefined) setText('sys-boot-count',  d.boot_count);
+  if (d.reset_reason   !== undefined) {
+    const reasons = ['UNKNOWN','POWER_ON','EXT','SW','PANIC','INT_WDT','TASK_WDT','WDT','DEEPSLEEP','BROWNOUT','SDIO'];
+    setText('sys-reset-reason', reasons[d.reset_reason] || d.reset_reason);
+  }
 
   // Flame progress bar + threshold marker
   if (d.flame_raw !== undefined) {
@@ -216,10 +271,10 @@ function applyData(d) {
   // Pressure sensors — show/hide based on whether sensors are fitted
   const psSection = document.getElementById('pressure-section');
   if (psSection) psSection.style.display = (d.has_p1 || d.has_p2) ? '' : 'none';
-  setText('p1', d.p1 !== undefined ? Number(d.p1).toFixed(2) : '—');
-  setText('p2', d.p2 !== undefined ? Number(d.p2).toFixed(2) : '—');
-  setText('max-p1', d.max_p1 !== undefined ? Number(d.max_p1).toFixed(2) : '—');
-  setText('max-p2', d.max_p2 !== undefined ? Number(d.max_p2).toFixed(2) : '—');
+  setText('p1', d.p1 !== undefined ? toDispPress(Number(d.p1)).toFixed(2) : '—');
+  setText('p2', d.p2 !== undefined ? toDispPress(Number(d.p2)).toFixed(2) : '—');
+  setText('max-p1', d.max_p1 !== undefined ? toDispPress(Number(d.max_p1)).toFixed(2) : '—');
+  setText('max-p2', d.max_p2 !== undefined ? toDispPress(Number(d.max_p2)).toFixed(2) : '—');
 
   // Health dots
   // RPM health is only meaningful when the engine is running — zero RPM at standby is valid.
@@ -307,7 +362,9 @@ function applyData(d) {
   if (d.tot_rise_rate !== undefined) {
     const rate = Number(d.tot_rise_rate);
     const rateEl = document.getElementById('tot-rise-rate-val');
-    if (rateEl) rateEl.textContent = rate.toFixed(1) + ' °C/s';
+    // Rise rate is a delta — only apply the scale factor (×9/5), not the +32 offset
+    if (rateEl) rateEl.textContent = (tempUnit() === 'F' ? (rate * 9/5).toFixed(1) + ' °F/s'
+                                                         : rate.toFixed(1) + ' °C/s');
   }
 
   // ── Color gauges + approach-to-limit warnings ────────────
@@ -321,6 +378,8 @@ function applyData(d) {
       if (show) warn.textContent = '⚠ N1 at ' + pct.toFixed(0) + '% — '
         + Number(d.n1).toLocaleString() + ' / ' + Number(d.rpm_limit).toLocaleString() + ' RPM';
     }
+    const absLbl = document.getElementById('n1-abs-label');
+    if (absLbl) absLbl.textContent = Number(d.n1).toLocaleString() + ' / ' + Number(d.rpm_limit).toLocaleString() + ' RPM';
   }
   if (d.tot_limit && d.tot !== undefined) {
     const pct = Math.min(100, (d.tot / d.tot_limit) * 100);
@@ -330,19 +389,25 @@ function applyData(d) {
       const show = pct >= 85;
       warn.style.display = show ? '' : 'none';
       if (show) warn.textContent = '⚠ TOT at ' + pct.toFixed(0) + '% — '
-        + Number(d.tot).toFixed(0) + ' / ' + Number(d.tot_limit).toFixed(0) + ' °C';
+        + toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(Number(d.tot_limit)).toFixed(0) + ' ' + dispTempUnit();
     }
+    const absLbl = document.getElementById('tot-abs-label');
+    if (absLbl) absLbl.textContent = toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(Number(d.tot_limit)).toFixed(0) + ' ' + dispTempUnit();
   }
-  if (d.oil_running_min && d.oil !== undefined && d.mode === 'RUNNING') {
-    const pctForColor = d.oil < d.oil_running_min ? 0 : 80;
-    setGaugeBar('oil-gauge-bar', pctForColor);
-    const warn = document.getElementById('oil-approach-warn');
-    if (warn) {
-      const low = d.oil < d.oil_running_min * 1.15;
-      warn.style.display = low ? '' : 'none';
-      if (low) warn.textContent = '⚠ Oil ' + Number(d.oil).toFixed(2)
-        + ' bar — near min ' + Number(d.oil_running_min).toFixed(2) + ' bar';
+  if (d.oil_running_min && d.oil !== undefined) {
+    if (d.mode === 'RUNNING') {
+      const pctForColor = d.oil < d.oil_running_min ? 0 : 80;
+      setGaugeBar('oil-gauge-bar', pctForColor);
+      const warn = document.getElementById('oil-approach-warn');
+      if (warn) {
+        const low = d.oil < d.oil_running_min * 1.15;
+        warn.style.display = low ? '' : 'none';
+        if (low) warn.textContent = '⚠ Oil ' + toDispPress(Number(d.oil)).toFixed(2)
+          + ' ' + dispPressUnit() + ' — near min ' + toDispPress(Number(d.oil_running_min)).toFixed(2) + ' ' + dispPressUnit();
+      }
     }
+    const absLbl = document.getElementById('oil-abs-label');
+    if (absLbl) absLbl.textContent = toDispPress(Number(d.oil)).toFixed(2) + ' / ≥' + toDispPress(Number(d.oil_running_min)).toFixed(2) + ' ' + dispPressUnit();
   }
 
   // ── Firmware version (shown once on first telemetry frame) ──
@@ -377,7 +442,9 @@ function applyData(d) {
   const extSection = document.getElementById('ext-sensors-section');
   if (extSection) {
     const anyExt = d.has_oil_temp || d.has_batt_voltage || d.has_torque
-                || d.has_glow_current || d.has_igniter_current || d.has_fuel_flow;
+                || d.has_glow_current || d.has_igniter_current || d.has_igniter2_current
+                || d.has_oil_pump_current
+                || d.has_fuel_flow || d.has_tit || d.has_fuel_press;
     extSection.style.display = anyExt ? '' : 'none';
   }
 
@@ -391,6 +458,41 @@ function applyData(d) {
       setDot('oil-temp-health', d.oil_temp_healthy, lbl('oil_temp'));
       if (d.oil_temp_limit && d.oil_temp_limit > 0 && d.oil_temp !== undefined) {
         setGaugeBar('oil-temp-gauge-bar', Math.min(100, (d.oil_temp / d.oil_temp_limit) * 100));
+      }
+    }
+  }
+
+  // TIT card
+  const titCard = document.getElementById('tit-card');
+  if (titCard) {
+    titCard.style.display = d.has_tit ? '' : 'none';
+    if (d.has_tit) {
+      setText('tit', d.tit !== undefined ? toDispTemp(Number(d.tit)).toFixed(0) : '—');
+      setText('max-tit', d.max_tit !== undefined ? toDispTemp(Number(d.max_tit)).toFixed(0) : '—');
+      setDot('tit-health', d.tit_healthy, lbl('tit'));
+      if (d.tit_limit && d.tit_limit > 0 && d.tit !== undefined) {
+        setGaugeBar('tit-gauge-bar', Math.min(100, (d.tit / d.tit_limit) * 100));
+        const absLbl = document.getElementById('tit-abs-label');
+        if (absLbl) absLbl.textContent = toDispTemp(Number(d.tit)).toFixed(0) + ' / ' + toDispTemp(Number(d.tit_limit)).toFixed(0) + ' ' + dispTempUnit();
+      }
+    }
+  }
+
+  // Fuel pressure card
+  const fuelPressCard = document.getElementById('fuel-press-card');
+  if (fuelPressCard) {
+    fuelPressCard.style.display = d.has_fuel_press ? '' : 'none';
+    if (d.has_fuel_press) {
+      setText('fuel-press', d.fuel_press !== undefined ? toDispPress(Number(d.fuel_press)).toFixed(2) : '—');
+      setText('max-fuel-press', d.max_fuel_press !== undefined ? toDispPress(Number(d.max_fuel_press)).toFixed(2) : '—');
+      setDot('fuel-press-health', d.fuel_press_healthy, lbl('fuel_press'));
+      if (d.fuel_press_min && d.fuel_press_min > 0 && d.fuel_press !== undefined) {
+        // Gauge: 0% = at min threshold, 100% = 3× min (typical healthy range)
+        const pct = Math.min(100, Math.max(0,
+          ((d.fuel_press - d.fuel_press_min) / (d.fuel_press_min * 2)) * 100));
+        setGaugeBar('fuel-press-gauge-bar', pct);
+        const absLbl = document.getElementById('fuel-press-abs-label');
+        if (absLbl) absLbl.textContent = toDispPress(Number(d.fuel_press)).toFixed(2) + ' / ≥' + toDispPress(Number(d.fuel_press_min)).toFixed(2) + ' ' + dispPressUnit();
       }
     }
   }
@@ -437,17 +539,42 @@ function applyData(d) {
     if (d.has_glow_current) {
       setText('glow-current-val', d.glow_current_amps !== undefined ? Number(d.glow_current_amps).toFixed(1) : '—');
       const hot = !!d.glow_plug_hot;
-      setDot('glow-hot-dot', hot, 'Glow plug');
+      setDot('glow-hot-dot', hot);          // set class only; title managed below
+      const ghDot = document.getElementById('glow-hot-dot');
+      if (ghDot) ghDot.title = hot ? 'Glow plug — HOT (ready)' : 'Glow plug — warming up';
       setText('glow-hot-label', hot ? 'HOT — ready' : 'warming up…');
     }
   }
 
-  // Igniter / coil current card
+  // Igniter 1 / coil current card
   const ignCurCard = document.getElementById('igniter-current-card');
   if (ignCurCard) {
     ignCurCard.style.display = d.has_igniter_current ? '' : 'none';
     if (d.has_igniter_current) {
       setText('igniter-current-val', d.igniter_current_amps !== undefined ? Number(d.igniter_current_amps).toFixed(1) : '—');
+    }
+  }
+
+  // Igniter 2 / AB coil current card
+  const ign2CurCard = document.getElementById('igniter2-current-card');
+  if (ign2CurCard) {
+    ign2CurCard.style.display = d.has_igniter2_current ? '' : 'none';
+    if (d.has_igniter2_current) {
+      setText('igniter2-current-val', d.igniter2_current_amps !== undefined ? Number(d.igniter2_current_amps).toFixed(1) : '—');
+    }
+  }
+
+  // Oil pump current card
+  const oilpCurCard = document.getElementById('oilpump-current-card');
+  if (oilpCurCard) {
+    oilpCurCard.style.display = d.has_oil_pump_current ? '' : 'none';
+    if (d.has_oil_pump_current) {
+      setText('oilpump-current-val', d.oil_pump_current_amps !== undefined ? Number(d.oil_pump_current_amps).toFixed(1) : '—');
+      const oc = !!d.oil_pump_overcurrent;
+      setDot('oilpump-oc-dot', !oc);         // set class only; title managed below
+      const ocDot = document.getElementById('oilpump-oc-dot');
+      if (ocDot) ocDot.title = oc ? 'Oil pump current — ⚠ OVERCURRENT' : 'Oil pump current — OK';
+      setText('oilpump-oc-label', oc ? '⚠ OVERCURRENT' : 'OK');
     }
   }
 
@@ -501,10 +628,11 @@ function applyData(d) {
     }
   }
 
-  // ── Advanced actuators section (glow, bleed, prop pitch, fuel pump 2)
+  // ── Advanced actuators section (glow, bleed, prop pitch, fuel pump 2, fan, airstarter, scavenge)
   const advActSection = document.getElementById('adv-act-section');
   if (advActSection) {
-    const anyAdv = d.has_glow_plug || d.has_bleed_valve || d.has_prop_pitch || d.has_fuel_pump2;
+    const anyAdv = d.has_glow_plug || d.has_bleed_valve || d.has_prop_pitch || d.has_fuel_pump2
+                || d.has_cool_fan  || d.has_airstarter  || d.has_oil_scavenge;
     advActSection.style.display = anyAdv ? '' : 'none';
 
     const advGlow = document.getElementById('adv-glow');
@@ -538,6 +666,24 @@ function applyData(d) {
         setText('fp2-pct', Math.round(d.fuel_pump2_demand * 100));
         setGaugeBar('fp2-gauge-bar', d.fuel_pump2_demand * 100);
       }
+    }
+
+    const advFan = document.getElementById('adv-coolfan');
+    if (advFan) {
+      advFan.style.display = d.has_cool_fan ? '' : 'none';
+      if (d.has_cool_fan) setText('coolfan-state', d.cool_fan_on ? 'ON' : 'OFF');
+    }
+
+    const advAir = document.getElementById('adv-airstarter');
+    if (advAir) {
+      advAir.style.display = d.has_airstarter ? '' : 'none';
+      if (d.has_airstarter) setText('airstarter-state', d.airstarter_open ? 'OPEN' : 'CLOSED');
+    }
+
+    const advScav = document.getElementById('adv-scavenge');
+    if (advScav) {
+      advScav.style.display = d.has_oil_scavenge ? '' : 'none';
+      if (d.has_oil_scavenge) setText('scavenge-state', d.oil_scavenge_on ? 'ON' : 'OFF');
     }
   }
 
@@ -742,7 +888,8 @@ function setHwActive(id, active) {
 function setGaugeBar(id, pct) {
   const bar = document.getElementById(id);
   if (!bar) return;
-  bar.style.width = Math.max(0, pct) + '%';
+  const clamped = Math.min(100, Math.max(0, pct));
+  bar.style.width = clamped + '%';
   if (pct >= 95) { bar.className = 'gauge-bar danger'; }
   else if (pct >= 80) { bar.className = 'gauge-bar warn'; }
   else { bar.className = 'gauge-bar'; }
@@ -776,10 +923,19 @@ function sendAbCmd(cmd) {
     .catch(e => console.error('Network error', e));
 }
 
-// ── Boot: prime dashboard immediately via REST, then keep WS live ─
+// ── Boot: prime dashboard via REST for instant first paint, then WS takes over ─
 applyUnitLabels();
 connect();
 fetch('/api/data')
   .then(r => r.json())
   .then(d => { try { applyData(d); } catch(e) {} })
+  .catch(() => {});
+
+// Show banner if startup sequence is empty (checked once at page load)
+fetch('/api/hardware')
+  .then(r => r.json())
+  .then(hw => {
+    const banner = document.getElementById('empty-seq-banner');
+    if (banner) banner.style.display = (hw.startup_seq && hw.startup_seq.length > 0) ? 'none' : '';
+  })
   .catch(() => {});

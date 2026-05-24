@@ -16,8 +16,10 @@ bool  HardwareConfig::hasTwoShaft      = false;
 // Physical controls
 int   HardwareConfig::stopPin          = OT_STOP_PIN;
 bool  HardwareConfig::stopActiveH      = false;  // active-low: button connects pin to GND
+bool  HardwareConfig::stopPullup       = true;   // enable internal pull-up by default
 int   HardwareConfig::startPin         = OT_START_PIN;
 bool  HardwareConfig::startActiveH     = false;  // active-low
+bool  HardwareConfig::startPullup      = true;   // enable internal pull-up by default
 
 // Sensor feature flags
 bool  HardwareConfig::hasN1Rpm         = true;
@@ -55,10 +57,12 @@ int   HardwareConfig::titMiso          = -1;
 int   HardwareConfig::titMosi          = -1;
 int   HardwareConfig::oilPressPin      = OT_OIL_PRESS_PIN;
 int   HardwareConfig::flamePin         = OT_FLAME_PIN;
-int   HardwareConfig::fuelFlowPin      = 36;
-int   HardwareConfig::fuelPressPin     = 36;
-int   HardwareConfig::p1Pin            = 36;
-int   HardwareConfig::p2Pin            = 39;
+int   HardwareConfig::fuelFlowPin           = OT_ADC_5;
+int   HardwareConfig::fuelFlowType          = 0;
+float HardwareConfig::fuelFlowPulsesPerLitre = 100.0f;
+int   HardwareConfig::fuelPressPin     = OT_ADC_5;
+int   HardwareConfig::p1Pin            = OT_ADC_5;
+int   HardwareConfig::p2Pin            = OT_ADC_6;
 int   HardwareConfig::throttleInputPin = OT_THROTTLE_INPUT_PIN;
 bool  HardwareConfig::throttleInputRcPwm = false;
 int   HardwareConfig::idleInputPin     = OT_IDLE_INPUT_PIN;
@@ -70,6 +74,7 @@ int   HardwareConfig::oilTempCs        = -1;
 int   HardwareConfig::oilTempMiso      = -1;
 int   HardwareConfig::oilTempMosi      = -1;
 char  HardwareConfig::oilTempTcType[4] = "K";
+int   HardwareConfig::oilTempResolution = 12;
 float HardwareConfig::ntcBeta          = 3950.0f;
 float HardwareConfig::ntcR0            = 10000.0f;
 float HardwareConfig::ntcRFixed        = 10000.0f;
@@ -96,8 +101,10 @@ bool  HardwareConfig::hasFuelPump2     = false;
 bool  HardwareConfig::hasBleedValve    = false;
 bool  HardwareConfig::hasPropPitch     = false;
 bool  HardwareConfig::hasGlowPlug      = false;
-bool  HardwareConfig::hasGlowCurrentSensor    = false;
-bool  HardwareConfig::hasIgniterCurrentSensor  = false;
+bool  HardwareConfig::hasGlowCurrentSensor       = false;
+bool  HardwareConfig::hasIgniterCurrentSensor    = false;
+bool  HardwareConfig::hasIgniter2CurrentSensor   = false;
+bool  HardwareConfig::hasOilPumpCurrentSensor    = false;
 bool  HardwareConfig::hasGovernor      = false;
 bool  HardwareConfig::hasMAVLink       = false;
 bool  HardwareConfig::hasStatusLed     = false;
@@ -133,6 +140,10 @@ int   HardwareConfig::glowCurrentPin           = -1;
 float HardwareConfig::glowCurrentMvPerA        = 185.0f;
 float HardwareConfig::glowCurrentZeroV         = 1.65f;
 float HardwareConfig::glowCurrentReadyAmps     = 3.0f;
+int   HardwareConfig::oilPumpCurrentPin        = -1;
+float HardwareConfig::oilPumpCurrentMvPerA     = 100.0f;
+float HardwareConfig::oilPumpCurrentZeroV      = 1.65f;
+float HardwareConfig::oilPumpCurrentMaxAmps    = 0.0f;    // 0 = disabled
 int   HardwareConfig::mavlinkTxPin     = -1;
 int   HardwareConfig::mavlinkBaud      = 57600;
 int   HardwareConfig::mavlinkIntervalMs = 100;
@@ -202,6 +213,11 @@ bool  HardwareConfig::igniter2ActiveH  = true;
 bool  HardwareConfig::igniter2Pwm      = false;
 int   HardwareConfig::igniter2DwellMs  = 6;
 int   HardwareConfig::igniter2RestMs   = 3;
+bool  HardwareConfig::igniter2Coil             = false;
+float HardwareConfig::igniter2CoilSatAmps      = 8.0f;
+int   HardwareConfig::igniter2CurrentPin       = -1;
+float HardwareConfig::igniter2CurrentMvPerA    = 100.0f;
+float HardwareConfig::igniter2CurrentZeroV     = 1.65f;
 
 int   HardwareConfig::abSolPin         = -1;
 bool  HardwareConfig::abSolActiveH     = true;
@@ -387,8 +403,8 @@ void HardwareConfig::applyDefaults() {
     hasAfterburner = false;
     hasTwoShaft    = false;
 
-    stopPin      = OT_STOP_PIN;  stopActiveH  = false;
-    startPin     = OT_START_PIN; startActiveH = false;
+    stopPin      = OT_STOP_PIN;  stopActiveH  = false;  stopPullup  = true;
+    startPin     = OT_START_PIN; startActiveH = false;  startPullup = true;
 
     hasN1Rpm  = true;  hasN2Rpm = false; hasTot = true; hasTit = false;
     hasOilPress = true; hasFlame = true;
@@ -405,13 +421,15 @@ void HardwareConfig::applyDefaults() {
     strncpy(titTcType, "K", sizeof(titTcType) - 1);
     titClk = -1; titCs = -1; titMiso = -1; titMosi = -1;
     oilPressPin = OT_OIL_PRESS_PIN; flamePin = OT_FLAME_PIN;
-    fuelFlowPin = 36; fuelPressPin = 36; p1Pin = 36; p2Pin = 39;
+    fuelFlowPin = OT_ADC_5; fuelFlowType = 0; fuelFlowPulsesPerLitre = 100.0f;
+    fuelPressPin = OT_ADC_5; p1Pin = OT_ADC_5; p2Pin = OT_ADC_6;
     throttleInputPin = OT_THROTTLE_INPUT_PIN; throttleInputRcPwm = false;
     idleInputPin     = OT_IDLE_INPUT_PIN;     idleInputRcPwm     = false;
 
     strncpy(oilTempChip, "ntc", sizeof(oilTempChip) - 1);
     oilTempPin = -1; oilTempCs = -1; oilTempMiso = -1; oilTempMosi = -1;
     strncpy(oilTempTcType, "K", sizeof(oilTempTcType) - 1);
+    oilTempResolution = 12;
     ntcBeta = 3950.0f; ntcR0 = 10000.0f; ntcRFixed = 10000.0f;
     battVoltPin = -1; battVoltDivider = 5.7f;
     torquePin = -1; torqueScale = 30.3f; torqueOffset = 0.0f;
@@ -422,6 +440,7 @@ void HardwareConfig::applyDefaults() {
     hasAbPump = false; hasFuelPump2 = false; hasBleedValve = false;
     hasPropPitch = false; hasGlowPlug = false;
     hasGlowCurrentSensor = false; hasIgniterCurrentSensor = false;
+    hasIgniter2CurrentSensor = false; hasOilPumpCurrentSensor = false;
     hasGovernor = false; hasMAVLink = false;
     hasStatusLed = false; hasClusterSerial = false;
     hasBuzzer = false; buzzerPin = -1;
@@ -434,6 +453,7 @@ void HardwareConfig::applyDefaults() {
     propPitchFreqHz = 1000; propPitchResBits = 10; propPitchActiveH = true;
     glowPlugPin = -1; glowPlugFreqHz = 1000; glowPlugResBits = 8;
     glowCurrentPin = -1; glowCurrentMvPerA = 185.0f; glowCurrentZeroV = 1.65f; glowCurrentReadyAmps = 3.0f;
+    oilPumpCurrentPin = -1; oilPumpCurrentMvPerA = 100.0f; oilPumpCurrentZeroV = 1.65f; oilPumpCurrentMaxAmps = 0.0f;
     mavlinkTxPin = -1; mavlinkBaud = 57600; mavlinkIntervalMs = 100;
 
     throttlePin        = OT_THROTTLE_PIN;
@@ -484,6 +504,8 @@ void HardwareConfig::applyDefaults() {
 
     igniter2Pin = -1; igniter2ActiveH = true; igniter2Pwm = false;
     igniter2DwellMs = 6; igniter2RestMs = 3;
+    igniter2Coil = false; igniter2CoilSatAmps = 8.0f;
+    igniter2CurrentPin = -1; igniter2CurrentMvPerA = 100.0f; igniter2CurrentZeroV = 1.65f;
 
     abSolPin = -1; abSolActiveH = true;
     airstarterSolPin = -1; airstarterSolActiveH = true;
@@ -593,8 +615,10 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     auto ctrl = doc["controls"].to<JsonObject>();
     ctrl["stop_pin"]      = stopPin;
     ctrl["stop_active_h"] = stopActiveH;
+    ctrl["stop_pullup"]   = stopPullup;
     ctrl["start_pin"]     = startPin;
     ctrl["start_active_h"]= startActiveH;
+    ctrl["start_pullup"]  = startPullup;
 
     auto sensors = doc["sensors"].to<JsonObject>();
 
@@ -620,6 +644,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto ff = sensors["fuel_flow"].to<JsonObject>();
     ff["enabled"] = hasFuelFlow; ff["pin"] = fuelFlowPin;
+    ff["type"] = fuelFlowType; ff["pulses_per_litre"] = fuelFlowPulsesPerLitre;
 
     auto fpress = sensors["fuel_press"].to<JsonObject>();
     fpress["enabled"] = hasFuelPress; fpress["pin"] = fuelPressPin;
@@ -641,6 +666,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     oilt["pin"] = oilTempPin; oilt["cs"] = oilTempCs;
     oilt["miso"] = oilTempMiso; oilt["mosi"] = oilTempMosi;
     oilt["tc_type"] = oilTempTcType;
+    oilt["resolution"]  = oilTempResolution;
     oilt["ntc_beta"]    = ntcBeta;
     oilt["ntc_r0"]      = ntcR0;
     oilt["ntc_r_fixed"] = ntcRFixed;
@@ -675,6 +701,11 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     oilp["type"] = oilPumpType; oilp["active_h"] = oilPumpActiveH;
     oilp["min_us"] = oilPumpMinUs; oilp["max_us"] = oilPumpMaxUs;
     oilp["freq_hz"] = oilPumpFreqHz; oilp["res_bits"] = oilPumpResBits;
+    oilp["has_current"]     = hasOilPumpCurrentSensor;
+    oilp["current_pin"]     = oilPumpCurrentPin;
+    oilp["current_mv_a"]    = oilPumpCurrentMvPerA;
+    oilp["current_zero_v"]  = oilPumpCurrentZeroV;
+    oilp["current_max_a"]   = oilPumpCurrentMaxAmps;
 
     auto fsol = acts["fuel_sol"].to<JsonObject>();
     fsol["enabled"] = hasFuelSol; fsol["pin"] = fuelSolPin; fsol["active_h"] = fuelSolActiveH;
@@ -692,6 +723,12 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     auto ign2 = acts["igniter2"].to<JsonObject>();
     ign2["enabled"] = hasIgniter2; ign2["pin"] = igniter2Pin; ign2["active_h"] = igniter2ActiveH;
     ign2["pwm"] = igniter2Pwm; ign2["dwell_ms"] = igniter2DwellMs; ign2["rest_ms"] = igniter2RestMs;
+    ign2["coil"]            = igniter2Coil;
+    ign2["coil_sat_a"]      = igniter2CoilSatAmps;
+    ign2["current_pin"]     = igniter2CurrentPin;
+    ign2["current_mv_a"]    = igniter2CurrentMvPerA;
+    ign2["current_zero_v"]  = igniter2CurrentZeroV;
+    ign2["has_current"]     = hasIgniter2CurrentSensor;
 
     auto sen = acts["starter_en"].to<JsonObject>();
     sen["enabled"] = hasStarterEn; sen["pin"] = starterEnPin; sen["active_h"] = starterEnActiveH;
@@ -856,8 +893,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     auto ctrl = doc["controls"];
     stopPin  = ctrl["stop_pin"]  | stopPin;
     if (!ctrl["stop_active_h"].isNull())  stopActiveH  = ctrl["stop_active_h"].as<bool>();
+    if (!ctrl["stop_pullup"].isNull())    stopPullup   = ctrl["stop_pullup"].as<bool>();
     startPin = ctrl["start_pin"] | startPin;
     if (!ctrl["start_active_h"].isNull()) startActiveH = ctrl["start_active_h"].as<bool>();
+    if (!ctrl["start_pullup"].isNull())   startPullup  = ctrl["start_pullup"].as<bool>();
 
     auto s = doc["sensors"];
 
@@ -899,7 +938,9 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto ff = s["fuel_flow"];
     if (!ff["enabled"].isNull()) hasFuelFlow = ff["enabled"].as<bool>();
-    fuelFlowPin = ff["pin"] | fuelFlowPin;
+    fuelFlowPin              = ff["pin"]              | fuelFlowPin;
+    fuelFlowType             = ff["type"]             | fuelFlowType;
+    fuelFlowPulsesPerLitre   = ff["pulses_per_litre"] | fuelFlowPulsesPerLitre;
 
     auto fpress = s["fuel_press"];
     if (!fpress["enabled"].isNull()) hasFuelPress = fpress["enabled"].as<bool>();
@@ -931,6 +972,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     oilTempMiso = oilt["miso"] | oilTempMiso;
     oilTempMosi = oilt["mosi"] | oilTempMosi;
     { const char* v = oilt["tc_type"] | oilTempTcType; strncpy(oilTempTcType, v, sizeof(oilTempTcType) - 1); }
+    oilTempResolution = oilt["resolution"] | oilTempResolution;
     ntcBeta   = oilt["ntc_beta"]    | ntcBeta;
     ntcR0     = oilt["ntc_r0"]      | ntcR0;
     ntcRFixed = oilt["ntc_r_fixed"] | ntcRFixed;
@@ -980,6 +1022,11 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     oilPumpMaxUs   = op["max_us"]   | oilPumpMaxUs;
     oilPumpFreqHz  = op["freq_hz"]  | oilPumpFreqHz;
     oilPumpResBits = op["res_bits"] | oilPumpResBits;
+    if (!op["has_current"].isNull()) hasOilPumpCurrentSensor = op["has_current"].as<bool>();
+    oilPumpCurrentPin     = op["current_pin"]    | oilPumpCurrentPin;
+    oilPumpCurrentMvPerA  = op["current_mv_a"]   | oilPumpCurrentMvPerA;
+    oilPumpCurrentZeroV   = op["current_zero_v"] | oilPumpCurrentZeroV;
+    oilPumpCurrentMaxAmps = op["current_max_a"]  | oilPumpCurrentMaxAmps;
 
     auto fsol = a["fuel_sol"];
     if (!fsol["enabled"].isNull()) hasFuelSol   = fsol["enabled"].as<bool>();
@@ -1007,6 +1054,12 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!ign2["pwm"].isNull())      igniter2Pwm     = ign2["pwm"].as<bool>();
     igniter2DwellMs = ign2["dwell_ms"] | igniter2DwellMs;
     igniter2RestMs  = ign2["rest_ms"]  | igniter2RestMs;
+    if (!ign2["coil"].isNull())       igniter2Coil           = ign2["coil"].as<bool>();
+    igniter2CoilSatAmps    = ign2["coil_sat_a"]     | igniter2CoilSatAmps;
+    igniter2CurrentPin     = ign2["current_pin"]    | igniter2CurrentPin;
+    igniter2CurrentMvPerA  = ign2["current_mv_a"]   | igniter2CurrentMvPerA;
+    igniter2CurrentZeroV   = ign2["current_zero_v"] | igniter2CurrentZeroV;
+    if (!ign2["has_current"].isNull()) hasIgniter2CurrentSensor = ign2["has_current"].as<bool>();
 
     auto sen = a["starter_en"];
     if (!sen["enabled"].isNull()) hasStarterEn   = sen["enabled"].as<bool>();

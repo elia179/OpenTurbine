@@ -29,8 +29,11 @@ public:
     float totHardLimit      = 750.0f;
 
     void begin() override {
-        reset();
-        _lastMs = millis();
+        // Carry forward the current throttle demand so the physical actuator
+        // does not dip to zero when RUNNING is entered after the Spool block.
+        // reset() still starts from 0 and is used at power-up initialisation.
+        _current = constrain(EngineData::instance().throttleDemand, 0.0f, 1.0f);
+        _lastMs  = millis();
     }
 
     void tick() override {
@@ -42,21 +45,25 @@ public:
         float target = constrain(ed.throttleDemand, 0.0f, 1.0f);
 
         // Safety pullback: approach overspeed
-        if (ed.n1Healthy && ed.n1Rpm > rpmSoftLimit) {
+        // Guard: rpmHardLimit must be strictly above rpmSoftLimit — equal limits
+        // would cause division by zero and NaN throttle demand.
+        if (ed.n1Healthy && ed.n1Rpm > rpmSoftLimit && rpmHardLimit > rpmSoftLimit) {
             float over = (ed.n1Rpm - rpmSoftLimit) / (rpmHardLimit - rpmSoftLimit);
             target = constrain(target - over * 0.30f, 0.0f, target);
         }
         // Safety pullback: approach overtemp
-        if (ed.totHealthy && ed.tot > totSoftLimit) {
+        if (ed.totHealthy && ed.tot > totSoftLimit && totHardLimit > totSoftLimit) {
             float over = (ed.tot - totSoftLimit) / (totHardLimit - totSoftLimit);
             target = constrain(target - over * 0.20f, 0.0f, target);
         }
 
+        // Guard: if rampMs is 0 (instant) or dt is 0 (same-millisecond tick),
+        // dividing would produce Inf or NaN.  Treat 0 ms ramp as instant (maxStep=1).
         float maxStep;
         if (target > _current) {
-            maxStep =  dt / (rampUpMs   / 1000.0f);
+            maxStep = rampUpMs   > 0.0f ? dt / (rampUpMs   / 1000.0f) : 1.0f;
         } else {
-            maxStep =  dt / (rampDownMs / 1000.0f);
+            maxStep = rampDownMs > 0.0f ? dt / (rampDownMs / 1000.0f) : 1.0f;
         }
         _current = constrain(_current + constrain(target - _current, -maxStep, maxStep),
                              0.0f, 1.0f);
@@ -68,6 +75,11 @@ public:
         _current = 0;
         _lastMs  = millis();
     }
+
+    // Returns the slew-limited output before any external offset (e.g. AB fuel offset)
+    // is added on top.  Used by checkABTrigger() to prevent the offset compounding
+    // each tick when no physical throttle input is present to reset throttleDemand.
+    float currentDemand() const { return _current; }
 
 private:
     float         _current = 0;

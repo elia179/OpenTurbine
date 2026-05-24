@@ -27,8 +27,8 @@ public:
             bool stopped = (!ed.n1Healthy) || (ed.n1Rpm < rpmZeroThreshold);
             if (stopped || (now - _entryMs) > timeoutMs) {
                 // Cut main oil pump
-                ed.oilDemand    = 0;
-                ed.oilPctDemand = 0;
+                ed.oilTargetBar    = 0;
+                ed.oilPumpPct = 0;
                 // Start scavenge phase if pump is fitted and duration > 0
                 if (oilScavengeMs > 0 && HardwareConfig::hasOilScavengePump) {
                     ed.oilScavengeOn = true;
@@ -58,8 +58,8 @@ public:
 
     void onExit() override {
         auto& ed = EngineData::instance();
-        ed.oilDemand     = 0;
-        ed.oilPctDemand  = 0;
+        ed.oilTargetBar     = 0;
+        ed.oilPumpPct  = 0;
         ed.oilScavengeOn = false;
     }
 

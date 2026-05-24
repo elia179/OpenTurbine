@@ -27,6 +27,7 @@
 #include "hal/sensors/MAX31856TempSensor.h"
 #include "hal/sensors/AnalogSensor.h"
 #include "hal/sensors/NTCSensor.h"
+#include "hal/sensors/DS18B20TempSensor.h"
 
 // ── All actuator headers — always included ────────────────────
 #include "hal/actuators/ServoActuator.h"
@@ -112,11 +113,12 @@
     MAX31855TempSensor   g_sensorTitAlt(-1, -1, -1, "TIT_ALT");                  \
     MAX31856TempSensor   g_sensorTit31856(-1, -1, -1, -1, "K", "TIT_31856");     \
     ISensor*             g_pSensorTit = nullptr;                                  \
-    /* Oil temp sensor (NTC analog or SPI thermocouple) */                        \
+    /* Oil temp sensor (NTC analog, SPI thermocouple, or DS18B20 OneWire) */       \
     MAX6675TempSensor    g_sensorOilTempTc(-1, -1, -1, "OIL_TEMP_TC");           \
     MAX31855TempSensor   g_sensorOilTemp855(-1, -1, -1, "OIL_TEMP_855");         \
     MAX31856TempSensor   g_sensorOilTemp856(-1, -1, -1, -1, "K", "OIL_TEMP_856");\
     NTCSensor            g_sensorOilTempNtc(-1, "OIL_TEMP_NTC");                 \
+    DS18B20TempSensor    g_sensorOilTempDs18b20("OIL_TEMP_DS18B20");             \
     ISensor*             g_pSensorOilTemp = nullptr;                              \
     /* Battery voltage and torque sensors */                                      \
     AnalogLinearSensor   g_sensorBattVolt(-1, "BATT_VOLT");                      \
@@ -126,6 +128,7 @@
     AnalogLinearSensor g_sensorIdleInput(OT_IDLE_INPUT_PIN, "IDLE_INPUT");       \
     AnalogLinearSensor g_sensorThrottleInput(OT_THROTTLE_INPUT_PIN, "THROTTLE_INPUT"); \
     AnalogLinearSensor g_sensorFuelFlow(36, "FUEL_FLOW");                        \
+    PCNTRpmSensor      g_sensorFuelFlowPulse(-1, 1.0f, "FUEL_FLOW_PULSE");      \
     AnalogLinearSensor g_sensorFuelPress(36, "FUEL_PRESS");                      \
     AnalogLinearSensor g_sensorP1(36, "P1");                                     \
     AnalogLinearSensor g_sensorP2(39, "P2");                                     \
@@ -133,6 +136,8 @@
     AnalogLinearSensor g_sensorAbInput(-1, "AB_INPUT");                          \
     AnalogLinearSensor g_sensorGlowCurrent(-1, "GLOW_CURRENT");                  \
     AnalogLinearSensor g_sensorIgniterCurrent(-1, "IGNITER_CURRENT");             \
+    AnalogLinearSensor g_sensorIgniter2Current(-1, "IGNITER2_CURRENT");           \
+    AnalogLinearSensor g_sensorOilPumpCurrent(-1, "OIL_PUMP_CURRENT");           \
     /* ── Actuators ─────────────────────────────────────────────────────────── */ \
     /* Throttle: servo / LEDC-PWM / on-off — pointer set by initActuators() */   \
     ServoActuator  g_actThrottleServo(OT_THROTTLE_PIN, OT_THROTTLE_SERVO_MIN_US, OT_THROTTLE_SERVO_MAX_US, "THROTTLE_SRV"); \
@@ -263,6 +268,7 @@ extern MAX6675TempSensor   g_sensorOilTempTc;
 extern MAX31855TempSensor  g_sensorOilTemp855;
 extern MAX31856TempSensor  g_sensorOilTemp856;
 extern NTCSensor           g_sensorOilTempNtc;
+extern DS18B20TempSensor   g_sensorOilTempDs18b20;
 extern ISensor*            g_pSensorOilTemp;
 extern AnalogLinearSensor  g_sensorBattVolt;
 extern AnalogLinearSensor  g_sensorTorque;
@@ -271,6 +277,7 @@ extern AnalogThSensor     g_sensorFlame;
 extern AnalogLinearSensor g_sensorIdleInput;
 extern AnalogLinearSensor g_sensorThrottleInput;
 extern AnalogLinearSensor g_sensorFuelFlow;
+extern PCNTRpmSensor      g_sensorFuelFlowPulse;
 extern AnalogLinearSensor g_sensorFuelPress;
 extern AnalogLinearSensor g_sensorP1;
 extern AnalogLinearSensor g_sensorP2;
@@ -278,6 +285,8 @@ extern AnalogThSensor     g_sensorAbFlame;
 extern AnalogLinearSensor g_sensorAbInput;
 extern AnalogLinearSensor g_sensorGlowCurrent;
 extern AnalogLinearSensor g_sensorIgniterCurrent;
+extern AnalogLinearSensor g_sensorIgniter2Current;
+extern AnalogLinearSensor g_sensorOilPumpCurrent;
 
 extern ServoActuator  g_actThrottleServo;
 extern LEDCActuator   g_actThrottleLedc;
@@ -392,14 +401,27 @@ namespace Hardware {
         g_blkOilPrime.startupOilPct       = Config::oilStartupPct;
         g_blkStarterSpin.starterDemand    = Config::starterDemand / 100.0f;
         g_blkStarterSpin.targetRpm        = Config::preIgnRpm;
+        g_blkStarterSpin.timeoutMs        = (unsigned long)Config::starterTimeoutMs;
         g_blkStarterSpin.oilStartupMinBar = Config::oilStartupMinBar;
         g_blkStarterSpin.rampPctPerSec    = Config::starterRampPctPerSec;
         g_blkPreIgnSpark.sparkMs          = Config::preIgnSparkMs;
+        g_blkTempConfirm.tempTarget       = Config::tempConfirmTarget;
+        g_blkTempConfirm.timeoutMs        = (unsigned long)Config::tempConfirmTimeoutMs;
+        g_blkWaitForInput.channelIdx      = Config::waitForInputChannel;
+        g_blkWaitForInput.expectedState   = Config::waitForInputExpected;
+        g_blkWaitForInput.timeoutMs       = (unsigned long)Config::waitForInputTimeoutMs;
         g_blkFlameConfirm.timeoutMs           = Config::flameTimeoutMs;
         g_blkFlameConfirm.checkIntervalMs     = Config::flameCheckIntervalMs;
         g_blkFlameConfirm.requiredCount       = Config::flameRequiredCount;
         g_blkFlameConfirm.turnOffIgniterOnExit= Config::flameConfirmTurnOffIgniter;
         g_blkTimedDelay.dwellMs               = (unsigned long)Config::timedDelayMs;
+        g_blkFuelPulse.pulseMs               = (unsigned long)Config::fuelPulsePulseMs;
+        g_blkFuelPulse.offMs                 = (unsigned long)Config::fuelPulseOffMs;
+        g_blkWaitTOTCool.targetTot           = Config::waitTotCoolTarget;
+        g_blkWaitTOTCool.timeoutMs           = (unsigned long)Config::waitTotCoolTimeoutMs;
+        g_blkThrottleSet.pct                 = Config::throttleSetPct;
+        g_blkPreHeat.preheatMs               = (unsigned long)Config::preHeatMs;
+        g_blkOilPumpOn.demandPct             = Config::oilPumpOnPct;
         g_blkFuelPumpIdle.minPct              = Config::fuelPumpIdleMinPct;
         g_blkFuelPumpIdle.maxPct              = Config::fuelPumpIdleMaxPct;
         g_blkModifiedIdle.multiplier          = Config::modifiedIdleMultiplier;
@@ -423,8 +445,9 @@ namespace Hardware {
         g_blkCooldownSpin.oilCoolPct         = Config::cooldownOilPct;
         g_blkCooldownSpin.oilPressureTarget  = Config::cooldownOilPressureTarget;
         g_blkCooldownSpin.timeoutMs          = Config::shutdownCooldownTimeoutMs;
-        g_blkFinalStop.timeoutMs          = Config::shutdownFinalStopTimeoutMs;
-        g_blkFinalStop.oilScavengeMs      = (unsigned long)Config::finalStopOilScavengeMs;
+        g_blkFinalStop.timeoutMs            = Config::shutdownFinalStopTimeoutMs;
+        g_blkFinalStop.rpmZeroThreshold    = Config::rpmZeroThreshold;
+        g_blkFinalStop.oilScavengeMs       = (unsigned long)Config::finalStopOilScavengeMs;
         g_blkOilPrime.useScavengePump      = Config::oilPrimeUseScavengePump;
         g_blkCooldownSpin.useScavengePump  = Config::cooldownUseScavengePump;
 
@@ -480,9 +503,11 @@ namespace Hardware {
         }
         if (hw.hasFlame)  g_sensorFlame.setThreshold(Config::flameThreshold);
         if (hw.hasN1Rpm) { g_sensorN1Rpm.jumpThreshold  = Config::rpmJumpThreshold;
-                           g_sensorN1Rpm.zeroStuckLimit = Config::rpmZeroStuckTicks; }
+                           g_sensorN1Rpm.zeroStuckLimit = Config::rpmZeroStuckTicks;
+                           g_sensorN1Rpm.rpmLimit       = Config::rpmLimit; }
         if (hw.hasN2Rpm) { g_sensorN2Rpm.jumpThreshold  = Config::rpmJumpThreshold;
-                           g_sensorN2Rpm.zeroStuckLimit = Config::rpmZeroStuckTicks; }
+                           g_sensorN2Rpm.zeroStuckLimit = Config::rpmZeroStuckTicks;
+                           g_sensorN2Rpm.rpmLimit       = Config::rpmLimit; }
         g_safety.rpmLimit              = Config::rpmLimit;
         g_safety.minRpm               = Config::minRpm;
         g_safety.totLimit             = Config::totLimit;
@@ -499,8 +524,9 @@ namespace Hardware {
             g_ctrlGovernor.targetRpm    = Config::governorTargetRpm;
             g_ctrlGovernor.bandRpm      = Config::governorBandRpm;
             g_ctrlGovernor.kp           = Config::governorKp;
-            g_ctrlGovernor.pitchKp      = Config::governorPitchKp;
-            g_ctrlGovernor.usePropPitch = hw.hasPropPitch;
+            g_ctrlGovernor.pitchKp       = Config::governorPitchKp;
+            g_ctrlGovernor.pitchRampSec  = Config::governorPitchRampSec;
+            g_ctrlGovernor.usePropPitch  = hw.hasPropPitch;
         }
         // Advanced sequence block params
         g_blkFuelPumpRamp.startPct      = Config::fp2StartPct;
@@ -509,6 +535,26 @@ namespace Hardware {
         g_blkFuelPump2Set.demandPct     = Config::fp2DemandPct;
         g_blkGovernorHold.timeoutMs     = (unsigned long)Config::govHoldTimeoutMs;
         g_blkGovernorHold.bandRpm       = Config::governorBandRpm;
+
+        // ADC linear-cal sensors — re-apply so PATCH calibration takes effect immediately
+        if (hw.hasFuelFlow && hw.fuelFlowType != 1) {
+            g_sensorFuelFlow.setCal({ (float)Config::fuelFlowRawMin,
+                                      (float)Config::fuelFlowRawMax,
+                                      0.0f, Config::fuelFlowValMax });
+        }
+        if (hw.hasFuelPress) {
+            g_sensorFuelPress.setCal({ (float)Config::fuelPressRawMin,
+                                       (float)Config::fuelPressRawMax,
+                                       0.0f, Config::fuelPressValMax });
+        }
+        if (hw.hasP1) {
+            g_sensorP1.setCal({ (float)Config::p1RawMin, (float)Config::p1RawMax,
+                                0.0f, Config::p1ValMax });
+        }
+        if (hw.hasP2) {
+            g_sensorP2.setCal({ (float)Config::p2RawMin, (float)Config::p2RawMax,
+                                0.0f, Config::p2ValMax });
+        }
     }
 
     // ── Sensor init ───────────────────────────────────────────
@@ -551,6 +597,11 @@ namespace Hardware {
             } else if (strncmp(hw.oilTempChip, "max6675", 7) == 0) {
                 g_sensorOilTempTc.begin(hw.oilTempPin, hw.oilTempCs, hw.oilTempMiso);
                 g_pSensorOilTemp = &g_sensorOilTempTc;
+            } else if (strncmp(hw.oilTempChip, "ds18b20", 7) == 0) {
+                // DS18B20 OneWire digital thermometer — single data pin, no SPI.
+                g_sensorOilTempDs18b20.begin(hw.oilTempPin,
+                                             (uint8_t)constrain(hw.oilTempResolution, 9, 12));
+                g_pSensorOilTemp = &g_sensorOilTempDs18b20;
             } else {
                 // NTC analog — Steinhart-Hart B-parameter equation.
                 g_sensorOilTempNtc.begin(hw.oilTempPin);
@@ -574,15 +625,34 @@ namespace Hardware {
         if (hw.hasIdleInput)  g_sensorIdleInput.begin(hw.idleInputPin);
         if (hw.hasThrottleInput && !hw.throttleInputRcPwm)
             g_sensorThrottleInput.begin(hw.throttleInputPin);
-        if (hw.hasFuelFlow)  g_sensorFuelFlow.begin(hw.fuelFlowPin);
+        if (hw.hasFuelFlow) {
+            if (hw.fuelFlowType == 1) {
+                // Pulse / frequency type — reuse PCNT infrastructure (pulsesPerRev=1 → RPM = pulses/min)
+                g_sensorFuelFlowPulse.begin(hw.fuelFlowPin, 1.0f);
+            } else {
+                // Analog voltage type
+                g_sensorFuelFlow.begin(hw.fuelFlowPin);
+                g_sensorFuelFlow.setCal({ (float)Config::fuelFlowRawMin,
+                                          (float)Config::fuelFlowRawMax,
+                                          0.0f, Config::fuelFlowValMax });
+            }
+        }
         if (hw.hasFuelPress) {
             g_sensorFuelPress.begin(hw.fuelPressPin);
             g_sensorFuelPress.setCal({ (float)Config::fuelPressRawMin,
                                        (float)Config::fuelPressRawMax,
                                        0.0f, Config::fuelPressValMax });
         }
-        if (hw.hasP1)      g_sensorP1.begin(hw.p1Pin);
-        if (hw.hasP2)      g_sensorP2.begin(hw.p2Pin);
+        if (hw.hasP1) {
+            g_sensorP1.begin(hw.p1Pin);
+            g_sensorP1.setCal({ (float)Config::p1RawMin, (float)Config::p1RawMax,
+                                 0.0f, Config::p1ValMax });
+        }
+        if (hw.hasP2) {
+            g_sensorP2.begin(hw.p2Pin);
+            g_sensorP2.setCal({ (float)Config::p2RawMin, (float)Config::p2RawMax,
+                                 0.0f, Config::p2ValMax });
+        }
         if (hw.hasAbFlame && hw.abFlamePin >= 0) {
             g_sensorAbFlame.begin(hw.abFlamePin);
             g_sensorAbFlame.setThreshold(hw.abFlameThreshold);
@@ -604,6 +674,18 @@ namespace Hardware {
             float zeroAdc  = (hw.igniterCurrentZeroV / 3.3f) * 4095.0f;
             float adcPerAmp = hw.igniterCurrentMvPerA / (3300.0f / 4095.0f);
             g_sensorIgniterCurrent.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+        }
+        if (hw.hasIgniter2CurrentSensor && hw.igniter2CurrentPin >= 0) {
+            g_sensorIgniter2Current.begin(hw.igniter2CurrentPin);
+            float zeroAdc  = (hw.igniter2CurrentZeroV / 3.3f) * 4095.0f;
+            float adcPerAmp = hw.igniter2CurrentMvPerA / (3300.0f / 4095.0f);
+            g_sensorIgniter2Current.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+        }
+        if (hw.hasOilPumpCurrentSensor && hw.oilPumpCurrentPin >= 0) {
+            g_sensorOilPumpCurrent.begin(hw.oilPumpCurrentPin);
+            float zeroAdc  = (hw.oilPumpCurrentZeroV / 3.3f) * 4095.0f;
+            float adcPerAmp = hw.oilPumpCurrentMvPerA / (3300.0f / 4095.0f);
+            g_sensorOilPumpCurrent.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
         }
     }
 
@@ -683,6 +765,7 @@ namespace Hardware {
         if (hw.hasTorque) {
             g_sensorTorque.update();
             ed.torque        = g_sensorTorque.getValue();
+            ed.torqueRaw     = g_sensorTorque.rawCounts();
             ed.torqueHealthy = g_sensorTorque.isHealthy();
             // shaft power = torque × angular velocity of N2
             if (ed.torqueHealthy && ed.n2Healthy && ed.n2Rpm > 0) {
@@ -691,8 +774,23 @@ namespace Hardware {
             }
         }
         if (hw.hasFuelFlow) {
-            g_sensorFuelFlow.update();
-            ed.fuelFlow = g_sensorFuelFlow.getValue();
+            if (hw.fuelFlowType == 1) {
+                g_sensorFuelFlowPulse.update();
+                // RPM = pulses/min; divide by pulsesPerLitre → litres/min
+                float ppl = hw.fuelFlowPulsesPerLitre > 0 ? hw.fuelFlowPulsesPerLitre : 1.0f;
+                ed.fuelFlow = g_sensorFuelFlowPulse.getValue() / ppl;
+            } else {
+                g_sensorFuelFlow.update();
+                ed.fuelFlow = g_sensorFuelFlow.getValue();
+            }
+        }
+        if (hw.hasP1) {
+            g_sensorP1.update();
+            ed.p1 = g_sensorP1.getValue();
+        }
+        if (hw.hasP2) {
+            g_sensorP2.update();
+            ed.p2 = g_sensorP2.getValue();
         }
         if (hw.hasFuelPress) {
             g_sensorFuelPress.update();
@@ -704,11 +802,21 @@ namespace Hardware {
             g_sensorGlowCurrent.update();
             ed.glowCurrentAmps = g_sensorGlowCurrent.getValue();
             // Plug is hot when current has dropped below threshold and plug is powered
-            ed.glowPlugHot = (ed.glowPlugPct > 5.0f) && (ed.glowCurrentAmps <= hw.glowCurrentReadyAmps);
+            ed.glowPlugHot = (ed.glowPlugDemand > 0.05f) && (ed.glowCurrentAmps <= hw.glowCurrentReadyAmps);
         }
         if (hw.hasIgniterCurrentSensor) {
             g_sensorIgniterCurrent.update();
             ed.igniterCurrentAmps = g_sensorIgniterCurrent.getValue();
+        }
+        if (hw.hasIgniter2CurrentSensor) {
+            g_sensorIgniter2Current.update();
+            ed.igniter2CurrentAmps = g_sensorIgniter2Current.getValue();
+        }
+        if (hw.hasOilPumpCurrentSensor) {
+            g_sensorOilPumpCurrent.update();
+            ed.oilPumpCurrentAmps = g_sensorOilPumpCurrent.getValue();
+            ed.oilPumpOvercurrent = (hw.oilPumpCurrentMaxAmps > 0.0f)
+                                    && (ed.oilPumpCurrentAmps > hw.oilPumpCurrentMaxAmps);
         }
     }
 
@@ -867,14 +975,13 @@ namespace Hardware {
     inline void updateActuators() {
         auto& hw = HardwareConfig::instance();
         auto& ed = EngineData::instance();
-        if (hw.hasThrottle && g_actThrottle) g_actThrottle->set(ed.throttleDemand);
+        // AB main-fuel offset is added here at the actuator write, NOT to throttleDemand,
+        // so ThrottleSlew's feedback loop never sees the inflated value.
+        if (hw.hasThrottle && g_actThrottle)
+            g_actThrottle->set(constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f));
 
-        // Starter enable relay + interlock delay
+        // Starter enable relay
         if (hw.hasStarterEn) {
-            static bool  _prevStarterEnabled  = false;
-            static unsigned long _starterEnOnMs = 0;
-            if (ed.starterEnabled && !_prevStarterEnabled) _starterEnOnMs = millis();
-            _prevStarterEnabled = ed.starterEnabled;
             g_actStarterEn.set(ed.starterEnabled ? 1.0f : 0.0f);
         }
         // Only allow starter to spin after the enable relay delay has elapsed
@@ -888,7 +995,7 @@ namespace Hardware {
                            ((millis() - _enMs2) >= (unsigned long)hw.starterEnDelayMs);
             g_actStarter->set(delayOk ? ed.starterDemand : 0.0f);
         }
-        if (hw.hasAbPump      && g_actAbPump)      g_actAbPump->set(ed.fuelPumpDemand);
+        if (hw.hasAbPump      && g_actAbPump)      g_actAbPump->set(ed.abPumpDemand);
         if (hw.hasAbSol)         g_actAbSol.set(ed.abSolOpen ? 1.0f : 0.0f);
         if (hw.hasAirstarterSol) g_actAirstarterSol.set(ed.airstarterOpen ? 1.0f : 0.0f);
         if (hw.hasCoolFan && g_pActCoolFan)  g_pActCoolFan->set(ed.coolFanOn ? 1.0f : 0.0f);
@@ -896,8 +1003,8 @@ namespace Hardware {
             g_actOilScavPump->set(ed.oilScavengeOn ? 1.0f : 0.0f);
         if (hw.hasOilPump && g_actOilPump) {
             float demand = (hw.oilPumpType == 2)
-                         ? (ed.oilPctDemand > 0.0f ? 1.0f : 0.0f)
-                         : (ed.oilPctDemand / 100.0f);
+                         ? (ed.oilPumpPct > 0.0f ? 1.0f : 0.0f)
+                         : (ed.oilPumpPct / 100.0f);
             g_actOilPump->set(demand);
         }
         if (hw.hasFuelSol) g_actFuelSol.set(ed.fuelSolOpen ? 1.0f : 0.0f);
@@ -924,7 +1031,13 @@ namespace Hardware {
                         }
                     }
                 } else {
-                    s_coilCharging = false;
+                    // Reset phase timer to now so the rest period is measured
+                    // from when the coil was actually switched off, not from
+                    // the start of the previous charge phase.  Without this,
+                    // a rapid off→on toggle could restart charging before the
+                    // full rest period has elapsed.
+                    s_coilCharging   = false;
+                    s_coilPhaseStart = (uint32_t)millis();
                     g_actIgniter->set(0.0f);
                 }
             } else {
@@ -937,12 +1050,40 @@ namespace Hardware {
             }
         }
         if (hw.hasIgniter2 && g_actIgniter2) {
-            float duty2 = hw.igniter2Pwm
-                ? ((hw.igniter2DwellMs + hw.igniter2RestMs > 0)
-                   ? ((float)hw.igniter2DwellMs / (hw.igniter2DwellMs + hw.igniter2RestMs))
-                   : 0.5f)
-                : 1.0f;
-            g_actIgniter2->set(ed.igniter2On ? duty2 : 0.0f);
+            if (hw.igniter2Coil) {
+                static bool     s_coil2Charging   = false;
+                static uint32_t s_coil2PhaseStart = 0;
+                if (ed.igniter2On) {
+                    uint32_t now = millis();
+                    bool endCharge = hw.hasIgniter2CurrentSensor
+                        ? (ed.igniter2CurrentAmps >= hw.igniter2CoilSatAmps)
+                        : ((now - s_coil2PhaseStart) >= (uint32_t)hw.igniter2DwellMs);
+                    if (s_coil2Charging) {
+                        if (endCharge) {
+                            s_coil2Charging   = false;
+                            s_coil2PhaseStart = now;
+                            g_actIgniter2->set(0.0f);
+                        }
+                    } else {
+                        if ((now - s_coil2PhaseStart) >= (uint32_t)hw.igniter2RestMs) {
+                            s_coil2Charging   = true;
+                            s_coil2PhaseStart = now;
+                            g_actIgniter2->set(1.0f);
+                        }
+                    }
+                } else {
+                    s_coil2Charging   = false;
+                    s_coil2PhaseStart = (uint32_t)millis();
+                    g_actIgniter2->set(0.0f);
+                }
+            } else {
+                float duty2 = hw.igniter2Pwm
+                    ? ((hw.igniter2DwellMs + hw.igniter2RestMs > 0)
+                       ? ((float)hw.igniter2DwellMs / (hw.igniter2DwellMs + hw.igniter2RestMs))
+                       : 0.5f)
+                    : 1.0f;
+                g_actIgniter2->set(ed.igniter2On ? duty2 : 0.0f);
+            }
         }
         if (hw.hasFuelPump2 && g_actFuelPump2)
             g_actFuelPump2->set(ed.fuelPump2Demand);
@@ -951,7 +1092,7 @@ namespace Hardware {
         if (hw.hasPropPitch && g_actPropPitch)
             g_actPropPitch->set(ed.propPitchDemand);
         if (hw.hasGlowPlug)
-            g_actGlowPlug.set(constrain(ed.glowPlugPct / 100.0f, 0.0f, 1.0f));
+            g_actGlowPlug.set(constrain(ed.glowPlugDemand, 0.0f, 1.0f));
     }
 
     // ── Emergency all-off ─────────────────────────────────────
@@ -976,14 +1117,17 @@ namespace Hardware {
         auto& _ed = EngineData::instance();
         _ed.oilScavengeOn   = false;
         _ed.abSolOpen       = false;
-        _ed.fuelPumpDemand  = 0;
+        _ed.abPumpDemand    = 0;
         _ed.fuelPump2Demand  = 0;
         _ed.propPitchDemand  = 0;
+        _ed.abFuelOffset     = 0.0f;
         _ed.bleedValveOpen   = false;
-        _ed.glowPlugPct      = 0;
+        _ed.glowPlugDemand   = 0;
         _ed.surgeDetected    = false;
         _ed.igniter2On      = false;
         _ed.abMode          = ABMode::Off;
+        _ed.airstarterOpen  = false;
+        _ed.coolFanOn       = false;
     }
 
     // ── Status LED init / tick ────────────────────────────────
@@ -1038,16 +1182,23 @@ namespace Hardware {
             if (mode == SysMode::RUNNING) {
                 if (Config::oilUseThrottleMap) {
                     float t  = constrain(ed.throttleDemand, 0.0f, 1.0f);
-                    ed.oilDemand = Config::oilMapMin
+                    ed.oilTargetBar = Config::oilMapMin
                                  + t * (Config::oilMapMax - Config::oilMapMin);
                 } else {
-                    ed.oilDemand = Config::oilMapMin;
+                    ed.oilTargetBar = Config::oilMapMin;
                 }
             }
             g_ctrlOilLoop.tick();
         }
-        if (hw.hasDynamicIdle && mode == SysMode::RUNNING) g_ctrlDynamicIdle.tick();
+        // Tick order matters:
+        //  1. Governor first — adjusts throttleDemand toward N2 target (may reduce it).
+        //  2. DynamicIdle second — enforces the idle RPM floor on throttleDemand.
+        //     Running DI after the governor ensures the floor is always the last
+        //     word: when governor reduces throttle below the DI floor both controllers
+        //     no longer fight each tick, and ThrottleSlew sees a stable target.
+        //  3. ThrottleSlew last — rate-limits whatever the controllers settled on.
         if (hw.hasGovernor    && mode == SysMode::RUNNING) g_ctrlGovernor.tick();
+        if (hw.hasDynamicIdle && mode == SysMode::RUNNING) g_ctrlDynamicIdle.tick();
         if (hw.hasThrottleSlew) g_ctrlThrottleSlew.tick();
     }
 

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Tools</title>
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -30,18 +31,31 @@
 <script src="/app.js"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
-// durationMs=0 → instant toggle, no progress bar
+// durationMs=0  → instant toggle, no progress bar
 // toggleKey     → EngineData field name in telemetry (for ON/OFF state display)
-// special       → reserved for non-standard cards (rendered separately)
+// visibleIf(hw) → optional predicate on hardware JSON; tool hidden when it returns false
 const TOOLS = [
-  { id:'FUEL_PRIME',          name:'Fuel Prime',     durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid — primes fuel lines.' },
-  { id:'OIL_PRIME',           name:'Oil Prime',      durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100 % — primes oil circuit.' },
-  { id:'IGN_TEST',            name:'Igniter Test',   durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter — verify spark visually.' },
-  { id:'START_TEST',          name:'Starter Test',   durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at 30 % — verify motor turns.' },
-  { id:'FUEL_SOL_TEST',       name:'Solenoid Click', durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse — audible click to confirm valve.' },
-  { id:'IDLE_TEST',           name:'Idle Throttle',  durationMs:3000, desc:'Moves throttle to idle position — verify servo travel.' },
-  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',   durationMs:0, desc:'Closed-loop idle RPM hold.', toggleKey:'dynamic_idle_enabled' },
-  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',      durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode' },
+  { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid — primes fuel lines.' },
+  { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100 % — primes oil circuit.' },
+  { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 — verify spark visually.' },
+  { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
+  { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at 30 % — verify motor turns.' },
+  { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse — audible click to confirm valve.' },
+  { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, desc:'Moves throttle to idle position — verify servo travel.' },
+  // ── Conditionally visible actuator tests (shown only when hardware is fitted) ──
+  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, desc:'Energises starter enable relay for 1 s — audible click to confirm.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
+  { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, desc:'Runs oil scavenge pump for 2 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
+  { id:'COOL_FAN_TEST',    name:'Cool Fan Test',        durationMs:3000, desc:'Runs cooling fan for 3 s — verify motor and relay.', visibleIf: hw => !!hw?.actuators?.cool_fan?.enabled },
+  { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, desc:'Opens airstarter solenoid for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
+  { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, desc:'Opens bleed valve for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
+  { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:3000, desc:'Runs glow plug at 50 % for 3 s — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
+  { id:'FUEL_PUMP2_TEST',  name:'Fuel Pump 2 Test',    durationMs:3000, desc:'Runs secondary fuel pump at 30 % for 3 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
+  { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, desc:'Opens AB fuel solenoid for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.ab_sol?.enabled },
+  { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, desc:'Runs AB pump at 30 % for 2 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.ab_pump?.enabled },
+  { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, desc:'Moves prop pitch servo to mid-travel for 3 s — verify servo range and travel direction.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
+  // ── Toggle tools ─────────────────────────────────────────────
+  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, desc:'Closed-loop idle RPM hold.', toggleKey:'dynamic_idle_enabled' },
+  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode' },
 ];
 
 let activeId    = null;
@@ -49,12 +63,14 @@ let activeTick  = null;
 let activeStart = 0;
 let engineMode  = null;
 let liveData    = {};
+let hwCfg       = {};
 
 // ── Render ────────────────────────────────────────────────────
 function renderTools() {
   let html = '';
   let dividerDone = false;
   TOOLS.forEach(t => {
+    if (t.visibleIf && !t.visibleIf(hwCfg)) return;
     const isToggle = t.durationMs === 0;
     if (isToggle && !dividerDone) { html += '<hr class="tool-divider">'; dividerDone = true; }
     html += `
@@ -314,7 +330,6 @@ function setState(id, text, cls) {
 
 function setAllButtons(forcedOff) {
   const inStandby = engineMode === 'STANDBY';
-  const inRunning = engineMode === 'RUNNING';
   TOOLS.forEach(t => {
     const btn = document.getElementById('btn-' + t.id);
     if (!btn) return;
@@ -325,13 +340,18 @@ function setAllButtons(forcedOff) {
   const ecBtn = document.getElementById('btn-EXTRA_COOLDOWN');
   const ecActive = !!(liveData && liveData.extra_cooldown_active);
   if (ecBtn) ecBtn.disabled = forcedOff || !inStandby || ecActive;
+  // Factory reset — standby only (card label says so; enforce it here)
+  const frBtn = document.getElementById('btn-factory-reset');
+  if (frBtn) frBtn.disabled = forcedOff || !inStandby;
 }
 
 // ── WS integration ────────────────────────────────────────────
 const _base = window.applyData;
 window.applyData = function(d) {
   _base(d);
-  liveData = d;
+  // Use _lastData (accumulated by app.js) so slow fields like dev_mode_fw
+  // are not lost when a partial fast frame arrives and overwrites liveData.
+  liveData = _lastData || d;
   if (!d.mode) return;
   engineMode = d.mode;
 
@@ -481,17 +501,18 @@ function getNestedVal(obj, dotPath) {
   return dotPath.split('.').reduce((cur, k) => (cur && typeof cur === 'object' ? cur[k] : undefined), obj);
 }
 
-fetch('/api/config')
-  .then(r => r.json())
-  .then(cfg => {
-    TOOLS.forEach(t => {
-      if (!t.configKey) return;
-      const v = getNestedVal(cfg, t.configKey);
-      if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
-    });
-    renderTools();
-  })
-  .catch(() => renderTools());
+Promise.all([
+  fetch('/api/config').then(r => r.json()).catch(() => ({})),
+  fetch('/api/hardware').then(r => r.json()).catch(() => ({}))
+]).then(([cfg, hw]) => {
+  hwCfg = hw || {};
+  TOOLS.forEach(t => {
+    if (!t.configKey) return;
+    const v = getNestedVal(cfg, t.configKey);
+    if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
+  });
+  renderTools();
+});
 
 
 // ── Config backup ─────────────────────────────────────────────
@@ -604,6 +625,11 @@ function restoreConfig(input) {
 function startOTA(input) {
   const file = input.files[0];
   if (!file) return;
+  if (engineMode !== 'STANDBY') {
+    alert('Engine must be in STANDBY before flashing firmware.\nStop the engine first.');
+    input.value = '';
+    return;
+  }
   const btn   = document.getElementById('ota-btn');
   const state = document.getElementById('ota-state');
   const track = document.getElementById('ota-prog-track');

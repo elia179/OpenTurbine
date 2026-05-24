@@ -61,7 +61,7 @@ class OilPumpOn : public IBlock {
 public:
     float demandPct = 80.0f;  // direct % — bypasses pressure P-controller
     const char* name() override { return "OilPumpOn"; }
-    void onEnter() override { EngineData::instance().oilPctDemand = demandPct; }
+    void onEnter() override { EngineData::instance().oilPumpPct = demandPct; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -71,8 +71,8 @@ public:
     const char* name() override { return "OilPumpOff"; }
     void onEnter() override {
         auto& ed = EngineData::instance();
-        ed.oilDemand    = 0;
-        ed.oilPctDemand = 0;
+        ed.oilTargetBar    = 0;
+        ed.oilPumpPct = 0;
     }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
@@ -132,7 +132,7 @@ class ABPumpOn : public IBlock {
 public:
     float demandPct = 80.0f;
     const char* name() override { return "ABPumpOn"; }
-    void onEnter() override { EngineData::instance().fuelPumpDemand = demandPct / 100.0f; }
+    void onEnter() override { EngineData::instance().abPumpDemand = demandPct / 100.0f; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -140,7 +140,7 @@ public:
 class ABPumpOff : public IBlock {
 public:
     const char* name() override { return "ABPumpOff"; }
-    void onEnter() override { EngineData::instance().fuelPumpDemand = 0; }
+    void onEnter() override { EngineData::instance().abPumpDemand = 0; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };

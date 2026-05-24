@@ -15,7 +15,7 @@ public:
             .trigger_panic = true       // hard reset on timeout
         };
         esp_task_wdt_reconfigure(&cfg);
-        esp_task_wdt_add(nullptr);      // subscribe current task
+        esp_task_wdt_add(nullptr);      // subscribe loop task (Core 1) only
     }
 
     static void feed() {

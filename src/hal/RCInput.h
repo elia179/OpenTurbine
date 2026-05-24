@@ -108,10 +108,11 @@ private:
         uint32_t now = millis();
 
         if (ch.fresh) {
-            ch.fresh   = false;
-            ch.lastMs  = now;
-            float n = (float)((int)ch.pulseUs - Config::rcMinUs) /
-                      (float)(Config::rcMaxUs  - Config::rcMinUs);
+            ch.fresh  = false;
+            ch.lastMs = now;
+            int range = Config::rcMaxUs - Config::rcMinUs;
+            if (range == 0) { valid = false; return; }  // misconfigured — guard div/0
+            float n = (float)((int)ch.pulseUs - Config::rcMinUs) / (float)range;
             norm  = constrain(n, 0.0f, 1.0f);
             valid = true;
         } else if (valid && (now - ch.lastMs) > (uint32_t)Config::rcFailsafeMs) {

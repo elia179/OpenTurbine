@@ -39,10 +39,20 @@ public:
         auto& ed = EngineData::instance();
 
         if (!ed.dynamicIdleEnabled) return;
+        // Misconfigured limits would cause division by zero — bail out safely.
+        if (targetRpm <= 0.0f || rpmLimit <= 0.0f) return;
 
         bool  useN2   = Config::idleUseN2;
         float rpm     = useN2 ? ed.n2Rpm    : ed.n1Rpm;
         bool healthy  = useN2 ? ed.n2Healthy : ed.n1Healthy;
+
+        // Always advance _lastMs so dt is never stale when we re-engage.
+        // Without this, a long disengage period (high RPM, unhealthy sensor)
+        // causes the first re-engage tick to compute a huge dt → maxStep → a
+        // single-tick floor jump of up to 89 % instead of a smooth ramp.
+        unsigned long now = millis();
+        float dt          = (now - _lastMs) / 1000.0f;
+        _lastMs           = now;
 
         // Disengage at high RPM or if sensor not trustworthy
         if (!healthy || rpm > rpmLimit) {
@@ -50,10 +60,6 @@ public:
             _integrator = 0;
             return;
         }
-
-        unsigned long now = millis();
-        float dt          = (now - _lastMs) / 1000.0f;
-        _lastMs           = now;
 
         float error = targetRpm - rpm;
 

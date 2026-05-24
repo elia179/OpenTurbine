@@ -22,7 +22,6 @@ int   Config::oilFailsafeDelayMs    = 1500;
 float Config::oilFailsafePct        = 60.0f;
 
 int   Config::startupOilArmTimeoutMs  = 3000;
-float Config::startRpmThreshold       = 1000;
 float Config::preIgnRpm               = 5000;
 int   Config::preIgnSparkMs           = 1500;
 int   Config::flameTimeoutMs          = 5000;
@@ -63,7 +62,7 @@ float Config::surgeDetectRpmVariance     = 0.0f;
 
 bool     Config::relightEnabled      = false;
 float    Config::relightMinRpm       = 30000.0f;
-int      Config::relightMaxAttempts  = 0;
+int      Config::relightTimeoutMs    = 10000;   // 10 s continuous ignition window before faulting
 
 uint32_t Config::toolFuelPrimeMs    = 3000;
 uint32_t Config::toolOilPrimeMs     = 5000;
@@ -72,13 +71,19 @@ uint32_t Config::toolStartTestMs    = 2000;
 uint32_t Config::toolFuelSolTestMs  = 1000;
 
 uint32_t Config::wsIntervalMs       = 200;
-uint32_t Config::snapshotIntervalMs = 5000;
+uint32_t Config::snapshotIntervalMs = 10000;
 
 float    Config::starterAssistPct    = 15.0f;
 float    Config::starterAssistExitRpm = 1000.0f;
 
 float    Config::starterRampPctPerSec = 10.0f;
 float    Config::starterDemand        = 60.0f;  // %
+int      Config::starterTimeoutMs     = 8000;
+
+float    Config::tempConfirmTarget    = 200.0f;
+int      Config::tempConfirmTimeoutMs = 10000;
+
+float    Config::rpmZeroThreshold     = 100.0f;
 
 float    Config::oilZeroBar          = 0.1f;
 float    Config::oilPressureDeadband = 0.2f;
@@ -97,6 +102,10 @@ float    Config::cooldownOilPressureTarget  = 2.0f;   // bar
 
 int      Config::flameRequiredCount  = 3;
 
+int      Config::waitForInputChannel   = 0;
+bool     Config::waitForInputExpected  = true;
+int      Config::waitForInputTimeoutMs = 0;
+
 int      Config::cooldownSkipHoldMs  = 1000;
 
 float    Config::fuelPumpIdleMinPct  = 8.0f;
@@ -104,6 +113,13 @@ float    Config::fuelPumpIdleMaxPct  = 18.0f;
 
 int      Config::timedDelayMs            = 1000;
 float    Config::modifiedIdleMultiplier  = 1.0f;
+int      Config::fuelPulsePulseMs        = 200;
+int      Config::fuelPulseOffMs          = 300;
+float    Config::waitTotCoolTarget       = 150.0f;
+int      Config::waitTotCoolTimeoutMs    = 120000;
+float    Config::throttleSetPct          = 10.0f;
+int      Config::preHeatMs               = 3000;
+float    Config::oilPumpOnPct            = 80.0f;
 
 bool     Config::flameConfirmTurnOffIgniter  = true;
 bool     Config::safetyHoldTurnOffStarter    = false;
@@ -159,6 +175,7 @@ float Config::governorTargetRpm     = 0.0f;
 float Config::governorBandRpm       = 500.0f;
 float Config::governorKp            = 0.001f;
 float Config::governorPitchKp       = 0.0005f;
+float Config::governorPitchRampSec  = 10.0f;   // 0→100% pitch in 10 s max
 int   Config::govHoldTimeoutMs      = 10000;
 float Config::fp2StartPct           = 0.0f;
 float Config::fp2EndPct             = 80.0f;
@@ -170,6 +187,7 @@ float Config::propPitchMaxDeg       = 35.0f;
 int   Config::glowPreheatMs         = 10000;
 float Config::glowPreheatMaxPct     = 80.0f;
 float Config::glowHoldPct           = 30.0f;
+bool  Config::glowWaitUntilHot      = false;
 
 uint32_t Config::totalRunSeconds    = 0;
 
@@ -182,14 +200,26 @@ float Config::oilPolyC              = 0;
 float Config::oilPolyD              = 0;
 float Config::oilPolyXMin           = 0;
 float Config::oilPolyXMax           = 4095;
+int   Config::p1RawMin              = 0;
+int   Config::p1RawMax              = 4095;
+float Config::p1ValMax              = 10.0f;
+int   Config::p2RawMin              = 0;
+int   Config::p2RawMax              = 4095;
+float Config::p2ValMax              = 10.0f;
 float Config::p1ZeroBar             = 0.0f;
 float Config::p2ZeroBar             = 0.0f;
 int   Config::fuelPressRawMin       = 0;
 int   Config::fuelPressRawMax       = 4095;
 float Config::fuelPressValMax       = 10.0f;
+int   Config::fuelFlowRawMin        = 0;
+int   Config::fuelFlowRawMax        = 4095;
+float Config::fuelFlowValMax        = 10.0f;
 
 char  Config::profileId[64]         = {};
 bool  Config::profileMatch          = false;
+
+Config::Rule Config::rules[Config::MAX_RULES] = {};
+int          Config::ruleCount                = 0;
 
 // ── Load ──────────────────────────────────────────────────────
 void Config::load() {
@@ -239,6 +269,13 @@ void Config::load() {
     File f = LittleFS.open(PATH, "r");
     if (!f) {
         Serial.println("[Config] Failed to open ecu_config.json");
+        strncpy(EngineData::instance().faultDescription,
+            "Cannot start: failed to open ecu_config.json.\n"
+            "What to do: The config file may be missing or the filesystem is corrupt. "
+            "Re-upload the filesystem image (pio run --target uploadfs) or use the web UI "
+            "Tools page to reset config to defaults.",
+            sizeof(EngineData::instance().faultDescription) - 1);
+        EngineData::instance().faultDescription[sizeof(EngineData::instance().faultDescription) - 1] = '\0';
         profileMatch = false;
         return;
     }
@@ -247,6 +284,12 @@ void Config::load() {
     f.close();
     if (err) {
         Serial.printf("[Config] JSON parse error: %s\n", err.c_str());
+        strncpy(EngineData::instance().faultDescription,
+            "Cannot start: ecu_config.json is corrupted (JSON parse error).\n"
+            "What to do: Use the web UI Tools page to reset config to defaults, "
+            "or re-upload the filesystem image.",
+            sizeof(EngineData::instance().faultDescription) - 1);
+        EngineData::instance().faultDescription[sizeof(EngineData::instance().faultDescription) - 1] = '\0';
         profileMatch = false;
         return;
     }
@@ -286,7 +329,25 @@ void Config::load() {
     Serial.printf("[Config] Loaded OK — profile: %s\n", profileId);
 }
 
-void Config::save() {
+volatile bool Config::_savePending = false;
+
+void Config::requestSave() {
+    // Called from Core 1 — sets a flag only, zero file I/O.
+    // Core 0 picks this up in flushPendingSave() via WebServer::tick().
+    _savePending = true;
+}
+
+bool Config::flushPendingSave() {
+    if (!_savePending) return false;
+    _savePending = false;
+    bool ok = save();
+    if (!ok) Serial.println("[Config] WARNING: deferred save failed — totalRunSeconds not persisted");
+    return ok;
+}
+
+bool Config::save() {
+    static constexpr const char* TMP_PATH = "/ecu_config.tmp";
+
     // Read-modify-write: preserve other sections (hardware etc.)
     JsonDocument fullDoc;
     File fr = LittleFS.open(PATH, "r");
@@ -296,10 +357,21 @@ void Config::save() {
     _toDoc(settingsDoc);
     fullDoc[SECTION].set(settingsDoc);
 
-    File fw = LittleFS.open(PATH, "w");
-    if (!fw) { Serial.println("[Config] Failed to open ecu_config.json for write"); return; }
+    // Write to temp file first — if power is lost mid-write the original is still intact.
+    File fw = LittleFS.open(TMP_PATH, "w");
+    if (!fw) { Serial.println("[Config] Failed to open ecu_config.tmp for write"); return false; }
     serializeJsonPretty(fullDoc, fw);
     fw.close();
+
+    // Atomic commit: delete original, rename temp into place.
+    // Tiny window between remove and rename: if power dies here, next boot finds no
+    // config file and loads safe defaults — far better than a truncated JSON parse error.
+    LittleFS.remove(PATH);
+    if (!LittleFS.rename(TMP_PATH, PATH)) {
+        Serial.println("[Config] rename ecu_config.tmp failed");
+        return false;
+    }
+    return true;
 }
 
 bool Config::isLocked() {
@@ -330,23 +402,108 @@ bool Config::fromJson(const char* json, size_t len) {
     if (strcmp(id, OT_PROFILE_ID) != 0) return false;  // reject wrong profile
 
     _fromDoc(doc);
-    save();
-    return true;
+    return save();
 }
 
 bool Config::fromJson(const JsonDocument& doc) {
     if (isLocked()) return false;
     _fromDoc(doc);
-    save();
-    return true;
+    return save();
 }
 
 // ── Private helpers ───────────────────────────────────────────
 void Config::_applyDefaults() {
-    // All statics already have defaults set in their definitions above
+    // Re-assign every field to its compile-time default so that load() is
+    // idempotent: missing JSON keys restore to the default rather than
+    // keeping a stale runtime value from a previous load() call.
+    rpmLimit = 100000; minRpm = 30000; totLimit = 750;
+    totCooldownTarget = 150; totSafeMargin = 50;
+    oilStartupPressure = 2.5f; oilStartupPct = 80.0f; oilStartupMinBar = 1.5f;
+    oilRunningMin = 2.8f; oilMapMin = 3.6f; oilMapMax = 4.4f;
+    oilUseThrottleMap = false; oilAdjustScale = 1.80f; oilMinPct = 18.0f;
+    oilFailsafeDelayMs = 1500; oilFailsafePct = 60.0f;
+    startupOilArmTimeoutMs = 3000; preIgnRpm = 5000; preIgnSparkMs = 1500;
+    flameTimeoutMs = 5000; flameCheckIntervalMs = 300; flameRequiredCount = 3;
+    spoolRpmTarget = 32000; spoolTimeoutMs = 12000;
+    safetyHoldMs = 1000; safetyHoldFinalRpm = 31000;
+    starterDemand = 60.0f; starterTimeoutMs = 8000;
+    tempConfirmTarget = 200.0f; tempConfirmTimeoutMs = 10000;
+    waitForInputChannel = 0; waitForInputExpected = true; waitForInputTimeoutMs = 0;
+    timedDelayMs = 1000; modifiedIdleMultiplier = 1.0f;
+    fuelPulsePulseMs = 200; fuelPulseOffMs = 300;
+    waitTotCoolTarget = 150.0f; waitTotCoolTimeoutMs = 120000;
+    throttleSetPct = 10.0f; preHeatMs = 3000; oilPumpOnPct = 80.0f;
+    flameConfirmTurnOffIgniter = true;
+    safetyHoldTurnOffStarter = false; safetyHoldTurnOffStarterEn = false; safetyHoldTurnOffIgniter = false;
+    spoolCutStarterOnExit = true; spoolCutStarterEnOnExit = true;
+    hotStartTotThreshold = 0.0f; finalStopOilScavengeMs = 0;
+    oilPrimeUseScavengePump = false; cooldownUseScavengePump = false;
+    shutdownRpmDropThreshold = 5000; shutdownRpmDropTimeoutMs = 15000;
+    shutdownCooldownTimeoutMs = 60000; shutdownFinalStopTimeoutMs = 10000;
+    rpmZeroThreshold = 100.0f;
+    cooldownUseStarter = true; cooldownUseOilPump = true;
+    cooldownStarterPct = 40.0f; cooldownOilPct = 30.0f; cooldownOilPressureTarget = 2.0f;
+    throttleRampUpMs = 600; throttleRampDownMs = 800;
+    throttleIdleMinPct = 8; throttleIdleMaxPct = 18; throttleExpo = 0.0f;
+    idleTargetRpm = 44000; idleRampUpMs = 10000; idleRampDownMs = 20000;
+    idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f;
+    idleUseN2 = false; idleIGain = 0.0f; idleIMax = 0.10f;
+    safetyCheckIntervalMs = 100; flameoutShutdownMs = 3000;
+    totRiseRateLimitDegPerSec = 0.0f; titLimit = 0.0f; oilTempLimit = 120.0f;
+    fuelPressMin = 0.0f; battVoltMin = 0.0f; surgeDetectRpmVariance = 0.0f;
+    relightEnabled = false; relightMinRpm = 30000.0f; relightTimeoutMs = 10000;
+    toolFuelPrimeMs = 3000; toolOilPrimeMs = 5000; toolIgnTestMs = 2000;
+    toolStartTestMs = 2000; toolFuelSolTestMs = 1000;
+    wsIntervalMs = 200; snapshotIntervalMs = 10000;
+    starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
+    oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
+    standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
+    limpMaxThrottlePct = 50.0f; igniterOnStart = true;
+    cooldownSkipHoldMs = 1000;
+    fuelPumpIdleMinPct = 8.0f; fuelPumpIdleMaxPct = 18.0f;
+    fp2StartPct = 0.0f; fp2EndPct = 80.0f; fp2RampMs = 3000; fp2DemandPct = 0.0f;
+    govHoldTimeoutMs = 10000;
+    abMinN1 = 30000.0f; abMaxN1 = 0.0f; abMaxTotForLight = 0.0f;
+    abThrottleThreshold = 0.80f; abUseTorch = true; abUseIgniter = false;
+    abTorchSpikePct = 30.0f; abTorchDurationMs = 400; abTorchTotLimit = 0.0f;
+    abFlameMode = 2; abTotRiseDegC = 30.0f; abTotRiseWindowMs = 2000;
+    abAssumeIgnitedMs = 1500; abFlameTimeoutMs = 3000;
+    abPumpMinPct = 80.0f; abPumpMaxPct = 100.0f; abPumpFollowThrottle = false;
+    abMainFuelOffsetPct = 0.0f; abStabilizeMs = 1000; abStabilizeMaxTot = 0.0f;
+    rpmJumpThreshold = 0.40f; rpmZeroStuckTicks = 5;
+    n1WarnRpm = 90000.0f; n2WarnRpm = 22000.0f; totWarnC = 0.0f; oilWarnBar = 0.0f;
+    clusterEnabled = false; pressureSensorsEnabled = false;
+    rcMinUs = 1000; rcMaxUs = 2000; rcFailsafeMs = 500;
+    governorTargetRpm = 0.0f; governorBandRpm = 500.0f;
+    governorKp = 0.001f; governorPitchKp = 0.0005f; governorPitchRampSec = 10.0f;
+    propPitchIdleDeg = 15.0f; propPitchMaxDeg = 35.0f;
+    glowPreheatMs = 10000; glowPreheatMaxPct = 80.0f; glowHoldPct = 30.0f; glowWaitUntilHot = false;
+    throttleMinRaw = 950; throttleMaxRaw = 3150; flameThreshold = 500;
+    oilPolyA = 0; oilPolyB = 0; oilPolyC = 0; oilPolyD = 0;
+    oilPolyXMin = 0; oilPolyXMax = 4095;
+    p1RawMin = 0; p1RawMax = 4095; p1ValMax = 10.0f; p1ZeroBar = 0.0f;
+    p2RawMin = 0; p2RawMax = 4095; p2ValMax = 10.0f; p2ZeroBar = 0.0f;
+    fuelPressRawMin = 0; fuelPressRawMax = 4095; fuelPressValMax = 10.0f;
+    fuelFlowRawMin = 0; fuelFlowRawMax = 4095; fuelFlowValMax = 10.0f;
+    sessionLogMask = SLOG_DEFAULT; sessionLogIntervalMs = 500;
+    // totalRunSeconds is NOT reset — hour meter persists across config reloads
 }
 
 void Config::_fromDoc(const JsonDocument& doc) {
+    // Warn if an expected top-level section is entirely absent.
+    // This typically means the file is truncated or severely corrupted —
+    // individual missing fields within a section are normal during version upgrades
+    // and are handled silently (they keep their compile-time defaults).
+    const char* requiredSections[] = {
+        "engine", "oil", "sequence", "throttle", "safety", "calibration"
+    };
+    for (const char* sec : requiredSections) {
+        if (!doc[sec].is<JsonObject>()) {
+            Serial.printf("[Config] WARNING: '%s' section missing from ecu_config.json"
+                          " — affected fields will use compile-time defaults\n", sec);
+        }
+    }
+
     auto eng = doc["engine"];
     rpmLimit          = eng["rpm_limit"]          | rpmLimit;
     minRpm            = eng["min_rpm"]             | minRpm;
@@ -369,7 +526,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
 
     auto su = doc["sequence"]["startup"];
     startupOilArmTimeoutMs = su["oil_arm_timeout_ms"]      | startupOilArmTimeoutMs;
-    startRpmThreshold      = su["start_rpm_threshold"]     | startRpmThreshold;
     preIgnRpm              = su["pre_ign_rpm"]             | preIgnRpm;
     preIgnSparkMs          = su["pre_ign_spark_ms"]        | preIgnSparkMs;
     flameTimeoutMs         = su["flame_timeout_ms"]        | flameTimeoutMs;
@@ -380,8 +536,21 @@ void Config::_fromDoc(const JsonDocument& doc) {
     safetyHoldMs           = su["safety_hold_ms"]          | safetyHoldMs;
     safetyHoldFinalRpm     = su["final_check_rpm"]         | safetyHoldFinalRpm;
     starterDemand          = su["starter_demand"]          | starterDemand;
+    starterTimeoutMs       = su["starter_timeout_ms"]      | starterTimeoutMs;
+    tempConfirmTarget      = su["temp_confirm_target"]     | tempConfirmTarget;
+    tempConfirmTimeoutMs   = su["temp_confirm_timeout"]    | tempConfirmTimeoutMs;
+    waitForInputChannel    = su["wait_for_input_ch"]       | waitForInputChannel;
+    waitForInputTimeoutMs  = su["wait_for_input_timeout"]  | waitForInputTimeoutMs;
+    if (!su["wait_for_input_state"].isNull()) waitForInputExpected = su["wait_for_input_state"].as<bool>();
     timedDelayMs           = su["timed_delay_ms"]          | timedDelayMs;
     modifiedIdleMultiplier = su["modified_idle_multiplier"]| modifiedIdleMultiplier;
+    fuelPulsePulseMs       = su["fuel_pulse_ms"]           | fuelPulsePulseMs;
+    fuelPulseOffMs         = su["fuel_off_ms"]             | fuelPulseOffMs;
+    waitTotCoolTarget      = su["wait_tot_target"]         | waitTotCoolTarget;
+    waitTotCoolTimeoutMs   = su["wait_tot_timeout"]        | waitTotCoolTimeoutMs;
+    throttleSetPct         = su["throttle_set_pct"]        | throttleSetPct;
+    preHeatMs              = su["preheat_ms"]              | preHeatMs;
+    oilPumpOnPct           = su["oil_pump_on_pct"]         | oilPumpOnPct;
     if (!su["flame_turn_off_igniter"].isNull())    flameConfirmTurnOffIgniter  = su["flame_turn_off_igniter"].as<bool>();
     if (!su["safety_turn_off_starter"].isNull())   safetyHoldTurnOffStarter    = su["safety_turn_off_starter"].as<bool>();
     if (!su["safety_turn_off_starter_en"].isNull())safetyHoldTurnOffStarterEn  = su["safety_turn_off_starter_en"].as<bool>();
@@ -408,6 +577,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     cooldownStarterPct        = sd["cooldown_starter_pct"]        | cooldownStarterPct;
     cooldownOilPct            = sd["cooldown_oil_pct"]            | cooldownOilPct;
     cooldownOilPressureTarget = sd["cooldown_oil_pressure_bar"]   | cooldownOilPressureTarget;
+    rpmZeroThreshold          = sd["rpm_zero_threshold"]          | rpmZeroThreshold;
 
     auto th = doc["throttle"];
     throttleRampUpMs    = th["ramp_up_ms"]   | throttleRampUpMs;
@@ -441,7 +611,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     governorTargetRpm  = gov["target_rpm"]   | governorTargetRpm;
     governorBandRpm    = gov["band_rpm"]      | governorBandRpm;
     governorKp         = gov["kp"]            | governorKp;
-    governorPitchKp    = gov["pitch_kp"]      | governorPitchKp;
+    governorPitchKp      = gov["pitch_kp"]         | governorPitchKp;
+    governorPitchRampSec = gov["pitch_ramp_sec"]   | governorPitchRampSec;
     propPitchIdleDeg   = gov["pitch_idle_deg"]| propPitchIdleDeg;
     propPitchMaxDeg    = gov["pitch_max_deg"] | propPitchMaxDeg;
 
@@ -449,6 +620,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     glowPreheatMs      = glw["preheat_ms"]    | glowPreheatMs;
     glowPreheatMaxPct  = glw["preheat_max_pct"]| glowPreheatMaxPct;
     glowHoldPct        = glw["hold_pct"]      | glowHoldPct;
+    if (!glw["wait_until_hot"].isNull()) glowWaitUntilHot = glw["wait_until_hot"].as<bool>();
 
     auto cal = doc["calibration"];
     throttleMinRaw = cal["throttle_min_raw"] | throttleMinRaw;
@@ -462,16 +634,25 @@ void Config::_fromDoc(const JsonDocument& doc) {
     oilPolyD    = poly["d"]     | oilPolyD;
     oilPolyXMin = poly["x_min"] | oilPolyXMin;
     oilPolyXMax = poly["x_max"] | oilPolyXMax;
-    p1ZeroBar        = cal["p1_zero_bar"]       | p1ZeroBar;
-    p2ZeroBar        = cal["p2_zero_bar"]       | p2ZeroBar;
-    fuelPressRawMin  = cal["fuel_press_raw_min"]| fuelPressRawMin;
-    fuelPressRawMax  = cal["fuel_press_raw_max"]| fuelPressRawMax;
-    fuelPressValMax  = cal["fuel_press_val_max"]| fuelPressValMax;
+    p1RawMin         = cal["p1_raw_min"]         | p1RawMin;
+    p1RawMax         = cal["p1_raw_max"]         | p1RawMax;
+    p1ValMax         = cal["p1_val_max"]         | p1ValMax;
+    p2RawMin         = cal["p2_raw_min"]         | p2RawMin;
+    p2RawMax         = cal["p2_raw_max"]         | p2RawMax;
+    p2ValMax         = cal["p2_val_max"]         | p2ValMax;
+    p1ZeroBar        = cal["p1_zero_bar"]        | p1ZeroBar;
+    p2ZeroBar        = cal["p2_zero_bar"]        | p2ZeroBar;
+    fuelPressRawMin  = cal["fuel_press_raw_min"] | fuelPressRawMin;
+    fuelPressRawMax  = cal["fuel_press_raw_max"] | fuelPressRawMax;
+    fuelPressValMax  = cal["fuel_press_val_max"] | fuelPressValMax;
+    fuelFlowRawMin   = cal["fuel_flow_raw_min"]  | fuelFlowRawMin;
+    fuelFlowRawMax   = cal["fuel_flow_raw_max"]  | fuelFlowRawMax;
+    fuelFlowValMax   = cal["fuel_flow_val_max"]  | fuelFlowValMax;
 
     auto rl = doc["relight"];
     if (!rl["enabled"].isNull()) relightEnabled = rl["enabled"].as<bool>();
-    relightMinRpm        = rl["min_rpm"]       | relightMinRpm;
-    relightMaxAttempts   = rl["max_attempts"]  | relightMaxAttempts;
+    relightMinRpm     = rl["min_rpm"]          | relightMinRpm;
+    relightTimeoutMs  = rl["relight_timeout_ms"] | relightTimeoutMs;
 
     auto tl = doc["tools"];
     toolFuelPrimeMs   = tl["fuel_prime_ms"]   | toolFuelPrimeMs;
@@ -561,8 +742,17 @@ void Config::_fromDoc(const JsonDocument& doc) {
         if (sl["oil"]      | false) mask |= SLOG_OIL;
         if (sl["p1"]       | false) mask |= SLOG_P1;
         if (sl["p2"]       | false) mask |= SLOG_P2;
-        if (sl["throttle"] | false) mask |= SLOG_THR;
-        if (sl["mode"]     | false) mask |= SLOG_MODE;
+        if (sl["throttle"]   | false) mask |= SLOG_THR;
+        if (sl["mode"]       | false) mask |= SLOG_MODE;
+        if (sl["tit"]        | false) mask |= SLOG_TIT;
+        if (sl["batt"]       | false) mask |= SLOG_BATT;
+        if (sl["fuel_press"] | false) mask |= SLOG_FUEL_PRESS;
+        if (sl["fuel_flow"]  | false) mask |= SLOG_FUEL_FLOW;
+        if (sl["glow"]       | false) mask |= SLOG_GLOW;
+        if (sl["fp2"]        | false) mask |= SLOG_FP2;
+        if (sl["ab"]         | false) mask |= SLOG_AB;
+        if (sl["prop"]       | false) mask |= SLOG_PROP;
+        if (sl["oil_pct"]    | false) mask |= SLOG_OIL_PCT;
         sessionLogMask = mask;
         sessionLogIntervalMs = sl["interval_ms"] | sessionLogIntervalMs;
     }
@@ -570,6 +760,26 @@ void Config::_fromDoc(const JsonDocument& doc) {
     auto stats = doc["stats"];
     if (!stats.isNull()) {
         totalRunSeconds = stats["total_run_seconds"] | totalRunSeconds;
+    }
+
+    // ── Automation rules ──────────────────────────────────────────
+    auto rulesArr = doc["rules"];
+    if (!rulesArr.isNull() && rulesArr.is<JsonArrayConst>()) {
+        ruleCount = 0;
+        for (JsonObjectConst jr : rulesArr.as<JsonArrayConst>()) {
+            if (ruleCount >= MAX_RULES) break;
+            Rule& r = rules[ruleCount++];
+            r.enabled   = jr["enabled"]   | false;
+            r.sensor    = (uint8_t)(jr["sensor"]    | 0);
+            r.op        = (uint8_t)(jr["op"]        | 0);
+            r.threshold = jr["threshold"] | 0.0f;
+            r.actuator  = (uint8_t)(jr["actuator"]  | 0);
+            r.onValue   = jr["on_value"]  | 1.0f;
+            r.offValue  = jr["off_value"] | 0.0f;
+            const char* n = jr["name"] | "";
+            strncpy(r.name, n, sizeof(r.name) - 1);
+            r.name[sizeof(r.name) - 1] = '\0';
+        }
     }
 }
 
@@ -599,7 +809,6 @@ void Config::_toDoc(JsonDocument& doc) {
 
     auto su = doc["sequence"]["startup"].to<JsonObject>();
     su["oil_arm_timeout_ms"]      = startupOilArmTimeoutMs;
-    su["start_rpm_threshold"]     = startRpmThreshold;
     su["pre_ign_rpm"]             = preIgnRpm;
     su["pre_ign_spark_ms"]        = preIgnSparkMs;
     su["flame_timeout_ms"]        = flameTimeoutMs;
@@ -610,8 +819,21 @@ void Config::_toDoc(JsonDocument& doc) {
     su["safety_hold_ms"]          = safetyHoldMs;
     su["final_check_rpm"]         = safetyHoldFinalRpm;
     su["starter_demand"]           = starterDemand;
+    su["starter_timeout_ms"]       = starterTimeoutMs;
+    su["temp_confirm_target"]      = tempConfirmTarget;
+    su["temp_confirm_timeout"]     = tempConfirmTimeoutMs;
+    su["wait_for_input_ch"]        = waitForInputChannel;
+    su["wait_for_input_state"]     = waitForInputExpected;
+    su["wait_for_input_timeout"]   = waitForInputTimeoutMs;
     su["timed_delay_ms"]           = timedDelayMs;
     su["modified_idle_multiplier"] = modifiedIdleMultiplier;
+    su["fuel_pulse_ms"]            = fuelPulsePulseMs;
+    su["fuel_off_ms"]              = fuelPulseOffMs;
+    su["wait_tot_target"]          = waitTotCoolTarget;
+    su["wait_tot_timeout"]         = waitTotCoolTimeoutMs;
+    su["throttle_set_pct"]         = throttleSetPct;
+    su["preheat_ms"]               = preHeatMs;
+    su["oil_pump_on_pct"]          = oilPumpOnPct;
     su["flame_turn_off_igniter"]   = flameConfirmTurnOffIgniter;
     su["safety_turn_off_starter"]  = safetyHoldTurnOffStarter;
     su["safety_turn_off_starter_en"] = safetyHoldTurnOffStarterEn;
@@ -638,6 +860,7 @@ void Config::_toDoc(JsonDocument& doc) {
     sd["cooldown_starter_pct"]        = cooldownStarterPct;
     sd["cooldown_oil_pct"]            = cooldownOilPct;
     sd["cooldown_oil_pressure_bar"]   = cooldownOilPressureTarget;
+    sd["rpm_zero_threshold"]          = rpmZeroThreshold;
 
     auto th = doc["throttle"].to<JsonObject>();
     th["ramp_up_ms"]   = throttleRampUpMs;
@@ -671,7 +894,8 @@ void Config::_toDoc(JsonDocument& doc) {
     gov["target_rpm"]    = governorTargetRpm;
     gov["band_rpm"]      = governorBandRpm;
     gov["kp"]            = governorKp;
-    gov["pitch_kp"]      = governorPitchKp;
+    gov["pitch_kp"]        = governorPitchKp;
+    gov["pitch_ramp_sec"]  = governorPitchRampSec;
     gov["pitch_idle_deg"]= propPitchIdleDeg;
     gov["pitch_max_deg"] = propPitchMaxDeg;
 
@@ -679,6 +903,7 @@ void Config::_toDoc(JsonDocument& doc) {
     glw["preheat_ms"]     = glowPreheatMs;
     glw["preheat_max_pct"]= glowPreheatMaxPct;
     glw["hold_pct"]       = glowHoldPct;
+    glw["wait_until_hot"] = glowWaitUntilHot;
 
     auto cal = doc["calibration"].to<JsonObject>();
     cal["throttle_min_raw"] = throttleMinRaw;
@@ -691,16 +916,25 @@ void Config::_toDoc(JsonDocument& doc) {
     poly["d"]     = oilPolyD;
     poly["x_min"] = oilPolyXMin;
     poly["x_max"]        = oilPolyXMax;
+    cal["p1_raw_min"]         = p1RawMin;
+    cal["p1_raw_max"]         = p1RawMax;
+    cal["p1_val_max"]         = p1ValMax;
+    cal["p2_raw_min"]         = p2RawMin;
+    cal["p2_raw_max"]         = p2RawMax;
+    cal["p2_val_max"]         = p2ValMax;
     cal["p1_zero_bar"]        = p1ZeroBar;
     cal["p2_zero_bar"]        = p2ZeroBar;
     cal["fuel_press_raw_min"] = fuelPressRawMin;
     cal["fuel_press_raw_max"] = fuelPressRawMax;
     cal["fuel_press_val_max"] = fuelPressValMax;
+    cal["fuel_flow_raw_min"]  = fuelFlowRawMin;
+    cal["fuel_flow_raw_max"]  = fuelFlowRawMax;
+    cal["fuel_flow_val_max"]  = fuelFlowValMax;
 
     auto rl = doc["relight"].to<JsonObject>();
-    rl["enabled"]       = relightEnabled;
-    rl["min_rpm"]       = relightMinRpm;
-    rl["max_attempts"]  = relightMaxAttempts;
+    rl["enabled"]            = relightEnabled;
+    rl["min_rpm"]            = relightMinRpm;
+    rl["relight_timeout_ms"] = relightTimeoutMs;
 
     auto tl = doc["tools"].to<JsonObject>();
     tl["fuel_prime_ms"]    = toolFuelPrimeMs;
@@ -788,8 +1022,34 @@ void Config::_toDoc(JsonDocument& doc) {
     sl["p2"]       = (bool)(sessionLogMask & SLOG_P2);
     sl["throttle"] = (bool)(sessionLogMask & SLOG_THR);
     sl["mode"]       = (bool)(sessionLogMask & SLOG_MODE);
+    sl["tit"]        = (bool)(sessionLogMask & SLOG_TIT);
+    sl["batt"]       = (bool)(sessionLogMask & SLOG_BATT);
+    sl["fuel_press"] = (bool)(sessionLogMask & SLOG_FUEL_PRESS);
+    sl["fuel_flow"]  = (bool)(sessionLogMask & SLOG_FUEL_FLOW);
+    sl["glow"]       = (bool)(sessionLogMask & SLOG_GLOW);
+    sl["fp2"]        = (bool)(sessionLogMask & SLOG_FP2);
+    sl["ab"]         = (bool)(sessionLogMask & SLOG_AB);
+    sl["prop"]       = (bool)(sessionLogMask & SLOG_PROP);
+    sl["oil_pct"]    = (bool)(sessionLogMask & SLOG_OIL_PCT);
     sl["interval_ms"]= sessionLogIntervalMs;
 
     auto stats = doc["stats"].to<JsonObject>();
     stats["total_run_seconds"] = totalRunSeconds;
+
+    // ── Automation rules ──────────────────────────────────────────
+    if (ruleCount > 0) {
+        auto arr = doc["rules"].to<JsonArray>();
+        for (int i = 0; i < ruleCount; i++) {
+            const Rule& r = rules[i];
+            auto jr = arr.add<JsonObject>();
+            jr["enabled"]   = r.enabled;
+            jr["sensor"]    = r.sensor;
+            jr["op"]        = r.op;
+            jr["threshold"] = r.threshold;
+            jr["actuator"]  = r.actuator;
+            jr["on_value"]  = r.onValue;
+            jr["off_value"] = r.offValue;
+            jr["name"]      = r.name;
+        }
+    }
 }

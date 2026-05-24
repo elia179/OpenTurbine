@@ -24,7 +24,10 @@ public:
     static constexpr const char* SECTION     = "hardware";
 
     // ── Profile identity ──────────────────────────────────────
-    static char  profileId[64];      // also used as WiFi AP SSID (default: OpenTurbine)
+    // profileId must match the settings section value and OT_PROFILE_ID.
+    // Used as the WiFi AP SSID. Divergence from Config::profileId is logged
+    // as a warning at boot (setup() cross-checks both after loading).
+    static char  profileId[64];
     static char  profileDesc[64];
     static char  wifiPassword[32];   // WiFi AP password — empty = open network
 
@@ -35,8 +38,10 @@ public:
     // ── Physical controls ─────────────────────────────────────
     static int  stopPin;
     static bool stopActiveH;    // false = active-low (button to GND, INPUT_PULLUP) — default
+    static bool stopPullup;     // true = enable ESP32 internal pull-up on stop pin (default on)
     static int  startPin;
     static bool startActiveH;   // false = active-low
+    static bool startPullup;    // true = enable ESP32 internal pull-up on start pin (default on)
 
     // ── Sensor feature flags ──────────────────────────────────
     static bool hasN1Rpm;
@@ -75,6 +80,8 @@ public:
     static int   oilPressPin;
     static int   flamePin;
     static int   fuelFlowPin;
+    static int   fuelFlowType;          // 0 = analog voltage, 1 = pulse/frequency
+    static float fuelFlowPulsesPerLitre; // pulse type: pulses per litre
     static int   fuelPressPin;
     static int   p1Pin;
     static int   p2Pin;
@@ -83,13 +90,14 @@ public:
     static int   idleInputPin;
     static bool  idleInputRcPwm;
 
-    // oil temperature sensor — "ntc" (analog NTC), "max6675", "max31855", "max31856"
+    // oil temperature sensor — "ntc" (analog NTC), "max6675", "max31855", "max31856", "ds18b20"
     static char  oilTempChip[12];
-    static int   oilTempPin;        // analog pin for NTC; CLK pin for SPI types
-    static int   oilTempCs;         // SPI CS  (-1 for NTC)
-    static int   oilTempMiso;       // SPI MISO (-1 for NTC)
+    static int   oilTempPin;        // analog pin for NTC; CLK pin for SPI types; data pin for DS18B20
+    static int   oilTempCs;         // SPI CS  (-1 for NTC / DS18B20)
+    static int   oilTempMiso;       // SPI MISO (-1 for NTC / DS18B20)
     static int   oilTempMosi;       // SPI MOSI (-1 for non-MAX31856)
     static char  oilTempTcType[4];  // thermocouple type for MAX31856: "K","J","N","T"…
+    static int   oilTempResolution; // DS18B20 resolution bits: 9, 10, 11, or 12 (default 12)
     static float ntcBeta;           // NTC B coefficient (default 3950)
     static float ntcR0;             // NTC resistance at reference temp in Ω (default 10000)
     static float ntcRFixed;         // pull-up resistor in Ω (default 10000)
@@ -121,8 +129,10 @@ public:
     static bool hasBleedValve;       // compressor bleed valve (surge prevention / unloaded start)
     static bool hasPropPitch;        // variable pitch propeller servo (turboprop)
     static bool hasGlowPlug;         // glow plug / pilot-flame element (PWM ramp, not relay)
-    static bool hasGlowCurrentSensor;    // current sensor on glow plug output
-    static bool hasIgniterCurrentSensor; // current sensor on igniter/coil output
+    static bool hasGlowCurrentSensor;       // current sensor on glow plug output
+    static bool hasIgniterCurrentSensor;   // current sensor on igniter 1 coil output
+    static bool hasIgniter2CurrentSensor;  // current sensor on igniter 2 coil output
+    static bool hasOilPumpCurrentSensor;   // current sensor on oil pump output (overcurrent detection)
     static bool hasGovernor;         // N2 power turbine speed governor (turboshaft/APU)
     static bool hasMAVLink;          // MAVLink UART telemetry output
     static bool hasStatusLed;
@@ -177,6 +187,11 @@ public:
     static bool  igniter2Pwm;
     static int   igniter2DwellMs;
     static int   igniter2RestMs;
+    static bool  igniter2Coil;             // true = active coil switching (fires repeatedly)
+    static float igniter2CoilSatAmps;      // saturation threshold (coil + current mode)
+    static int   igniter2CurrentPin;       // ADC pin for igniter 2 current sensor (-1 = none)
+    static float igniter2CurrentMvPerA;    // sensor sensitivity mV/A (e.g. 100 for ACS712-20A)
+    static float igniter2CurrentZeroV;     // output voltage at 0A (default 1.65V)
 
     static int   starterEnPin;
     static bool  starterEnActiveH;
@@ -242,10 +257,15 @@ public:
     static int   glowPlugPin;          // LEDC PWM output to glow plug / pilot element
     static int   glowPlugFreqHz;       // PWM frequency (e.g. 1000 Hz)
     static int   glowPlugResBits;      // PWM resolution (default 8)
-    static int   glowCurrentPin;         // ADC pin for glow plug current sensor (-1 = none)
-    static float glowCurrentMvPerA;      // sensor sensitivity mV/A (e.g. 185 for ACS712-5A)
-    static float glowCurrentZeroV;       // output voltage at 0A (default 1.65V)
-    static float glowCurrentReadyAmps;   // current drops below this → plug is hot
+    static int   glowCurrentPin;            // ADC pin for glow plug current sensor (-1 = none)
+    static float glowCurrentMvPerA;         // sensor sensitivity mV/A (e.g. 185 for ACS712-5A)
+    static float glowCurrentZeroV;          // output voltage at 0A (default 1.65V)
+    static float glowCurrentReadyAmps;      // current drops below this → plug is hot
+
+    static int   oilPumpCurrentPin;         // ADC pin for oil pump current sensor (-1 = none)
+    static float oilPumpCurrentMvPerA;      // sensor sensitivity mV/A (e.g. 100 for ACS712-20A)
+    static float oilPumpCurrentZeroV;       // output voltage at 0A (default 1.65V)
+    static float oilPumpCurrentMaxAmps;     // overcurrent trip threshold (0 = disabled)
 
     // ── MAVLink UART ──────────────────────────────────────────
     static int   mavlinkTxPin;         // UART TX pin for MAVLink output
@@ -316,7 +336,7 @@ public:
         bool activeH     = false;   // true = active-high, false = active-low
         int  debounceMs  = 20;
         char label[32]   = {};      // user display name
-        // role: "none","fault","inhibit_start","estop","sequence_gate","ab_arm"
+        // role: "none","fault","inhibit_start","estop","ab_arm","limp_mode","ab_fire"
         char role[20]    = "none";
         // fault role params:
         char faultCode[24]    = {};  // e.g. "LOW_OIL_PRESSURE"

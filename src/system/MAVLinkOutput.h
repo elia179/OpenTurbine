@@ -73,14 +73,14 @@ private:
             uint8_t b = *buf++;
             crc ^= (uint16_t)b;
             for (int i = 0; i < 8; i++) {
-                if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+                if (crc & 1) crc = (crc >> 1) ^ 0x8408;
                 else         crc >>= 1;
             }
         }
         // Extra byte (CRC_EXTRA from message definition)
         crc ^= (uint16_t)extra;
         for (int i = 0; i < 8; i++) {
-            if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+            if (crc & 1) crc = (crc >> 1) ^ 0x8408;
             else         crc >>= 1;
         }
         return crc;
@@ -96,20 +96,28 @@ private:
             COMP_ID,
             msgId
         };
-        // CRC covers header (bytes 1..5) + payload
-        uint16_t crc = _crc16(hdr + 1, 5, 0);
+        // CRC covers header bytes 1..5, then payload, then crcExtra (MAVLink v1 spec).
+        // Process inline — do not call _crc16() with extra=0, because _crc16 always
+        // runs the extra byte through the polynomial and 0x00 is not a no-op.
+        uint16_t crc = 0xFFFF;
+        for (int i = 1; i <= 5; i++) {
+            crc ^= (uint16_t)hdr[i];
+            for (int j = 0; j < 8; j++) {
+                if (crc & 1) crc = (crc >> 1) ^ 0x8408;
+                else         crc >>= 1;
+            }
+        }
         for (uint8_t i = 0; i < payLen; i++) {
             uint8_t b = payload[i];
             crc ^= b;
             for (int j = 0; j < 8; j++) {
-                if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+                if (crc & 1) crc = (crc >> 1) ^ 0x8408;
                 else         crc >>= 1;
             }
         }
-        // XOR extra into crc
         crc ^= (uint16_t)crcExtra;
         for (int j = 0; j < 8; j++) {
-            if (crc & 1) crc = (crc >> 1) ^ 0xA001;
+            if (crc & 1) crc = (crc >> 1) ^ 0x8408;
             else         crc >>= 1;
         }
 
@@ -164,6 +172,8 @@ private:
         if (ed.battHealthy)      _sendNamedFloat("BATT_V",   ed.battVoltage);
         if (ed.fuelPressHealthy) _sendNamedFloat("FUEL_BAR", ed.fuelPressure);
         if (ed.torqueHealthy)    _sendNamedFloat("TORQ_NM",  ed.torque);
+        if (ed.titHealthy)       _sendNamedFloat("TIT_C",    ed.tit);
+        if (HardwareConfig::hasFuelFlow) _sendNamedFloat("FUEL_KGH", ed.fuelFlow);
         _sendNamedFloat("THR_PCT",  ed.throttleDemand * 100.0f);
     }
 

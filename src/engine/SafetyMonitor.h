@@ -36,17 +36,19 @@ public:
     float         totRiseRateLimit     = 0.0f;   // °C/s — 0 = disabled
 
     void begin(ShutdownFn enterShutdown, ShutdownFn enterFault) {
-        _enterShutdown = enterShutdown;
-        _enterFault    = enterFault;
-        _lastCheckMs   = 0;
-        _flameoutMs    = 0;
+        _enterShutdown    = enterShutdown;
+        _enterFault       = enterFault;
+        _lastCheckMs      = 0;
+        _flameoutMs       = 0;
+        _relightStartMs   = 0;
+        _startupSpooled   = false;
     }
 
-    void setRelightCallback(RelightFn fn) { _relight = fn; }
+    // Allow external callers (e.g. DI fault handler) to inject a fault code
+    // so lastFault() returns the right string when enterFaultShutdown() reads it.
+    void setExternalFault(const char* code) { _lastFault = code; }
 
-    // Reset the flameout timer so SafetyMonitor waits a fresh flameoutShutdownMs
-    // before firing another relight attempt. Call when a per-attempt igniter times out.
-    void resetFlameoutTimer() { _flameoutMs = 0; }
+    void setRelightCallback(RelightFn fn) { _relight = fn; }
 
     void check() {
         auto& ed = EngineData::instance();
@@ -55,15 +57,17 @@ public:
         SysMode m = ed.mode;
         bool inOp = (m == SysMode::STARTUP || m == SysMode::RUNNING);
         if (!inOp) {
-            _flameoutMs    = 0;
-            _lastTot       = -1.0f;
-            _lastTotMs     = 0;
-            ed.totRiseRate = 0.0f;
+            _flameoutMs     = 0;
+            _relightStartMs = 0;
+            _lastTot        = -1.0f;
+            _lastTotMs      = 0;
+            ed.totRiseRate  = 0.0f;
             // Surge buffer is only reset on STANDBY entry — not on every non-op
             // mode change (e.g. SHUTDOWN) — so the buffer isn't wiped mid-spindown.
             if (m == SysMode::STANDBY) {
-                _n1BufIdx   = 0;
-                _n1BufCount = 0;
+                _n1BufIdx      = 0;
+                _n1BufCount    = 0;
+                _startupSpooled = false;  // reset for next startup
             }
             ed.surgeDetected = false;
             return;
@@ -137,28 +141,34 @@ public:
         if (HardwareConfig::safetyFlameout && m == SysMode::RUNNING && ed.flameMonitorActive) {
             if (!ed.flameDetected) {
                 if (_flameoutMs == 0) _flameoutMs = now;
+
                 if ((now - _flameoutMs) > (unsigned long)flameoutShutdownMs) {
-                    // Attempt relight before faulting, if conditions allow
-                    // Keeps retrying until N1 falls below relightMinRpm
-                    // Relight: attempt only when enabled, armed, RPM still viable,
-                    // and not yet exceeded the max-attempt cap (0 = unlimited).
-                    bool underLimit = (Config::relightMaxAttempts == 0)
-                                   || (ed.relightAttempts < (uint8_t)Config::relightMaxAttempts);
-                    if (Config::relightEnabled
-                        && ed.relightArmed
-                        && ed.n1Rpm >= Config::relightMinRpm
-                        && underLimit
-                        && _relight)
-                    {
-                        _relight();
-                        _flameoutMs = now;  // reset timer — give relight time to work
-                        return;
+                    // Relight path: enabled, armed, N1 still viable
+                    bool n1Ok = !ed.n1Healthy || ed.n1Rpm >= Config::relightMinRpm;
+                    if (Config::relightEnabled && ed.relightArmed && n1Ok && _relight) {
+                        if (_relightStartMs == 0) {
+                            // First trigger — start continuous ignition
+                            _relight();
+                            _relightStartMs = now;
+                        } else {
+                            // Relight window: check N1 still viable and timeout not expired
+                            bool stillViable = !ed.n1Healthy || ed.n1Rpm >= Config::relightMinRpm;
+                            bool timedOut    = Config::relightTimeoutMs > 0
+                                           && (now - _relightStartMs) > (unsigned long)Config::relightTimeoutMs;
+                            if (!stillViable || timedOut) {
+                                _trigger("FLAMEOUT");
+                                return;
+                            }
+                        }
+                        return;  // checkRelight() in main.cpp keeps igniterOn true each tick
                     }
+                    // Relight not enabled / armed / N1 too low — fault immediately
                     _trigger("FLAMEOUT");
                     return;
                 }
             } else {
-                _flameoutMs = 0;
+                _flameoutMs     = 0;
+                _relightStartMs = 0;  // flame returned — reset relight state
             }
         }
 
@@ -189,6 +199,7 @@ public:
 
         // ── Battery / bus undervoltage ────────────────────────
         if (HardwareConfig::safetyBattLow && battVoltMin > 0.0f
+            && HardwareConfig::hasBattVoltage
             && ed.battHealthy && ed.battVoltage > 0.5f  // 0.5 V = connected
             && ed.battVoltage < battVoltMin)
         {
@@ -198,6 +209,7 @@ public:
 
         // ── Surge detection (N1 oscillation variance) ─────────
         if (HardwareConfig::safetySurge && surgeRpmVariance > 0.0f
+            && HardwareConfig::hasN1Rpm
             && m == SysMode::RUNNING && ed.n1Healthy)
         {
             // Push N1 sample into circular buffer
@@ -228,9 +240,10 @@ public:
         }
 
         // ── Underspeed ────────────────────────────────────────
-        // Checked in both RUNNING and STARTUP (after initial spin-up).
-        // In STARTUP only trigger if RPM is already above zero — avoids false
-        // trips before the starter has begun spinning the engine.
+        // RUNNING: fire immediately if N1 drops below minRpm at any time.
+        // STARTUP: only fire if N1 previously crossed minRpm and then fell back
+        //          (genuine stall during spool-up, not the normal crank-up phase
+        //          where the engine must pass through 0→minRpm on its way to idle).
         if (m == SysMode::RUNNING) {
             if (ed.n1Healthy && ed.n1Rpm < minRpm) {
                 _trigger("UNDERSPEED");
@@ -240,8 +253,11 @@ public:
                 ed.limpMode = true;  // RPM sensor lost → limp
             }
         }
-        if (m == SysMode::STARTUP) {
-            if (ed.n1Rpm > 0 && ed.n1Rpm < minRpm && ed.n1Healthy) {
+        if (m == SysMode::STARTUP && ed.n1Healthy) {
+            // Track once N1 reaches minRpm so we know the engine has spooled through
+            if (ed.n1Rpm >= minRpm) _startupSpooled = true;
+            // Only fault if we already spooled past minRpm and now dropped below it
+            if (_startupSpooled && ed.n1Rpm < minRpm) {
                 _trigger("UNDERSPEED");
                 return;
             }
@@ -253,17 +269,19 @@ public:
 private:
     static constexpr uint8_t SURGE_BUF = 10; // ~1 s of N1 samples at 100 ms interval
 
-    ShutdownFn    _enterShutdown = nullptr;
-    ShutdownFn    _enterFault    = nullptr;
+    ShutdownFn    _enterShutdown  = nullptr;
+    ShutdownFn    _enterFault     = nullptr;
     RelightFn     _relight;
-    unsigned long _lastCheckMs   = 0;
-    unsigned long _flameoutMs    = 0;
-    const char*   _lastFault     = nullptr;
-    float         _lastTot       = -1.0f;   // for dEGT/dt calculation
-    unsigned long _lastTotMs     = 0;
+    unsigned long _lastCheckMs    = 0;
+    unsigned long _flameoutMs     = 0;
+    unsigned long _relightStartMs = 0;   // millis() when relight was first triggered; 0 = not active
+    const char*   _lastFault      = nullptr;
+    float         _lastTot        = -1.0f;   // for dEGT/dt calculation
+    unsigned long _lastTotMs      = 0;
+    bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
-    uint8_t       _n1BufIdx      = 0;
-    uint8_t       _n1BufCount    = 0;
+    uint8_t       _n1BufIdx       = 0;
+    uint8_t       _n1BufCount     = 0;
 
     void _trigger(const char* code) {
         _lastFault = code;

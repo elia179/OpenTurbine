@@ -25,13 +25,13 @@ public:
     BlockResult tick() override {
         auto& ed = EngineData::instance();
 
+        // Bench mode: immediately simulate a successful flame confirm — no sensor, no wait
+        if (ed.benchMode) {
+            Serial.println("[FlameConfirm] BENCH: simulating flame confirm");
+            return BlockResult::Complete;
+        }
+
         if ((millis() - _entryMs) > timeoutMs) {
-            auto& edChk = EngineData::instance();
-            if (edChk.benchMode) {
-                // Bench mode: simulate flame confirmed — proceed without real sensor
-                Serial.println("[FlameConfirm] BENCH: simulating flame confirm");
-                return BlockResult::Complete;
-            }
             // Log the specific reason so the user sees "no ignition" rather than a generic abort.
             FlightRecorder::logAbort("FlameConfirm", "no_ignition_timeout");
             Serial.println("[FlameConfirm] Abort: flame not detected within timeout — check igniter, fuel nozzle, and fuel valve");

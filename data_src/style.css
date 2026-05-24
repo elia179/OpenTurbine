@@ -162,10 +162,10 @@ main { padding: 1.5rem; max-width: 920px; margin: 0 auto; }
 
 .mode-badge {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.88rem;
   font-weight: 700;
   letter-spacing: 0.14em;
-  padding: 0.35rem 0.9rem;
+  padding: 0.42rem 1rem;
   border-radius: var(--r-sm);
   background: var(--surface-3);
   border: 1px solid var(--border);
@@ -185,6 +185,8 @@ button {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   padding: 0.42rem 1.1rem;
+  min-height: 44px;              /* reliable touch target */
+  touch-action: manipulation;    /* kills 300 ms tap delay on mobile */
   border-radius: var(--r-sm);
   border: 1px solid var(--border-light);
   background: var(--surface-3);
@@ -206,6 +208,12 @@ button.primary {
 }
 button.primary:hover { background: #00d48e; border-color: #00d48e; }
 
+/* START / STOP — large, unambiguous in-field targets */
+#btn-start, #btn-stop {
+  min-height: 52px;
+  font-size: 0.9rem;
+  padding: 0.7rem 1.6rem;
+}
 /* Hardware button state glow */
 #btn-start.hw-active { box-shadow: 0 0 0 2px var(--green); border-color: var(--green); color: var(--green); }
 #btn-stop.hw-active  { background: var(--red); box-shadow: 0 0 0 2px var(--red); border-color: var(--red); color: #fff; }
@@ -240,6 +248,34 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
   border: 1px solid rgba(240,160,32,0.4);
   color: var(--yellow);
 }
+/* Getting-started banner */
+.gs-banner {
+  background: rgba(56,200,255,0.06);
+  border: 1px solid rgba(56,200,255,0.3);
+  border-radius: var(--r-md);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.83rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.gs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.gs-title  { font-weight: 700; font-size: 0.9rem; color: var(--text); }
+.gs-dismiss { font-size: 0.75rem; color: var(--dim); background: none; border: 1px solid var(--border); cursor: pointer; padding: 0.2rem 0.7rem; border-radius: var(--r-sm); min-height: 32px; text-transform: none; letter-spacing: 0; }
+.gs-steps  { list-style: none; margin: 0.4rem 0 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.gs-step-text { font-size: 0.82rem; color: var(--text-2); }
+
+/* Gauge absolute-value label (shows "45,000 / 120,000 RPM" under the bar) */
+.gauge-abs-label {
+  font-size: 0.72rem;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  margin-top: 0.3rem;
+  letter-spacing: 0.02em;
+}
+/* Turns yellow when value is approaching the limit */
+.gauge-approach-warn .gauge-abs-label { color: var(--yellow); }
+
 /* Profile mismatch — keep id selectors for JS compat */
 #profile-mismatch-banner {
   background: rgba(240,160,32,0.07);
@@ -450,11 +486,11 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 }
 .cfg-field { display: flex; flex-direction: column; gap: 0.2rem; }
 .cfg-field input { margin-top: auto; }
-.cfg-label { font-size: 0.62rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
-.cfg-desc  { font-size: 0.6rem; color: #7878a8; line-height: 1.35; min-height: 2.6rem; font-family: var(--font-ui); }
+.cfg-label { font-size: 0.67rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
+.cfg-desc  { font-size: 0.72rem; color: #7878a8; line-height: 1.4; min-height: 2.6rem; font-family: var(--font-ui); }
 .save-bar {
   position: sticky;
-  bottom: 1rem;
+  bottom: max(1rem, env(safe-area-inset-bottom));  /* clear iOS home bar */
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -548,8 +584,8 @@ textarea.field-changed {
   gap: .6rem; padding: .7rem 1.1rem;
   border-top: 1px solid var(--border);
 }
-#lock-warn    { font-size: 0.8rem; color: var(--red); margin-bottom: 0.75rem; display: none; }
-#standby-warn { font-size: 0.8rem; color: var(--red); margin-bottom: 0.75rem; display: none; }
+/* #lock-warn and #standby-warn use .error-banner for visual treatment;
+   display:none here is removed — JS controls visibility via style.display */
 
 /* ── Tools page ─────────────────────────────────────────────── */
 .tool-card {
@@ -714,6 +750,7 @@ textarea.field-changed {
 .step-dot.complete { background: #005535; color: var(--green); }
 
 /* ── Telemetry cards density ─────────────────────────────────── */
+.card.small     { padding: 0.7rem 1rem; }
 .telemetry .card { padding: 0.7rem 1rem; }
 
 /* ── Misc utility ────────────────────────────────────────────── */
@@ -731,6 +768,7 @@ textarea.field-changed {
 
 /* Afterburner card */
 .ab-mode-val { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 700; letter-spacing: 0.04em; margin: 0.25rem 0; }
+.ab-controls button { min-height: 44px; }  /* FIRE and AB STOP must be reliably tappable */
 .ab-mode-Off          { color: var(--dim); }
 .ab-mode-Arming       { color: var(--yellow); }
 .ab-mode-Igniting     { color: var(--yellow); }
@@ -754,8 +792,33 @@ textarea.field-changed {
   .controls { flex-wrap: wrap; }
   .controls button { flex: 1 1 auto; min-width: 80px; }
   .mode-row { flex-wrap: wrap; gap: 0.5rem; }
-  nav { padding: 0 0.5rem; height: 44px; }
+
+  /* Nav: allow horizontal scroll on very narrow screens instead of clipping */
+  nav {
+    padding: 0 0.5rem;
+    height: 44px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;       /* Firefox */
+  }
+  nav::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
   nav a { padding: 0 0.55rem; font-size: 0.68rem; height: 44px; line-height: 44px; }
+
+  /* START / STOP full-width on mobile for maximum target size */
+  #btn-start, #btn-stop { min-height: 56px; font-size: 1rem; width: 100%; }
+
+  /* Inputs: 16px prevents iOS Safari from auto-zooming on focus */
+  input[type=number], input[type=text], select, textarea { font-size: 16px; }
+
+  /* Sequence block action buttons — larger tap targets */
+  .blk-btn { min-height: 36px; padding: 0.35rem 0.7rem; }
+  .cblk-mv-btn { min-height: 32px; min-width: 2rem; }
+
+  /* Log detail: allow horizontal scroll for wide tables */
+  .run-detail.open { overflow-x: auto; }
+
+  /* Mode badge: slightly larger for glance-reading outdoors */
+  .mode-badge { font-size: 0.95rem; padding: 0.45rem 1rem; }
 }
 
 /* ── Grid-3 ──────────────────────────────────────────────────── */
@@ -791,8 +854,8 @@ textarea.field-changed {
 
 .hw-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.65rem; align-items: start; }
 .hw-field { display: flex; flex-direction: column; gap: 0.2rem; }
-.hw-label { font-size: 0.62rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
-.hw-desc  { font-size: 0.59rem; color: #7878a8; line-height: 1.3; min-height: 1.5rem; font-family: var(--font-ui); }
+.hw-label { font-size: 0.67rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
+.hw-desc  { font-size: 0.72rem; color: #7878a8; line-height: 1.4; min-height: 1.5rem; font-family: var(--font-ui); }
 .hw-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; }
 
 .act-subgroup {

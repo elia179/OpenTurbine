@@ -16,8 +16,17 @@ enum class ABMode : uint8_t {
 //  EngineData — central volatile data bus
 //
 //  Written exclusively by the ECU loop (Core 1).
-//  Read by web server (Core 0) without mutex — scalar volatile
-//  reads on Xtensa are atomic enough for this use case.
+//  Read by the web server (Core 0) without a mutex.
+//
+//  On Xtensa ESP32, 32-bit-aligned S32I/L32I are single-cycle
+//  atomic operations, so individual scalar reads are tear-free.
+//  However, COMPOSITE state transitions (e.g. setting mode then
+//  igniterOn in two separate writes) may be observed by Core 0
+//  in a mid-transition state — e.g. mode == SHUTDOWN while
+//  igniterOn is still true for one WebSocket tick.
+//  This is intentional and accepted: Core 0 is display-only and
+//  never makes safety or control decisions.  The only consequence
+//  is a briefly inconsistent dashboard reading, not an unsafe action.
 //
 //  Commands travel the other direction via CommandQueue only.
 //  Nothing on Core 0 ever writes to this struct.
@@ -43,6 +52,7 @@ struct EngineData {
     volatile float    turboPower      = 0;      // W    shaft power = torque × n2AngularVel (turboshaft)
     volatile int      oilPressureRaw  = 0;      // raw ADC counts
     volatile int      flameSensorRaw  = 0;      // raw ADC counts
+    volatile int      torqueRaw       = 0;      // raw ADC counts (ADC torque sensor only)
     volatile int      throttleInputRaw = 0;     // ADC counts (ADC mode) or equivalent synthetic (servo mode)
     volatile int      idleInputRaw     = 0;     // ADC counts (ADC mode) or equivalent synthetic (servo mode)
 
@@ -61,9 +71,9 @@ struct EngineData {
     // ── Actuator demands (written by controllers/sequencer) ───
     volatile float    throttleDemand  = 0;      // 0.0–1.0  main fuel/throttle ESC
     volatile float    fuelPump2Demand = 0;      // 0.0–1.0  independent variable fuel pump
-    volatile float    oilDemand       = 0;      // bar target → P-controller
+    volatile float    oilTargetBar     = 0;      // bar target → P-controller
     volatile float    starterDemand   = 0;      // 0.0–1.0
-    volatile float    fuelPumpDemand  = 0;      // 0.0–1.0  AB pump / legacy fuel pump 2
+    volatile float    abPumpDemand    = 0;      // 0.0–1.0  AB pump / legacy fuel pump 2
     volatile float    propPitchDemand = 0;      // 0.0–1.0  propeller pitch servo (turboprop)
     volatile bool     fuelSolOpen     = false;
     volatile bool     igniterOn       = false;
@@ -76,10 +86,13 @@ struct EngineData {
 
     // ── Safety / diagnostics ───────────────────────────────────
     volatile bool     surgeDetected   = false;  // compressor surge detected (N1 oscillation)
-    volatile float    glowPlugPct     = 0;      // 0–100 % heat level for glow-plug ramp
+    volatile float    glowPlugDemand  = 0;      // 0.0–1.0 heat level for glow-plug ramp
     volatile float    glowCurrentAmps    = 0.0f;   // glow plug current (A), 0 if no sensor
     volatile bool     glowPlugHot        = false;   // true when current dropped below ready threshold
-    volatile float    igniterCurrentAmps = 0.0f;   // igniter/coil current (A), 0 if no sensor
+    volatile float    igniterCurrentAmps  = 0.0f;   // igniter 1 coil current (A), 0 if no sensor
+    volatile float    igniter2CurrentAmps = 0.0f;   // igniter 2 coil current (A), 0 if no sensor
+    volatile float    oilPumpCurrentAmps = 0.0f;   // oil pump current (A), 0 if no sensor
+    volatile bool     oilPumpOvercurrent = false;  // true when oil pump current exceeds max threshold
 
     // ── Afterburner state ─────────────────────────────────────
     volatile ABMode   abMode          = ABMode::Off;
@@ -88,6 +101,10 @@ struct EngineData {
     volatile bool     abFlameOn       = false;  // AB flame sensor detected (or TOT-rise confirmed)
     volatile bool     abSolOpen       = false;  // AB fuel solenoid (g_actAbSol)
     volatile int      abInputRaw      = 0;      // raw ADC/RC counts for analog/RC AB trigger
+    // Additive offset applied at the throttle actuator while AB is Running.
+    // Written by checkABTrigger(); read by Hardware::updateActuators().
+    // NOT fed into throttleDemand — keeps ThrottleSlew's feedback loop clean.
+    volatile float    abFuelOffset    = 0.0f;
 
     // ── Engine state ──────────────────────────────────────────
     volatile SysMode  mode               = SysMode::STANDBY;
@@ -98,6 +115,7 @@ struct EngineData {
 
     // ── Runtime flags (toggleable via web UI) ─────────────────
     volatile bool     skipSafetyChecks   = false;  // DEV_MODE only
+    volatile bool     standbyOilFeedActive = false; // windmill protection: oil pump running in STANDBY
     volatile bool     benchMode          = false;  // bench/debug: blocks complete on timer, safety bypassed
     volatile bool     dynamicIdleEnabled = true;
     volatile bool     limpMode           = false;
@@ -135,12 +153,14 @@ struct EngineData {
     char              seqWaitReason[80]  = {};     // set by active block: "waiting for N1 > 42000 (currently 38500)"
 
     // ── Oil controller state (for web display) ────────────────
-    volatile float    oilPctDemand       = 0;   // % duty currently driven
+    volatile float    oilPumpPct         = 0;   // % duty currently driven
     volatile bool     oilFailsafeActive  = false;
 
     // ── Safety monitor: armed thresholds ─────────────────────
-    // Set by sequencer as the startup progresses; 0 = check disabled
-    volatile float    oilMinBar          = 0;   // 0 → not checking
+    // Progressively ratcheted up by sequence blocks during startup:
+    // 0 in OilPrime → oilArmMinBar at OilPrime exit → oilStartupMinBar in
+    // StarterSpin → oilRunningMin in Spool. 0 = check disabled.
+    volatile float    oilMinBar          = 0;
 
     // ── Startup tracking ──────────────────────────────────────
     // True once FuelOpen fires this run.  CooldownSpin skips if never set
@@ -154,7 +174,8 @@ struct EngineData {
     // ── Extra cooldown (standby only) ─────────────────────────
     // True while extra cooldown is running.  Cleared by checkExtraCooldown()
     // when TOT reaches totCooldownTarget or the timeout expires.
-    volatile bool     extraCooldownActive = false;
+    volatile bool          extraCooldownActive   = false;
+    volatile unsigned long extraCooldownUntilMs  = 0;   // absolute millis() deadline; 0 when inactive
 
     // ── General-purpose DI channel states ─────────────────────
     volatile bool diState[4] = {};   // current debounced active state of each DI channel
@@ -189,6 +210,8 @@ struct EngineData {
     volatile float    maxP2              = 0;
     volatile float    maxOilTemp         = 0;
     volatile float    maxBattVoltage     = 0;
+    volatile float    maxTit             = 0;
+    volatile float    maxFuelPressure    = 0;
 
     // ── EGT rate of rise (°C/s, calculated by SafetyMonitor) ──
     volatile float    totRiseRate        = 0.0f;   // positive = rising
@@ -197,6 +220,7 @@ struct EngineData {
     volatile uint32_t bootCount          = 0;
     volatile uint32_t runCount           = 0;   // entries into RUNNING
     volatile uint32_t uptimeMs           = 0;
+    volatile uint8_t  resetReason        = 0;   // esp_reset_reason_t cast to uint8
 
 private:
     EngineData() = default;

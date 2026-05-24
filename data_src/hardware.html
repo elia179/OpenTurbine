@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Hardware</title>
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -34,7 +35,7 @@
     <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
     <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
   </div>
-  <p id="standby-warn">Engine is not in STANDBY — hardware changes are locked.</p>
+  <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
   <!-- ── System Profile ───────────────────────────────── -->
   <div class="hw-section">
@@ -101,11 +102,17 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">Active polarity</span>
-          <span class="hw-desc">Active LOW = button shorts pin to GND (pull-up). Most common.</span>
+          <span class="hw-desc">Active LOW = button shorts pin to GND. Active HIGH = button drives pin HIGH.</span>
           <select id="f-stop-pol" onchange="setNested('controls','stop_active_h',this.value==='1')">
             <option value="0">Active LOW</option>
             <option value="1">Active HIGH</option>
           </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Internal pull-up</span>
+          <span class="hw-desc">Enable ESP32 internal pull-up on this pin. Disable if you are using an external pull-down resistor or a 5 V-tolerant buffer.</span>
+          <label class="hw-toggle"><input type="checkbox" id="f-stop-pullup"
+            onchange="setNested('controls','stop_pullup',this.checked)"><span></span> Enable</label>
         </div>
         <div class="hw-field">
           <span class="hw-label">Display label</span>
@@ -127,11 +134,17 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">Active polarity</span>
-          <span class="hw-desc">Active LOW = button shorts pin to GND (pull-up). Most common.</span>
+          <span class="hw-desc">Active LOW = button shorts pin to GND. Active HIGH = button drives pin HIGH.</span>
           <select id="f-start-pol" onchange="setNested('controls','start_active_h',this.value==='1')">
             <option value="0">Active LOW</option>
             <option value="1">Active HIGH</option>
           </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Internal pull-up</span>
+          <span class="hw-desc">Enable ESP32 internal pull-up on this pin. Disable if you are using an external pull-down resistor or a 5 V-tolerant buffer.</span>
+          <label class="hw-toggle"><input type="checkbox" id="f-start-pullup"
+            onchange="setNested('controls','start_pullup',this.checked)"><span></span> Enable</label>
         </div>
         <div class="hw-field">
           <span class="hw-label">Display label</span>
@@ -209,10 +222,10 @@
       <div class="hw-grid" id="grp-tot">
         <div class="hw-field">
           <span class="hw-label">Chip type</span>
-          <span class="hw-desc">MAX6675 = 3-wire read-only. MAX31855 = 4-wire full-duplex with fault reporting.</span>
+          <span class="hw-desc">MAX6675 = 3-wire, K-type. MAX31855 = 3-wire, K-type + fault reporting. MAX31856 = 4-wire, any TC type (MOSI required).</span>
           <select id="f-tot-chip" onchange="setTotChip(this.value)">
             <option value="max6675">MAX6675 (3-wire, K-type only)</option>
-            <option value="max31855">MAX31855 (4-wire, K-type + fault)</option>
+            <option value="max31855">MAX31855 (3-wire, K-type + fault)</option>
             <option value="max31856">MAX31856 (4-wire, any TC type)</option>
           </select>
         </div>
@@ -224,7 +237,7 @@
           <select id="f-tot-miso" onchange="setSensor('tot','miso',+this.value)"></select></div>
         <div class="hw-field" id="grp-tot-mosi" style="display:none">
           <span class="hw-label">MOSI pin</span>
-          <span class="hw-desc">Required for MAX31855 / MAX31856 full-duplex SPI.</span>
+          <span class="hw-desc">Required for MAX31856 only (full-duplex SPI for TC type and filter configuration).</span>
           <select id="f-tot-mosi" onchange="setSensor('tot','mosi',+this.value)"></select>
         </div>
         <div class="hw-field" id="grp-tot-tctype" style="display:none">
@@ -259,10 +272,10 @@
       <div class="hw-grid" id="grp-tit">
         <div class="hw-field">
           <span class="hw-label">Chip type</span>
-          <span class="hw-desc">MAX6675 = 3-wire read-only. MAX31855 = 4-wire full-duplex with fault reporting.</span>
+          <span class="hw-desc">MAX6675 = 3-wire, K-type. MAX31855 = 3-wire, K-type + fault reporting. MAX31856 = 4-wire, any TC type (MOSI required).</span>
           <select id="f-tit-chip" onchange="setTitChip(this.value)">
             <option value="max6675">MAX6675 (3-wire, K-type only)</option>
-            <option value="max31855">MAX31855 (4-wire, K-type + fault)</option>
+            <option value="max31855">MAX31855 (3-wire, K-type + fault)</option>
             <option value="max31856">MAX31856 (4-wire, any TC type)</option>
           </select>
         </div>
@@ -274,7 +287,7 @@
           <select id="f-tit-miso" onchange="setSensor('tit','miso',+this.value)"></select></div>
         <div class="hw-field" id="grp-tit-mosi" style="display:none">
           <span class="hw-label">MOSI pin</span>
-          <span class="hw-desc">Required for MAX31855 / MAX31856 full-duplex SPI.</span>
+          <span class="hw-desc">Required for MAX31856 only (full-duplex SPI for TC type and filter configuration).</span>
           <select id="f-tit-mosi" onchange="setSensor('tit','mosi',+this.value)"></select>
         </div>
         <div class="hw-field" id="grp-tit-tctype" style="display:none">
@@ -327,12 +340,27 @@
     <div class="hw-item-card">
       <div class="hw-toggle" style="margin-bottom:.5rem">
         <input type="checkbox" id="en-fuelflow" onchange="setSensorEnabled('fuel_flow','fuelflow',this.checked)">
-        <b>Fuel Flow</b> <span style="font-size:.65rem;color:var(--dim)">(ADC linear)</span>
+        <b>Fuel Flow</b>
       </div>
       <div class="hw-grid" id="grp-fuelflow">
         <div class="hw-field">
-          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+          <span class="hw-label">Sensor type</span>
+          <span class="hw-desc">Analog: 0–3.3 V output sensor. Pulse: frequency output (turbine/gear meter).</span>
+          <select id="f-fuelflow-type" onchange="setSensor('fuel_flow','type',+this.value);updateFuelFlowTypeUI()">
+            <option value="0">Analog voltage (ADC)</option>
+            <option value="1">Pulse / frequency</option>
+          </select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <span id="f-fuelflow-pin-hint" class="hw-desc">ADC1 only (GPIO 32–39) for analog. Any digital-capable pin for pulse.</span>
           <select id="f-fuelflow-pin" onchange="setSensor('fuel_flow','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field" id="grp-fuelflow-ppl" style="display:none">
+          <span class="hw-label">Pulses per litre</span>
+          <span class="hw-desc">Calibration constant from sensor datasheet. Typical turbine meters: 50–500 pulses/litre.</span>
+          <input type="number" id="f-fuelflow-ppl" min="1" max="10000" step="1" placeholder="100"
+            oninput="setSensor('fuel_flow','pulses_per_litre',+this.value)">
         </div>
         <div class="hw-field">
           <span class="hw-label">Display label</span>
@@ -396,6 +424,7 @@
             <span class="hw-desc">NTC = ADC thermistor (wire to ADC1 pin). Others = SPI chips (CLK/CS/MISO required).</span>
             <select id="f-oiltemp-chip" onchange="setOilTempChip(this.value)">
               <option value="ntc">NTC Thermistor (ADC)</option>
+              <option value="ds18b20">DS18B20 (OneWire digital)</option>
               <option value="max6675">MAX6675 (K-type TC)</option>
               <option value="max31855">MAX31855 (K-type TC + fault)</option>
               <option value="max31856">MAX31856 (any TC type)</option>
@@ -428,6 +457,24 @@
               oninput="setSensor('oil_temp','ntc_r_fixed',+this.value)">
           </div>
         </div>
+        <!-- DS18B20 OneWire: single data pin + resolution -->
+        <div id="grp-oiltemp-onewire" class="hw-grid" style="display:none">
+          <div class="hw-field">
+            <span class="hw-label">Data pin <span style="color:var(--yellow)">(any GPIO)</span></span>
+            <span class="hw-desc">OneWire data line. Any GPIO works; add a 4.7 kΩ pull-up to 3.3 V on this line.</span>
+            <select id="f-oiltemp-ow-pin" onchange="setSensor('oil_temp','pin',+this.value)"></select>
+          </div>
+          <div class="hw-field">
+            <span class="hw-label">Resolution</span>
+            <span class="hw-desc">Higher resolution = more precise but slower. 12-bit: ±0.0625 °C, 750 ms. 9-bit: ±0.5 °C, 94 ms.</span>
+            <select id="f-oiltemp-resolution" onchange="setSensor('oil_temp','resolution',+this.value)">
+              <option value="12">12-bit (0.0625 °C, 750 ms) — recommended</option>
+              <option value="11">11-bit (0.125 °C, 375 ms)</option>
+              <option value="10">10-bit (0.25 °C, 188 ms)</option>
+              <option value="9">9-bit (0.5 °C, 94 ms)</option>
+            </select>
+          </div>
+        </div>
         <!-- SPI: CLK/CS/MISO(/MOSI) -->
         <div id="grp-oiltemp-spi" class="hw-grid" style="display:none">
           <div class="hw-field"><span class="hw-label">CLK pin</span>
@@ -438,7 +485,7 @@
             <select id="f-oiltemp-miso" onchange="setSensor('oil_temp','miso',+this.value)"></select></div>
           <div class="hw-field" id="grp-oiltemp-mosi" style="display:none">
             <span class="hw-label">MOSI pin</span>
-            <span class="hw-desc">Required for MAX31855 / MAX31856.</span>
+            <span class="hw-desc">Required for MAX31856 only (full-duplex SPI for TC type and filter configuration).</span>
             <select id="f-oiltemp-mosi" onchange="setSensor('oil_temp','mosi',+this.value)"></select>
           </div>
           <div class="hw-field" id="grp-oiltemp-tctype" style="display:none">
@@ -512,25 +559,57 @@
     <div class="hw-item-card">
       <div class="hw-toggle" style="margin-bottom:.5rem">
         <input type="checkbox" id="en-torque" onchange="setSensorEnabled('torque','torque',this.checked)">
-        <b>Torque Sensor</b> <span style="font-size:.65rem;color:var(--dim)">(ADC, 0–3.3 V output)</span>
+        <b>Torque Sensor</b> <span id="torque-type-label" style="font-size:.65rem;color:var(--dim)">(ADC, 0–3.3 V output)</span>
       </div>
       <div class="hw-grid" id="grp-torque">
         <div class="hw-field">
+          <span class="hw-label">Interface type</span>
+          <span class="hw-desc">ADC: sensor outputs 0–3.3 V analog signal. HX711: standard load cell bridge amplifier (24-bit, 2-wire digital).</span>
+          <select id="f-torque-type" onchange="setTorqueType(+this.value)">
+            <option value="0">ADC (0–3.3 V analog output)</option>
+            <option value="1">HX711 (Wheatstone bridge load cell)</option>
+          </select>
+        </div>
+        <!-- ADC fields -->
+        <div class="hw-field" id="torque-adc-pin">
           <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
           <span class="hw-desc">GPIO 32–39. Most torque sensors output 0.5–4.5 V; use a divider to fit 3.3 V.</span>
           <select id="f-torque-pin" onchange="setSensor('torque','pin',+this.value)"></select>
         </div>
-        <div class="hw-field">
+        <div class="hw-field" id="torque-adc-scale">
           <span class="hw-label">Scale (Nm / V)</span>
           <span class="hw-desc">Sensor sensitivity in Nm per volt. Check datasheet. Example: 50 Nm/V.</span>
           <input type="number" id="f-torque-scale" min="0" step="0.1"
             oninput="setSensor('torque','scale',+this.value)">
         </div>
-        <div class="hw-field">
+        <div class="hw-field" id="torque-adc-offset">
           <span class="hw-label">Zero offset (Nm)</span>
           <span class="hw-desc">Output at 0 V input (usually 0). Adjust if sensor has a non-zero offset voltage.</span>
           <input type="number" id="f-torque-offset" step="0.1"
             oninput="setSensor('torque','offset',+this.value)">
+        </div>
+        <!-- HX711 fields (hidden unless HX711 type selected) -->
+        <div class="hw-field" id="torque-hx-dt" style="display:none">
+          <span class="hw-label">DT pin (Data out)</span>
+          <span class="hw-desc">HX711 DOUT → ESP32 input. Any GPIO (not ADC-restricted). Avoid strapping pins.</span>
+          <select id="f-torque-dt" onchange="setSensor('torque','dt_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field" id="torque-hx-clk" style="display:none">
+          <span class="hw-label">SCK pin (Clock)</span>
+          <span class="hw-desc">HX711 SCK ← ESP32 output. Any GPIO output. Avoid strapping pins.</span>
+          <select id="f-torque-clk" onchange="setSensor('torque','clk_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field" id="torque-hx-scale" style="display:none">
+          <span class="hw-label">Scale factor (Nm / raw count)</span>
+          <span class="hw-desc">Apply a known load and divide measured Nm by the HX711 count to get this factor. Example: 0.0001 for a 50 Nm sensor at 500,000 counts full-scale.</span>
+          <input type="number" id="f-torque-hx-scale" step="0.000001" min="0"
+            oninput="setSensor('torque','hx_scale',+this.value)">
+        </div>
+        <div class="hw-field" id="torque-hx-zero" style="display:none">
+          <span class="hw-label">Zero count offset</span>
+          <span class="hw-desc">Raw HX711 count at zero load. Set during tare / zero calibration. Default 0.</span>
+          <input type="number" id="f-torque-hx-zero" step="1"
+            oninput="setSensor('torque','hx_zero',+this.value)">
         </div>
       </div>
     </div>
@@ -602,64 +681,8 @@
       Wire an ACS712/ACS758 (or similar Hall-effect sensor) in series with the output. These output ~1.65 V at 0 A and shift by their rated mV/A sensitivity. Use ADC1 pins only (GPIO 32–39).
     </div>
 
-    <!-- Glow plug current sensor -->
-    <div class="hw-item-card">
-      <div class="hw-toggle" style="margin-bottom:.5rem">
-        <input type="checkbox" id="en-glowcurrent" onchange="setGlowCurrentEnabled(this.checked)">
-        <b>Glow Plug Current Sensor</b>
-      </div>
-      <span class="hw-desc" style="display:block;margin-bottom:.45rem">
-        When fitted, the <em>GlowPreheat</em> sequencer block can wait until the plug is actually hot (current drops as resistance rises) instead of relying on a fixed timer.
-      </span>
-      <div class="hw-grid" id="grp-glowcurrent">
-        <div class="hw-field">
-          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
-          <select id="f-glowcur-pin" onchange="setSensor('glow_current','pin',+this.value)"></select>
-        </div>
-        <div class="hw-field">
-          <span class="hw-label">Sensitivity (mV/A)</span>
-          <span class="hw-desc">ACS712-5A = 185, ACS712-20A = 100, ACS712-30A = 66.</span>
-          <input type="number" id="f-glowcur-mva" min="10" max="500" step="1" oninput="setSensor('glow_current','mv_per_a',+this.value)">
-        </div>
-        <div class="hw-field">
-          <span class="hw-label">Zero voltage (V)</span>
-          <span class="hw-desc">Output voltage at 0 A. Typically VCC/2 = 1.65 V.</span>
-          <input type="number" id="f-glowcur-zerov" min="0" max="3.3" step="0.01" oninput="setSensor('glow_current','zero_v',+this.value)">
-        </div>
-        <div class="hw-field">
-          <span class="hw-label">Ready threshold (A)</span>
-          <span class="hw-desc">Plug is considered hot when current drops below this. Typical 3–5 A depending on plug type.</span>
-          <input type="number" id="f-glowcur-ready" min="0.1" max="20" step="0.1" oninput="setSensor('glow_current','ready_amps',+this.value)">
-        </div>
-      </div>
-    </div>
-
-    <!-- Igniter current sensor -->
-    <div class="hw-item-card">
-      <div class="hw-toggle" style="margin-bottom:.5rem">
-        <input type="checkbox" id="en-igncurrent" onchange="setIgniterCurrentEnabled(this.checked)">
-        <b>Igniter / Coil Current Sensor</b>
-      </div>
-      <span class="hw-desc" style="display:block;margin-bottom:.45rem">
-        When fitted and igniter mode is set to <em>Car Coil</em>: dwell is controlled by current saturation instead of a fixed timer. Also enables over-current fault detection. <strong style="color:var(--yellow)">Required</strong> for Car Coil mode.
-      </span>
-      <div class="hw-grid" id="grp-igncurrent">
-        <div class="hw-field">
-          <span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
-          <select id="f-igncur-pin" onchange="setSensor('igniter_current','pin',+this.value)"></select>
-        </div>
-        <div class="hw-field">
-          <span class="hw-label">Sensitivity (mV/A)</span>
-          <span class="hw-desc">ACS712-20A = 100, ACS712-30A = 66, ACS758-50A = 40.</span>
-          <input type="number" id="f-igncur-mva" min="10" max="500" step="1" oninput="setSensor('igniter_current','mv_per_a',+this.value)">
-        </div>
-        <div class="hw-field">
-          <span class="hw-label">Zero voltage (V)</span>
-          <span class="hw-desc">Output voltage at 0 A. Typically 1.65 V.</span>
-          <input type="number" id="f-igncur-zerov" min="0" max="3.3" step="0.01" oninput="setSensor('igniter_current','zero_v',+this.value)">
-        </div>
-      </div>
-    </div>
+    <!-- Glow plug current sensor is now configured inline inside the Glow Plug card (Actuators section) -->
+    <!-- Igniter current sensor is configured inline inside Igniter 1 (Car Coil mode) -->
   </div>
 
   <!-- ── Actuators ─────────────────────────────────────── -->
@@ -913,6 +936,33 @@
             </div>
           </div>
         </div>
+        <!-- Inline current sensor for oil pump — overcurrent detection -->
+        <div class="act-subgroup">
+          <span>CURRENT SENSOR (optional)</span>
+          <div style="font-size:.62rem;color:var(--dim);margin:.2rem 0 .4rem;line-height:1.4">
+            ACS712 / ACS758 in series with the oil pump output. Detects pump blockage,
+            failed pump, or motor overcurrent before damage occurs.
+          </div>
+          <div class="hw-toggle" style="margin-bottom:.4rem">
+            <input type="checkbox" id="en-oilpumpcurrent" onchange="setOilPumpCurrentEnabled(this.checked)">
+            <span>Enable oil pump current sensing</span>
+          </div>
+          <div id="grp-oilpumpcurrent">
+            <div class="hw-grid">
+              <div class="hw-field"><span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+                <select id="f-oilpumpcur-pin" onchange="setActCurrentSensor('oil_pump','pin',+this.value)"></select></div>
+              <div class="hw-field"><span class="hw-label">Sensitivity (mV/A)</span>
+                <span class="hw-desc">ACS712-20A = 100, ACS712-30A = 66, ACS758-50A = 40.</span>
+                <input type="number" id="f-oilpumpcur-mva" min="10" max="500" step="1" oninput="setActCurrentSensor('oil_pump','mv_a',+this.value)"></div>
+              <div class="hw-field"><span class="hw-label">Zero voltage (V)</span>
+                <span class="hw-desc">Output voltage at 0 A. Typically 1.65 V.</span>
+                <input type="number" id="f-oilpumpcur-zerov" min="0" max="3.3" step="0.01" oninput="setActCurrentSensor('oil_pump','zero_v',+this.value)"></div>
+              <div class="hw-field"><span class="hw-label">Overcurrent limit (A)</span>
+                <span class="hw-desc">Trips overcurrent flag above this. Shown in dashboard. 0 = disabled.</span>
+                <input type="number" id="f-oilpumpcur-maxa" min="0" max="100" step="0.5" oninput="setActCurrentSensor('oil_pump','max_a',+this.value)"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -929,9 +979,21 @@
           <div class="hw-field">
             <span class="hw-label">Drive type</span>
             <select id="f-oscav-type" onchange="setOscavType(+this.value)">
+              <option value="0">Servo PWM (1000–2000 µs)</option>
               <option value="1">Motor PWM</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-oscav-servo" style="display:none">
+          <span>SERVO PULSE RANGE</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Min pulse (µs)</span>
+              <span class="hw-desc">Pulse at 0 % (pump off / minimum). Typically 1000 µs.</span>
+              <input type="number" id="f-oscav-min" min="500" max="2500" oninput="setAct('oil_scavenge_pump','min_us',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Max pulse (µs)</span>
+              <span class="hw-desc">Pulse at 100 % (full speed). Typically 2000 µs.</span>
+              <input type="number" id="f-oscav-max" min="500" max="2500" oninput="setAct('oil_scavenge_pump','max_us',+this.value)"></div>
           </div>
         </div>
         <div class="act-subgroup" id="grp-oscav-pwm">
@@ -1017,6 +1079,24 @@
               <input type="number" id="f-ign-coil-sat" min="1" max="50" step="0.5" oninput="setAct('igniter','coil_sat_a',+this.value)"></div>
           </div>
         </div>
+        <!-- Inline current sensor for Igniter 1 car coil — shown when coil mode active -->
+        <div class="act-subgroup" id="grp-ign-coil-cur" style="display:none">
+          <span>CURRENT SENSOR — Igniter 1</span>
+          <div style="font-size:.62rem;color:var(--dim);margin:.2rem 0 .4rem;line-height:1.4">
+            ACS712 / ACS758 or similar Hall-effect sensor wired in series with the coil primary.
+            Required for current-based dwell control; also enables over-current fault detection.
+          </div>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+              <select id="f-igncur-pin" onchange="setActCurrentSensor('igniter','pin',+this.value)"></select></div>
+            <div class="hw-field"><span class="hw-label">Sensitivity (mV/A)</span>
+              <span class="hw-desc">ACS712-20A = 100, ACS712-30A = 66, ACS758-50A = 40.</span>
+              <input type="number" id="f-igncur-mva" min="10" max="500" step="1" oninput="setActCurrentSensor('igniter','mv_a',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Zero voltage (V)</span>
+              <span class="hw-desc">Output voltage at 0 A. Typically 1.65 V.</span>
+              <input type="number" id="f-igncur-zerov" min="0" max="3.3" step="0.01" oninput="setActCurrentSensor('igniter','zero_v',+this.value)"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1035,6 +1115,7 @@
             <select id="f-ign2-mode" onchange="setIgniter2Mode(this.value)">
               <option value="relay">Relay (full on/off)</option>
               <option value="pwm">Coil PWM (dwell/rest cycle)</option>
+              <option value="coil">Car Coil (active dwell switching — requires current sensor)</option>
             </select>
           </div>
         </div>
@@ -1056,6 +1137,40 @@
               <input type="number" id="f-ign2-dwell" min="1" max="100" oninput="setAct('igniter2','dwell_ms',+this.value)"></div>
             <div class="hw-field"><span class="hw-label">Rest (ms)</span>
               <input type="number" id="f-ign2-rest" min="1" max="100" oninput="setAct('igniter2','rest_ms',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-ign2-coil" style="display:none">
+          <span>CAR COIL TIMING — Igniter 2</span>
+          <div style="font-size:.62rem;color:var(--dim);margin:.25rem 0 .4rem;line-height:1.4">
+            Charges coil for dwell_ms (or until current saturates), then fires the spark and waits spark_ms before recharging.
+          </div>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Dwell (ms)</span>
+              <span class="hw-desc">Max coil charge time. Overridden by current threshold when current sensor is fitted.</span>
+              <input type="number" id="f-ign2-coil-dwell" min="1" max="200" oninput="setAct('igniter2','dwell_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Spark off (ms)</span>
+              <span class="hw-desc">Coil off time after firing.</span>
+              <input type="number" id="f-ign2-coil-rest" min="1" max="200" oninput="setAct('igniter2','rest_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Saturation current (A)</span>
+              <span class="hw-desc">Dwell ends when coil current reaches this threshold. Typical car coil: 5–12 A.</span>
+              <input type="number" id="f-ign2-coil-sat" min="1" max="50" step="0.5" oninput="setAct('igniter2','coil_sat_a',+this.value)"></div>
+          </div>
+        </div>
+        <!-- Inline current sensor for Igniter 2 — shown when coil mode active -->
+        <div class="act-subgroup" id="grp-ign2-coil-cur" style="display:none">
+          <span>CURRENT SENSOR — Igniter 2</span>
+          <div style="font-size:.62rem;color:var(--dim);margin:.2rem 0 .4rem;line-height:1.4">
+            ACS712 / ACS758 Hall-effect sensor wired in series with Igniter 2 coil primary.
+          </div>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+              <select id="f-ign2cur-pin" onchange="setActCurrentSensor('igniter2','pin',+this.value)"></select></div>
+            <div class="hw-field"><span class="hw-label">Sensitivity (mV/A)</span>
+              <span class="hw-desc">ACS712-20A = 100, ACS712-30A = 66, ACS758-50A = 40.</span>
+              <input type="number" id="f-ign2cur-mva" min="10" max="500" step="1" oninput="setActCurrentSensor('igniter2','mv_a',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Zero voltage (V)</span>
+              <span class="hw-desc">Output voltage at 0 A. Typically 1.65 V.</span>
+              <input type="number" id="f-ign2cur-zerov" min="0" max="3.3" step="0.01" oninput="setActCurrentSensor('igniter2','zero_v',+this.value)"></div>
           </div>
         </div>
       </div>
@@ -1468,6 +1583,34 @@
               <input type="number" id="f-glow-bits" min="8" max="14" oninput="setAct('glow_plug','res_bits',+this.value)"></div>
           </div>
         </div>
+        <!-- Inline current sensor for glow plug -->
+        <div class="act-subgroup">
+          <span>CURRENT SENSOR (optional)</span>
+          <div style="font-size:.62rem;color:var(--dim);margin:.2rem 0 .4rem;line-height:1.4">
+            ACS712 / ACS758 or similar Hall-effect sensor in series with the glow plug output.
+            Allows the <em>GlowPreheat</em> block to wait until the plug is actually hot
+            (current drops as resistance rises) instead of a fixed timer.
+          </div>
+          <div class="hw-toggle" style="margin-bottom:.4rem">
+            <input type="checkbox" id="en-glowcurrent" onchange="setGlowCurrentEnabled(this.checked)">
+            <span>Enable glow plug current sensing</span>
+          </div>
+          <div id="grp-glowcurrent">
+            <div class="hw-grid">
+              <div class="hw-field"><span class="hw-label">GPIO pin <span style="color:var(--yellow)">(ADC1 only)</span></span>
+                <select id="f-glowcur-pin" onchange="setActCurrentSensor('glow_plug','pin',+this.value)"></select></div>
+              <div class="hw-field"><span class="hw-label">Sensitivity (mV/A)</span>
+                <span class="hw-desc">ACS712-5A = 185, ACS712-20A = 100, ACS712-30A = 66.</span>
+                <input type="number" id="f-glowcur-mva" min="10" max="500" step="1" oninput="setActCurrentSensor('glow_plug','mv_a',+this.value)"></div>
+              <div class="hw-field"><span class="hw-label">Zero voltage (V)</span>
+                <span class="hw-desc">Output voltage at 0 A. Typically VCC/2 = 1.65 V.</span>
+                <input type="number" id="f-glowcur-zerov" min="0" max="3.3" step="0.01" oninput="setActCurrentSensor('glow_plug','zero_v',+this.value)"></div>
+              <div class="hw-field"><span class="hw-label">Ready threshold (A)</span>
+                <span class="hw-desc">Plug is considered hot when current drops below this. Typical 3–5 A.</span>
+                <input type="number" id="f-glowcur-ready" min="0.1" max="20" step="0.1" oninput="setActCurrentSensor('glow_plug','ready_a',+this.value)"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1726,9 +1869,17 @@
     </div>
   </div>
 
+  <!-- ── Backup / Restore ─────────────────────────────── -->
+  <div style="display:flex;gap:.6rem;flex-wrap:wrap;padding:.6rem 1rem;background:var(--surface);border-top:1px solid var(--border);align-items:center">
+    <span style="font-size:.72rem;color:var(--dim);flex:1;min-width:10rem">Full backup includes hardware config + engine settings</span>
+    <button onclick="downloadBackup()" style="color:var(--dim)">Download full backup</button>
+    <button onclick="document.getElementById('restore-input').click()" style="color:var(--dim)">Restore from backup</button>
+    <input type="file" id="restore-input" accept=".json" style="display:none" onchange="handleRestore(event)">
+  </div>
+
   <!-- ── Save bar ──────────────────────────────────────── -->
   <div class="save-bar">
-    <button onclick="resetDefaults()" style="background:rgba(255,196,0,0.08);border-color:var(--yellow);color:var(--yellow)">Reset to Defaults</button>
+    <button onclick="resetDefaults()" style="background:rgba(255,196,0,0.08);border-color:var(--yellow);color:var(--yellow)">Discard Changes</button>
     <span class="save-msg" id="save-msg">Loading hardware config…</span>
     <button id="btn-save" onclick="saveHardware()" disabled>Save &amp; Reboot</button>
   </div>
@@ -1824,12 +1975,18 @@ function collectUsedPins() {
   add(abt.switch_pin); add(abt.input_pin); add(abt.arm_pin);
   const abfl = cfg.ab_flame || {};
   add(abfl.pin);
-  // New sensors: oil_temp (SPI pins), batt_voltage, torque, fuel_press
+  // New sensors: oil_temp (pin shared by NTC/DS18B20/SPI), batt_voltage, torque, fuel_press
   const ot = s.oil_temp || {};
-  add(ot.pin); add(ot.clk); add(ot.cs); add(ot.miso); add(ot.mosi);
+  add(ot.pin); add(ot.clk); add(ot.cs); add(ot.miso); add(ot.mosi);  // ot.pin covers NTC + DS18B20 + SPI CLK
   add((s.batt_voltage||{}).pin);
   add((s.torque||{}).pin);
+  add((s.torque||{}).dt_pin);
+  add((s.torque||{}).clk_pin);
   add((s.fuel_press||{}).pin);
+  add((a.glow_plug||{}).current_pin);         // glow plug inline current sensor
+  add((a.igniter||{}).current_pin);           // igniter inline current sensor
+  add((a.igniter2||{}).current_pin);            // igniter2 inline current sensor
+  add((a.oil_pump||{}).current_pin);   // oil pump inline current sensor
   // New actuators
   add((a.fuel_pump2||{}).pin);
   add((a.bleed_valve||{}).pin);
@@ -1871,7 +2028,11 @@ function refreshAllPins() {
   refreshPinSel('f-flame-pin',      'adc', (s.flame||{}).pin);
   refreshPinSel('f-thinput-pin',    'in',  (s.throttle_input||{}).pin);
   refreshPinSel('f-idiinput-pin',   'in',  (s.idle_input||{}).pin);
-  refreshPinSel('f-fuelflow-pin',   'adc', (s.fuel_flow||{}).pin);
+  const ffType = (s.fuel_flow||{}).type || 0;
+  v('f-fuelflow-type', ffType);
+  v('f-fuelflow-ppl',  (s.fuel_flow||{}).pulses_per_litre || 100);
+  refreshPinSel('f-fuelflow-pin', ffType === 1 ? 'any' : 'adc', (s.fuel_flow||{}).pin);
+  updateFuelFlowTypeUI();
   refreshPinSel('f-p1-pin',         'adc', (s.p1||{}).pin);
   refreshPinSel('f-p2-pin',         'adc', (s.p2||{}).pin);
   refreshPinSel('f-thr-pin',        'out', (a.throttle||{}).pin);
@@ -1895,23 +2056,28 @@ function refreshAllPins() {
 
   // New sensors
   const ot = s.oil_temp || {};
-  refreshPinSel('f-oiltemp-pin',  'adc', ot.pin);
-  refreshPinSel('f-oiltemp-clk',  'out', ot.clk);
-  refreshPinSel('f-oiltemp-cs',   'out', ot.cs);
-  refreshPinSel('f-oiltemp-miso', 'in',  ot.miso);
-  refreshPinSel('f-oiltemp-mosi', 'out', ot.mosi);
+  refreshPinSel('f-oiltemp-pin',    'adc', ot.pin);   // NTC (ADC)
+  refreshPinSel('f-oiltemp-ow-pin', 'any', ot.pin);   // DS18B20 (any GPIO)
+  refreshPinSel('f-oiltemp-clk',    'out', ot.clk);
+  refreshPinSel('f-oiltemp-cs',     'out', ot.cs);
+  refreshPinSel('f-oiltemp-miso',   'in',  ot.miso);
+  refreshPinSel('f-oiltemp-mosi',   'out', ot.mosi);
   refreshPinSel('f-battvolt-pin', 'adc', (s.batt_voltage||{}).pin);
   refreshPinSel('f-torque-pin',   'adc', (s.torque||{}).pin);
+  refreshPinSel('f-torque-dt',    'in',  (s.torque||{}).dt_pin);
+  refreshPinSel('f-torque-clk',   'out', (s.torque||{}).clk_pin);
   refreshPinSel('f-fuelpress-pin','adc', (s.fuel_press||{}).pin);
+  refreshPinSel('f-ign2cur-pin',  'adc', (a.igniter2||{}).current_pin);
   // New actuators
   refreshPinSel('f-fp2-pin',   'out', (a.fuel_pump2||{}).pin);
   refreshPinSel('f-bleed-pin', 'out', (a.bleed_valve||{}).pin);
   refreshPinSel('f-pp-pin',    'out', (a.prop_pitch||{}).pin);
   refreshPinSel('f-glow-pin',    'out', (a.glow_plug||{}).pin);
   refreshPinSel('f-mav-tx',      'out', (cfg.mavlink||{}).tx_pin);
-  const s2 = cfg.sensors || {};
-  refreshPinSel('f-glowcur-pin', 'adc', (s2.glow_current||{}).pin);
-  refreshPinSel('f-igncur-pin',  'adc', (s2.igniter_current||{}).pin);
+  // Current sensor pin selectors — glow/igniter stored inside their actuator objects
+  refreshPinSel('f-glowcur-pin',      'adc', (a.glow_plug||{}).current_pin);
+  refreshPinSel('f-igncur-pin',       'adc', (a.igniter||{}).current_pin);
+  refreshPinSel('f-oilpumpcur-pin',   'adc', (a.oil_pump||{}).current_pin);
   // DI channel pin selectors (dynamically rendered)
   (cfg.di_channels || []).forEach((ch, i) => {
     refreshPinSel('f-di' + i + '-pin', 'in', ch.pin);
@@ -2092,8 +2258,10 @@ function populate() {
   updateFeaturesUI();
 
   const c = cfg.controls || {};
-  document.getElementById('f-stop-pol').value  = c.stop_active_h  ? '1' : '0';
-  document.getElementById('f-start-pol').value = c.start_active_h ? '1' : '0';
+  document.getElementById('f-stop-pol').value      = c.stop_active_h  ? '1' : '0';
+  document.getElementById('f-stop-pullup').checked = c.stop_pullup  !== false;  // default true
+  document.getElementById('f-start-pol').value     = c.start_active_h ? '1' : '0';
+  document.getElementById('f-start-pullup').checked= c.start_pullup !== false;  // default true
 
   // Load channel labels
   const lbs = cfg.labels || {};
@@ -2188,12 +2356,20 @@ function populate() {
   v('f-op-bits', op.res_bits ?? '');
   chk('f-op-acth', op.active_h !== false);
   updateOpTypeUI(opType);
+  // Oil pump inline current sensor
+  chk('en-oilpumpcurrent', op.has_current || false);
+  updateGroupEnabled('grp-oilpumpcurrent', op.has_current || false);
+  v('f-oilpumpcur-mva',   op.current_mv_a    ?? 100);
+  v('f-oilpumpcur-zerov', op.current_zero_v  ?? 1.65);
+  v('f-oilpumpcur-maxa',  op.current_max_a   ?? 0);
 
   const osc = a.oil_scavenge_pump || {};
   chk('en-oilscav', osc.enabled || false);
   updateGroupEnabled('grp-oilscav', osc.enabled || false);
-  const oscType = osc.type ?? 2;
+  const oscType = osc.type ?? 1;  // default: Motor PWM
   document.getElementById('f-oscav-type').value = oscType;
+  v('f-oscav-min',  osc.min_us   ?? 1000);
+  v('f-oscav-max',  osc.max_us   ?? 2000);
   v('f-oscav-freq', osc.freq_hz  ?? 10000);
   v('f-oscav-bits', osc.res_bits ?? 12);
   chk('f-oscav-acth', osc.active_h !== false);
@@ -2219,11 +2395,16 @@ function populate() {
   chk('en-igniter2', ign2.enabled || false);
   updateGroupEnabled('grp-igniter2', ign2.enabled || false);
   chk('f-ign2-acth', ign2.active_h !== false);
-  v('f-ign2-dwell', ign2.dwell_ms ?? '');
-  v('f-ign2-rest',  ign2.rest_ms  ?? '');
-  const ign2Mode = ign2.pwm ? 'pwm' : 'relay';
+  v('f-ign2-dwell',      ign2.dwell_ms   ?? '');
+  v('f-ign2-rest',       ign2.rest_ms    ?? '');
+  v('f-ign2-coil-dwell', ign2.dwell_ms   ?? '');
+  v('f-ign2-coil-rest',  ign2.rest_ms    ?? '');
+  v('f-ign2-coil-sat',   ign2.coil_sat_a ?? '');
+  const ign2Mode = ign2.coil ? 'coil' : (ign2.pwm ? 'pwm' : 'relay');
   document.getElementById('f-ign2-mode').value = ign2Mode;
   updateIgniter2ModeUI(ign2Mode);
+  v('f-ign2cur-mva',   ign2.current_mv_a   ?? 100);
+  v('f-ign2cur-zerov', ign2.current_zero_v ?? 1.65);
 
   const sen = a.starter_en || {};
   chk('en-starteren', sen.enabled || false);
@@ -2279,8 +2460,10 @@ function populate() {
   chk('f-fan-acth', fan.active_h !== false);
   updateFanTypeUI(fanType);
 
-  chk('en-statusled', (a.status_led||{}).enabled || false);
-  updateGroupEnabled('grp-statusled', (a.status_led||{}).enabled || false);
+  // Status LED defaults ON — only false if explicitly disabled in stored config
+  const statusLedEnabled = (a.status_led?.enabled !== false);
+  chk('en-statusled', statusLedEnabled);
+  updateGroupEnabled('grp-statusled', statusLedEnabled);
 
   const cl = cfg.cluster_serial || {};
   chk('en-cluster', cl.enabled || false);
@@ -2323,6 +2506,7 @@ function populate() {
   v('f-ntc-beta',   oilT.ntc_beta    ?? 3950);
   v('f-ntc-r0',     oilT.ntc_r0      ?? 10000);
   v('f-ntc-rfixed', oilT.ntc_r_fixed ?? 10000);
+  v('f-oiltemp-resolution', oilT.resolution ?? 12);
 
   const bv = s.batt_voltage || {};
   chk('en-battvolt', bv.enabled || false);
@@ -2332,8 +2516,13 @@ function populate() {
   const tq = s.torque || {};
   chk('en-torque', tq.enabled || false);
   updateGroupEnabled('grp-torque', tq.enabled || false);
-  v('f-torque-scale',  tq.scale  ?? '');
-  v('f-torque-offset', tq.offset ?? 0);
+  const torqueType = tq.hx711 ? 1 : 0;
+  document.getElementById('f-torque-type').value = torqueType;
+  v('f-torque-scale',    tq.scale    ?? '');
+  v('f-torque-offset',   tq.offset   ?? 0);
+  v('f-torque-hx-scale', tq.hx_scale ?? '');
+  v('f-torque-hx-zero',  tq.hx_zero  ?? 0);
+  updateTorqueTypeUI(torqueType);
 
   const fp = s.fuel_press || {};
   chk('en-fuelpress', fp.enabled || false);
@@ -2382,19 +2571,18 @@ function populate() {
   v('f-glow-freq', glow.freq_hz  ?? 50);
   v('f-glow-bits', glow.res_bits ?? 12);
 
-  const glowCur = (cfg.sensors && cfg.sensors.glow_current) || {};
-  chk('en-glowcurrent', glowCur.enabled || false);
-  updateGroupEnabled('grp-glowcurrent', glowCur.enabled || false);
-  v('f-glowcur-mva',   glowCur.mv_per_a    ?? 185);
-  v('f-glowcur-zerov', glowCur.zero_v      ?? 1.65);
-  v('f-glowcur-ready', glowCur.ready_amps  ?? 3.0);
+  // Glow current — stored inside actuators.glow_plug (not sensors)
+  const glowAct = (cfg.actuators && cfg.actuators.glow_plug) || {};
+  chk('en-glowcurrent', glowAct.has_current || false);
+  updateGroupEnabled('grp-glowcurrent', glowAct.has_current || false);
+  v('f-glowcur-mva',   glowAct.current_mv_a   ?? 185);
+  v('f-glowcur-zerov', glowAct.current_zero_v ?? 1.65);
+  v('f-glowcur-ready', glowAct.current_ready_a ?? 3.0);
 
-  const ignCur = (cfg.sensors && cfg.sensors.igniter_current) || {};
-  chk('en-igncurrent', ignCur.enabled || false);
-  updateGroupEnabled('grp-igncurrent', ignCur.enabled || false);
-  updateIgniterModeCoilAvailability(ignCur.enabled || false);
-  v('f-igncur-mva',   ignCur.mv_per_a ?? 100);
-  v('f-igncur-zerov', ignCur.zero_v   ?? 1.65);
+  // Igniter 1 current — stored inside actuators.igniter (not sensors)
+  const ignAct = (cfg.actuators && cfg.actuators.igniter) || {};
+  v('f-igncur-mva',   ignAct.current_mv_a   ?? 100);
+  v('f-igncur-zerov', ignAct.current_zero_v ?? 1.65);
 
   chk('f-ctrl-gov', ct.governor || false);
 
@@ -2464,7 +2652,7 @@ function setDiChannel(idx, key, val) {
   while (cfg.di_channels.length < 4) cfg.di_channels.push({});
   cfg.di_channels[idx][key] = val;
   if (key === 'pin') refreshAllPins();
-  else dirty();
+  dirty();
 }
 function setSensor(sensor, key, val) {
   if (!cfg.sensors) cfg.sensors = {};
@@ -2474,7 +2662,7 @@ function setSensor(sensor, key, val) {
   }
   cfg.sensors[sensor][key] = val;
   if (['pin','clk','cs','miso','mosi'].includes(key)) refreshAllPins();
-  else dirty();
+  dirty();
 }
 function setSensorEnabled(sensor, grpId, val) {
   setSensor(sensor, 'enabled', val);
@@ -2488,7 +2676,7 @@ function setAct(act, key, val) {
   }
   cfg.actuators[act][key] = val;
   if (key === 'pin') refreshAllPins();
-  else dirty();
+  dirty();
 }
 function setActEnabled(act, grpId, val) {
   setAct(act, 'enabled', val);
@@ -2526,21 +2714,23 @@ function updateStrTypeUI(t) {
 }
 function setTotChip(chip) { setSensor('tot','chip',chip); updateTotChipUI(chip); }
 function updateTotChipUI(chip) {
-  const spi = chip !== 'ntc';
-  document.getElementById('grp-tot-mosi').style.display   = (chip === 'max31855' || chip === 'max31856') ? '' : 'none';
+  document.getElementById('grp-tot-mosi').style.display   = chip === 'max31856' ? '' : 'none';
   document.getElementById('grp-tot-tctype').style.display = chip === 'max31856' ? '' : 'none';
 }
 function setTitChip(chip) { setSensor('tit','chip',chip); updateTitChipUI(chip); }
 function updateTitChipUI(chip) {
-  document.getElementById('grp-tit-mosi').style.display   = (chip === 'max31855' || chip === 'max31856') ? '' : 'none';
+  document.getElementById('grp-tit-mosi').style.display   = chip === 'max31856' ? '' : 'none';
   document.getElementById('grp-tit-tctype').style.display = chip === 'max31856' ? '' : 'none';
 }
 function setOilTempChip(chip) { setSensor('oil_temp','chip',chip); updateOilTempChipUI(chip); }
 function updateOilTempChipUI(chip) {
   const isNtc = chip === 'ntc';
+  const isOw  = chip === 'ds18b20';
+  const isSpi = !isNtc && !isOw;
   document.getElementById('grp-oiltemp-ntc').style.display    = isNtc ? '' : 'none';
-  document.getElementById('grp-oiltemp-spi').style.display    = isNtc ? 'none' : '';
-  document.getElementById('grp-oiltemp-mosi').style.display   = (chip === 'max31855' || chip === 'max31856') ? '' : 'none';
+  document.getElementById('grp-oiltemp-onewire').style.display= isOw  ? '' : 'none';
+  document.getElementById('grp-oiltemp-spi').style.display    = isSpi ? '' : 'none';
+  document.getElementById('grp-oiltemp-mosi').style.display   = chip === 'max31856' ? '' : 'none';
   document.getElementById('grp-oiltemp-tctype').style.display = chip === 'max31856' ? '' : 'none';
 }
 function setPropPitchType(t) { setAct('prop_pitch','type',t); updatePropPitchTypeUI(t); }
@@ -2569,8 +2759,9 @@ function updateOpTypeUI(t) {
 }
 function setOscavType(t) { setAct('oil_scavenge_pump','type',t); updateOscavTypeUI(t); }
 function updateOscavTypeUI(t) {
-  document.getElementById('grp-oscav-pwm').style.display   = t === 1 ? '' : 'none';
-  document.getElementById('grp-oscav-onoff').style.display = t === 2 ? '' : 'none';
+  document.getElementById('grp-oscav-servo').style.display  = t === 0 ? '' : 'none';
+  document.getElementById('grp-oscav-pwm').style.display    = t === 1 ? '' : 'none';
+  document.getElementById('grp-oscav-onoff').style.display  = t === 2 ? '' : 'none';
 }
 function setAbpType(t) { setAct('ab_pump','type',t); updateAbpTypeUI(t); }
 function updateAbpTypeUI(t) {
@@ -2585,59 +2776,82 @@ function updateFanTypeUI(t) {
   document.getElementById('grp-fan-onoff').style.display = t === 2 ? '' : 'none';
 }
 function setGlowCurrentEnabled(en) {
-  if (!cfg.sensors) cfg.sensors = {};
-  if (!cfg.sensors.glow_current) cfg.sensors.glow_current = {};
-  cfg.sensors.glow_current.enabled = en;
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.glow_plug) cfg.actuators.glow_plug = {};
+  cfg.actuators.glow_plug.has_current = en;
   updateGroupEnabled('grp-glowcurrent', en);
   refreshAllPins(); dirty();
 }
-function setIgniterCurrentEnabled(en) {
-  if (!cfg.sensors) cfg.sensors = {};
-  if (!cfg.sensors.igniter_current) cfg.sensors.igniter_current = {};
-  cfg.sensors.igniter_current.enabled = en;
-  updateGroupEnabled('grp-igncurrent', en);
-  updateIgniterModeCoilAvailability(en);
+function setOilPumpCurrentEnabled(en) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.oil_pump) cfg.actuators.oil_pump = {};
+  cfg.actuators.oil_pump.has_current = en;
+  updateGroupEnabled('grp-oilpumpcurrent', en);
   refreshAllPins(); dirty();
 }
-function updateIgniterModeCoilAvailability(sensorEnabled) {
-  const sel = document.getElementById('f-ign-mode');
-  if (!sel) return;
-  const coilOpt = sel.querySelector('option[value="coil"]');
-  if (!coilOpt) return;
-  coilOpt.disabled = !sensorEnabled;
-  if (!sensorEnabled && sel.value === 'coil') {
-    sel.value = 'relay';
-    setIgniterMode('relay');
-  }
+// Write an oil-pump inline current sensor field into actuators.oil_pump
+// field: 'pin' | 'mv_a' | 'zero_v' | 'max_a'
+function setActCurrentSensor(actKey, field, val) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators[actKey]) cfg.actuators[actKey] = {};
+  const keyMap = { pin: 'current_pin', mv_a: 'current_mv_a',
+                   zero_v: 'current_zero_v', max_a: 'current_max_a',
+                   ready_a: 'current_ready_a' };
+  cfg.actuators[actKey][keyMap[field] || field] = val;
+  if (field === 'pin') refreshAllPins();
+  dirty();
 }
-// Override setSensor to handle current sensor paths
-const _baseSensor = setSensor;
-function setSensor(sensorKey, field, val) {
-  if (sensorKey === 'glow_current' || sensorKey === 'igniter_current') {
-    if (!cfg.sensors) cfg.sensors = {};
-    if (!cfg.sensors[sensorKey]) cfg.sensors[sensorKey] = {};
-    cfg.sensors[sensorKey][field] = val;
-    if (field === 'pin') refreshAllPins();
-    dirty();
-    return;
-  }
-  _baseSensor(sensorKey, field, val);
+function setIgniterCurrentEnabled(en) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.igniter) cfg.actuators.igniter = {};
+  cfg.actuators.igniter.has_current = en;
+  refreshAllPins(); dirty();
 }
 
 function setIgniterMode(mode) {
   setAct('igniter','pwm',  mode === 'pwm');
   setAct('igniter','coil', mode === 'coil');
+  // Auto-enable/disable the igniter 1 current sensor alongside the car coil mode
+  setIgniterCurrentEnabled(mode === 'coil');
   updateIgniterModeUI(mode);
 }
 function updateIgniterModeUI(mode) {
-  document.getElementById('grp-ign-relay').style.display = mode === 'relay' ? '' : 'none';
-  document.getElementById('grp-ign-pwm').style.display   = mode === 'pwm'   ? '' : 'none';
-  document.getElementById('grp-ign-coil').style.display  = mode === 'coil'  ? '' : 'none';
+  document.getElementById('grp-ign-relay').style.display    = mode === 'relay' ? '' : 'none';
+  document.getElementById('grp-ign-pwm').style.display      = mode === 'pwm'   ? '' : 'none';
+  document.getElementById('grp-ign-coil').style.display     = mode === 'coil'  ? '' : 'none';
+  document.getElementById('grp-ign-coil-cur').style.display = mode === 'coil'  ? '' : 'none';
 }
-function setIgniter2Mode(mode) { setAct('igniter2','pwm', mode === 'pwm'); updateIgniter2ModeUI(mode); }
+function setIgniter2Mode(mode) {
+  setAct('igniter2','pwm',  mode === 'pwm');
+  setAct('igniter2','coil', mode === 'coil');
+  // Auto-enable/disable the igniter 2 current sensor (stored under actuators.igniter2)
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.igniter2) cfg.actuators.igniter2 = {};
+  cfg.actuators.igniter2.has_current = (mode === 'coil');
+  refreshAllPins(); dirty();
+  updateIgniter2ModeUI(mode);
+}
 function updateIgniter2ModeUI(mode) {
-  document.getElementById('grp-ign2-relay').style.display = mode === 'relay' ? '' : 'none';
-  document.getElementById('grp-ign2-pwm').style.display   = mode === 'pwm'   ? '' : 'none';
+  document.getElementById('grp-ign2-relay').style.display    = mode === 'relay' ? '' : 'none';
+  document.getElementById('grp-ign2-pwm').style.display      = mode === 'pwm'   ? '' : 'none';
+  document.getElementById('grp-ign2-coil').style.display     = mode === 'coil'  ? '' : 'none';
+  document.getElementById('grp-ign2-coil-cur').style.display = mode === 'coil'  ? '' : 'none';
+}
+// Torque sensor type switch (ADC vs HX711)
+function setTorqueType(t) {
+  setSensor('torque', 'hx711', t === 1);
+  updateTorqueTypeUI(t);
+}
+function updateTorqueTypeUI(t) {
+  const isHX = t === 1;
+  ['torque-adc-pin','torque-adc-scale','torque-adc-offset'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = isHX ? 'none' : '';
+  });
+  ['torque-hx-dt','torque-hx-clk','torque-hx-scale','torque-hx-zero'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = isHX ? '' : 'none';
+  });
+  const lbl = document.getElementById('torque-type-label');
+  if (lbl) lbl.textContent = isHX ? '(HX711 load cell)' : '(ADC, 0–3.3 V output)';
 }
 
 // ═══════════════════════════════════════════════════
@@ -2670,10 +2884,14 @@ const PIN_SELECT_LABELS = {
   'f-oiltemp-miso':   'Oil Temp MISO',
   'f-oiltemp-mosi':   'Oil Temp MOSI',
   'f-battvolt-pin':   'Battery Voltage',
-  'f-torque-pin':     'Torque Sensor',
+  'f-torque-pin':     'Torque Sensor (ADC)',
+  'f-torque-dt':      'Torque HX711 DT',
+  'f-torque-clk':     'Torque HX711 CLK',
   'f-fuelpress-pin':  'Fuel Pressure',
-  'f-glowcur-pin':    'Glow Current',
-  'f-igncur-pin':     'Igniter Current',
+  'f-glowcur-pin':      'Glow Current',
+  'f-igncur-pin':       'Igniter 1 Current',
+  'f-ign2cur-pin':      'Igniter 2 Current',
+  'f-oilpumpcur-pin':   'Oil Pump Current',
   'f-thr-pin':        'Throttle ESC',
   'f-str-pin':        'Starter ESC',
   'f-op-pin':         'Oil Pump',
@@ -2825,6 +3043,19 @@ function setAbTrig(key, val)     { ensureAbTrig()[key] = val; refreshAllPins(); 
 function setAbTrigBool(key, val) { ensureAbTrig()[key] = val; dirty(); }
 function setAbFlame(key, val)    { ensureAbFlame()[key] = val; refreshAllPins(); dirty(); }
 function setAbFlameBool(key, val){ ensureAbFlame()[key] = val; dirty(); }
+
+function updateFuelFlowTypeUI() {
+  const type = +(document.getElementById('f-fuelflow-type')?.value || 0);
+  const pplGrp  = document.getElementById('grp-fuelflow-ppl');
+  const pinHint = document.getElementById('f-fuelflow-pin-hint');
+  if (pplGrp)  pplGrp.style.display  = type === 1 ? '' : 'none';
+  if (pinHint) pinHint.textContent = type === 1
+    ? 'Any digital-capable GPIO. Use PCNT-compatible pins (e.g. GPIO 32–39, 4, 5).'
+    : 'ADC1 only (GPIO 32–39) for analog voltage sensors.';
+  // Rebuild pin list with appropriate filter
+  const curPin = cfg.sensors?.fuel_flow?.pin;
+  refreshPinSel('f-fuelflow-pin', type === 1 ? 'any' : 'adc', curPin);
+}
 
 function setAbTrigSrc(v) { setAbTrig('source', v); updateAbTrigUI(v); }
 function updateAbTrigUI(src) {
@@ -3032,7 +3263,94 @@ function _buildChanges() {
   return changes;
 }
 
+function _checkGpioConflicts() {
+  // Collect all assigned GPIO pins with human-readable labels.
+  // Returns [{pin, names:[...]}] for every pin used more than once.
+  const map = {};   // pin → [label, ...]
+  function add(pin, label) {
+    if (pin === undefined || pin === null || pin < 0) return;
+    if (!map[pin]) map[pin] = [];
+    map[pin].push(label);
+  }
+
+  // Controls (buttons)
+  add(cfg.controls?.stop_pin,  'Stop button');
+  add(cfg.controls?.start_pin, 'Start button');
+
+  // Sensors — simple single-pin sensors
+  const SENSOR_LABELS = {
+    n1_rpm:          'N1 RPM',          n2_rpm:          'N2 RPM',
+    oil_press:       'Oil Pressure',    fuel_flow:        'Fuel Flow',
+    p1:              'Pressure 1',      p2:               'Pressure 2',
+    oil_temp:        'Oil Temp',        fuel_press:       'Fuel Pressure',
+    batt_voltage:    'Battery Voltage', torque:           'Torque',
+    flame:           'Flame Sensor',    throttle_input:   'Throttle Input',
+    idle_input:      'Idle Input',
+  };
+  for (const [key, lbl] of Object.entries(SENSOR_LABELS)) {
+    add(cfg.sensors?.[key]?.pin, lbl);
+  }
+  // Inline current sensors — stored inside their actuator objects
+  add(cfg.actuators?.glow_plug?.current_pin,  'Glow Current');
+  add(cfg.actuators?.igniter?.current_pin,    'Igniter Current');
+  add(cfg.actuators?.oil_pump?.current_pin,   'Oil Pump Current');
+
+  // TOT / TIT — SPI sensors (clk, cs, miso, mosi).
+  // CLK and MISO may intentionally be shared between TOT and TIT on one SPI bus.
+  // Flag them anyway so the user is aware; the proceed dialog explains the exception.
+  const SPI_SENSORS = { tot: 'TOT', tit: 'TIT' };
+  for (const [key, lbl] of Object.entries(SPI_SENSORS)) {
+    const s = cfg.sensors?.[key];
+    if (!s) continue;
+    add(s.clk,  lbl + ' CLK');
+    add(s.cs,   lbl + ' CS');
+    add(s.miso, lbl + ' MISO');
+    add(s.mosi, lbl + ' MOSI');
+  }
+
+  // Actuators
+  const ACT_LABELS = {
+    throttle:          'Throttle',         starter:       'Starter',
+    starter_en:        'Starter Enable',   airstarter_sol:'Airstarter Sol.',
+    fuel_sol:          'Fuel Solenoid',    oil_pump:      'Oil Pump',
+    oil_scavenge_pump: 'Oil Scavenge',     igniter:       'Igniter',
+    igniter2:          'Igniter 2',        ab_sol:        'AB Solenoid',
+    ab_pump:           'AB Pump',          cool_fan:      'Cool Fan',
+    fuel_pump2:        'Fuel Pump 2',      bleed_valve:   'Bleed Valve',
+    prop_pitch:        'Prop Pitch',       glow_plug:     'Glow Plug',
+    status_led:        'Status LED',
+  };
+  for (const [key, lbl] of Object.entries(ACT_LABELS)) {
+    add(cfg.actuators?.[key]?.pin, lbl);
+  }
+
+  // AB trigger
+  add(cfg.ab_trigger?.switch_pin, 'AB Switch');
+  add(cfg.ab_trigger?.input_pin,  'AB Input');
+  add(cfg.ab_trigger?.arm_pin,    'AB Arm');
+
+  // Serial outputs
+  add(cfg.cluster_serial?.tx_pin, 'Cluster Serial TX');
+  add(cfg.mavlink?.tx_pin,        'MAVLink TX');
+
+  // Return only pins with more than one assignment
+  return Object.entries(map)
+    .filter(([, names]) => names.length > 1)
+    .map(([pin, names]) => ({ pin: +pin, names }));
+}
+
 function saveHardware() {
+  // ── GPIO conflict check ───────────────────────────────────────
+  const conflicts = _checkGpioConflicts();
+  if (conflicts.length) {
+    const lines = conflicts.map(c => `  GPIO ${c.pin}:  ${c.names.join('  +  ')}`).join('\n');
+    const spiNote = conflicts.some(c => c.names.some(n => /CLK|MISO|MOSI/.test(n)))
+      ? '\n\nNote: TOT/TIT sensors may intentionally share CLK and MISO on the same SPI bus — only CS pins must be unique.'
+      : '';
+    if (!confirm('⚠ GPIO conflict detected — same pin assigned to multiple devices:\n\n' + lines +
+                 spiNote + '\n\nSharing a GPIO pin causes unpredictable behaviour.\nProceed anyway?')) return;
+  }
+
   const changes = _buildChanges();
   if (!changes.length) {
     // Nothing actually changed in the UI (e.g. only type-switch with same value)
@@ -3112,9 +3430,51 @@ function showRebootOverlay() {
 }
 
 async function resetDefaults() {
-  if (!confirm('Reset hardware configuration to factory defaults?\nChanges are not saved until you click Save & Reboot.')) return;
+  if (!confirm('Discard unsaved changes and reload the last saved hardware configuration?')) return;
   await loadHardware();
-  document.getElementById('save-msg').textContent = 'Defaults loaded — click Save & Reboot to apply.';
+  document.getElementById('save-msg').textContent = 'Changes discarded — reverted to last saved configuration.';
+}
+
+// ── Backup / Restore ──────────────────────────────────────────
+function downloadBackup() {
+  // GET /api/ecu_config serves the full file (hardware + settings) as attachment.
+  // Use an anchor click so the browser saves it as ecu_config.json automatically.
+  const a = document.createElement('a');
+  a.href = '/api/ecu_config';
+  a.download = 'ecu_config.json';
+  a.click();
+}
+
+async function handleRestore(ev) {
+  const file = ev.target.files[0];
+  ev.target.value = '';           // allow same file to be re-selected
+  if (!file) return;
+
+  // Validate JSON before sending
+  let text;
+  try { text = await file.text(); JSON.parse(text); }
+  catch (e) { alert('Invalid JSON — file cannot be parsed.\n' + e.message); return; }
+
+  if (!confirm(`Restore full config from "${file.name}"?\nThe ECU will reboot immediately after upload.`)) return;
+
+  const msg = document.getElementById('save-msg');
+  msg.textContent = 'Uploading…';
+  try {
+    const r = await fetch('/api/ecu_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: text
+    });
+    const j = await r.json();
+    if (j.ok) {
+      msg.textContent = 'Restore complete — rebooting…';
+      showRebootOverlay();
+    } else {
+      msg.textContent = 'Restore failed: ' + (j.error || 'unknown error');
+    }
+  } catch (e) {
+    msg.textContent = 'Upload error: ' + e.message;
+  }
 }
 
 window.addEventListener('load', () => {

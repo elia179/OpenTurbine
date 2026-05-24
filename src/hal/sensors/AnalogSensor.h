@@ -6,8 +6,8 @@
 //  Analog sensor variants — all share an ADC rolling average
 //  buffer, then apply different calibration to get a value.
 //
-//  Uses analogReadMilliVolts() (Arduino-ESP32 3.x) which applies
-//  the ESP32 factory ADC linearity correction internally.
+//  Uses analogRead() (raw 12-bit counts, 0–4095).
+//  Calibration coefficients must be derived from raw counts.
 //  ADC1 channels only: GPIO 32-39. ADC2 conflicts with WiFi.
 //
 //  Three variants:

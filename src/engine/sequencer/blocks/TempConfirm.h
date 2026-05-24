@@ -23,6 +23,11 @@ public:
 
     BlockResult tick() override {
         auto& ed = EngineData::instance();
+        // Bench mode: immediately simulate TOT above threshold — no sensor, no wait
+        if (ed.benchMode) {
+            Serial.println("[TempConfirm] BENCH: simulating TOT threshold met");
+            return BlockResult::Complete;
+        }
         if ((millis() - _entryMs) > timeoutMs) return BlockResult::Abort;
         if (ed.totHealthy && ed.tot >= tempTarget) {
             if (++_count >= requiredCount) return BlockResult::Complete;

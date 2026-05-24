@@ -25,9 +25,9 @@ public:
         auto& ed = EngineData::instance();
         ed.oilMinBar = 0;  // not yet checking min during prime
         if (HardwareConfig::hasOilPress) {
-            ed.oilDemand = startupOilDemand;   // P-controller will regulate to this bar target
+            ed.oilTargetBar = startupOilDemand;   // P-controller will regulate to this bar target
         } else {
-            ed.oilPctDemand = startupOilPct;   // fixed % — no sensor, run for timeout
+            ed.oilPumpPct = startupOilPct;   // fixed % — no sensor, run for timeout
         }
         if (useScavengePump) ed.oilScavengeOn = true;
     }

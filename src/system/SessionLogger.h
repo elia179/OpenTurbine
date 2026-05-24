@@ -3,31 +3,27 @@
 // ============================================================
 //  SessionLogger — per-run CSV sensor log
 //
-//  Logs selected sensors at 1 Hz only while the engine is
-//  active (STARTUP → RUNNING → SHUTDOWN).  Nothing is logged
-//  while in STANDBY.
+//  Core 1 (ECU loop) calls tick() which snapshots EngineData
+//  into a FreeRTOS queue — no file I/O on Core 1.
+//  Core 0 (web task) calls drainQueue() to write queued rows
+//  to flash, keeping all LittleFS access off the ECU core.
 //
 //  Lifecycle:
 //    begin()        — called once in setup(); creates /logs/ dir
 //    startSession() — called when mode enters STARTUP; opens new CSV
 //    endSession()   — called when mode returns to STANDBY; closes CSV
-//    tick()         — called every loop(); writes rows when file open
-//
-//  Each run creates a separate file named /logs/session_N.csv where N
-//  is the current runCount from EngineData.  Files are kept until flash
-//  runs low — old ones can be deleted from the Log page.
-//
-//  Which sensors are logged is controlled by Config::sessionLogMask.
+//    tick()         — Core 1: queue push only, no file I/O
+//    drainQueue()   — Core 0: writes queued rows to flash
 // ============================================================
 
 class SessionLogger {
 public:
     // currentPath() returns the active session file path (valid after startSession()).
-    // Used by the web server download endpoint.
     static const char* currentPath();
 
-    static void begin();         // init (mkdir /logs); call once in setup()
+    static void begin();         // init (mkdir /logs, create queue); call once in setup()
     static void startSession();  // open new CSV, write header; call at STARTUP
-    static void endSession();    // flush + close; call when returning to STANDBY
-    static void tick();          // 1 Hz row writer; no-op when no session open
+    static void endSession();    // drain remaining rows, flush + close; call at STANDBY
+    static void tick();          // Core 1: snapshot → queue push (no file I/O)
+    static void drainQueue();    // Core 0: write queued rows to flash
 };

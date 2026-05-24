@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Calibration</title>
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -18,34 +19,39 @@
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-  <!-- Pre-flight checklist -->
+  <!-- Pre-flight checklist (collapsible) -->
   <div class="card" style="margin-bottom:1.5rem">
-    <div class="label" style="margin-bottom:.6rem">Pre-Flight Checklist — complete before first run</div>
-    <p style="font-size:.78rem;color:var(--dim);margin-bottom:.75rem">
-      Check each item below. This list does not affect the ECU — it is a reminder guide only.
-      Tick all items before pressing START for the first time on a new build or after maintenance.
-    </p>
-    <ul class="checklist" id="checklist">
-      <li><input type="checkbox" onchange="checklistTick(this)"> Oil calibration done (zero, min, max pressures set)</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Throttle calibration done (min and max ADC values set)</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Flame sensor threshold set (threshold marker between idle noise and flame level)</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> N1 RPM limit set correctly for your engine model</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> TOT limit set correctly for your engine model</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Oil prime test passed — oil flows and pressure is visible</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Igniter test passed — spark confirmed</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Fuel prime test passed — fuel flows from nozzle</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Starter spin test passed — starter spins freely</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> All fuel and oil connections checked for leaks</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Engine area clear of bystanders and flammable material</li>
-      <li><input type="checkbox" onchange="checklistTick(this)"> Fire extinguisher within reach</li>
-    </ul>
-    <div style="margin-top:.75rem;font-size:.78rem;color:var(--dim)" id="checklist-status">0 of 12 items checked</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleChecklist()">
+      <div class="label" style="margin:0">Pre-Flight Checklist — complete before first run</div>
+      <button id="checklist-toggle-btn" style="background:none;border:none;color:var(--dim);font-size:1rem;cursor:pointer;padding:.1rem .4rem;line-height:1;transition:transform .2s" title="Expand / collapse checklist">▶</button>
+    </div>
+    <div id="checklist-body" style="display:none;margin-top:.6rem">
+      <p style="font-size:.78rem;color:var(--dim);margin-bottom:.75rem">
+        Check each item below. This list does not affect the ECU — it is a reminder guide only.
+        Tick all items before pressing START for the first time on a new build or after maintenance.
+      </p>
+      <ul class="checklist" id="checklist">
+        <li><input type="checkbox" onchange="checklistTick(this)"> Oil calibration done (zero, min, max pressures set)</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Throttle calibration done (min and max ADC values set)</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Flame threshold calibrated with igniter firing (spark noise included)</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> N1 RPM limit set correctly for your engine model</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> TOT limit set correctly for your engine model</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Oil prime test passed — oil flows and pressure is visible</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Igniter test passed — spark confirmed</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Fuel prime test passed — fuel flows from nozzle</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Starter spin test passed — starter spins freely</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> All fuel and oil connections checked for leaks</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Engine area clear of bystanders and flammable material</li>
+        <li><input type="checkbox" onchange="checklistTick(this)"> Fire extinguisher within reach</li>
+      </ul>
+      <div style="margin-top:.75rem;font-size:.78rem;color:var(--dim)" id="checklist-status">0 of 12 items checked</div>
+    </div>
   </div>
 
   <h2 style="margin-bottom:1.2rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Live Sensor Readings &amp; Calibration</h2>
 
   <!-- Oil pressure -->
-  <div class="sensor-row">
+  <div class="sensor-row" id="oil-press-cal-row">
     <div class="sensor-name"><span id="oil-h-cal" class="dot"></span> Oil Pressure</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-oil-raw">—</div></div>
@@ -119,7 +125,7 @@
   </div>
 
   <!-- Flame -->
-  <div class="sensor-row">
+  <div class="sensor-row" id="flame-cal-row">
     <div class="sensor-name"><span id="flame-h-cal" class="dot"></span> Flame / Ignition</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-flame-raw">—</div></div>
@@ -133,7 +139,13 @@
     <div class="bar-range"><span>0</span><span>4095 ADC</span></div>
     <div class="wizard">
       <div class="wizard-title">Flame Threshold Calibration</div>
-      <div class="wizard-steps">1. With no flame present, click <b>Capture noise floor</b> (averages ~1 s).<br>Threshold = noise floor × multiplier (default 3×). Adjust multiplier if needed, then save.<br><span style="color:var(--yellow)">⚠ Ensure the igniter is OFF before capturing — an active igniter raises the noise floor and gives a falsely high threshold.</span></div>
+      <div class="wizard-steps">
+        1. Make sure no flame is present, then click <b>Capture noise floor</b> (~1 s sampling).<br>
+        Threshold = noise floor × multiplier (default 3×). Adjust multiplier if needed, then save.<br>
+        <span style="color:var(--yellow)">⚠ <b>Recommended: keep "fire igniter while sampling" ON.</b> Spark noise from the igniter raises the ADC floor.
+        Capturing with the igniter firing sets the threshold high enough so that spark bursts during startup are not mistaken for a real flame — preventing false ignition confirmation.
+        Only disable this if your igniter is not yet installed.</span>
+      </div>
       <div class="wiz-buttons" style="margin-bottom:.4rem">
         <button id="btn-flame-noise" onclick="captureFlameNoise()">Capture noise floor</button>
         <button onclick="saveFlameThreshold()" id="btn-flame-save" disabled>Save threshold</button>
@@ -141,8 +153,8 @@
       </div>
       <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.4rem;flex-wrap:wrap">
         <label style="font-size:.75rem;color:var(--dim);display:flex;align-items:center;gap:.4rem">
-          <input type="checkbox" id="flame-noise-ign">
-          fire igniter while sampling
+          <input type="checkbox" id="flame-noise-ign" checked>
+          fire igniter while sampling (recommended)
         </label>
         <span style="font-size:.75rem;color:var(--dim)">multiplier:</span>
         <input type="number" id="flame-multiplier" value="3" min="1" max="10" step="0.5" style="width:70px"
@@ -191,56 +203,94 @@
     </div>
   </div>
 
-  <!-- P1 pressure sensor -->
-  <div class="sensor-row" id="p1-cal-row">
+  <!-- P1 pressure sensor — two-point calibration -->
+  <div class="sensor-row" id="p1-cal-row" style="display:none">
     <div class="sensor-name">P1 Pressure Sensor</div>
     <div class="sensor-vals">
-      <div class="sv-item"><div class="sv-label">Gauge bar</div><div class="sv-val" id="cal-p1">—</div></div>
-      <div class="sv-item"><div class="sv-label">Zero offset</div><div class="sv-val" id="cal-p1-zero">—</div></div>
+      <div class="sv-item"><div class="sv-label">Reading (bar)</div><div class="sv-val" id="cal-p1">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-p1-raw">—</div></div>
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar-p1" style="width:0%"></div></div>
-    <div class="bar-range"><span>0 bar</span><span>10 bar</span></div>
+    <div class="bar-range"><span>0 bar</span><span id="p1-bar-max-label">10 bar</span></div>
     <div class="wizard">
-      <div class="wizard-title">P1 Zero Calibration (atmospheric / 0 bar gauge)</div>
-      <div class="wizard-steps">
-        1. Ensure the P1 sensor port is open to atmosphere (zero gauge pressure).<br>
-        2. Click <b>Capture Zero</b> — the current raw reading is saved as the zero offset.<br>
-        3. Future readings will have this offset subtracted so 0 bar = atmospheric.
+      <div class="wizard-title">P1 Two-Point Calibration</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+        <button style="font-size:.72rem;padding:.25rem .6rem" onclick="p12CalMode('p1','physical')" id="p1-mode-physical" class="primary">Physical capture</button>
+        <button style="font-size:.72rem;padding:.25rem .6rem" onclick="p12CalMode('p1','factory')"  id="p1-mode-factory">Factory spec (datasheet)</button>
       </div>
-      <div class="wiz-buttons" style="margin-bottom:.4rem">
-        <button onclick="captureZero('p1')">Capture Zero</button>
-        <button onclick="clearZero('p1')" style="color:var(--dim)">Clear</button>
+      <!-- Physical capture mode -->
+      <div id="p1-mode-physical-panel">
+        <div class="wizard-steps">
+          <b>Step 1 — Zero:</b> Open sensor port to atmosphere. <button onclick="p12CaptureZero('p1')">Capture Zero</button>
+          <span id="p1-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br>
+          <b>Step 2 — Reference:</b> Apply a known pressure.
+          <input type="number" id="p1-ref-bar" min="0.1" max="100" step="0.1" placeholder="bar" style="width:5rem;margin:0 .3rem">
+          <button onclick="p12CaptureRef('p1')">Capture Reference</button>
+          <span id="p1-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+        </div>
       </div>
-      <div id="p1-zero-status" style="font-size:.75rem;color:var(--dim)"></div>
+      <!-- Factory spec mode -->
+      <div id="p1-mode-factory-panel" style="display:none">
+        <div class="wizard-steps">
+          Enter the sensor's voltage output range from the datasheet:<br>
+          Voltage at <b>0 bar</b>: <input type="number" id="p1-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Voltage at max bar: <input type="number" id="p1-v-max" min="0" max="3.3" step="0.01" placeholder="4.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Max bar value: <input type="number" id="p1-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10" style="width:5rem;margin:0 .3rem"> bar
+          <br><span style="font-size:.72rem;color:var(--dim)">Note: voltages > 3.3 V are clamped to ADC input range.</span>
+        </div>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="p12Save('p1')">Save P1 Calibration</button>
+        <button onclick="p12Clear('p1')" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="p1-cal-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
     </div>
   </div>
 
-  <!-- P2 pressure sensor -->
-  <div class="sensor-row" id="p2-cal-row">
+  <!-- P2 pressure sensor — two-point calibration -->
+  <div class="sensor-row" id="p2-cal-row" style="display:none">
     <div class="sensor-name">P2 Pressure Sensor</div>
     <div class="sensor-vals">
-      <div class="sv-item"><div class="sv-label">Gauge bar</div><div class="sv-val" id="cal-p2">—</div></div>
-      <div class="sv-item"><div class="sv-label">Zero offset</div><div class="sv-val" id="cal-p2-zero">—</div></div>
+      <div class="sv-item"><div class="sv-label">Reading (bar)</div><div class="sv-val" id="cal-p2">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-p2-raw">—</div></div>
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar-p2" style="width:0%"></div></div>
-    <div class="bar-range"><span>0 bar</span><span>10 bar</span></div>
+    <div class="bar-range"><span>0 bar</span><span id="p2-bar-max-label">10 bar</span></div>
     <div class="wizard">
-      <div class="wizard-title">P2 Zero Calibration (atmospheric / 0 bar gauge)</div>
-      <div class="wizard-steps">
-        1. Ensure the P2 sensor port is open to atmosphere (zero gauge pressure).<br>
-        2. Click <b>Capture Zero</b> — the current raw reading is saved as the zero offset.<br>
-        3. Future readings will have this offset subtracted so 0 bar = atmospheric.
+      <div class="wizard-title">P2 Two-Point Calibration</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+        <button style="font-size:.72rem;padding:.25rem .6rem" onclick="p12CalMode('p2','physical')" id="p2-mode-physical" class="primary">Physical capture</button>
+        <button style="font-size:.72rem;padding:.25rem .6rem" onclick="p12CalMode('p2','factory')"  id="p2-mode-factory">Factory spec (datasheet)</button>
       </div>
-      <div class="wiz-buttons" style="margin-bottom:.4rem">
-        <button onclick="captureZero('p2')">Capture Zero</button>
-        <button onclick="clearZero('p2')" style="color:var(--dim)">Clear</button>
+      <div id="p2-mode-physical-panel">
+        <div class="wizard-steps">
+          <b>Step 1 — Zero:</b> Open sensor port to atmosphere. <button onclick="p12CaptureZero('p2')">Capture Zero</button>
+          <span id="p2-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br>
+          <b>Step 2 — Reference:</b> Apply a known pressure.
+          <input type="number" id="p2-ref-bar" min="0.1" max="100" step="0.1" placeholder="bar" style="width:5rem;margin:0 .3rem">
+          <button onclick="p12CaptureRef('p2')">Capture Reference</button>
+          <span id="p2-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+        </div>
       </div>
-      <div id="p2-zero-status" style="font-size:.75rem;color:var(--dim)"></div>
+      <div id="p2-mode-factory-panel" style="display:none">
+        <div class="wizard-steps">
+          Enter the sensor's voltage output range from the datasheet:<br>
+          Voltage at <b>0 bar</b>: <input type="number" id="p2-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Voltage at max bar: <input type="number" id="p2-v-max" min="0" max="3.3" step="0.01" placeholder="4.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Max bar value: <input type="number" id="p2-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10" style="width:5rem;margin:0 .3rem"> bar
+          <br><span style="font-size:.72rem;color:var(--dim)">Note: voltages > 3.3 V are clamped to ADC input range.</span>
+        </div>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="p12Save('p2')">Save P2 Calibration</button>
+        <button onclick="p12Clear('p2')" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="p2-cal-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
     </div>
   </div>
 
   <!-- Idle Input -->
-  <div class="sensor-row">
+  <div class="sensor-row" id="idle-cal-row">
     <div class="sensor-name">Idle Input</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label" id="idle-raw-label">Raw ADC</div><div class="sv-val" id="cal-idle-raw">—</div></div>
@@ -323,8 +373,9 @@
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar-torque" style="width:0%"></div></div>
     <div class="bar-range"><span>0</span><span id="torque-bar-max">— Nm</span></div>
-    <div class="wizard">
-      <div class="wizard-title">Torque Sensor Zero &amp; Scale</div>
+    <!-- ADC torque wizard (shown for analog 0–3.3 V sensors) -->
+    <div class="wizard" id="torque-adc-wizard">
+      <div class="wizard-title">Torque Sensor Zero &amp; Scale (ADC)</div>
       <div class="wizard-steps">
         1. With no load applied, click <b>Capture Zero</b> to zero the sensor.<br>
         2. Enter the full-scale output of your sensor (Nm at maximum voltage) and click <b>Save Scale</b>.
@@ -339,10 +390,21 @@
       </div>
       <div id="torque-status" style="font-size:.75rem;color:var(--dim)"></div>
     </div>
+    <!-- HX711 torque info (shown for HX711 load cell sensors) -->
+    <div class="wizard" id="torque-hx711-wizard" style="display:none">
+      <div class="wizard-title">Torque Sensor (HX711 Load Cell)</div>
+      <div class="wizard-steps">
+        For HX711 load cells, zero offset and scale factor are set directly on the
+        <a href="/hardware.html" style="color:var(--accent)">Hardware Settings</a> page.<br>
+        <span style="color:var(--dim)">Zero count: raw HX711 count at no load.
+        Scale: Nm per raw count (e.g. apply a known load and divide by the live raw count).</span>
+      </div>
+      <div id="torque-hx711-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
   </div>
 
   <!-- Throttle Input -->
-  <div class="sensor-row">
+  <div class="sensor-row" id="throttle-cal-row">
     <div class="sensor-name">Throttle Input</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label" id="th-raw-label">Raw ADC</div><div class="sv-val" id="cal-th-raw">—</div></div>
@@ -361,6 +423,148 @@
       <div id="th-status" style="font-size:.75rem;color:var(--dim)"></div>
     </div>
   </div>
+
+  <!-- Fuel Flow (analog type only — pulse type needs no ADC calibration) -->
+  <div class="sensor-row" id="fuelflow-cal-row" style="display:none">
+    <div class="sensor-name">Fuel Flow Sensor (Analog)</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Flow (units/min)</div><div class="sv-val" id="cal-ff">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-ff-raw">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-ff" style="width:0%"></div></div>
+    <div class="bar-range"><span>0</span><span id="ff-bar-max-label">10</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Fuel Flow Two-Point Calibration</div>
+      <div class="wizard-steps">
+        <b>Step 1 — Zero flow:</b> Ensure no flow through the sensor.<br>
+        <button onclick="ffCaptureZero()">Capture Zero Flow</button>
+        <span id="ff-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
+        <b>Step 2 — Reference flow:</b> Set a known flow rate through the sensor.<br>
+        Known flow: <input type="number" id="ff-ref-val" min="0.01" max="1000" step="0.01" placeholder="units/min" style="width:7rem;margin:0 .3rem">
+        <button onclick="ffCaptureRef()">Capture Reference</button>
+        <span id="ff-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="ffSave()">Save Calibration</button>
+        <button onclick="ffClear()" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="ff-cal-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
+    </div>
+  </div>
+
+  <!-- Glow Plug Current Sensor -->
+  <div class="sensor-row" id="glow-current-cal-row" style="display:none">
+    <div class="sensor-name">Glow Plug Current Sensor</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Current (A)</div><div class="sv-val" id="cal-glow-a">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-glow-raw">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-glow-cur" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 A</span><span>50 A</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Glow Current Two-Point Calibration</div>
+      <div class="wizard-steps">
+        <b>Step 1 — Zero:</b> Ensure no current through the sensor (glow plug off).<br>
+        <button onclick="curCaptureZero('glow')">Capture Zero</button>
+        <span id="glow-cur-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
+        <b>Step 2 — Known current:</b> Apply a known current (e.g. via a shunt resistor or bench supply).<br>
+        Known current: <input type="number" id="glow-cur-ref-a" min="0.1" max="200" step="0.1" placeholder="A" style="width:5rem;margin:0 .3rem">
+        <button onclick="curCaptureRef('glow')">Capture Reference</button>
+        <span id="glow-cur-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="curSave('glow')">Save Calibration</button>
+        <button onclick="curClear('glow')" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="glow-cur-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
+    </div>
+  </div>
+
+  <!-- Oil Pump Current Sensor (shown only when oil pump current sensor is fitted) -->
+  <div class="sensor-row" id="oilpump-current-cal-row" style="display:none">
+    <div class="sensor-name">Oil Pump Current Sensor</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Current (A)</div><div class="sv-val" id="cal-oilpumpcur-a">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-oilpumpcur-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">Overcurrent</div><div class="sv-val" id="cal-oilpumpcur-oc">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-oilpumpcur" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 A</span><span>50 A</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Oil Pump Current Two-Point Calibration</div>
+      <div class="wizard-steps">
+        <b>Step 1 — Zero:</b> Ensure pump is off and no current is flowing.<br>
+        <button onclick="curCaptureZero('oilpump')">Capture Zero</button>
+        <span id="oilpump-cur-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
+        <b>Step 2 — Known current:</b> Run pump at a known load and enter the measured current.<br>
+        Known current: <input type="number" id="oilpump-cur-ref-a" min="0.1" max="200" step="0.1" placeholder="A" style="width:5rem;margin:0 .3rem">
+        <button onclick="curCaptureRef('oilpump')">Capture Reference</button>
+        <span id="oilpump-cur-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="curSave('oilpump')">Save Calibration</button>
+        <button onclick="curClear('oilpump')" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="oilpump-cur-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
+    </div>
+  </div>
+
+  <!-- Igniter 1 Current Sensor -->
+  <div class="sensor-row" id="igniter-current-cal-row" style="display:none">
+    <div class="sensor-name">Igniter 1 Current Sensor</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Current (A)</div><div class="sv-val" id="cal-ign-a">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-ign-raw">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-ign-cur" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 A</span><span>50 A</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Igniter 1 Current Two-Point Calibration</div>
+      <div class="wizard-steps">
+        <b>Step 1 — Zero:</b> Ensure no current through the sensor (igniter off).<br>
+        <button onclick="curCaptureZero('ign')">Capture Zero</button>
+        <span id="ign-cur-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
+        <b>Step 2 — Known current:</b> Apply a known current.<br>
+        Known current: <input type="number" id="ign-cur-ref-a" min="0.1" max="200" step="0.1" placeholder="A" style="width:5rem;margin:0 .3rem">
+        <button onclick="curCaptureRef('ign')">Capture Reference</button>
+        <span id="ign-cur-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="curSave('ign')">Save Calibration</button>
+        <button onclick="curClear('ign')" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="ign-cur-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
+    </div>
+  </div>
+
+  <!-- Igniter 2 Current Sensor -->
+  <div class="sensor-row" id="igniter2-current-cal-row" style="display:none">
+    <div class="sensor-name">Igniter 2 Current Sensor</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Current (A)</div><div class="sv-val" id="cal-ign2-a">—</div></div>
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-ign2-raw">—</div></div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="bar-ign2-cur" style="width:0%"></div></div>
+    <div class="bar-range"><span>0 A</span><span>50 A</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Igniter 2 Current Two-Point Calibration</div>
+      <div class="wizard-steps">
+        <b>Step 1 — Zero:</b> Ensure no current through the sensor (igniter 2 off).<br>
+        <button onclick="curCaptureZero('ign2')">Capture Zero</button>
+        <span id="ign2-cur-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
+        <b>Step 2 — Known current:</b> Apply a known current.<br>
+        Known current: <input type="number" id="ign2-cur-ref-a" min="0.1" max="200" step="0.1" placeholder="A" style="width:5rem;margin:0 .3rem">
+        <button onclick="curCaptureRef('ign2')">Capture Reference</button>
+        <span id="ign2-cur-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
+      </div>
+      <div class="wiz-buttons">
+        <button class="primary" onclick="curSave('ign2')">Save Calibration</button>
+        <button onclick="curClear('ign2')" style="color:var(--dim)">Reset to default</button>
+      </div>
+      <div id="ign2-cur-status" style="font-size:.75rem;color:var(--dim);margin-top:.3rem"></div>
+    </div>
+  </div>
+
 </main>
 
 <script src="/app.js"></script>
@@ -394,11 +598,13 @@ fetch('/api/config').then(r=>r.json()).then(c => {
   }
   setText('fuelpress-bar-max', fpVal.toFixed(1) + ' bar');
   setText('cal-fuelpress-range', fpMin + ' – ' + fpMax + ' raw');
-  // Load saved P1/P2 zero offsets
+  // Load saved P1/P2 zero offsets (elements may be absent if feature is hidden)
   const p1z = c.calibration?.p1_zero_bar;
   const p2z = c.calibration?.p2_zero_bar;
-  document.getElementById('cal-p1-zero').textContent = p1z !== undefined ? p1z.toFixed(3) + ' bar' : '—';
-  document.getElementById('cal-p2-zero').textContent = p2z !== undefined ? p2z.toFixed(3) + ' bar' : '—';
+  const _p1zEl = document.getElementById('cal-p1-zero');
+  const _p2zEl = document.getElementById('cal-p2-zero');
+  if (_p1zEl) _p1zEl.textContent = p1z !== undefined ? p1z.toFixed(3) + ' bar' : '—';
+  if (_p2zEl) _p2zEl.textContent = p2z !== undefined ? p2z.toFixed(3) + ' bar' : '—';
   // Show/hide P1/P2 rows based on pressure_sensors_enabled
   const pEn = !!(c.display?.pressure_sensors);
   ['p1-cal-row','p2-cal-row'].forEach(id => {
@@ -417,6 +623,31 @@ fetch('/api/config').then(r=>r.json()).then(c => {
     document.getElementById('th-hi').textContent = mx;
     document.getElementById('btn-th-save').disabled = false;
   }
+
+  // ── Hardware-conditional row visibility (based on hardware settings) ─────────
+  // Oil pressure — hidden when oil press sensor is not fitted
+  const oilPressRow = document.getElementById('oil-press-cal-row');
+  if (oilPressRow) oilPressRow.style.display =
+    (c.hardware?.sensors?.oil_press?.enabled !== false) ? '' : 'none';
+  // Flame / ignition — hidden when flame sensor is not fitted
+  const flameCalRow = document.getElementById('flame-cal-row');
+  if (flameCalRow) flameCalRow.style.display =
+    (c.hardware?.sensors?.flame?.enabled !== false) ? '' : 'none';
+  // Throttle input — hidden when throttle input is not fitted
+  const throttleCalRow = document.getElementById('throttle-cal-row');
+  if (throttleCalRow) throttleCalRow.style.display =
+    (c.hardware?.sensors?.throttle_input?.enabled !== false) ? '' : 'none';
+  // Idle input — hidden when idle input is not fitted
+  const idleCalRow = document.getElementById('idle-cal-row');
+  if (idleCalRow) idleCalRow.style.display =
+    (c.hardware?.sensors?.idle_input?.enabled !== false) ? '' : 'none';
+
+  // ── Torque sensor type — switch ADC vs HX711 wizard ──────────────────────────
+  const isHX711 = !!(c.hardware?.sensors?.torque?.hx711);
+  const adcWiz  = document.getElementById('torque-adc-wizard');
+  const hxWiz   = document.getElementById('torque-hx711-wizard');
+  if (adcWiz) adcWiz.style.display  = isHX711 ? 'none' : '';
+  if (hxWiz)  hxWiz.style.display   = isHX711 ? '' : 'none';
 }).catch(()=>{});
 
 loadNtcValues();
@@ -436,11 +667,17 @@ function applyInputTypeLabels(d) {
       ? 'Move throttle to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.<br><span style="color:var(--dim)">Values captured in µs (servo signal).</span>'
       : 'Move throttle to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.';
     // Range labels will be updated in the live update loop
+    // Hide row if throttle input is not fitted
+    const thRow = document.getElementById('throttle-cal-row');
+    if (thRow) thRow.style.display = thType === 'none' ? 'none' : '';
   }
   if (idleType !== idleInputType) {
     idleInputType = idleType;
     const isServo = idleType === 'servo';
     setText('idle-raw-label', isServo ? 'Servo Signal' : 'Raw ADC');
+    // Hide row if idle input is not fitted
+    const idRow = document.getElementById('idle-cal-row');
+    if (idRow) idRow.style.display = idleType === 'none' ? 'none' : '';
   }
 }
 
@@ -474,14 +711,24 @@ window.applyData = function(d) {
     }
   }
 
-  // P1 / P2
-  if (d.p1 !== undefined) {
-    setText('cal-p1', Number(d.p1).toFixed(3) + ' bar');
-    bar('bar-p1', d.p1, 0, 10, true);
+  // P1 / P2 — show/hide + raw ADC
+  const p1Row = document.getElementById('p1-cal-row');
+  const p2Row = document.getElementById('p2-cal-row');
+  if (p1Row) p1Row.style.display = d.has_p1 ? '' : 'none';
+  if (p2Row) p2Row.style.display = d.has_p2 ? '' : 'none';
+  if (d.has_p1) {
+    setText('cal-p1-raw', d.p1_raw ?? '—');
+    if (d.p1 !== undefined) {
+      setText('cal-p1', Number(d.p1).toFixed(3) + ' bar');
+      bar('bar-p1', d.p1, 0, cfg.calibration?.p1_val_max ?? 10, true);
+    }
   }
-  if (d.p2 !== undefined) {
-    setText('cal-p2', Number(d.p2).toFixed(3) + ' bar');
-    bar('bar-p2', d.p2, 0, 10, true);
+  if (d.has_p2) {
+    setText('cal-p2-raw', d.p2_raw ?? '—');
+    if (d.p2 !== undefined) {
+      setText('cal-p2', Number(d.p2).toFixed(3) + ' bar');
+      bar('bar-p2', d.p2, 0, cfg.calibration?.p2_val_max ?? 10, true);
+    }
   }
 
   setText('cal-oil-raw', d.oil_raw ?? '—');
@@ -535,6 +782,66 @@ window.applyData = function(d) {
   if (oiltRow)  oiltRow.style.display  = d.has_oil_temp     ? '' : 'none';
   if (bvRow)    bvRow.style.display    = d.has_batt_voltage  ? '' : 'none';
   if (torqRow)  torqRow.style.display  = d.has_torque        ? '' : 'none';
+
+  // ── Oil pressure / flame rows — gated on has_* flags ─────────
+  if (d.has_oil_press !== undefined) {
+    const opRow = document.getElementById('oil-press-cal-row');
+    if (opRow) opRow.style.display = d.has_oil_press ? '' : 'none';
+  }
+  if (d.has_flame !== undefined) {
+    const flRow = document.getElementById('flame-cal-row');
+    if (flRow) flRow.style.display = d.has_flame ? '' : 'none';
+  }
+
+  // ── Fuel flow / glow current / igniter current rows ──────────
+  const ffCalRow       = document.getElementById('fuelflow-cal-row');
+  const glowCalRow     = document.getElementById('glow-current-cal-row');
+  const ignCalRow      = document.getElementById('igniter-current-cal-row');
+  const ign2CalRow     = document.getElementById('igniter2-current-cal-row');
+  const oilpCurCalRow  = document.getElementById('oilpump-current-cal-row');
+  // Fuel flow analog calibration only relevant when type=0 (ADC)
+  if (ffCalRow)      ffCalRow.style.display      = (d.has_fuel_flow && d.fuel_flow_type === 0) ? '' : 'none';
+  if (glowCalRow)    glowCalRow.style.display    = d.has_glow_current       ? '' : 'none';
+  if (ignCalRow)     ignCalRow.style.display     = d.has_igniter_current    ? '' : 'none';
+  if (ign2CalRow)    ign2CalRow.style.display    = d.has_igniter2_current   ? '' : 'none';
+  if (oilpCurCalRow) oilpCurCalRow.style.display = d.has_oil_pump_current   ? '' : 'none';
+
+  if (d.has_fuel_flow && d.fuel_flow_type === 0) {
+    setText('cal-ff-raw', d.fuel_flow_raw ?? '—');
+    if (d.fuel_flow !== undefined) {
+      setText('cal-ff', Number(d.fuel_flow).toFixed(3) + ' L/min');
+      bar('bar-ff', d.fuel_flow, 0, 10, true);
+    }
+  }
+  if (d.has_glow_current) {
+    setText('cal-glow-raw', d.glow_current_raw ?? '—');
+    if (d.glow_current_amps !== undefined) {
+      setText('cal-glow-a', Number(d.glow_current_amps).toFixed(2) + ' A');
+      bar('bar-glow-cur', d.glow_current_amps, 0, 30, true);
+    }
+  }
+  if (d.has_igniter_current) {
+    setText('cal-ign-raw', d.igniter_current_raw ?? '—');
+    if (d.igniter_current_amps !== undefined) {
+      setText('cal-ign-a', Number(d.igniter_current_amps).toFixed(2) + ' A');
+      bar('bar-ign-cur', d.igniter_current_amps, 0, 30, true);
+    }
+  }
+  if (d.has_igniter2_current) {
+    setText('cal-ign2-raw', d.igniter2_current_raw ?? '—');
+    if (d.igniter2_current_amps !== undefined) {
+      setText('cal-ign2-a', Number(d.igniter2_current_amps).toFixed(2) + ' A');
+      bar('bar-ign2-cur', d.igniter2_current_amps, 0, 30, true);
+    }
+  }
+  if (d.has_oil_pump_current) {
+    setText('cal-oilpumpcur-raw', d.oil_pump_current_raw ?? '—');
+    if (d.oil_pump_current_amps !== undefined) {
+      setText('cal-oilpumpcur-a', Number(d.oil_pump_current_amps).toFixed(2) + ' A');
+      setText('cal-oilpumpcur-oc', d.oil_pump_overcurrent ? '⚠ OVERCURRENT' : 'OK');
+      bar('bar-oilpumpcur', d.oil_pump_current_amps, 0, 50, !d.oil_pump_overcurrent);
+    }
+  }
 
   if (d.has_oil_temp && d.oil_temp !== undefined) {
     setText('cal-oiltemp', Number(d.oil_temp).toFixed(1) + ' °C');
@@ -850,27 +1157,34 @@ async function captureFlameNoise() {
 
   try {
     if (fireIgn) {
-      statusEl.textContent = 'Starting igniter…';
+      statusEl.textContent = 'Starting igniter for noise capture…';
       await fetch('/api/command', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({cmd:'IGN_TEST'})
       });
-      await new Promise(r => setTimeout(r, 300)); // let igniter run + EMI settle
+      await new Promise(r => setTimeout(r, 400)); // let igniter spin up + EMI settle
     }
 
     const samples = [];
-    for (let i = 0; i < 12; i++) {
-      statusEl.textContent = `Sampling… ${i+1}/12`;
+    for (let i = 0; i < 20; i++) {
+      statusEl.textContent = `Sampling${fireIgn ? ' with igniter active' : ''}… ${i+1}/20`;
       const d = await fetch('/api/data').then(r => r.json()).catch(() => ({}));
       if (d.flame_raw !== undefined) samples.push(d.flame_raw);
-      await new Promise(r => setTimeout(r, 83)); // ~12 samples over 1 s
+      await new Promise(r => setTimeout(r, 75)); // ~20 samples over 1.5 s
     }
 
     if (samples.length === 0) {
       statusEl.textContent = 'No flame data — check connection.';
       return;
     }
-    flameNoise = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+
+    // When igniter is firing: use the peak value so the threshold clears all spark spikes.
+    // When igniter is off: use the average of clean ambient noise.
+    if (fireIgn) {
+      flameNoise = Math.max(...samples);
+    } else {
+      flameNoise = Math.round(samples.reduce((a, b) => a + b, 0) / samples.length);
+    }
     updateFlameStatus();
   } catch(e) {
     statusEl.textContent = 'Error: ' + e;
@@ -980,21 +1294,14 @@ function clearZero(ch) {
 
 // ── Hardware patch (no reboot) ────────────────────────────────
 function patchHardware(patch, onOk) {
-  fetch('/api/hardware').then(r=>r.json()).then(hw => {
-    function merge(t, s) {
-      for (const k in s) {
-        if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]))
-          merge(t[k] = t[k] || {}, s[k]);
-        else t[k] = s[k];
-      }
-    }
-    merge(hw, patch);
-    return fetch('/api/hardware', {method:'PATCH', body:JSON.stringify(patch),
-      headers:{'Content-Type':'application/json'}});
-  }).then(r=>r.json()).then(d => {
+  fetch('/api/hardware', {method:'PATCH', body:JSON.stringify(patch),
+    headers:{'Content-Type':'application/json'}})
+  .then(r=>r.json())
+  .then(d => {
     if (d.ok) onOk();
     else alert('Save failed: ' + JSON.stringify(d));
-  }).catch(e => alert('Error: ' + e));
+  })
+  .catch(e => alert('Error: ' + e));
 }
 
 // ── NTC oil temp calibration ──────────────────────────────────
@@ -1099,7 +1406,202 @@ function patchConfig(patch, msg) {
   }).catch(e => alert('Error: ' + e));
 }
 
+// ── P1/P2 two-point calibration ───────────────────────────────
+const _p12State = {};  // {p1:{zeroRaw, refRaw, refBar}, p2:{...}}
+function p12CalMode(ch, mode) {
+  document.getElementById(ch + '-mode-physical-panel').style.display = mode === 'physical' ? '' : 'none';
+  document.getElementById(ch + '-mode-factory-panel').style.display  = mode === 'factory'  ? '' : 'none';
+  document.getElementById(ch + '-mode-physical').className = mode === 'physical' ? 'primary' : '';
+  document.getElementById(ch + '-mode-factory').className  = mode === 'factory'  ? 'primary' : '';
+  if (!_p12State[ch]) _p12State[ch] = {};
+  _p12State[ch].mode = mode;
+}
+function p12CaptureZero(ch) {
+  const raw = live[ch + '_raw'];
+  if (raw === undefined) { alert('No live raw ADC data for ' + ch.toUpperCase()); return; }
+  if (!_p12State[ch]) _p12State[ch] = {};
+  _p12State[ch].zeroRaw = raw;
+  document.getElementById(ch + '-zero-captured').textContent = '✓ ADC ' + raw;
+}
+function p12CaptureRef(ch) {
+  const raw = live[ch + '_raw'];
+  const bar = parseFloat(document.getElementById(ch + '-ref-bar').value);
+  if (raw === undefined) { alert('No live raw ADC data for ' + ch.toUpperCase()); return; }
+  if (isNaN(bar) || bar <= 0) { alert('Enter a valid reference pressure in bar'); return; }
+  if (!_p12State[ch]) _p12State[ch] = {};
+  _p12State[ch].refRaw = raw;
+  _p12State[ch].refBar = bar;
+  document.getElementById(ch + '-ref-captured').textContent = '✓ ADC ' + raw + ' @ ' + bar + ' bar';
+}
+function p12Save(ch) {
+  const st = _p12State[ch] || {};
+  const mode = st.mode || 'physical';
+  let rawMin, rawMax, valMax;
+  if (mode === 'physical') {
+    if (st.zeroRaw === undefined || st.refRaw === undefined) {
+      alert('Capture both zero and reference points first'); return;
+    }
+    rawMin = st.zeroRaw; rawMax = st.refRaw; valMax = st.refBar;
+  } else {
+    const vZero   = parseFloat(document.getElementById(ch + '-v-zero').value);
+    const vMax    = parseFloat(document.getElementById(ch + '-v-max').value);
+    valMax        = parseFloat(document.getElementById(ch + '-v-valmax').value);
+    if (isNaN(vZero) || isNaN(vMax) || isNaN(valMax) || valMax <= 0) {
+      alert('Enter all three factory spec values'); return;
+    }
+    rawMin = Math.round(Math.min(vZero / 3.3, 1.0) * 4095);
+    rawMax = Math.round(Math.min(vMax  / 3.3, 1.0) * 4095);
+  }
+  if (rawMax <= rawMin) { alert('Reference ADC must be greater than zero ADC'); return; }
+  const patch = { calibration: {
+    [ch + '_raw_min']: rawMin, [ch + '_raw_max']: rawMax, [ch + '_val_max']: valMax
+  }};
+  patchConfig(patch, ch.toUpperCase() + ' calibration saved — zero=' + rawMin + ', ref=' + rawMax + ' → ' + valMax + ' bar');
+  // Update local cfg so the bar range reflects the new scale immediately
+  if (!cfg.calibration) cfg.calibration = {};
+  cfg.calibration[ch + '_raw_min'] = rawMin;
+  cfg.calibration[ch + '_raw_max'] = rawMax;
+  cfg.calibration[ch + '_val_max'] = valMax;
+  document.getElementById(ch + '-bar-max-label').textContent = valMax + ' bar';
+  document.getElementById(ch + '-cal-status').textContent =
+    '✓ Saved: 0 bar @ ADC ' + rawMin + ',  ' + valMax + ' bar @ ADC ' + rawMax;
+}
+function p12Clear(ch) {
+  patchConfig({ calibration: { [ch+'_raw_min']:0, [ch+'_raw_max']:4095, [ch+'_val_max']:10 } },
+    ch.toUpperCase() + ' calibration reset to defaults');
+  document.getElementById(ch + '-cal-status').textContent = 'Reset to defaults (0–4095 ADC → 0–10 bar)';
+  _p12State[ch] = {};
+}
+
+// ── Fuel flow analog calibration ──────────────────────────────
+const _ffState = {};
+function ffCaptureZero() {
+  const raw = live['fuel_flow_raw'];
+  if (raw === undefined) { alert('No live fuel flow ADC data'); return; }
+  _ffState.zeroRaw = raw;
+  document.getElementById('ff-zero-captured').textContent = '✓ ADC ' + raw;
+}
+function ffCaptureRef() {
+  const raw = live['fuel_flow_raw'];
+  const val = parseFloat(document.getElementById('ff-ref-val').value);
+  if (raw === undefined) { alert('No live fuel flow ADC data'); return; }
+  if (isNaN(val) || val <= 0) { alert('Enter a valid reference flow rate'); return; }
+  _ffState.refRaw = raw; _ffState.refVal = val;
+  document.getElementById('ff-ref-captured').textContent = '✓ ADC ' + raw + ' @ ' + val;
+}
+function ffSave() {
+  if (_ffState.zeroRaw === undefined || _ffState.refRaw === undefined) {
+    alert('Capture both zero and reference points first'); return;
+  }
+  if (_ffState.refRaw <= _ffState.zeroRaw) { alert('Reference ADC must be greater than zero ADC'); return; }
+  patchConfig({ calibration: {
+    fuel_flow_raw_min: _ffState.zeroRaw,
+    fuel_flow_raw_max: _ffState.refRaw,
+    fuel_flow_val_max: _ffState.refVal
+  }}, 'Fuel flow calibration saved');
+  document.getElementById('ff-bar-max-label').textContent = _ffState.refVal;
+  document.getElementById('ff-cal-status').textContent =
+    '✓ Saved: 0 @ ADC ' + _ffState.zeroRaw + ',  ' + _ffState.refVal + ' @ ADC ' + _ffState.refRaw;
+}
+function ffClear() {
+  patchConfig({ calibration: { fuel_flow_raw_min:0, fuel_flow_raw_max:4095, fuel_flow_val_max:10 } },
+    'Fuel flow calibration reset');
+  document.getElementById('ff-cal-status').textContent = 'Reset to defaults';
+}
+
+// ── Current sensor calibration (glow + igniter) ───────────────
+// Saves mVperA and zeroV back to hardware.json (no reboot needed via PATCH)
+const _curState = {};
+function curCaptureZero(which) {
+  const rawKeys = { glow: 'glow_current_raw', ign: 'igniter_current_raw', ign2: 'igniter2_current_raw', oilpump: 'oil_pump_current_raw' };
+  const rawKey = rawKeys[which] || (which + '_current_raw');
+  const raw = live[rawKey];
+  if (raw === undefined) { alert('No live ADC data for ' + which + ' current sensor'); return; }
+  if (!_curState[which]) _curState[which] = {};
+  _curState[which].zeroRaw = raw;
+  _curState[which].zeroV   = (raw / 4095.0) * 3.3;
+  document.getElementById(which + '-cur-zero-captured').textContent =
+    '✓ ADC ' + raw + '  (' + _curState[which].zeroV.toFixed(3) + ' V)';
+}
+function curCaptureRef(which) {
+  const rawKeys = { glow: 'glow_current_raw', ign: 'igniter_current_raw', ign2: 'igniter2_current_raw', oilpump: 'oil_pump_current_raw' };
+  const rawKey = rawKeys[which] || (which + '_current_raw');
+  const raw = live[rawKey];
+  const refId = which + '-cur-ref-a';
+  const amps  = parseFloat(document.getElementById(refId).value);
+  if (raw === undefined) { alert('No live ADC data for ' + which + ' current sensor'); return; }
+  if (isNaN(amps) || amps <= 0) { alert('Enter a valid reference current in amps'); return; }
+  if (!_curState[which]) _curState[which] = {};
+  _curState[which].refRaw  = raw;
+  _curState[which].refAmps = amps;
+  const refV = (raw / 4095.0) * 3.3;
+  document.getElementById(which + '-cur-ref-captured').textContent =
+    '✓ ADC ' + raw + '  (' + refV.toFixed(3) + ' V @ ' + amps + ' A)';
+}
+function curSave(which) {
+  const st = _curState[which] || {};
+  if (st.zeroRaw === undefined || st.refRaw === undefined) {
+    alert('Capture both zero and reference points first'); return;
+  }
+  if (st.refRaw === st.zeroRaw) { alert('Zero and reference ADC are identical — check your setup'); return; }
+  const zeroV   = st.zeroV;
+  const deltaV  = ((st.refRaw - st.zeroRaw) / 4095.0) * 3300.0;  // mV
+  const mvPerA  = deltaV / st.refAmps;
+  const statusEl = document.getElementById(which + '-cur-status');
+  // All current sensors live inside their actuator objects in hardware JSON
+  if (which === 'oilpump') {
+    patchHardware({ actuators: { oil_pump: { current_zero_v: +zeroV.toFixed(4), current_mv_a: +mvPerA.toFixed(4) } } }, () => {
+      statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';
+    });
+  } else if (which === 'glow') {
+    // Glow current stored inside actuators.glow_plug
+    patchHardware({ actuators: { glow_plug: { current_zero_v: +zeroV.toFixed(4), current_mv_a: +mvPerA.toFixed(4) } } }, () => {
+      statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';
+    });
+  } else if (which === 'ign2') {
+    // Igniter 2 current stored inside actuators.igniter2
+    patchHardware({ actuators: { igniter2: { current_zero_v: +zeroV.toFixed(4), current_mv_a: +mvPerA.toFixed(4) } } }, () => {
+      statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';
+    });
+  } else {
+    // Igniter 1 current stored inside actuators.igniter
+    patchHardware({ actuators: { igniter: { current_zero_v: +zeroV.toFixed(4), current_mv_a: +mvPerA.toFixed(4) } } }, () => {
+      statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';
+    });
+  }
+}
+function curClear(which) {
+  const statusEl = document.getElementById(which + '-cur-status');
+  if (which === 'oilpump') {
+    patchHardware({ actuators: { oil_pump: { current_zero_v: 1.65, current_mv_a: 100 } } }, () => {
+      statusEl.textContent = 'Reset to defaults (1.65 V zero, 100 mV/A)';
+    });
+  } else if (which === 'glow') {
+    patchHardware({ actuators: { glow_plug: { current_zero_v: 1.65, current_mv_a: 185 } } }, () => {
+      statusEl.textContent = 'Reset to defaults (1.65 V zero, 185 mV/A)';
+    });
+  } else if (which === 'ign2') {
+    // Igniter 2 current
+    patchHardware({ actuators: { igniter2: { current_zero_v: 1.65, current_mv_a: 100 } } }, () => {
+      statusEl.textContent = 'Reset to defaults (1.65 V zero, 100 mV/A)';
+    });
+  } else {
+    // 'ign' — igniter 1
+    patchHardware({ actuators: { igniter: { current_zero_v: 1.65, current_mv_a: 100 } } }, () => {
+      statusEl.textContent = 'Reset to defaults (1.65 V zero, 100 mV/A)';
+    });
+  }
+}
+
 // ── Pre-flight checklist ──────────────────────────────────────
+function toggleChecklist() {
+  const body = document.getElementById('checklist-body');
+  const btn  = document.getElementById('checklist-toggle-btn');
+  if (!body) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? '' : 'none';
+  if (btn) btn.style.transform = isHidden ? 'rotate(90deg)' : '';
+}
 function checklistTick(cb) {
   cb.closest('li').classList.toggle('checked', cb.checked);
   const items = document.querySelectorAll('#checklist input[type=checkbox]');

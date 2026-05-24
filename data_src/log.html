@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Log</title>
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -23,9 +24,9 @@
     <span id="log-count" style="font-size:.72rem;color:var(--dim);margin-left:.3rem"></span>
     <div style="display:flex;gap:.4rem;margin-left:auto;flex-wrap:wrap">
       <button onclick="loadLog()">Refresh</button>
-      <button onclick="downloadLog('json')">JSON</button>
+      <button onclick="downloadLog('raw')">NDJSON</button>
       <button onclick="downloadLog('csv')">CSV</button>
-      <button onclick="clearLog()" class="danger">Clear</button>
+      <button onclick="askClear('flightlog')" class="danger">Clear</button>
     </div>
   </div>
 
@@ -62,6 +63,18 @@
 
   <!-- Session Data tab -->
   <div id="pane-session" style="display:none">
+
+    <!-- Past sessions list -->
+    <div style="margin-bottom:1rem">
+      <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem">
+        <span style="font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.08em">Past Sessions</span>
+        <button onclick="loadSessionList()" style="font-size:.72rem;padding:.25rem .75rem">Refresh</button>
+      </div>
+      <div id="session-list-wrap" style="display:flex;flex-direction:column;gap:.3rem;max-height:200px;overflow-y:auto">
+        <div style="font-size:.78rem;color:var(--dim)">Loading…</div>
+      </div>
+    </div>
+
     <div style="display:flex;gap:.75rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:.9rem">
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.8rem 1.1rem;flex:1;min-width:240px">
         <div style="font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.6rem">Logged Sensors</div>
@@ -69,18 +82,27 @@
           <label class="slog-chk"><input type="checkbox" data-bit="n1">N1 RPM</label>
           <label class="slog-chk"><input type="checkbox" data-bit="n2">N2 RPM</label>
           <label class="slog-chk"><input type="checkbox" data-bit="tot">TOT °C</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="tit">TIT °C</label>
           <label class="slog-chk"><input type="checkbox" data-bit="oil">Oil bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="p1">P1 bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="p2">P2 bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="throttle">Throttle %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="batt">Batt V</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="fuel_press">Fuel press</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="fuel_flow">Fuel flow</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="glow">Glow %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="fp2">Fuel pump 2 %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="ab">Afterburner</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="prop">Prop pitch %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
         </div>
-        <div style="margin-top:.65rem;font-size:.7rem;color:var(--dim)">Changes take effect after next power-on.</div>
+        <div style="margin-top:.65rem;font-size:.7rem;color:var(--dim)">Changes take effect on the next engine start.</div>
         <button onclick="saveSessionCfg()" style="margin-top:.55rem">Save Selection</button>
         <span id="session-save-msg" style="font-size:.72rem;color:var(--green);margin-left:.5rem;display:none">Saved</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:.4rem">
         <button onclick="downloadSessionLog()">Download CSV</button>
+        <button onclick="askClear('sessions')" class="danger">Delete All Sessions</button>
         <div id="session-rows" style="font-size:.72rem;color:var(--dim);margin-top:.2rem"></div>
       </div>
     </div>
@@ -100,11 +122,20 @@
       <div id="session-chart-wrap" style="display:none;margin-bottom:.75rem">
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem;font-size:.72rem">
           <span style="color:var(--dim)">Plot:</span>
-          <label id="chart-lbl-n1"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-n1"  checked onchange="redrawChart()"> <span style="color:#4ea4f5">N1 RPM</span></label>
-          <label id="chart-lbl-tot" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-tot" checked onchange="redrawChart()"> <span style="color:#f59c3a">TOT °C</span></label>
-          <label id="chart-lbl-n2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-n2"       onchange="redrawChart()"> <span style="color:#52d98a">N2 RPM</span></label>
-          <label id="chart-lbl-oil" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-oil"      onchange="redrawChart()"> <span style="color:#d9785e">Oil bar</span></label>
-          <label id="chart-lbl-thr" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-thr"      onchange="redrawChart()"> <span style="color:#c97adb">Throttle %</span></label>
+          <label id="chart-lbl-n1"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-n1"   checked onchange="redrawChart()"> <span style="color:#4ea4f5">N1 RPM</span></label>
+          <label id="chart-lbl-tot"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-tot"  checked onchange="redrawChart()"> <span style="color:#f59c3a">TOT °C</span></label>
+          <label id="chart-lbl-n2"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-n2"          onchange="redrawChart()"> <span style="color:#52d98a">N2 RPM</span></label>
+          <label id="chart-lbl-oil"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-oil"         onchange="redrawChart()"> <span style="color:#d9785e">Oil bar</span></label>
+          <label id="chart-lbl-thr"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-thr"         onchange="redrawChart()"> <span style="color:#c97adb">Throttle %</span></label>
+          <label id="chart-lbl-tit"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-tit"         onchange="redrawChart()"> <span style="color:#e8875a">TIT °C</span></label>
+          <label id="chart-lbl-batt" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-batt"        onchange="redrawChart()"> <span style="color:#5ecdd9">Batt V</span></label>
+          <label id="chart-lbl-fp"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp"          onchange="redrawChart()"> <span style="color:#b87fdb">Fuel press</span></label>
+          <label id="chart-lbl-glow" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-glow"        onchange="redrawChart()"> <span style="color:#f06060">Glow %</span></label>
+          <label id="chart-lbl-fp2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp2"         onchange="redrawChart()"> <span style="color:#68c97a">Fuel pump 2 %</span></label>
+          <label id="chart-lbl-prop" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-prop"        onchange="redrawChart()"> <span style="color:#7ab3f0">Prop pitch %</span></label>
+          <label id="chart-lbl-ff"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ff"          onchange="redrawChart()"> <span style="color:#f5c842">Fuel flow</span></label>
+          <label id="chart-lbl-abm"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abm"         onchange="redrawChart()"> <span style="color:#e84040">AB mode</span></label>
+          <label id="chart-lbl-abfl" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abfl"        onchange="redrawChart()"> <span style="color:#f07030">AB flame</span></label>
         </div>
         <canvas id="session-chart" style="width:100%;height:200px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></canvas>
       </div>
@@ -114,6 +145,17 @@
         </table>
       </div>
       <div id="session-preview-empty" style="font-size:.78rem;color:var(--dim);display:none">No session data yet — data is recorded once the engine enters RUNNING.</div>
+    </div>
+  </div>
+  <!-- Clear confirmation modal -->
+  <div id="clear-confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center">
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);padding:1.6rem 2rem;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.55)">
+      <div style="font-size:1rem;font-weight:600;margin-bottom:.5rem" id="clear-confirm-title"></div>
+      <div style="font-size:.8rem;color:var(--dim);margin-bottom:1.4rem" id="clear-confirm-body"></div>
+      <div style="display:flex;gap:.6rem;justify-content:flex-end">
+        <button onclick="cancelClear()">Cancel</button>
+        <button class="danger" onclick="confirmClear()" id="clear-confirm-btn"></button>
+      </div>
     </div>
   </div>
 </main>
@@ -126,7 +168,7 @@ function showTab(tab) {
     document.getElementById('pane-' + t).style.display = tab === t ? '' : 'none';
     document.getElementById('tab-'  + t).className = 'tab-btn' + (tab === t ? ' active' : '');
   });
-  if (tab === 'session') { loadSessionCfg(); loadSessionPreview(); }
+  if (tab === 'session') { loadSessionList(); loadSessionCfg(); loadSessionPreview(); }
 }
 
 // ── Event helpers ─────────────────────────────────────────────
@@ -328,8 +370,12 @@ function loadLog() {
     .then(r => r.json())
     .then(events => {
       if (!Array.isArray(events)) events = [];
-      document.getElementById('log-count').textContent =
-        events.length ? events.length + ' events' : '';
+      const countEl = document.getElementById('log-count');
+      if (events.length === 400) {
+        countEl.textContent = 'showing last 400 events — download for full log';
+      } else {
+        countEl.textContent = events.length ? events.length + ' events' : '';
+      }
       renderSummary(parseRuns(events));
       renderEvents(events);
     })
@@ -342,8 +388,8 @@ function loadLog() {
 }
 
 function downloadLog(fmt) {
-  const url  = fmt === 'csv' ? '/api/log/csv' : '/api/log';
-  const name = fmt === 'csv' ? 'flight_log.csv' : 'flight_log.json';
+  const url  = fmt === 'csv' ? '/api/log/csv' : '/api/log/raw';
+  const name = fmt === 'csv' ? 'flight_log.csv' : 'flight_log.ndjson';
   fetch(url).then(r => r.blob()).then(b => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
@@ -352,34 +398,140 @@ function downloadLog(fmt) {
   });
 }
 
-function clearLog() {
-  if (!confirm('Clear all log records?')) return;
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'CLEAR_LOG' }),
-    headers: { 'Content-Type': 'application/json' }
-  }).then(() => loadLog());
+// ── Clear confirmation modal ──────────────────────────────────
+let _clearTarget = null;
+
+function askClear(target) {
+  _clearTarget = target;
+  const overlay = document.getElementById('clear-confirm-overlay');
+  const title   = document.getElementById('clear-confirm-title');
+  const body    = document.getElementById('clear-confirm-body');
+  const btn     = document.getElementById('clear-confirm-btn');
+  if (target === 'flightlog') {
+    title.textContent = 'Clear flight log?';
+    body.textContent  = 'This will permanently delete all recorded events. This cannot be undone.';
+    btn.textContent   = 'Yes, clear flight log';
+  } else {
+    title.textContent = 'Delete all session logs?';
+    body.textContent  = 'This will permanently delete every session CSV file. This cannot be undone.';
+    btn.textContent   = 'Yes, delete all sessions';
+  }
+  overlay.style.display = 'flex';
+}
+
+function cancelClear() {
+  document.getElementById('clear-confirm-overlay').style.display = 'none';
+  _clearTarget = null;
+}
+
+function confirmClear() {
+  document.getElementById('clear-confirm-overlay').style.display = 'none';
+  if (_clearTarget === 'flightlog') {
+    fetch('/api/command', {
+      method: 'POST',
+      body: JSON.stringify({ cmd: 'CLEAR_LOG' }),
+      headers: { 'Content-Type': 'application/json' }
+    }).then(() => loadLog());
+  } else if (_clearTarget === 'sessions') {
+    fetch('/api/session/all', { method: 'DELETE' })
+      .then(() => { loadSessionCfg(); loadSessionList(); });
+  }
+  _clearTarget = null;
 }
 
 // ── Session Data tab ──────────────────────────────────────────
-const SLOG_BITS = ['n1','n2','tot','oil','p1','p2','throttle','mode'];
+const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode'];
 
 function loadSessionCfg() {
-  fetch('/api/config').then(r => r.json()).then(cfg => {
+  // Load config + hardware in parallel so we can hide sensors not fitted
+  Promise.all([
+    fetch('/api/config').then(r => r.json()),
+    fetch('/api/hardware').then(r => r.json())
+  ]).then(([cfg, hw]) => {
     const sl = cfg.session_log || {};
     SLOG_BITS.forEach(bit => {
       const el = document.querySelector('[data-bit="' + bit + '"]');
       if (el) el.checked = !!sl[bit];
     });
-  }).catch(() => {});
-  // Also show row count hint
+    _applyLogHwVisibility(hw);
+  }).catch(() => {
+    // Fallback: at least load the config without hardware filtering
+    fetch('/api/config').then(r => r.json()).then(cfg => {
+      const sl = cfg.session_log || {};
+      SLOG_BITS.forEach(bit => {
+        const el = document.querySelector('[data-bit="' + bit + '"]');
+        if (el) el.checked = !!sl[bit];
+      });
+    }).catch(() => {});
+  });
+  // Row count hint (independent of above)
   fetch('/api/session/log').then(r => r.text()).then(csv => {
-    const rows = csv.trim().split('\n').length - 1; // minus header
+    const rows = csv.trim().split('\n').length - 1;
     const el = document.getElementById('session-rows');
     if (el) el.textContent = rows + ' rows logged this session';
   }).catch(() => {
     const el = document.getElementById('session-rows');
     if (el) el.textContent = 'No session log yet';
+  });
+}
+
+// Grey out sensor checkboxes that aren't enabled in hardware.json.
+// They stay visible so the user can see what exists and why it's locked.
+function _applyLogHwVisibility(hw) {
+  const s = (hw && hw.sensors)   || {};
+  const a = (hw && hw.actuators) || {};
+
+  // Returns true when the sensor/feature is active in hardware config
+  const enabled = bit => {
+    switch (bit) {
+      case 'n1':         return s.n1_rpm       ? !!s.n1_rpm.enabled       : true;
+      case 'n2':         return s.n2_rpm       ? !!s.n2_rpm.enabled       : false;
+      case 'tot':        return s.tot          ? !!s.tot.enabled          : true;
+      case 'tit':        return s.tit          ? !!s.tit.enabled          : false;
+      case 'oil':        return s.oil_press    ? !!s.oil_press.enabled    : true;
+      case 'p1':         return s.p1           ? !!s.p1.enabled           : false;
+      case 'p2':         return s.p2           ? !!s.p2.enabled           : false;
+      case 'batt':       return s.batt_voltage ? !!s.batt_voltage.enabled : false;
+      case 'fuel_press': return s.fuel_press   ? !!s.fuel_press.enabled   : false;
+      case 'fuel_flow':  return s.fuel_flow    ? !!s.fuel_flow.enabled    : false;
+      case 'glow':       return a.glow_plug    ? !!a.glow_plug.enabled    : false;
+      case 'fp2':        return a.fuel_pump2   ? !!a.fuel_pump2.enabled   : false;
+      case 'ab':         return !!(hw && hw.has_afterburner);
+      case 'prop':       return a.prop_pitch   ? !!a.prop_pitch.enabled   : false;
+      default:           return true; // throttle, mode — always present
+    }
+  };
+
+  // Human-readable name for the tooltip
+  const hwLabel = {
+    n1: 'N1 RPM sensor', n2: 'N2 RPM sensor',
+    tot: 'TOT sensor', tit: 'TIT sensor',
+    oil: 'Oil Pressure sensor', p1: 'P1 sensor', p2: 'P2 sensor',
+    batt: 'Battery Voltage sensor', fuel_press: 'Fuel Pressure sensor',
+    fuel_flow: 'Fuel Flow sensor', glow: 'Glow Plug',
+    fp2: 'Fuel Pump 2', ab: 'Afterburner', prop: 'Prop Pitch',
+  };
+
+  SLOG_BITS.forEach(bit => {
+    const input = document.querySelector('[data-bit="' + bit + '"]');
+    const lbl   = input ? input.closest('label.slog-chk') : null;
+    if (!lbl) return;
+    const on = enabled(bit);
+    if (on) {
+      // Restore to normal
+      input.disabled    = false;
+      lbl.style.opacity = '';
+      lbl.style.cursor  = '';
+      lbl.title         = '';
+    } else {
+      // Ghost: visible but locked, checkbox unchecked and disabled.
+      // pointer-events must stay ON so the title tooltip is reachable on hover.
+      input.disabled    = true;
+      input.checked     = false;
+      lbl.style.opacity = '0.35';
+      lbl.style.cursor  = 'not-allowed';
+      lbl.title         = (hwLabel[bit] || bit) + ' is not configured — enable it on the Hardware Config page to log this value';
+    }
   });
 }
 
@@ -467,11 +619,20 @@ function loadSessionPreview() {
 
 // Chart column config: [csv_header, checkbox_id, label_id, hex_color, scale_fn]
 const CHART_COLS = [
-  ['n1_rpm',   'chart-cb-n1',  'chart-lbl-n1',  '#4ea4f5', v => v / 1000],  // RPM → kRPM
-  ['tot_c',    'chart-cb-tot', 'chart-lbl-tot',  '#f59c3a', v => v],
-  ['n2_rpm',   'chart-cb-n2',  'chart-lbl-n2',  '#52d98a', v => v / 1000],
-  ['oil_bar',  'chart-cb-oil', 'chart-lbl-oil', '#d9785e', v => v * 100],  // bar → ×100 for scale
-  ['thr_pct',  'chart-cb-thr', 'chart-lbl-thr', '#c97adb', v => v],
+  ['n1_rpm',          'chart-cb-n1',   'chart-lbl-n1',   '#4ea4f5', v => v / 1000],  // RPM → kRPM
+  ['tot_c',           'chart-cb-tot',  'chart-lbl-tot',  '#f59c3a', v => v],
+  ['n2_rpm',          'chart-cb-n2',   'chart-lbl-n2',   '#52d98a', v => v / 1000],
+  ['oil_bar',         'chart-cb-oil',  'chart-lbl-oil',  '#d9785e', v => v * 100],   // bar → ×100 for scale
+  ['thr_pct',         'chart-cb-thr',  'chart-lbl-thr',  '#c97adb', v => v],
+  ['tit_c',           'chart-cb-tit',  'chart-lbl-tit',  '#e8875a', v => v],
+  ['batt_v',          'chart-cb-batt', 'chart-lbl-batt', '#5ecdd9', v => v * 10],    // V → ×10 for scale
+  ['fuel_press_bar',  'chart-cb-fp',   'chart-lbl-fp',   '#b87fdb', v => v * 100],   // bar → ×100 for scale
+  ['glow_pct',        'chart-cb-glow', 'chart-lbl-glow', '#f06060', v => v],
+  ['fp2_pct',         'chart-cb-fp2',  'chart-lbl-fp2',  '#68c97a', v => v],
+  ['prop_pct',        'chart-cb-prop', 'chart-lbl-prop', '#7ab3f0', v => v],
+  ['fuel_flow',       'chart-cb-ff',   'chart-lbl-ff',   '#f5c842', v => v],
+  ['ab_mode',         'chart-cb-abm',  'chart-lbl-abm',  '#e84040', v => v * 20],   // enum 0–5 → 0–100
+  ['ab_flame',        'chart-cb-abfl', 'chart-lbl-abfl', '#f07030', v => v * 50],   // bool 0/1 → 0/50
 ];
 
 function _updateChartControls() {
@@ -520,14 +681,16 @@ function redrawChart() {
     return { color, vals };
   });
 
+  const n = _sessionRows.length;
+  if (n < 2) return;  // need at least 2 points to draw lines (avoids div-by-zero in x calc)
+
   // Global min/max across all series
   const allVals = series.flatMap(s => s.vals.filter(v => v !== null));
+  if (!allVals.length) return;  // all values null — nothing to draw
   let vMin = Math.min(...allVals);
   let vMax = Math.max(...allVals);
   if (vMax === vMin) { vMax += 1; vMin -= 1; }
   const vRange = vMax - vMin;
-
-  const n = _sessionRows.length;
 
   // Grid lines
   ctx.strokeStyle = 'rgba(255,255,255,0.07)';
@@ -569,6 +732,81 @@ function redrawChart() {
       else        ctx.lineTo(x, y);
     });
     ctx.stroke();
+  });
+}
+
+// ── Session list ──────────────────────────────────────────────
+function loadSessionList() {
+  const wrap = document.getElementById('session-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="font-size:.78rem;color:var(--dim)">Loading…</div>';
+  fetch('/api/session/list')
+    .then(r => r.json())
+    .then(list => {
+      if (!Array.isArray(list) || list.length === 0) {
+        wrap.innerHTML = '<div style="font-size:.78rem;color:var(--dim)">No session files found</div>';
+        return;
+      }
+      wrap.innerHTML = list.map(run => `
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.3rem .5rem;background:var(--surface-2);border:1px solid var(--border);border-radius:5px">
+          <span style="font-size:.78rem;color:var(--text);min-width:5rem">Run #${run}</span>
+          <button onclick="downloadSession(${run})" style="font-size:.72rem;padding:.2rem .6rem">Download CSV</button>
+          <button onclick="previewSession(${run})" style="font-size:.72rem;padding:.2rem .6rem">Preview</button>
+        </div>`).join('');
+    })
+    .catch(() => {
+      wrap.innerHTML = '<div style="font-size:.78rem;color:var(--red)">Failed to load session list</div>';
+    });
+}
+
+function downloadSession(run) {
+  const a = document.createElement('a');
+  a.href = '/api/session/log?run=' + run;
+  a.download = 'session_' + run + '.csv';
+  a.click();
+}
+
+function previewSession(run) {
+  const msg   = document.getElementById('session-preview-msg');
+  const wrap  = document.getElementById('session-preview-wrap');
+  const empty = document.getElementById('session-preview-empty');
+  const table = document.getElementById('session-preview-table');
+  if (msg) msg.textContent = 'Loading run #' + run + '…';
+  if (wrap)  wrap.style.display = 'none';
+  if (empty) empty.style.display = 'none';
+
+  fetch('/api/session/log?run=' + run).then(r => {
+    if (!r.ok) throw new Error('not found');
+    return r.text();
+  }).then(csv => {
+    const lines = csv.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) {
+      if (empty) empty.style.display = '';
+      if (msg) msg.textContent = '';
+      document.getElementById('session-chart-wrap').style.display = 'none';
+      return;
+    }
+    _sessionHeaders = lines[0].split(',');
+    _sessionRows    = lines.slice(1).map(l => l.split(','));
+
+    const dataRows = _sessionRows.slice(-50);
+    let html = '<thead><tr style="background:var(--surface);position:sticky;top:0">';
+    _sessionHeaders.forEach(h => { html += '<th style="padding:.3rem .5rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>'; });
+    html += '</tr></thead><tbody>';
+    dataRows.forEach((cells, ri) => {
+      html += '<tr style="background:' + (ri % 2 ? 'var(--surface)' : 'var(--bg)') + '">';
+      cells.forEach(c => { html += '<td style="padding:.25rem .5rem;border-bottom:1px solid var(--border);white-space:nowrap">' + c + '</td>'; });
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    if (table) table.innerHTML = html;
+    if (wrap)  wrap.style.display = '';
+    if (msg)   msg.textContent = 'Run #' + run + ' — ' + _sessionRows.length + ' rows';
+    _updateChartControls();
+    redrawChart();
+  }).catch(() => {
+    if (msg) msg.textContent = 'Run #' + run + ' not found';
+    if (empty) empty.style.display = '';
   });
 }
 

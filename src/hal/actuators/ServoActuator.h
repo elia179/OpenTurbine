@@ -18,6 +18,7 @@ public:
     }
 
     void begin() override {
+        if (_minUs > _maxUs) { int tmp = _minUs; _minUs = _maxUs; _maxUs = tmp; }
         _servo.setPeriodHertz(50);   // 50 Hz standard servo/ESC frame rate
         _servo.attach(_pin, _minUs, _maxUs);
         _servo.writeMicroseconds(_minUs); // safe low on boot

@@ -36,6 +36,16 @@ public:
         unsigned long now     = millis();
         unsigned long elapsed = now - _startMs;
 
+        // Bench mode: simulate confirmed AB flame after assumeIgnitedMs — no real sensor needed.
+        // Uses the timed path regardless of flameMode so mode 0/1 don't fault on timeout.
+        if (ed.benchMode) {
+            if (elapsed >= (unsigned long)assumeIgnitedMs) {
+                Serial.println("[AB] FlameConfirm: BENCH — simulating AB flame confirmed");
+                return BlockResult::Complete;
+            }
+            return BlockResult::Running;
+        }
+
         // Overall timeout → fault (ignition failed)
         if (elapsed >= (unsigned long)flameTimeoutMs) {
             Serial.println("[AB] FlameConfirm: TIMEOUT — ignition failed");
@@ -52,6 +62,9 @@ public:
 
             case 1: // TOT rise
             {
+                // Guard: a sensor glitch that spikes tot high would produce a
+                // false rise confirmation.  Skip the check while TOT is unhealthy.
+                if (!ed.totHealthy) break;
                 float rise = ed.tot - _totBaseline;
                 if (rise >= totRiseDegC) {
                     Serial.printf("[AB] FlameConfirm: TOT rose %.1f °C — confirmed\n",

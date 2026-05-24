@@ -6,7 +6,7 @@
 // ============================================================
 //  OilPressureLoop — P-controller for oil pressure
 //
-//  Reads oilPressure from EngineData, drives oilPctDemand.
+//  Reads oilPressure from EngineData, drives oilPumpPct.
 //  The actual actuator set() call is done by Hardware::updateActuators().
 //
 //  Failsafe: if sensor goes unhealthy mid-run for > OIL_FAILSAFE_DELAY_MS,
@@ -18,7 +18,6 @@
 class OilPressureLoop : public IController {
 public:
     // Config parameters — populated from Config before begin()
-    float targetBar        = 3.8f;
     float adjustScale      = 1.80f;
     float minPct           = 18.0f;
     int   failsafeDelayMs  = 1500;
@@ -32,6 +31,10 @@ public:
     void tick() override {
         auto& ed = EngineData::instance();
 
+        // Bench mode: no real oil sensor or pump — skip entirely so we don't
+        // trigger the failsafe timer and spam the UI with oilFailsafeActive.
+        if (ed.benchMode) return;
+
         if (!ed.oilHealthy) {
             // Sensor fault path
             if (_failsafeTimer == 0) {
@@ -39,7 +42,7 @@ public:
             } else if ((millis() - _failsafeTimer) > (unsigned long)failsafeDelayMs) {
                 // Switch to fixed open-loop
                 ed.oilFailsafeActive = true;
-                ed.oilPctDemand      = failsafePct;
+                ed.oilPumpPct      = failsafePct;
             }
             return;
         }
@@ -47,7 +50,7 @@ public:
         _failsafeTimer     = 0;
         ed.oilFailsafeActive = false;
 
-        float error = ed.oilDemand - ed.oilPressure;
+        float error = ed.oilTargetBar - ed.oilPressure;
         // Deadband: only adjust when error is significant (prevents hunting).
         // This is a pure P-controller — there is no integral term, so there is
         // no integrator windup to guard against.  Output saturation is handled
@@ -57,14 +60,14 @@ public:
             float adj  = error * adjustScale;
             _outputPct = constrain(_outputPct + adj, minPct, 100.0f);
         }
-        ed.oilPctDemand = _outputPct;
+        ed.oilPumpPct = _outputPct;
     }
 
     void reset() override {
         // Seed from current demand so the P-loop continues smoothly at the
         // STARTUP→RUNNING transition — avoids a one-frame duty-zero blip.
         auto& ed = EngineData::instance();
-        _outputPct     = constrain(ed.oilPctDemand, minPct, 100.0f);
+        _outputPct     = constrain(ed.oilPumpPct, minPct, 100.0f);
         _failsafeTimer = 0;
         ed.oilFailsafeActive = false;
     }

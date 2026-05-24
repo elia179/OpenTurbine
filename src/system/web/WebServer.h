@@ -6,7 +6,7 @@
 //
 //  Runs on Core 0 (AsyncWebServer is FreeRTOS-native).
 //  Static files served from LittleFS (/index.html, etc.)
-//  WebSocket pushes EngineData snapshot at WS_INTERVAL_MS.
+//  WebSocket (/ws) pushes EngineData snapshot at 500 ms.
 //
 //  REST endpoints:
 //    GET  /              → index.html
@@ -18,17 +18,14 @@
 //    POST /api/start     → queue START
 //    POST /api/stop      → queue STOP (high priority)
 //    GET  /api/status    → mode + health summary
-//    WS   /ws            → live telemetry push
+//    WS   /ws            → live telemetry push at 500 ms
 // ============================================================
 
 class WebServer {
 public:
     static void begin();
-    static void tick();   // call from a Core 0 task or setup loop — pushes WS frames
+    static void tick();
 
 private:
-    static void _pushTelemetry();
     static void _setupRoutes();
-    static void _onWsEvent(void* arg, uint8_t* data, size_t len);
-    static unsigned long _lastWsMs;
 };

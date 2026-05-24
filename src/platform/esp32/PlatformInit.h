@@ -2,6 +2,8 @@
 #include <Arduino.h>
 #include <LittleFS.h>
 #include <Preferences.h>
+#include <esp_system.h>
+#include "../../engine/EngineData.h"
 
 // ============================================================
 //  PlatformInit — one-time ESP32 board bring-up
@@ -37,6 +39,23 @@ public:
         EngineData::instance().bootCount = bc;
 
         Serial.printf("[OT] Boot #%lu\n", (unsigned long)bc);
+
+        // Log reset reason so we can diagnose unexpected reboots
+        esp_reset_reason_t rr = esp_reset_reason();
+        EngineData::instance().resetReason = (uint8_t)rr;
+        const char* rrStr = "UNKNOWN";
+        switch (rr) {
+            case ESP_RST_POWERON:  rrStr = "POWER_ON";   break;
+            case ESP_RST_SW:       rrStr = "SOFTWARE";   break;
+            case ESP_RST_PANIC:    rrStr = "PANIC/CRASH"; break;
+            case ESP_RST_INT_WDT:  rrStr = "INT_WDT";    break;
+            case ESP_RST_TASK_WDT: rrStr = "TASK_WDT";   break;
+            case ESP_RST_WDT:      rrStr = "WDT";        break;
+            case ESP_RST_DEEPSLEEP:rrStr = "DEEP_SLEEP"; break;
+            case ESP_RST_BROWNOUT: rrStr = "BROWNOUT";   break;
+            default: break;
+        }
+        Serial.printf("[OT] Reset reason: %s (%d)\n", rrStr, (int)rr);
 
         // Stop pin pull-up
         pinMode(OT_STOP_PIN, INPUT_PULLUP);

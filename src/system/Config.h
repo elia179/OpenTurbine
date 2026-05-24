@@ -43,11 +43,13 @@ public:
 
     // ── Sequence parameters ───────────────────────────────────
     static int   startupOilArmTimeoutMs;
-    static float startRpmThreshold;
+    static int   starterTimeoutMs;
     static float preIgnRpm;
     static int   preIgnSparkMs;
     static int   flameTimeoutMs;
     static int   flameCheckIntervalMs;
+    static float tempConfirmTarget;      // TempConfirm threshold (°C)
+    static int   tempConfirmTimeoutMs;   // TempConfirm timeout
     static float spoolRpmTarget;
     static int   spoolTimeoutMs;
     static int   safetyHoldMs;
@@ -56,6 +58,7 @@ public:
     static int   shutdownRpmDropTimeoutMs;
     static int   shutdownCooldownTimeoutMs;
     static int   shutdownFinalStopTimeoutMs;
+    static float rpmZeroThreshold;       // FinalStop: RPM below this = stopped
 
     // ── Throttle parameters ───────────────────────────────────
     static float throttleRampUpMs;
@@ -88,7 +91,7 @@ public:
     // ── Relight ───────────────────────────────────────────────
     static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
     static float    relightMinRpm;       // min N1 to attempt relight (falls below → fault)
-    static int      relightMaxAttempts;  // max relight attempts before faulting (0 = unlimited)
+    static int      relightTimeoutMs;    // ms to keep trying after first relight trigger (0 = unlimited)
 
     // ── Tool test durations (standby diagnostics) ─────────────
     static uint32_t toolFuelPrimeMs;
@@ -135,6 +138,11 @@ public:
     // ── Flame confirm ─────────────────────────────────────────
     static int   flameRequiredCount;     // consecutive flame detections needed (FlameConfirm)
 
+    // ── WaitForInput block ────────────────────────────────────
+    static int   waitForInputChannel;    // DI channel index (0-3)
+    static bool  waitForInputExpected;   // wait until active (true) or inactive (false)
+    static int   waitForInputTimeoutMs;  // 0 = wait indefinitely
+
     // ── Cooldown skip ─────────────────────────────────────────
     static int   cooldownSkipHoldMs;     // hold both buttons this long in SHUTDOWN to skip cooldown
 
@@ -145,6 +153,13 @@ public:
     // ── New sequence block params ─────────────────────────────
     static int   timedDelayMs;           // TimedDelay block duration (ms)
     static float modifiedIdleMultiplier; // ModifiedIdle block throttle multiplier
+    static int   fuelPulsePulseMs;       // FuelPulse solenoid open duration
+    static int   fuelPulseOffMs;         // FuelPulse wait after close
+    static float waitTotCoolTarget;      // WaitTOTCool target temperature (°C)
+    static int   waitTotCoolTimeoutMs;   // WaitTOTCool timeout
+    static float throttleSetPct;         // ThrottleSet demand %
+    static int   preHeatMs;             // PreHeat igniter duration
+    static float oilPumpOnPct;          // OilPumpOn actuator block demand %
 
     // ── FlameConfirm exit actions ─────────────────────────────
     static bool  flameConfirmTurnOffIgniter;  // cut igniter on FlameConfirm exit (default true)
@@ -208,7 +223,7 @@ public:
 
     // ── RC PWM input calibration ──────────────────────────────
     // GPIO pin selection is done at compile time in hardware_profile.h
-    // (OT_IDLE_POT_RC_PWM / OT_THROTTLE_POS_RC_PWM).
+    // (OT_IDLE_INPUT_RC_PWM / OT_THROTTLE_INPUT_RC_PWM).
     // These runtime values calibrate pulse width only.
     static int   rcMinUs;          // pulse width = 0 % (typically 1000)
     static int   rcMaxUs;          // pulse width = 100 % (typically 2000)
@@ -219,6 +234,7 @@ public:
     static float governorBandRpm;        // deadband ± RPM around target
     static float governorKp;             // proportional gain (throttle %/RPM error)
     static float governorPitchKp;        // pitch demand fraction per RPM error (turboprop mode)
+    static float governorPitchRampSec;   // max pitch rate: full stroke in this many seconds (0=unlimited)
     static int   govHoldTimeoutMs;       // GovernorHold block max wait (ms)
     // FuelPumpRamp / FuelPump2Set block params
     static float fp2StartPct;            // FuelPumpRamp start % (0–100)
@@ -232,20 +248,30 @@ public:
     static int   glowPreheatMs;          // total preheat duration (ms)
     static float glowPreheatMaxPct;      // peak duty cycle during preheat (%)
     static float glowHoldPct;            // hold duty once preheated (%)
+    static bool  glowWaitUntilHot;       // hold at holdPct until current sensor confirms hot
 
     // ── Hour meter / run statistics ───────────────────────────
     static uint32_t totalRunSeconds;         // accumulated engine-on time (persisted)
 
     // ── Session data logger ───────────────────────────────────
-    static constexpr uint32_t SLOG_N1   = 1u << 0;
-    static constexpr uint32_t SLOG_N2   = 1u << 1;
-    static constexpr uint32_t SLOG_TOT  = 1u << 2;
-    static constexpr uint32_t SLOG_OIL  = 1u << 3;
-    static constexpr uint32_t SLOG_P1   = 1u << 4;
-    static constexpr uint32_t SLOG_P2   = 1u << 5;
-    static constexpr uint32_t SLOG_THR  = 1u << 6;
-    static constexpr uint32_t SLOG_MODE = 1u << 7;
-    static constexpr uint32_t SLOG_DEFAULT = SLOG_N1 | SLOG_N2 | SLOG_TOT | SLOG_OIL;
+    static constexpr uint32_t SLOG_N1         = 1u << 0;
+    static constexpr uint32_t SLOG_N2         = 1u << 1;
+    static constexpr uint32_t SLOG_TOT        = 1u << 2;
+    static constexpr uint32_t SLOG_OIL        = 1u << 3;
+    static constexpr uint32_t SLOG_P1         = 1u << 4;
+    static constexpr uint32_t SLOG_P2         = 1u << 5;
+    static constexpr uint32_t SLOG_THR        = 1u << 6;
+    static constexpr uint32_t SLOG_MODE       = 1u << 7;
+    static constexpr uint32_t SLOG_TIT        = 1u << 8;
+    static constexpr uint32_t SLOG_BATT       = 1u << 9;
+    static constexpr uint32_t SLOG_FUEL_PRESS = 1u << 10;
+    static constexpr uint32_t SLOG_FUEL_FLOW  = 1u << 11;
+    static constexpr uint32_t SLOG_GLOW       = 1u << 12;
+    static constexpr uint32_t SLOG_FP2        = 1u << 13;
+    static constexpr uint32_t SLOG_AB         = 1u << 14;
+    static constexpr uint32_t SLOG_PROP       = 1u << 15;
+    static constexpr uint32_t SLOG_OIL_PCT   = 1u << 16;  // oil pump duty %
+    static constexpr uint32_t SLOG_DEFAULT = SLOG_N1 | SLOG_TOT | SLOG_OIL;
     static uint32_t sessionLogMask;
     static uint32_t sessionLogIntervalMs;  // session CSV row interval (default 500 = 2 Hz)
 
@@ -255,11 +281,41 @@ public:
     static int   flameThreshold;
     static float oilPolyA, oilPolyB, oilPolyC, oilPolyD;
     static float oilPolyXMin, oilPolyXMax;
-    static float p1ZeroBar;            // P1 reading at atmospheric (0 bar gauge) — subtracted from raw bar value
-    static float p2ZeroBar;            // P2 reading at atmospheric (0 bar gauge) — subtracted from raw bar value
+    // P1 / P2 two-point linear calibration (rawMin/Max = ADC counts, valMax = bar at rawMax)
+    static int   p1RawMin;             // ADC at 0 bar (atmosphere / zero-pressure)
+    static int   p1RawMax;             // ADC at reference pressure
+    static float p1ValMax;             // Reference pressure in bar
+    static int   p2RawMin;
+    static int   p2RawMax;
+    static float p2ValMax;
+    // Legacy zero-offset fields — kept for backwards compat, ignored when RawMin/Max set
+    static float p1ZeroBar;
+    static float p2ZeroBar;
     static int   fuelPressRawMin;      // ADC raw count at 0 bar (open-line / zero-pressure capture)
     static int   fuelPressRawMax;      // ADC raw count at known reference pressure
     static float fuelPressValMax;      // Reference pressure in bar (at fuelPressRawMax)
+    // Fuel flow (analog type only — pulse type uses HardwareConfig::fuelFlowPulsesPerLitre)
+    static int   fuelFlowRawMin;       // ADC at 0 flow
+    static int   fuelFlowRawMax;       // ADC at reference flow
+    static float fuelFlowValMax;       // Flow rate in units/min at fuelFlowRawMax
+
+    // ── Automation rules ("if this, then that") ──────────────
+    // Simple threshold rules that run every control tick in RUNNING/STARTUP.
+    // Rules are stored in config JSON under "rules": [...] and applied after
+    // sequencer actuator writes so they can override or supplement fixed logic.
+    struct Rule {
+        bool    enabled;
+        uint8_t sensor;     // 0=oil_temp 1=tot 2=n1_rpm 3=oil_press 4=tit 5=batt_v 6=n2_rpm
+        uint8_t op;         // 0=> 1=< 2=>= 3=<= 4===
+        float   threshold;  // SI units: °C, bar, RPM, V
+        uint8_t actuator;   // 0=cool_fan 1=bleed_valve 2=fuel_pump2
+        float   onValue;    // when condition true: 1.0=ON for on/off, 0–1 for variable
+        float   offValue;   // when condition false
+        char    name[24];   // display name (UI only)
+    };
+    static constexpr int MAX_RULES = 8;
+    static Rule rules[MAX_RULES];
+    static int  ruleCount;
 
     // ── Profile ID (read-only after load) ─────────────────────
     static char    profileId[64];
@@ -270,7 +326,9 @@ public:
 
     // ── API ───────────────────────────────────────────────────
     static void load();
-    static void save();
+    static bool save();          // write-to-tmp + rename; returns false on LittleFS error
+    static void requestSave();   // Core 1: mark save needed, zero file I/O
+    static bool flushPendingSave(); // Core 0: perform deferred save; returns true if it ran
     static bool isLocked();
 
     // Serialize current config to JSON string (for web download)
@@ -286,4 +344,5 @@ private:
     static void _applyDefaults();
     static void _fromDoc(const JsonDocument& doc);
     static void _toDoc(JsonDocument& doc);
+    static volatile bool _savePending;
 };

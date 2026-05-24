@@ -7,7 +7,7 @@
 // ============================================================
 //  ABIgnite — fires the afterburner ignition
 //
-//  useTorch   : spike main fuel pump (fuelPumpDemand) for torchDurationMs
+//  useTorch   : spike main fuel via abFuelOffset for torchDurationMs
 //  useIgniter : fire igniter2On for torchDurationMs
 //  Both may be true simultaneously.
 //
@@ -28,32 +28,30 @@ public:
 
     void onEnter() override {
         _startMs         = millis();
-        _baseThrottle    = EngineData::instance().throttleDemand;
         _done            = false;
 
         auto& ed = EngineData::instance();
 
-        // Safety: if torchTotLimit is 0 (disabled), skip torch entirely —
-        // running without a TOT cap during AB ignition is unsafe.
+        // Safety: if torchTotLimit is 0, skip torch for this attempt.
+        // Use a local flag — do NOT mutate useTorch, which is a config member
+        // set by applyConfig(). Mutating it would permanently disable torch
+        // for all subsequent AB ignition attempts in this run.
+        _doTorch = useTorch && (torchTotLimit > 0.0f);
         if (useTorch && torchTotLimit == 0.0f) {
             Serial.println("[AB] Ignite: torch skipped — torchTotLimit is 0 (no TOT safety cap configured)");
-            useTorch = false;
         }
 
-        // Torch: temporarily boost main fuel demand
-        if (useTorch) {
-            float requestedPct = _baseThrottle * 100.0f + torchSpikePct;
-            float spike = constrain(requestedPct / 100.0f, 0.0f, 1.0f);
-            ed.throttleDemand = spike;
-            // Log the requested %, not the clamped result, so the user can see when
-            // torchSpikePct is too large for the current throttle position.
-            if (requestedPct > 100.0f) {
-                Serial.printf("[AB] Ignite: torch spike %.0f%% (clamped to 100%%) for %d ms\n",
-                              (double)requestedPct, torchDurationMs);
-            } else {
-                Serial.printf("[AB] Ignite: torch spike %.0f%% for %d ms\n",
-                              (double)requestedPct, torchDurationMs);
-            }
+        // Torch: temporarily boost main fuel via ed.abFuelOffset.
+        // The offset is applied at the throttle actuator write in
+        // Hardware::updateActuators(), NOT to throttleDemand itself.
+        // Writing to throttleDemand would be overwritten by the pilot
+        // throttle input on the very same tick (runControllers runs after
+        // the AB sequencer), making the spike completely ineffective on
+        // physical-throttle setups.
+        if (_doTorch) {
+            ed.abFuelOffset = torchSpikePct / 100.0f;
+            Serial.printf("[AB] Ignite: torch spike +%.0f%% for %d ms\n",
+                          (double)torchSpikePct, torchDurationMs);
         }
         // Igniter: fire AB igniter (igniter2)
         if (useIgniter) {
@@ -69,7 +67,7 @@ public:
         unsigned long elapsed = millis() - _startMs;
 
         // Safety: cut torch if TOT is getting too hot
-        if (torchTotLimit > 0 && ed.totHealthy && ed.tot > torchTotLimit) {
+        if (_doTorch && torchTotLimit > 0 && ed.totHealthy && ed.tot > torchTotLimit) {
             Serial.printf("[AB] Ignite: torch cut — TOT %.1f > limit %.1f\n",
                           (double)ed.tot, (double)torchTotLimit);
             _cutTorch(ed);
@@ -93,13 +91,13 @@ public:
     }
 
 private:
-    unsigned long _startMs      = 0;
-    float         _baseThrottle = 0;
-    bool          _done         = false;
+    unsigned long _startMs  = 0;
+    bool          _done     = false;
+    bool          _doTorch  = false;  // runtime copy of useTorch — never mutates the config member
 
     void _cutTorch(EngineData& ed) {
-        if (useTorch) {
-            ed.throttleDemand = _baseThrottle;  // restore pre-torch demand
+        if (_doTorch) {
+            ed.abFuelOffset = 0.0f;  // remove torch boost from actuator output
         }
         // Do NOT cut igniter2 here — ABFlameConfirm may still want it on (mode=igniter)
         // Igniter is cut by ABIgnOff block or by ABFlameConfirm on exit

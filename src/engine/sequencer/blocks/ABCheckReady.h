@@ -30,6 +30,12 @@ public:
     BlockResult tick() override {
         auto& ed = EngineData::instance();
 
+        // Bench mode: skip all pre-checks — no real sensors or throttle position available
+        if (ed.benchMode) {
+            Serial.println("[AB] CheckReady: BENCH — skipping pre-checks");
+            return BlockResult::Complete;
+        }
+
         // Must be in RUNNING mode
         if (ed.mode != SysMode::RUNNING) return BlockResult::Abort;
 

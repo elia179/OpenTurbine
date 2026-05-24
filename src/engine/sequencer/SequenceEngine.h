@@ -32,6 +32,13 @@ public:
     }
 
     void startSequence(IBlock** blocks, size_t count) {
+        // If a sequence is already running, exit the current block cleanly so its
+        // onExit() cleanup runs (e.g. ABIgnite restores pre-torch throttle).
+        // Without this, interrupting mid-sequence (e.g. fault during AB ignition)
+        // leaves actuators in whatever state the block had set them.
+        if (_running && _blocks && _idx < _count) {
+            _blocks[_idx]->onExit();
+        }
         _blocks  = blocks;
         _count   = count;
         _idx     = 0;
@@ -78,13 +85,35 @@ public:
                 break;
 
             case BlockResult::Abort:
+                // In bench mode: treat abort as Complete so the full sequence still runs.
+                // Real engines need the abort path; bench tests just need to step through.
+                if (EngineData::instance().benchMode) {
+                    FlightRecorder::logBlockExit(_blocks[_idx]->name(), "bench_mode_skip");
+                    _blocks[_idx]->onExit();
+                    _idx++;
+                    if (_idx >= _count) { _running = false; if (_done) _done(); }
+                    else { _enter(_idx); }
+                    break;
+                }
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "abort");
                 _blocks[_idx]->onExit();
-                _running = false;
+                // Call _abort() BEFORE clearing _running so that the callback
+                // can still read currentBlockName() and get the real block name
+                // rather than "IDLE".  enterAbortStandby() uses this for logging.
                 if (_abort) _abort();
+                _running = false;
                 break;
 
             case BlockResult::Fault:
+                // Same: bench mode converts fault to Continue rather than shutdown.
+                if (EngineData::instance().benchMode) {
+                    FlightRecorder::logBlockExit(_blocks[_idx]->name(), "bench_mode_skip");
+                    _blocks[_idx]->onExit();
+                    _idx++;
+                    if (_idx >= _count) { _running = false; if (_done) _done(); }
+                    else { _enter(_idx); }
+                    break;
+                }
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "fault");
                 _blocks[_idx]->onExit();
                 _running = false;

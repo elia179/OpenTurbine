@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Sequence</title>
 <link rel="stylesheet" href="/style.css">
 <style>
@@ -31,6 +32,7 @@
   <a href="/">Dashboard</a>
   <a href="/log.html">Log</a>
   <a href="/tools.html">Tools</a>
+  <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
 <h1 style="margin-bottom:.25rem">Sequence Editor</h1>
@@ -244,7 +246,7 @@ const BLOCKS = {
         visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
         configKey:'startup_oil_demand'},
       {key:'oil_arm_min_bar',    label:'Arm threshold',       unit:'bar', type:'float', min:0, max:10, step:0.1, def:1.5,
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled, configKey:'oil_arm_min_bar'},
       // ── Without oil pressure sensor ───────────────────────────────────────
       {key:'startup_oil_pct',    label:'Pump duty %',         unit:'%',  type:'float', min:0, max:100, step:5, def:80,
         visibleIf: hw => !hw.sensors?.oil_press?.enabled,
@@ -277,9 +279,11 @@ const BLOCKS = {
         visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
         desc:'Starter runs until N1 exceeds this RPM. Without N1 sensor this condition cannot be checked — the block will run for the full timeout.'},
       {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
+        configKey:'starter_timeout_ms',
         desc:'Maximum spin time before fault. If no N1 sensor is fitted, the timeout determines when the block exits.'},
       {key:'oil_startup_min_bar',label:'Oil min',       unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled, configKey:'oil_startup_min_bar',
+        desc:'Shared with OilPrime arm threshold — both use the same config value.'},
     ]
   },
   PreIgnSpark: {
@@ -301,17 +305,15 @@ const BLOCKS = {
     visibleIf: hw => !!hw.sensors?.flame?.enabled,
     condition: hw => `flame count < ${hw.flame_required_count ?? 3}`,
     timeout_action:'abort',
-    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout → ABORT (fuel solenoid closes, engine safe to leave). On exit: optionally sets igniterOn=false (checkbox below). Does NOT cut fuel or starter.',
+    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout → ABORT. On exit: optionally cuts igniter. Sensor sensitivity (required count, check interval) is configured in Config → Startup — Flame Detection.',
     hwWarnings:[
       { check: hw => !!hw.sensors?.flame?.enabled,
         msg: '🚫 No flame sensor configured — flame count will never increment. This block will always timeout and ABORT. Use TempConfirm as a replacement if a temperature sensor is fitted.',
         level: 'error' },
     ],
     params:[
-      {key:'flame_required_count',   label:'Required detections',unit:'',   type:'int',  min:1,    max:20,    step:1,   def:3,    configKey:'flame_required_count'},
-      {key:'flame_check_interval_ms',label:'Check interval',     unit:'ms', type:'int',  min:50,   max:2000,  step:50,  def:300,  configKey:'flame_check_interval_ms'},
-      {key:'flame_timeout_ms',       label:'Timeout',            unit:'ms', type:'int',  min:1000, max:30000, step:500, def:5000, configKey:'flame_timeout_ms'},
-      {key:'flame_turn_off_igniter', label:'Turn off igniter on exit',      type:'bool', def:true, configKey:'flame_turn_off_igniter'},
+      {key:'flame_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:1000, max:30000, step:500, def:5000, configKey:'flame_timeout_ms'},
+      {key:'flame_turn_off_igniter', label:'Turn off igniter on exit',           type:'bool', def:true, configKey:'flame_turn_off_igniter'},
     ]
   },
   TempConfirm: {
@@ -326,8 +328,8 @@ const BLOCKS = {
         level: 'error' },
     ],
     params:[
-      {key:'temp_confirm_target',  label:'Target TOT',unit:'°C', type:'float', min:0, max:1000, step:10, def:200},
-      {key:'temp_confirm_timeout', label:'Timeout',   unit:'ms', type:'int',   min:1000, max:60000, step:1000, def:10000},
+      {key:'temp_confirm_target',  label:'Target TOT',unit:'°C', type:'float', min:0, max:1000, step:10, def:200,  configKey:'temp_confirm_target'},
+      {key:'temp_confirm_timeout', label:'Timeout',   unit:'ms', type:'int',   min:1000, max:60000, step:1000, def:10000, configKey:'temp_confirm_timeout'},
     ]
   },
   TimedDelay: {
@@ -346,8 +348,6 @@ const BLOCKS = {
     params:[
       {key:'fp_idle_min_pct',      label:'Min pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:8,     configKey:'fp_idle_min_pct'},
       {key:'fp_idle_max_pct',      label:'Max pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:18,    configKey:'fp_idle_max_pct'},
-      {key:'fp_idle_sol_open',     label:'Open fuel solenoid on start',  type:'bool', def:false, configKey:'fp_idle_sol_open'},
-      {key:'fp_idle_sol_close',    label:'Close fuel solenoid on exit',  type:'bool', def:false, configKey:'fp_idle_sol_close'},
     ]
   },
   ModifiedIdle: {
@@ -376,7 +376,7 @@ const BLOCKS = {
         desc:'Oil pressure minimum enforced from Spool start through running. Shared with SafetyHold — edit in either block or in Config → Oil → Running Min.'},
       {key:'spool_cut_starter_on_exit', label:'Cut starter demand on exit',            type:'bool',                                  def:true,  configKey:'spool_cut_starter_on_exit'},
       {key:'spool_cut_starter_en_on_exit',label:'Cut starter enable relay on exit',    type:'bool',                                  def:true,  configKey:'spool_cut_starter_en_on_exit',
-        visibleIf: hw => !!hw.actuators?.starter_enable?.enabled || !!hw.has_starter_en},
+        visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
     ]
   },
   SafetyHold: {
@@ -398,7 +398,7 @@ const BLOCKS = {
         desc:'Same threshold as Spool running oil min — both read Config → Oil → Running Min.'},
       {key:'safety_turn_off_starter',    label:'Turn off starter on exit',             type:'bool', def:false, configKey:'safety_turn_off_starter'},
       {key:'safety_turn_off_starter_en', label:'Turn off starter enable relay on exit',type:'bool', def:false, configKey:'safety_turn_off_starter_en',
-        visibleIf: hw => !!hw.actuators?.starter_enable?.enabled || !!hw.has_starter_en},
+        visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
       {key:'safety_turn_off_igniter',    label:'Turn off igniter on exit',             type:'bool', def:false, configKey:'safety_turn_off_igniter'},
     ]
   },
@@ -469,7 +469,7 @@ const BLOCKS = {
     condition: null, timeout_action:null,
     desc:'Start oil pump at specified demand. Use for pre-lubrication before cranking, or manual oil feed.',
     params:[
-      {key:'oil_pump_on_pct', label:'Demand', unit:'%', type:'float', min:0, max:100, step:5, def:80},
+      {key:'oil_pump_on_pct', label:'Demand', unit:'%', type:'float', min:0, max:100, step:5, def:80, configKey:'oil_pump_on_pct'},
     ]
   },
   OilPumpOff: {
@@ -533,21 +533,21 @@ const BLOCKS = {
     params:[
       {key:'tot_cooldown_target',       label:'TOT target',              unit:'°C', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
       {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:200000, configKey:'cooldown_timeout_ms'},
-      {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter'},
-      {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct'},
-      // Note: when a starter enable relay is fitted (hasStarterEn), the firmware asserts it
-      // automatically when cooldown_use_starter = true. The checkbox below is informational.
+      {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
+        visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
+      {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct',
+        visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
       {key:'cooldown_starter_en_relay', label:'Starter enable relay asserted automatically', type:'bool', def:true,
-        visibleIf: hw => (!!hw.actuators?.starter_enable?.enabled || !!hw.has_starter_en)
+        visibleIf: hw => (!!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en)
                       && !!(hw.actuators?.starter?.enabled || hw.has_starter),
         desc:'When a dedicated starter enable relay is fitted, it is always asserted before the starter motor runs. This is handled automatically — no action needed.'},
-      {key:'cooldown_use_oil_pump',     label:'Run oil pump',                       type:'bool',                                  def:true,   configKey:'cooldown_use_oil'},
+      {key:'cooldown_use_oil_pump',     label:'Run oil pump',                       type:'bool',                                  def:true,   configKey:'cooldown_use_oil',
+        visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump)},
       {key:'cooldown_oil_pct',          label:'Oil pump %',              unit:'%',  type:'float',min:0,    max:100,    step:5,     def:30,     configKey:'cooldown_oil_pct',
-        visibleIf: hw => !hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump) && !hw.sensors?.oil_press?.enabled},
       {key:'cooldown_oil_pressure_bar', label:'Oil pressure target',     unit:'bar',type:'float',min:0.5,  max:10,     step:0.1,   def:2.0,    configKey:'cooldown_oil_pressure_bar',
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled},
-      {key:'cooldown_use_scavenge', label:'Run scavenge pump', type:'bool', def:false,
-        configKey:'cooldown_use_scavenge',
+        visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump) && !!hw.sensors?.oil_press?.enabled},
+      {key:'cooldown_use_scavenge',     label:'Run scavenge pump',                  type:'bool',                                  def:false,  configKey:'cooldown_use_scavenge',
         visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
     ]
   },
@@ -561,6 +561,7 @@ const BLOCKS = {
     params:[
       {key:'rpm_zero_threshold',    label:'Stop threshold',   unit:'rpm',type:'float',min:0,   max:1000,  step:10,   def:100,
         visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        configKey:'rpm_zero_threshold',
         desc:'N1 below this is treated as "stopped". Without N1 sensor the block exits on timeout.'},
       {key:'final_stop_timeout_ms', label:'Timeout',          unit:'ms', type:'int',  min:1000,max:60000, step:1000, def:10000, configKey:'final_stop_timeout_ms'},
       {key:'oil_scavenge_ms', label:'Scavenge pump run time', unit:'ms', type:'int',
@@ -575,8 +576,8 @@ const BLOCKS = {
     timeout_action:null,
     desc:'Opens the fuel solenoid for a brief pulse to wet the atomiser or clear the dead-leg before ignition. Does NOT set fuelEverOpened — use before PreIgnSpark as a pre-prime step. The solenoid closes after pulseMs; the block then waits offMs before completing.',
     params:[
-      {key:'fuel_pulse_ms', label:'Pulse duration', unit:'ms', type:'int', min:50,  max:2000, step:50,  def:200},
-      {key:'fuel_off_ms',   label:'Wait after close',unit:'ms',type:'int', min:0,   max:5000, step:100, def:300},
+      {key:'fuel_pulse_ms', label:'Pulse duration',  unit:'ms', type:'int', min:50,  max:2000, step:50,  def:200, configKey:'fuel_pulse_ms'},
+      {key:'fuel_off_ms',   label:'Wait after close', unit:'ms', type:'int', min:0,   max:5000, step:100, def:300, configKey:'fuel_off_ms'},
     ]
   },
   WaitTOTCool: {
@@ -585,8 +586,8 @@ const BLOCKS = {
     timeout_action:'continue',
     desc:'Holds the sequence until TOT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout → continues (does not abort). If TOT sensor is unhealthy, completes immediately.',
     params:[
-      {key:'wait_tot_target',  label:'Target TOT',unit:'°C',type:'float',min:0,   max:500,    step:10,   def:150},
-      {key:'wait_tot_timeout', label:'Timeout',   unit:'ms', type:'int',  min:5000,max:600000, step:5000, def:120000},
+      {key:'wait_tot_target',  label:'Target TOT', unit:'°C', type:'float', min:0,    max:500,    step:10,   def:150,    configKey:'wait_tot_target'},
+      {key:'wait_tot_timeout', label:'Timeout',    unit:'ms', type:'int',  min:5000, max:600000, step:5000, def:120000, configKey:'wait_tot_timeout'},
     ]
   },
   ThrottleSet: {
@@ -594,7 +595,27 @@ const BLOCKS = {
     condition: null, timeout_action:null,
     desc:'Immediately sets throttleDemand to a fixed percentage and completes. Use for a precise idle hold, warm-up step, or test point. If the throttle slew controller is active it will ramp to this setpoint.',
     params:[
-      {key:'throttle_set_pct', label:'Throttle %', unit:'%', type:'float', min:0, max:100, step:1, def:10},
+      {key:'throttle_set_pct', label:'Throttle %', unit:'%', type:'float', min:0, max:100, step:1, def:10, configKey:'throttle_set_pct'},
+    ]
+  },
+  WaitForInput: {
+    label:'Wait For Input', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => hw.di_channels?.some(ch => ch.pin >= 0),
+    condition: hw => `DI ch${hw.wait_for_input_ch ?? 0} ${hw.wait_for_input_state !== false ? '→ active' : '→ inactive'}`,
+    timeout_action:'abort',
+    desc:'Holds the sequence until a digital input channel reaches the expected state. Useful for interlocks, limit switches, or external gate signals. On timeout → ABORT. Set timeout to 0 to wait indefinitely (use with caution — sequence hangs if condition is never met). Note: all WaitForInput blocks in a session share the same channel/state config.',
+    hwWarnings:[
+      { check: hw => hw.di_channels?.some(ch => ch.pin >= 0),
+        msg: '⚠ No digital inputs configured in Hardware. This block will never receive a signal and will always timeout/abort.',
+        level: 'error' },
+    ],
+    params:[
+      {key:'wait_for_input_ch',      label:'Channel',       unit:'',   type:'int',  min:0, max:3, step:1,   def:0,    configKey:'wait_for_input_ch',
+        desc:'Digital input channel index (0–3). Must match a channel configured in Hardware → Digital Inputs.'},
+      {key:'wait_for_input_state',   label:'Wait until active',        type:'bool', def:true, configKey:'wait_for_input_state',
+        desc:'ON = hold until input goes active (high). OFF = hold until input goes inactive (low).'},
+      {key:'wait_for_input_timeout', label:'Timeout',       unit:'ms', type:'int',  min:0, max:60000, step:500, def:0, configKey:'wait_for_input_timeout',
+        desc:'Maximum wait time in ms. 0 = wait indefinitely (no timeout).'},
     ]
   },
   PreHeat: {
@@ -603,7 +624,7 @@ const BLOCKS = {
     timeout_action:null,
     desc:'Fires the igniter for a fixed duration without opening fuel. Designed for glow-plug systems that need thermal pre-heat before fuel introduction. The igniter remains ON when the block exits — place FuelOpen immediately after so fuel ignites on contact.',
     params:[
-      {key:'preheat_ms', label:'Pre-heat time',unit:'ms', type:'int', min:500, max:30000, step:500, def:3000},
+      {key:'preheat_ms', label:'Pre-heat time',unit:'ms', type:'int', min:500, max:30000, step:500, def:3000, configKey:'preheat_ms'},
     ]
   },
   // ── Afterburner blocks ───────────────────────────────────────────────────
@@ -658,34 +679,16 @@ const BLOCKS = {
   ABIgnite: {
     label:'AB Ignite', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action:null,
-    desc:'Fire AB ignition: torch (spike main fuel through turbine), AB igniter, or both. Completes after torch duration.',
-    params:[
-      {key:'ab_use_torch',   label:'Use Torch',      unit:'', type:'bool', def:true,  configKey:'ab_use_torch'},
-      {key:'ab_use_igniter', label:'Use AB Igniter', unit:'', type:'bool', def:false, configKey:'ab_use_igniter'},
-      {key:'ab_torch_pct',   label:'Torch Spike %',  unit:'%',  type:'float',min:0, max:100,  step:5,  def:30,  configKey:'ab_torch_pct',
-        showWhen: (pv,bn) => pv[bn+'.ab_use_torch'] !== false},
-      {key:'ab_torch_ms',    label:'Torch Duration', unit:'ms', type:'int',  min:0, max:2000, step:50, def:400, configKey:'ab_torch_ms',
-        showWhen: (pv,bn) => pv[bn+'.ab_use_torch'] !== false},
-      {key:'ab_torch_tl',    label:'TOT Limit °C (0=off)', unit:'°C', type:'float', min:0, max:1000, step:10, def:0, configKey:'ab_torch_tl',
-        showWhen: (pv,bn) => pv[bn+'.ab_use_torch'] !== false},
-    ]
+    desc:'Fire AB ignition using the method configured in Config → Afterburner — Ignition Method (torch, AB igniter, or both). Completes after the torch duration.',
+    params:[]
   },
   ABFlameConfirm: {
     label:'AB Flame Confirm', type:'while', badgeClass:'badge-while',
     condition: hw => 'Waiting for AB flame confirmation',
     timeout_action:'fault',
-    desc:'Waits for AB flame confirmation. Select mode below. Faults on timeout.',
+    desc:'Waits for AB flame confirmation using the method configured in Config → Afterburner — Flame Confirmation. Faults if the overall timeout is exceeded.',
     params:[
-      {key:'ab_flame_mode',     label:'Flame Mode', type:'select',
-        options:[{v:0,l:'Flame Sensor'},{v:1,l:'TOT Rise'},{v:2,l:'Timed (no sensor)'}],
-        def:2, configKey:'ab_flame_mode'},
-      {key:'ab_tot_rise',       label:'TOT Rise',            unit:'°C',type:'float',min:0, max:200,  step:5,   def:30,   configKey:'ab_tot_rise',
-        showWhen: (pv,bn) => (pv[bn+'.ab_flame_mode']??2) == 1},
-      {key:'ab_tot_rise_win',   label:'TOT Rise Window',     unit:'ms',type:'int',  min:0, max:10000,step:200, def:2000, configKey:'ab_tot_rise_win',
-        showWhen: (pv,bn) => (pv[bn+'.ab_flame_mode']??2) == 1},
-      {key:'ab_assume_ms',      label:'Assume Lit',          unit:'ms',type:'int',  min:0, max:5000, step:100, def:1500, configKey:'ab_assume_ms',
-        showWhen: (pv,bn) => (pv[bn+'.ab_flame_mode']??2) == 2},
-      {key:'ab_flame_timeout',  label:'Overall Timeout',     unit:'ms',type:'int',  min:0, max:15000,step:200, def:3000, configKey:'ab_flame_timeout'},
+      {key:'ab_flame_timeout', label:'Overall Timeout', unit:'ms', type:'int', min:0, max:15000, step:200, def:3000, configKey:'ab_flame_timeout'},
     ]
   },
   ABStabilize: {
@@ -723,7 +726,7 @@ const BLOCKS = {
       {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:10,   max:100,   step:5,   def:80,    configKey:'glow_preheat_max_pct'},
       {key:'glow_hold_pct',        label:'Hold duty',         unit:'%',  type:'float', min:0,    max:100,   step:5,   def:30,    configKey:'glow_hold_pct'},
       {key:'glow_wait_until_hot',  label:'Wait until hot (requires current sensor)', type:'bool', def:false, configKey:'glow_wait_until_hot',
-       visibleIf: hw => !!(hw.sensors?.glow_current?.enabled)},
+       visibleIf: hw => !!(hw.actuators?.glow_plug?.has_current)},
     ],
     visibleIf: hw => !!hw.actuators?.glow_plug?.enabled,
   },
@@ -756,7 +759,7 @@ const BLOCKS = {
       {key:'gov_hold_timeout_ms', label:'Timeout', unit:'ms',  type:'int',   min:1000, max:60000, step:500,  def:10000, configKey:'gov_hold_timeout_ms'},
       {key:'gov_hold_band_rpm',   label:'Band',    unit:'rpm', type:'float', min:10,   max:5000,  step:50,   def:500,   configKey:'gov_hold_band_rpm'},
     ],
-    visibleIf: hw => !!hw.controllers?.governor?.enabled,
+    visibleIf: hw => !!hw.controllers?.governor,
   },
 };
 
@@ -768,8 +771,13 @@ const CONFIG_SECTIONS = {
   // startup sequence params (doc.sequence.startup.*)
   startup_oil_demand:      {sec:'oil',              key:'startup_pressure'},   // bar target (with sensor)
   startup_oil_pct:         {sec:'oil',              key:'startup_pct'},        // pump % (without sensor)
+  oil_arm_min_bar:         {sec:'oil',              key:'startup_min_bar'},    // arm threshold (shared with StarterSpin)
+  oil_startup_min_bar:     {sec:'oil',              key:'startup_min_bar'},    // same value, shown in StarterSpin context
   oil_arm_timeout_ms:      {sec:'sequence.startup', key:'oil_arm_timeout_ms'},
   starter_demand:          {sec:'sequence.startup', key:'starter_demand'},
+  starter_timeout_ms:      {sec:'sequence.startup', key:'starter_timeout_ms'},
+  temp_confirm_target:     {sec:'sequence.startup', key:'temp_confirm_target'},
+  temp_confirm_timeout:    {sec:'sequence.startup', key:'temp_confirm_timeout'},
   pre_ign_rpm:             {sec:'sequence.startup', key:'pre_ign_rpm'},
   pre_ign_spark_ms:        {sec:'sequence.startup', key:'pre_ign_spark_ms'},
   flame_required_count:    {sec:'sequence.startup', key:'flame_required_count'},
@@ -791,10 +799,19 @@ const CONFIG_SECTIONS = {
   cooldown_use_oil:            {sec:'sequence.shutdown', key:'cooldown_use_oil'},
   cooldown_oil_pressure_bar:   {sec:'sequence.shutdown', key:'cooldown_oil_pressure_bar'},
   final_stop_timeout_ms:   {sec:'sequence.shutdown', key:'final_stop_timeout_ms'},
+  oil_scavenge_ms:         {sec:'sequence.shutdown', key:'oil_scavenge_ms'},
+  rpm_zero_threshold:      {sec:'sequence.shutdown', key:'rpm_zero_threshold'},
   ramp_pct_per_s:          {sec:'starter_assist',    key:'ramp_pct_per_s'},  // reuses starter section
   // new blocks
   timed_delay_ms:          {sec:'sequence.startup', key:'timed_delay_ms'},
   modified_idle_multiplier:{sec:'sequence.startup', key:'modified_idle_multiplier'},
+  fuel_pulse_ms:           {sec:'sequence.startup', key:'fuel_pulse_ms'},
+  fuel_off_ms:             {sec:'sequence.startup', key:'fuel_off_ms'},
+  wait_tot_target:         {sec:'sequence.startup', key:'wait_tot_target'},
+  wait_tot_timeout:        {sec:'sequence.startup', key:'wait_tot_timeout'},
+  throttle_set_pct:        {sec:'sequence.startup', key:'throttle_set_pct'},
+  preheat_ms:              {sec:'sequence.startup', key:'preheat_ms'},
+  oil_pump_on_pct:         {sec:'sequence.startup', key:'oil_pump_on_pct'},
   fp_idle_min_pct:         {sec:'fuel_pump',        key:'idle_min_pct'},
   fp_idle_max_pct:         {sec:'fuel_pump',        key:'idle_max_pct'},
   // FlameConfirm / SafetyHold exit action bools
@@ -819,8 +836,6 @@ const CONFIG_SECTIONS = {
   fp2_end_pct:           {sec:'sequence.startup', key:'fp2_end_pct'},
   fp2_ramp_ms:           {sec:'sequence.startup', key:'fp2_ramp_ms'},
   fp2_demand_pct:        {sec:'sequence.startup', key:'fp2_demand_pct'},
-  fp_idle_sol_open:      {sec:'sequence.startup', key:'fp_idle_sol_open'},
-  fp_idle_sol_close:     {sec:'sequence.startup', key:'fp_idle_sol_close'},
   gov_hold_timeout_ms:   {sec:'sequence.startup', key:'gov_hold_timeout_ms'},
   gov_hold_band_rpm:     {sec:'governor',         key:'band_rpm'},
   // AB sequence params (stored in cfg.afterburner.*)
@@ -844,6 +859,10 @@ const CONFIG_SECTIONS = {
   ab_pump_max_pct:     {sec:'afterburner', key:'pump_max_pct'},
   ab_pump_follow:      {sec:'afterburner', key:'pump_follow_throttle'},
   ab_main_offset:      {sec:'afterburner', key:'main_fuel_offset_pct'},
+  // WaitForInput block params
+  wait_for_input_ch:      {sec:'sequence.startup', key:'wait_for_input_ch'},
+  wait_for_input_state:   {sec:'sequence.startup', key:'wait_for_input_state'},
+  wait_for_input_timeout: {sec:'sequence.startup', key:'wait_for_input_timeout'},
 };
 
 // Available block names per tab
@@ -852,7 +871,7 @@ const STARTUP_BLOCKS     = [
   'OilPrime','StarterSpin','PreIgnSpark','FuelOpen','FlameConfirm','TempConfirm',
   'TimedDelay','FuelPumpIdle','ModifiedIdle','Spool','SafetyHold',
   // Extended / optional
-  'FuelPulse','PreHeat','ThrottleSet','WaitTOTCool',
+  'FuelPulse','PreHeat','ThrottleSet','WaitTOTCool','WaitForInput',
   // Actuator control
   'IgniterOn','IgniterOff','FuelSolClose',
   'StarterEnOn','StarterEnOff','StarterOff',
@@ -865,7 +884,7 @@ const SHUTDOWN_BLOCKS    = [
   // Core sequence
   'ImmediateCut','RPMDrop','CooldownSpin','FinalStop','TimedDelay',
   // Extended / optional
-  'WaitTOTCool','ThrottleSet',
+  'WaitTOTCool','ThrottleSet','WaitForInput',
   // Actuator control
   'FuelSolClose','IgniterOff','IgniterOn',
   'StarterOff','StarterEnOff','StarterEnOn',
@@ -918,7 +937,8 @@ const BLOCK_INFO = {
   FlameConfirm: {
     desc: 'Waits until the flame sensor fires N consecutive times within the check interval, confirming self-sustained combustion.',
     links: [
-      { label: 'Flameout Delay (Safety Monitor)', url: '/config.html#safety-monitor' },
+      { label: 'Flame Detection (count, interval)', url: '/config.html#flame-detect-section' },
+      { label: 'Flameout Delay (Safety Monitor)',   url: '/config.html#safety-monitor' },
     ]
   },
   TempConfirm: {
@@ -947,7 +967,6 @@ const BLOCK_INFO = {
     desc: 'Spins starter and/or runs oil pump to cool EGT below target temperature. Skipped if fuel was never opened.',
     links: [
       { label: 'Cooldown Target TOT', url: '/config.html#engine-limits' },
-      { label: 'TOT Limit',          url: '/config.html#engine-limits' },
     ]
   },
   FinalStop: {
@@ -1005,7 +1024,7 @@ const BLOCK_INFO = {
   ABFlameConfirm: {
     desc: 'Waits for AB flame confirmation using sensor, TOT rise, or timed mode.',
     links: [
-      { label: 'AB Running Config', url: '/config.html#ab-run-section' },
+      { label: 'AB Flame Confirmation Config', url: '/config.html#ab-flame-section' },
     ]
   },
   ABStabilize: {
@@ -1426,6 +1445,14 @@ function flattenHw() {
     rpm_drop_threshold:   sd.rpm_drop_threshold ?? 5000,
     tot_cooldown_target:  en.tot_cooldown_target ?? 150,
     rpm_zero_threshold:   sd.rpm_zero_threshold ?? 100,
+    wait_for_input_ch:    su.wait_for_input_ch ?? 0,
+    wait_for_input_state: su.wait_for_input_state !== false,
+    fuel_pulse_ms:        paramVals['FuelPulse.fuel_pulse_ms']   ?? 200,
+    wait_tot_target:      paramVals['WaitTOTCool.wait_tot_target'] ?? 150,
+    throttle_set_pct:     paramVals['ThrottleSet.throttle_set_pct'] ?? 10,
+    preheat_ms:           paramVals['PreHeat.preheat_ms']         ?? 3000,
+    ab_stab_ms:           paramVals['ABStabilize.ab_stab_ms']     ?? 1000,
+    gov_hold_band_rpm:    paramVals['GovernorHold.gov_hold_band_rpm'] ?? 500,
   };
 }
 

@@ -17,6 +17,7 @@ enum class OTCommand : uint8_t {
     FUEL_PRIME,
     OIL_PRIME,
     IGN_TEST,
+    IGN2_TEST,      // fire igniter 2 briefly (STANDBY only)
     START_TEST,
     FUEL_SOL_TEST,
     IDLE_TEST,
@@ -33,6 +34,18 @@ enum class OTCommand : uint8_t {
     AB_FIRE,              // manual afterburner ignition (from web UI)
     AB_STOP,              // manual afterburner shutdown (from web UI)
     APPLY_CONFIG,         // re-apply block params from config (safe in STANDBY only)
+    // ── Actuator test commands (STANDBY only, auto-expire) ─────
+    OIL_SCAV_TEST,        // run oil scavenge pump briefly
+    COOL_FAN_TEST,        // run cooling fan briefly
+    AIRSTARTER_TEST,      // pulse airstarter solenoid
+    BLEED_VALVE_TEST,     // pulse bleed valve open
+    GLOW_TEST,            // run glow plug at 50 % briefly
+    FUEL_PUMP2_TEST,      // run secondary fuel pump at 30 % briefly
+    AB_SOL_TEST,          // pulse AB fuel solenoid
+    AB_PUMP_TEST,         // run AB pump at 30 % briefly
+    STARTER_EN_TEST,      // energise starter enable relay briefly
+    PROP_PITCH_TEST,      // move prop pitch servo to mid-travel briefly
+    RESET_PEAKS,          // clear session peak values (maxN1, maxN2, maxTot, maxP1, maxP2)
 };
 
 struct OTPacket {

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1120">
 <title>OpenTurbine</title>
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -24,6 +25,14 @@
     <span>New? <a href="/hardware.html" style="color:var(--dim);text-decoration:underline">Start with Hardware setup →</a></span>
   </div>
 
+  <!-- Captive portal browser warning — shown when the page is opened via the OS auto-popup
+       WebView instead of a real browser. The CNA/WebView throttles WebSocket frames to
+       5-20 s intervals. Users need Safari/Chrome for live data. -->
+  <div id="captive-banner" style="display:none;background:rgba(255,160,0,.10);border:1px solid rgba(255,160,0,.5);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.84rem;color:#ffa040;align-items:center;justify-content:space-between">
+    <span>&#9888; Live updates need a real browser &mdash; open <strong>Safari</strong> or <strong>Chrome</strong> and go to <strong>192.168.4.1</strong></span>
+    <button onclick="this.parentElement.style.display='none';try{localStorage.setItem('cpBannerDismissed','1')}catch(e){}" style="background:none;border:none;color:#ffa040;font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
+  </div>
+
   <!-- Getting Started banner (shown on first run, STANDBY, not yet dismissed) -->
   <div id="getting-started-banner" class="gs-banner" style="display:none">
     <div class="gs-header">
@@ -43,6 +52,12 @@
     ⚠ DEV MODE — safety locks disabled &nbsp;
     <a href="/config.html" style="color:var(--yellow);text-decoration:underline">→ Live Config Edit</a>
   </div>
+  <!-- Empty startup sequence warning -->
+  <div id="empty-seq-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
+    ⚠ Startup sequence is empty — engine cannot be started.
+    <a href="/sequence.html" style="color:var(--yellow);text-decoration:underline;margin-left:.5rem">Set up sequence →</a>
+  </div>
+
   <div id="bench-banner" style="display:none;background:rgba(240,100,0,.12);border:1px solid rgba(240,100,0,.6);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:#f64;font-weight:700;text-align:center">
     ⚠ BENCH MODE ACTIVE — Sequence runs on timers only, no sensor verification, safety bypassed.
     <a href="/tools.html" style="color:#f64;text-decoration:underline;font-weight:400;margin-left:.5rem">Disable in Tools →</a>
@@ -109,7 +124,7 @@
 
   <!-- Big sensors: N1 + TOT -->
   <section class="grid-2">
-    <div class="card big" id="n1-card">
+    <div class="card big" id="n1-card" title="Gas generator spool speed. N1 is the primary thrust control variable — the ECU drives throttle to maintain target N1 during running.">
       <div class="label"><span id="lbl-n1">N1 RPM</span> <span id="n1-health" class="dot"></span></div>
       <div class="value" id="n1">—</div>
       <div class="peak-val">max <span id="max-n1">—</span></div>
@@ -118,7 +133,7 @@
       <span id="n1-abs-label" class="gauge-abs-label">— / — RPM</span>
       <span id="n1-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
     </div>
-    <div class="card big" id="tot-card">
+    <div class="card big" id="tot-card" title="Turbine Outlet Temperature — exhaust gas temperature measured downstream of the turbine wheel. Primary thermal limit; ECU cuts fuel if this exceeds the configured TOT limit.">
       <div class="label"><span id="lbl-tot">TOT</span> <span data-unit="temp">°C</span> <span id="tot-health" class="dot"></span></div>
       <div class="value" id="tot">—</div>
       <div class="peak-val">max <span id="max-tot">—</span> · rate <span id="tot-rise-rate-val">—</span></div>
@@ -131,12 +146,12 @@
 
   <!-- N2 + Oil + Flame row -->
   <section class="grid-3">
-    <div class="card" id="n2-card">
+    <div class="card" id="n2-card" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
       <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
       <div class="value small" id="n2">—</div>
       <div class="peak-val">max <span id="max-n2">—</span></div>
     </div>
-    <div class="card" id="oil-card">
+    <div class="card" id="oil-card" title="Bearing oil pressure. 'demand' is the ECU target pressure; output pump speed is adjusted to maintain it. Low oil pressure during RUNNING triggers an immediate fault shutdown.">
       <div class="label"><span id="lbl-oil">Oil Press</span> (<span data-unit="press">bar</span>) <span id="oil-health" class="dot"></span></div>
       <div class="value small" id="oil">—</div>
       <div class="oil-sub">demand: <span id="oil-demand-val">—</span> <span data-unit="press">bar</span></div>
@@ -145,7 +160,7 @@
       <span id="oil-abs-label" class="gauge-abs-label">— / — bar</span>
       <span id="oil-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
     </div>
-    <div class="card" id="flame-card">
+    <div class="card" id="flame-card" title="Combustion flame sensor (optical or ionisation). Bar shows raw ADC reading vs the detection threshold. Green dot = flame confirmed. Used during startup to verify ignition and during running to detect flameout.">
       <div class="label">Flame <span id="flame-dot" class="dot"></span></div>
       <div class="flame-bar-wrap">
         <div class="flame-bar-track">
@@ -165,12 +180,12 @@
   <!-- P1 / P2 pressure sensors (hidden until enabled in Config → Display) -->
   <section id="pressure-section" class="grid-2" style="display:none">
     <div class="card">
-      <div class="label"><span id="lbl-p1">P1</span> bar</div>
+      <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span></div>
       <div class="value small" id="p1">—</div>
       <div class="peak-val">max <span id="max-p1">—</span></div>
     </div>
     <div class="card">
-      <div class="label"><span id="lbl-p2">P2</span> bar</div>
+      <div class="label"><span id="lbl-p2">P2</span> <span data-unit="press">bar</span></div>
       <div class="value small" id="p2">—</div>
       <div class="peak-val">max <span id="max-p2">—</span></div>
     </div>
@@ -204,14 +219,38 @@
       <div class="peak-val">A &nbsp;·&nbsp; <span id="glow-hot-label" style="color:var(--dim)">—</span></div>
     </div>
     <div class="card" id="igniter-current-card" style="display:none">
-      <div class="label">Igniter / Coil Current</div>
+      <div class="label">Igniter 1 / Coil Current</div>
       <div class="value small" id="igniter-current-val">—</div>
       <div class="peak-val">A</div>
+    </div>
+    <div class="card" id="igniter2-current-card" style="display:none">
+      <div class="label">Igniter 2 / AB Coil Current</div>
+      <div class="value small" id="igniter2-current-val">—</div>
+      <div class="peak-val">A</div>
+    </div>
+    <div class="card" id="oilpump-current-card" style="display:none">
+      <div class="label">Oil Pump Current <span id="oilpump-oc-dot" class="dot" title="Overcurrent"></span></div>
+      <div class="value small" id="oilpump-current-val">—</div>
+      <div class="peak-val">A &nbsp;·&nbsp; <span id="oilpump-oc-label" style="color:var(--dim)">—</span></div>
     </div>
     <div class="card" id="fuel-flow-card" style="display:none">
       <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span></div>
       <div class="value small" id="fuel-flow-val">—</div>
       <div class="peak-val">units/s</div>
+    </div>
+    <div class="card" id="tit-card" style="display:none">
+      <div class="label"><span id="lbl-tit">TIT</span> <span data-unit="temp">°C</span> <span id="tit-health" class="dot"></span></div>
+      <div class="value small" id="tit">—</div>
+      <div class="peak-val">max <span id="max-tit">—</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="tit-gauge-bar" style="width:0%"></div></div>
+      <span class="gauge-abs-label" id="tit-abs-label">— / — °C</span>
+    </div>
+    <div class="card" id="fuel-press-card" style="display:none">
+      <div class="label"><span id="lbl-fuel-press">Fuel Press</span> <span data-unit="press">bar</span> <span id="fuel-press-health" class="dot"></span></div>
+      <div class="value small" id="fuel-press">—</div>
+      <div class="peak-val">max <span id="max-fuel-press">—</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="fuel-press-gauge-bar" style="width:0%"></div></div>
+      <span class="gauge-abs-label" id="fuel-press-abs-label">— / ≥— bar</span>
     </div>
   </section>
 
@@ -257,6 +296,15 @@
             <div class="gauge-bar" id="fp2-gauge-bar" style="width:0%"></div>
           </div>
         </div>
+        <div id="adv-coolfan" style="display:none">
+          Cool fan <span id="coolfan-state" style="font-weight:600">OFF</span>
+        </div>
+        <div id="adv-airstarter" style="display:none">
+          Airstarter <span id="airstarter-state" style="font-weight:600">CLOSED</span>
+        </div>
+        <div id="adv-scavenge" style="display:none">
+          Scavenge <span id="scavenge-state" style="font-weight:600">OFF</span>
+        </div>
       </div>
     </div>
   </section>
@@ -292,7 +340,7 @@
 
   <!-- Telemetry cards -->
   <section class="grid-2 telemetry">
-    <div class="card small">
+    <div class="card small" title="ECU calculated fuel valve demand (0–100%). 'input' is the raw throttle signal; 'floor' is the idle minimum the ECU enforces to keep the engine lit.">
       <div class="label">Throttle Demand</div>
       <div class="value small" id="throttle-demand">—</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
@@ -301,34 +349,41 @@
         <span id="throttle-di-wrap" style="display:none"> · DI: <span id="throttle-di-rpm">—</span> rpm</span>
       </div>
     </div>
-    <div class="card small">
+    <div class="card small" title="Actual oil pump PWM output. 'demand' is the ECU calculated target; output may differ during failsafe or standby feed cycles.">
       <div class="label">Oil Pump Output %</div>
       <div class="value small" id="oil-pct">—</div>
       <div class="oil-sub" id="oil-failsafe-note" style="display:none;color:var(--red)">⚠ sensor failsafe</div>
+      <div class="oil-sub" id="standby-oil-feed-note" style="display:none;color:var(--accent)" title="Pre-lubrication: oil pump primes the bearings during standby. Triggered automatically before startup or on a timed schedule.">● standby feed active</div>
     </div>
-    <div class="card small" style="grid-column:1/-1">
+    <div class="card small" style="grid-column:1/-1" title="Most recent state transition or ECU event. Full event history with timestamps is available on the Log page.">
       <div class="label">Last Event</div>
       <div class="last-event-val" id="last-event">—</div>
     </div>
-    <div class="card small">
+    <div class="card small" title="Time since the ECU last powered on. Resets on every reboot.">
       <div class="label">Uptime</div>
       <div class="value small" id="uptime">—</div>
     </div>
-    <div class="card small">
+    <div class="card small" title="Cumulative engine run statistics stored in persistent flash memory. 'Runs' counts start attempts; 'Total' is cumulative time spent in RUNNING state across all power cycles.">
       <div class="label">Hour Meter</div>
       <div class="hour-meter">
         Runs: <span id="hour-run-count">—</span>
         &nbsp; Total: <span id="hour-run-time">—</span>
       </div>
     </div>
-    <div class="card small" id="relight-card">
+    <div class="card small" id="relight-card" style="grid-column:1/-1" title="Auto-relight: if a flameout is detected above the minimum RPM threshold, the ECU re-ignites automatically. Shows armed state and attempt count vs the configured limit.">
       <div class="label">Relight</div>
       <div class="value small" id="relight-status">—</div>
       <div class="oil-sub" id="manual-relight-note" style="display:none;color:var(--yellow)">Throttle held above idle — relight active</div>
     </div>
-    <div class="card small" id="extra-cooldown-card" style="display:none">
+    <div class="card small" id="extra-cooldown-card" style="display:none" title="Post-shutdown oil cooling: pump continues running after engine stop until TOT drops to the configured cooldown target temperature.">
       <div class="label">Extra Cooldown</div>
-      <div class="value small" style="color:var(--yellow)">Running…</div>
+      <div class="value small" style="color:var(--yellow)"><span id="extra-cooldown-remaining">—</span> s</div>
+    </div>
+    <div class="card small" style="grid-column:1/-1" title="ECU storage health. Flash is the onboard LittleFS filesystem used for config, logs and session data. Low free space triggers automatic eviction of old session files.">
+      <div class="label">System</div>
+      <div class="oil-sub">Flash: <span id="sys-flash-free">—</span> KB free · <span id="sys-flash-used">—</span> / <span id="sys-flash-total">—</span> KB used</div>
+      <div class="oil-sub">Log: <span id="sys-log-records">—</span> / <span id="sys-log-max">—</span> records &nbsp;·&nbsp; <a href="/log.html" style="color:var(--dim);text-decoration:underline;font-size:.7rem">view →</a></div>
+      <div class="oil-sub">Boot #<span id="sys-boot-count">—</span> &nbsp;·&nbsp; Last reset: <span id="sys-reset-reason">—</span></div>
     </div>
   </section>
 </main>
@@ -388,11 +443,17 @@ function _doStart() {
     btn._originalText = btn.textContent;
     btn.textContent = 'Starting\u2026';
     btn.disabled = true;
-    // Fallback: re-enable after 3 seconds if telemetry hasn't already done so
+    // Fallback: re-enable after 3 seconds if telemetry hasn't already confirmed the state.
+    // Guard against the engine having already entered STARTUP \u2014 in that case the button
+    // must stay disabled until the sequence completes or fails.
     btn._startTimeout = setTimeout(function() {
       if (btn.disabled && btn.textContent === 'Starting\u2026') {
-        btn.textContent = btn._originalText || 'START';
-        btn.disabled = false;
+        const mode = (_lastData && _lastData.mode) || '';
+        const active = mode === 'RUNNING' || mode === 'STARTUP' || mode === 'SHUTDOWN';
+        if (!active) {
+          btn.textContent = btn._originalText || 'START';
+          btn.disabled = false;
+        }
       }
     }, 3000);
   }
@@ -405,7 +466,16 @@ document.getElementById('start-confirm-overlay').addEventListener('click', funct
   if (e.target === this) cancelStart();
 });
 
-// Getting Started banner dismiss
+// Getting Started banner — show on first visit, hide once dismissed
+(function() {
+  try {
+    if (!localStorage.getItem('ot_gs_dismissed')) {
+      const banner = document.getElementById('getting-started-banner');
+      if (banner) banner.style.display = '';
+    }
+  } catch(e) {}
+})();
+
 function dismissGettingStarted() {
   try { localStorage.setItem('ot_gs_dismissed', '1'); } catch(e) {}
   const banner = document.getElementById('getting-started-banner');

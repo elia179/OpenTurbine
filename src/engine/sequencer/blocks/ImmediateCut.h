@@ -19,13 +19,13 @@ public:
         ed.oilMinBar          = 0;        // stop oil safety check during cooldown
         ed.relightArmed       = false;
         ed.limpMode           = false;
-        // Do NOT zero oilPctDemand here.
-        // The P-loop does not run during SHUTDOWN, so oilPctDemand stays at whatever
+        // Do NOT zero oilPumpPct here.
+        // The P-loop does not run during SHUTDOWN, so oilPumpPct stays at whatever
         // the running loop last set — keeping the bearings lubricated through RPMDrop.
         // CooldownSpin.onEnter() will override it to 30 % when it starts.
         // CooldownSpin.onExit() zeros it after EGT has cooled.
-        // enterStandby() also zeroes both oilDemand and oilPctDemand unconditionally.
-        ed.oilDemand          = 0;   // clear bar target so P-loop (if ever re-enabled) starts fresh
+        // enterStandby() also zeroes both oilTargetBar and oilPumpPct unconditionally.
+        ed.oilTargetBar       = 0;   // clear bar target so P-loop (if ever re-enabled) starts fresh
     }
 
     BlockResult tick() override {

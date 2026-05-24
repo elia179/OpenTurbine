@@ -22,16 +22,24 @@ public:
 
     void onEnter() override {
         _entryMs = millis();
-        auto& hw = HardwareConfig::instance();
-        const char* lbl = hw.diCh[channelIdx].label[0]
-                          ? hw.diCh[channelIdx].label
-                          : "DI";
-        Serial.printf("[WaitForInput] Waiting for ch%d (%s) to be %s\n",
-                      channelIdx, lbl, expectedState ? "active" : "inactive");
+        if (channelIdx >= 0 && channelIdx < HardwareConfig::MAX_DI) {
+            auto& hw = HardwareConfig::instance();
+            const char* lbl = hw.diCh[channelIdx].label[0]
+                              ? hw.diCh[channelIdx].label : "DI";
+            Serial.printf("[WaitForInput] Waiting for ch%d (%s) to be %s\n",
+                          channelIdx, lbl, expectedState ? "active" : "inactive");
+        }
     }
 
     BlockResult tick() override {
         auto& ed = EngineData::instance();
+
+        // Bench mode: skip input wait — no physical switches connected
+        if (ed.benchMode) {
+            Serial.printf("[WaitForInput] BENCH: skipping ch%d wait\n", channelIdx);
+            return BlockResult::Complete;
+        }
+
         bool state = (channelIdx >= 0 && channelIdx < HardwareConfig::MAX_DI)
                      ? ed.diState[channelIdx] : false;
 

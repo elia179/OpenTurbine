@@ -16,8 +16,55 @@
 #define OT_PROFILE_DESC   "Example turbine build — edit me"
 
 // ── Platform ─────────────────────────────────────────────────
-#define OT_PLATFORM_ESP32          // ESP32 classic (240 MHz dual-core)
-// #define OT_PLATFORM_ESP32S3     // future
+// Auto-detected from the IDF build target — no manual setting needed.
+// When you select env:esp32dev or env:esp32s3dev in platformio.ini the
+// correct platform is picked automatically.  Override here only if your
+// toolchain does not set CONFIG_IDF_TARGET_ESP32S3.
+#if !defined(OT_PLATFORM_ESP32) && !defined(OT_PLATFORM_ESP32S3)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    #define OT_PLATFORM_ESP32S3    // ESP32-S3 (ADC1 on GPIO 1–10, no DAC, USB on 19/20)
+  #else
+    #define OT_PLATFORM_ESP32      // ESP32 classic (ADC1 on GPIO 32–39)
+  #endif
+#endif
+#if defined(OT_PLATFORM_ESP32) && defined(OT_PLATFORM_ESP32S3)
+  #error "OT_PLATFORM_ESP32 and OT_PLATFORM_ESP32S3 cannot both be defined"
+#endif
+
+// ── Platform ADC pin slots ────────────────────────────────────
+// ADC1 is safe to use while WiFi is active. ADC2 is NOT — never use
+// ADC2-only pins for sensors (GPIO 0/2/4/12–15/25–27 on ESP32,
+// GPIO 11–20 on S3).
+//
+// Six named ADC slots are defined here for both chips.  Assign your
+// analog sensors to whichever slot matches your PCB wiring.  Digital
+// and PWM pins (RPM, servos, pump, solenoids) are unchanged between
+// the two chips.
+//
+// ESP32-S3 IMPORTANT: GPIO 19 and 20 are USB D−/D+ — never use them.
+// The default SPI MISO moves to GPIO 38 on S3.
+//
+#ifdef OT_PLATFORM_ESP32S3
+  //  ADC1-capable: GPIO 1–10.  GPIO 4 left free (oil pump PWM default).
+  #define OT_ADC_1    1     // ADC1 CH0
+  #define OT_ADC_2    2     // ADC1 CH1
+  #define OT_ADC_3    3     // ADC1 CH2
+  #define OT_ADC_4    5     // ADC1 CH4  (skipping 4 — oil pump default)
+  #define OT_ADC_5    6     // ADC1 CH5
+  #define OT_ADC_6    7     // ADC1 CH6
+  #define OT_SPI_MISO_DEFAULT  38   // safe MISO; GPIO 19 = USB D− on S3!
+  #define OT_SPI_CLK_DEFAULT   36   // GPIO 36 is full I/O on S3 (input-only on ESP32)
+#else
+  //  ADC1-capable: GPIO 32–39.  GPIO 36/39 are input-only (fine for ADC).
+  #define OT_ADC_1   34     // ADC1 CH6
+  #define OT_ADC_2   35     // ADC1 CH7
+  #define OT_ADC_3   32     // ADC1 CH4
+  #define OT_ADC_4   33     // ADC1 CH5
+  #define OT_ADC_5   36     // ADC1 CH0 (input-only — ADC use only)
+  #define OT_ADC_6   39     // ADC1 CH3 (input-only — ADC use only)
+  #define OT_SPI_MISO_DEFAULT  19
+  #define OT_SPI_CLK_DEFAULT    5
+#endif
 
 // ── Development mode ─────────────────────────────────────────
 // Uncomment to allow live config changes during engine operation,
@@ -37,17 +84,17 @@
 
 // EGT / TOT via MAX6675 thermocouple SPI
 #define OT_HAS_TOT
-#define OT_TOT_CLK       5
+#define OT_TOT_CLK       OT_SPI_CLK_DEFAULT   // ESP32: 5 / S3: 36
 #define OT_TOT_CS        18
-#define OT_TOT_MISO      19
+#define OT_TOT_MISO      OT_SPI_MISO_DEFAULT  // ESP32: 19 / S3: 38 (19=USB D− on S3)
 
 // Oil pressure via analog (ADC1, polynomial calibrated)
 #define OT_HAS_OIL_PRESS
-#define OT_OIL_PRESS_PIN 34   // ADC1 channel only (36/39/34/35/32/33)
+#define OT_OIL_PRESS_PIN OT_ADC_1   // ESP32: 34 / S3: 1
 
 // Flame / ignition confirmation via analog threshold
 #define OT_HAS_FLAME
-#define OT_FLAME_PIN     35   // ADC1 channel only
+#define OT_FLAME_PIN     OT_ADC_2   // ESP32: 35 / S3: 2
 
 // Optional — uncomment if fitted:
 // N2 shaft RPM (e.g. compressor shaft on twin-spool)
@@ -57,26 +104,26 @@
 
 // Fuel flow sensor (analog linear)
 // #define OT_HAS_FUEL_FLOW
-// #define OT_FUEL_FLOW_PIN 36
+// #define OT_FUEL_FLOW_PIN OT_ADC_5   // ESP32: 36 / S3: 6
 
 // Inlet pressure P1
 // #define OT_HAS_P1
-// #define OT_P1_PIN        36
+// #define OT_P1_PIN        OT_ADC_5   // ESP32: 36 / S3: 6
 
 // Exhaust pressure P2
 // #define OT_HAS_P2
-// #define OT_P2_PIN        39
+// #define OT_P2_PIN        OT_ADC_6   // ESP32: 39 / S3: 7
 
 // Throttle input — measures throttle stick/lever position (display + open-loop ref)
 // Uncomment OT_HAS_THROTTLE_INPUT to enable. Choose signal type:
 //   default = analog ADC voltage; OT_THROTTLE_INPUT_RC_PWM = servo PWM on same GPIO.
 #define OT_HAS_THROTTLE_INPUT
-#define OT_THROTTLE_INPUT_PIN    32
+#define OT_THROTTLE_INPUT_PIN    OT_ADC_3   // ESP32: 32 / S3: 3
 // #define OT_THROTTLE_INPUT_RC_PWM
 
 // Idle input — sets idle RPM target range (potentiometer or RC channel)
 #define OT_HAS_IDLE_INPUT
-#define OT_IDLE_INPUT_PIN        33
+#define OT_IDLE_INPUT_PIN        OT_ADC_4   // ESP32: 33 / S3: 5
 // Input signal type — default = analog ADC voltage.
 // Uncomment to use servo PWM on the same GPIO instead:
 // #define OT_IDLE_INPUT_RC_PWM
@@ -98,9 +145,14 @@
 #define OT_STARTER_SERVO_MIN_US  1500  // bidirectional — change to 1000 for standard ESC
 #define OT_STARTER_SERVO_MAX_US  2000
 
-// Oil pump — GPIO pin is always required.
+// Oil pump — any PWM-capable GPIO works; the pin below is just a
+// safe default that avoids the ADC1 range on each chip.
 #define OT_HAS_OIL_PUMP
-#define OT_OIL_PUMP_PIN       4
+#ifdef OT_PLATFORM_ESP32S3
+  #define OT_OIL_PUMP_PIN     11   // first GPIO above ADC1 range on S3 (1–10)
+#else
+  #define OT_OIL_PUMP_PIN      4   // ESP32 classic
+#endif
 
 // Choose pump drive mode (uncomment ONE of the two blocks below, or leave both commented
 // to use the default PWM mode):
@@ -154,6 +206,17 @@
 // #define OT_HAS_COOL_FAN
 // #define OT_COOL_FAN_PIN     XX
 
+// ── I²C bus ───────────────────────────────────────────────────
+// Enable if you have I²C peripherals: OLED displays, I²C pressure
+// sensors, ADS1115 external ADC, IMU, etc.  The bus is shared —
+// multiple devices use the same SDA/SCL pair.
+// Any GPIO works for SDA/SCL on both ESP32 and S3 (fully remappable).
+// Avoid ADC1 pins if you need analog sensors on the same build.
+// #define OT_HAS_I2C
+// #define OT_I2C_SDA_PIN  21   // any GPIO
+// #define OT_I2C_SCL_PIN  22   // any GPIO
+// #define OT_I2C_FREQ_HZ  400000   // 400 kHz fast-mode (100000 for standard)
+
 // ── Controllers ──────────────────────────────────────────────
 // All require matching hardware above to be defined.
 #define OT_HAS_OIL_LOOP           // P-controller: OIL_PRESS → OIL_PUMP
@@ -176,13 +239,15 @@
 
 // ── Startup sequence ─────────────────────────────────────────
 // Order matters. Comment out to remove a block.
+// Post-ignition dwell (stabilise before spool) is handled by TimedDelay;
+// set its duration via sequence.startup.timed_delay_ms in the config.
 #define OT_STARTUP_SEQ \
     OT_BLOCK(OilPrime)       \
     OT_BLOCK(StarterSpin)    \
     OT_BLOCK(PreIgnSpark)    \
     OT_BLOCK(FuelOpen)       \
     OT_BLOCK(FlameConfirm)   \
-    OT_BLOCK(PostIgnDwell)   \
+    OT_BLOCK(TimedDelay)     \
     OT_BLOCK(Spool)          \
     OT_BLOCK(SafetyHold)
 
@@ -252,3 +317,150 @@
 #if defined(OT_THROTTLE_INPUT_RC_PWM) && !defined(OT_HAS_THROTTLE_INPUT)
   #error "OT_THROTTLE_INPUT_RC_PWM requires OT_HAS_THROTTLE_INPUT"
 #endif
+
+// ── Compile-time GPIO safety guards ─────────────────────────
+// These catch common wiring mistakes before they cause silent
+// hardware damage or unpredictable behaviour at runtime.
+//
+// Helper predicates — used inside #if below:
+//
+//  _OT_FLASH_ESP32(p) — GPIO 6–11: connected to internal flash/PSRAM on ESP32.
+//                        Using these destroys flash communication.
+//  _OT_FLASH_S3(p)    — GPIO 26–32: internal flash/PSRAM on most S3 modules.
+//  _OT_USB_S3(p)      — GPIO 19–20: USB D−/D+ on S3. Cannot be used for anything.
+//  _OT_IN_ONLY(p)     — GPIO 34/35/36/39: input-only on ESP32 (no driver, no pull-up).
+//                        Fine for ADC/digital-in; fatal if used as an output.
+//  _OT_NO_PULLUP(p)   — same set: no internal pull-up, so unsuitable for active-low
+//                        buttons that rely on pull-up (stop/start).
+//
+#define _OT_FLASH_ESP32(p) ((p) >= 6  && (p) <= 11)
+#define _OT_FLASH_S3(p)    ((p) >= 26 && (p) <= 32)
+#define _OT_USB_S3(p)      ((p) == 19 || (p) == 20)
+#define _OT_IN_ONLY(p)     ((p) == 34 || (p) == 35 || (p) == 36 || (p) == 39)
+#define _OT_NO_PULLUP(p)   _OT_IN_ONLY(p)
+
+// ── ESP32 classic: internal flash GPIO 6–11 ──────────────────
+#ifdef OT_PLATFORM_ESP32
+  #if _OT_FLASH_ESP32(OT_STOP_PIN)
+    #error "OT_STOP_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_START_PIN)
+    #error "OT_START_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_N1_RPM_PIN)
+    #error "OT_N1_RPM_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_TOT_CLK) || _OT_FLASH_ESP32(OT_TOT_CS) || _OT_FLASH_ESP32(OT_TOT_MISO)
+    #error "OT_TOT_*: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_OIL_PRESS_PIN) || _OT_FLASH_ESP32(OT_FLAME_PIN)
+    #error "Sensor pin: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_THROTTLE_PIN)
+    #error "OT_THROTTLE_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_STARTER_PIN)
+    #error "OT_STARTER_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_OIL_PUMP_PIN)
+    #error "OT_OIL_PUMP_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_FUEL_SOL_PIN)
+    #error "OT_FUEL_SOL_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if _OT_FLASH_ESP32(OT_IGNITER_PIN)
+    #error "OT_IGNITER_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+  #if defined(OT_HAS_STARTER_EN) && _OT_FLASH_ESP32(OT_STARTER_EN_PIN)
+    #error "OT_STARTER_EN_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #endif
+
+  // ── ESP32: input-only GPIOs (34/35/36/39) used as outputs ────
+  // These pins have no output driver.  Assigning an actuator here produces
+  // no signal.  ADC sensors and digital inputs are fine on these pins.
+  #if _OT_IN_ONLY(OT_TOT_CLK) || _OT_IN_ONLY(OT_TOT_CS)
+    #error "OT_TOT CLK/CS: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive SPI clock or chip-select"
+  #endif
+  #if _OT_IN_ONLY(OT_THROTTLE_PIN)
+    #error "OT_THROTTLE_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive servo/ESC"
+  #endif
+  #if _OT_IN_ONLY(OT_STARTER_PIN)
+    #error "OT_STARTER_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive servo/ESC"
+  #endif
+  #if _OT_IN_ONLY(OT_OIL_PUMP_PIN)
+    #error "OT_OIL_PUMP_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive PWM"
+  #endif
+  #if _OT_IN_ONLY(OT_FUEL_SOL_PIN)
+    #error "OT_FUEL_SOL_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive solenoid"
+  #endif
+  #if _OT_IN_ONLY(OT_IGNITER_PIN)
+    #error "OT_IGNITER_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive igniter"
+  #endif
+  #if defined(OT_HAS_STARTER_EN) && _OT_IN_ONLY(OT_STARTER_EN_PIN)
+    #error "OT_STARTER_EN_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive relay"
+  #endif
+  // Stop/start buttons need internal pull-up — input-only pins have none
+  #if _OT_NO_PULLUP(OT_STOP_PIN)
+    #error "OT_STOP_PIN: GPIO 34/35/36/39 have no internal pull-up on ESP32 — use a different GPIO for the stop button"
+  #endif
+  #if _OT_NO_PULLUP(OT_START_PIN)
+    #error "OT_START_PIN: GPIO 34/35/36/39 have no internal pull-up on ESP32 — use a different GPIO for the start button"
+  #endif
+#endif  // OT_PLATFORM_ESP32
+
+// ── ESP32-S3: USB D−/D+ GPIO 19–20 and flash GPIO 26–32 ──────
+#ifdef OT_PLATFORM_ESP32S3
+  // USB pins — absolutely forbidden for any use
+  #if _OT_USB_S3(OT_STOP_PIN) || _OT_USB_S3(OT_START_PIN)
+    #error "Stop/start pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  #if _OT_USB_S3(OT_N1_RPM_PIN)
+    #error "OT_N1_RPM_PIN: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  #if _OT_USB_S3(OT_TOT_CLK) || _OT_USB_S3(OT_TOT_CS) || _OT_USB_S3(OT_TOT_MISO)
+    #error "OT_TOT SPI pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  #if _OT_USB_S3(OT_OIL_PRESS_PIN) || _OT_USB_S3(OT_FLAME_PIN)
+    #error "Sensor pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  #if _OT_USB_S3(OT_THROTTLE_PIN) || _OT_USB_S3(OT_STARTER_PIN) || _OT_USB_S3(OT_OIL_PUMP_PIN)
+    #error "Actuator pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  #if _OT_USB_S3(OT_FUEL_SOL_PIN) || _OT_USB_S3(OT_IGNITER_PIN)
+    #error "Actuator pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  #if defined(OT_HAS_STARTER_EN) && _OT_USB_S3(OT_STARTER_EN_PIN)
+    #error "OT_STARTER_EN_PIN: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
+  #endif
+  // Internal flash/PSRAM — forbidden on most S3 modules
+  #if _OT_FLASH_S3(OT_STOP_PIN) || _OT_FLASH_S3(OT_START_PIN)
+    #error "Stop/start pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  #if _OT_FLASH_S3(OT_N1_RPM_PIN)
+    #error "OT_N1_RPM_PIN: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  #if _OT_FLASH_S3(OT_TOT_CLK) || _OT_FLASH_S3(OT_TOT_CS) || _OT_FLASH_S3(OT_TOT_MISO)
+    #error "OT_TOT SPI pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  #if _OT_FLASH_S3(OT_OIL_PRESS_PIN) || _OT_FLASH_S3(OT_FLAME_PIN)
+    #error "Sensor pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  #if _OT_FLASH_S3(OT_THROTTLE_PIN) || _OT_FLASH_S3(OT_STARTER_PIN) || _OT_FLASH_S3(OT_OIL_PUMP_PIN)
+    #error "Actuator pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  #if _OT_FLASH_S3(OT_FUEL_SOL_PIN) || _OT_FLASH_S3(OT_IGNITER_PIN)
+    #error "Actuator pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  #if defined(OT_HAS_STARTER_EN) && _OT_FLASH_S3(OT_STARTER_EN_PIN)
+    #error "OT_STARTER_EN_PIN: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+#endif  // OT_PLATFORM_ESP32S3
+//
+// ── Strapping pin advisory ────────────────────────────────────
+// The following GPIOs affect boot mode and should be avoided where
+// possible.  They are NOT checked automatically because they can
+// work fine in many configurations (e.g. driven after boot).
+//   ESP32:    GPIO 0, 2, 5, 12, 15
+//   ESP32-S3: GPIO 0, 3, 45, 46
+// If you must use them: ensure they are at their default boot state
+// (typically floating or pulled to the correct level) at power-on.

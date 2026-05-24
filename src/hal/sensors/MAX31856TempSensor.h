@@ -70,10 +70,8 @@ public:
 
         // Bits 23:5 = 19-bit + sign temperature, 0.0078125 °C/LSB
         // Bit 0 of last byte is the fault flag (redundant, already checked)
-        int32_t val = (int32_t)(raw);
-        // Sign-extend 19-bit value from bit 23 of the 3-byte read
-        // raw is left-justified in the 24-bit field: shift right by 5
-        val = (int32_t)(raw & 0xFFFFE0) >> 5;    // 19-bit signed
+        // raw is left-justified in the 24-bit field: shift right by 5 → bits 18:0
+        int32_t val = (int32_t)((raw & 0xFFFFE0u) >> 5);    // 19-bit signed
         if (val & 0x40000) val |= (int32_t)0xFFF80000;  // sign extend
 
         _temp = val * 0.0078125f;
