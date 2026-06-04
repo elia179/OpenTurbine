@@ -37,7 +37,9 @@ public:
         return BlockResult::Running;
     }
 
-    void onExit() override {}
+    void onExit() override {
+        EngineData::instance().fuelSolOpen = false;
+    }
 
 private:
     unsigned long _entryMs = 0;

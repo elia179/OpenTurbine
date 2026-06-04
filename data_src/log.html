@@ -24,10 +24,14 @@
     <span id="log-count" style="font-size:.72rem;color:var(--dim);margin-left:.3rem"></span>
     <div style="display:flex;gap:.4rem;margin-left:auto;flex-wrap:wrap">
       <button onclick="loadLog()">Refresh</button>
-      <button onclick="downloadLog('raw')">NDJSON</button>
-      <button onclick="downloadLog('csv')">CSV</button>
+      <button onclick="downloadLog('raw')" title="Download the black-box event log as newline-delimited JSON: one detailed event object per line for diagnostics and scripts.">NDJSON</button>
+      <button onclick="downloadLog('csv')" title="Download the black-box event log as a table that opens easily in spreadsheet applications.">CSV</button>
       <button onclick="askClear('flightlog')" class="danger">Clear</button>
     </div>
+  </div>
+  <div style="font-size:.74rem;color:var(--dim);padding:.55rem .75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);margin-bottom:.8rem;line-height:1.55">
+    <strong style="color:var(--text)">How logging works:</strong>
+    Flight Log records events and compact periodic snapshots for diagnosis. Session Data records selected values in a detailed CSV only for an engine run. Standby snapshots are disabled by default so an idle ECU does not fill the flight log with uneventful readings.
   </div>
 
   <div class="tab-strip">
@@ -87,6 +91,7 @@
           <label class="slog-chk"><input type="checkbox" data-bit="p1">P1 bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="p2">P2 bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="throttle">Throttle %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="oil_pct">Oil pump %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="batt">Batt V</label>
           <label class="slog-chk"><input type="checkbox" data-bit="fuel_press">Fuel press</label>
           <label class="slog-chk"><input type="checkbox" data-bit="fuel_flow">Fuel flow</label>
@@ -97,6 +102,9 @@
           <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
         </div>
         <div style="margin-top:.65rem;font-size:.7rem;color:var(--dim)">Changes take effect on the next engine start.</div>
+        <label class="slog-chk" style="display:block;margin-top:.6rem" title="When off, Flight Log does not add periodic sensor snapshots while the ECU is in standby.">
+          <input type="checkbox" id="log-standby"> Log periodic snapshots while in standby
+        </label>
         <button onclick="saveSessionCfg()" style="margin-top:.55rem">Save Selection</button>
         <span id="session-save-msg" style="font-size:.72rem;color:var(--green);margin-left:.5rem;display:none">Saved</span>
       </div>
@@ -187,13 +195,20 @@ function evClass(ev) {
 
 function evBadge(ev) {
   const cls = evClass(ev);
-  return `<span class="ev-badge ${cls}">${ev || '?'}</span>`;
+  return `<span class="ev-badge ${cls}">${escapeHtmlText(ev || '?')}</span>`;
+}
+
+function escapeHtmlText(value) {
+  return String(value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatDetails(entry) {
   return Object.entries(entry)
     .filter(([k]) => k !== 't' && k !== 'ev')
-    .map(([k, v]) => `<span style="color:var(--dim)">${k}:</span> ${v}`)
+    .map(([k, v]) => `<span style="color:var(--dim)">${escapeHtmlText(k)}:</span> ${escapeHtmlText(v)}`)
     .join('&ensp;');
 }
 
@@ -283,7 +298,7 @@ function renderSummary(runs) {
 
     const evRows = r.events.map(e => {
       const faultBlock = (e.ev === 'FAULT_SHUTDOWN' || e.ev === 'ABORT') && e.block
-        ? `<span style="font-size:.67rem;color:var(--dim);margin-left:.35rem">${e.block}</span>` : '';
+        ? `<span style="font-size:.67rem;color:var(--dim);margin-left:.35rem">${escapeHtmlText(e.block)}</span>` : '';
       return `<tr>
         <td style="color:var(--dim);padding:.3rem .6rem">${e.t !== undefined ? e.t : '—'}</td>
         <td style="padding:.3rem .6rem">${evBadge(e.ev)}${faultBlock}</td>
@@ -294,7 +309,7 @@ function renderSummary(runs) {
     return `<div class="run-card">
       <div class="run-header" onclick="toggleRun(${i})">
         <div class="run-num">Run #${r.num}</div>
-        <div class="run-outcome ${outClass}">${outLabel}</div>
+        <div class="run-outcome ${outClass}">${escapeHtmlText(outLabel)}</div>
         <div class="run-stats">
           <div class="run-stat">
             <div class="run-stat-label">Started</div>
@@ -350,7 +365,7 @@ function renderEvents(events) {
   }
   tbody.innerHTML = [...events].reverse().map(e => {
     const faultBlock = (e.ev === 'FAULT_SHUTDOWN' || e.ev === 'ABORT') && e.block
-      ? `<span style="font-size:.67rem;color:var(--dim);margin-left:.35rem">${e.block}</span>` : '';
+      ? `<span style="font-size:.67rem;color:var(--dim);margin-left:.35rem">${escapeHtmlText(e.block)}</span>` : '';
     return `<tr>
       <td style="color:var(--dim)">${e.t !== undefined ? e.t : '—'}</td>
       <td>${evBadge(e.ev)}${faultBlock}</td>
@@ -440,7 +455,7 @@ function confirmClear() {
 }
 
 // ── Session Data tab ──────────────────────────────────────────
-const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode'];
+const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','oil_pct','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode'];
 
 function loadSessionCfg() {
   // Load config + hardware in parallel so we can hide sensors not fitted
@@ -449,6 +464,8 @@ function loadSessionCfg() {
     fetch('/api/hardware').then(r => r.json())
   ]).then(([cfg, hw]) => {
     const sl = cfg.session_log || {};
+    const sb = document.getElementById('log-standby');
+    if (sb) sb.checked = !!cfg.telemetry?.log_standby;
     SLOG_BITS.forEach(bit => {
       const el = document.querySelector('[data-bit="' + bit + '"]');
       if (el) el.checked = !!sl[bit];
@@ -475,29 +492,31 @@ function loadSessionCfg() {
   });
 }
 
-// Grey out sensor checkboxes that aren't enabled in hardware.json.
+// Grey out session-log checkboxes whose hardware source is not enabled.
 // They stay visible so the user can see what exists and why it's locked.
 function _applyLogHwVisibility(hw) {
   const s = (hw && hw.sensors)   || {};
   const a = (hw && hw.actuators) || {};
+  const hwOn = key => !!(hw && hw[key]);
 
-  // Returns true when the sensor/feature is active in hardware config
+  // Returns true when the source/feature is active in the hardware section.
   const enabled = bit => {
     switch (bit) {
-      case 'n1':         return s.n1_rpm       ? !!s.n1_rpm.enabled       : true;
-      case 'n2':         return s.n2_rpm       ? !!s.n2_rpm.enabled       : false;
-      case 'tot':        return s.tot          ? !!s.tot.enabled          : true;
-      case 'tit':        return s.tit          ? !!s.tit.enabled          : false;
-      case 'oil':        return s.oil_press    ? !!s.oil_press.enabled    : true;
-      case 'p1':         return s.p1           ? !!s.p1.enabled           : false;
-      case 'p2':         return s.p2           ? !!s.p2.enabled           : false;
-      case 'batt':       return s.batt_voltage ? !!s.batt_voltage.enabled : false;
-      case 'fuel_press': return s.fuel_press   ? !!s.fuel_press.enabled   : false;
-      case 'fuel_flow':  return s.fuel_flow    ? !!s.fuel_flow.enabled    : false;
-      case 'glow':       return a.glow_plug    ? !!a.glow_plug.enabled    : false;
-      case 'fp2':        return a.fuel_pump2   ? !!a.fuel_pump2.enabled   : false;
+      case 'n1':         return s.n1_rpm       ? !!s.n1_rpm.enabled       : hwOn('has_n1_rpm');
+      case 'n2':         return s.n2_rpm       ? !!s.n2_rpm.enabled       : hwOn('has_n2_rpm');
+      case 'tot':        return s.tot          ? !!s.tot.enabled          : hwOn('has_tot');
+      case 'tit':        return s.tit          ? !!s.tit.enabled          : hwOn('has_tit');
+      case 'oil':        return s.oil_press    ? !!s.oil_press.enabled    : hwOn('has_oil_press');
+      case 'p1':         return s.p1           ? !!s.p1.enabled           : hwOn('has_p1');
+      case 'p2':         return s.p2           ? !!s.p2.enabled           : hwOn('has_p2');
+      case 'oil_pct':    return a.oil_pump     ? !!a.oil_pump.enabled     : hwOn('has_oil_pump');
+      case 'batt':       return s.batt_voltage ? !!s.batt_voltage.enabled : hwOn('has_batt_voltage');
+      case 'fuel_press': return s.fuel_press   ? !!s.fuel_press.enabled   : hwOn('has_fuel_press');
+      case 'fuel_flow':  return s.fuel_flow    ? !!s.fuel_flow.enabled    : hwOn('has_fuel_flow');
+      case 'glow':       return a.glow_plug    ? !!a.glow_plug.enabled    : hwOn('has_glow_plug');
+      case 'fp2':        return a.fuel_pump2   ? !!a.fuel_pump2.enabled   : hwOn('has_fuel_pump2');
       case 'ab':         return !!(hw && hw.has_afterburner);
-      case 'prop':       return a.prop_pitch   ? !!a.prop_pitch.enabled   : false;
+      case 'prop':       return a.prop_pitch   ? !!a.prop_pitch.enabled   : hwOn('has_prop_pitch');
       default:           return true; // throttle, mode — always present
     }
   };
@@ -507,6 +526,7 @@ function _applyLogHwVisibility(hw) {
     n1: 'N1 RPM sensor', n2: 'N2 RPM sensor',
     tot: 'TOT sensor', tit: 'TIT sensor',
     oil: 'Oil Pressure sensor', p1: 'P1 sensor', p2: 'P2 sensor',
+    oil_pct: 'Oil pump output',
     batt: 'Battery Voltage sensor', fuel_press: 'Fuel Pressure sensor',
     fuel_flow: 'Fuel Flow sensor', glow: 'Glow Plug',
     fp2: 'Fuel Pump 2', ab: 'Afterburner', prop: 'Prop Pitch',
@@ -538,6 +558,9 @@ function _applyLogHwVisibility(hw) {
 function saveSessionCfg() {
   fetch('/api/config').then(r => r.json()).then(cfg => {
     if (!cfg.session_log) cfg.session_log = {};
+    if (!cfg.telemetry) cfg.telemetry = {};
+    const sb = document.getElementById('log-standby');
+    cfg.telemetry.log_standby = sb ? sb.checked : false;
     SLOG_BITS.forEach(bit => {
       const el = document.querySelector('[data-bit="' + bit + '"]');
       cfg.session_log[bit] = el ? el.checked : false;

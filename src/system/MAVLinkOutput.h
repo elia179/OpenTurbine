@@ -48,7 +48,9 @@ public:
         if (!_serial) return;
         unsigned long now = millis();
         auto& hw = HardwareConfig::instance();
-        if ((now - _lastMs) < (unsigned long)hw.mavlinkIntervalMs) return;
+        unsigned long interval = hw.mavlinkIntervalMs >= 20
+                               ? (unsigned long)hw.mavlinkIntervalMs : 100UL;
+        if ((now - _lastMs) < interval) return;
         _lastMs = now;
 
         _sendHeartbeat();
@@ -88,6 +90,9 @@ private:
 
     void _sendPacket(uint8_t msgId, uint8_t crcExtra,
                      const uint8_t* payload, uint8_t payLen) {
+        size_t packetLen = (size_t)payLen + 8;
+        if (_serial->availableForWrite() < (int)packetLen) return;
+
         uint8_t hdr[6] = {
             0xFE,    // magic
             payLen,  // payload length
@@ -173,7 +178,7 @@ private:
         if (ed.fuelPressHealthy) _sendNamedFloat("FUEL_BAR", ed.fuelPressure);
         if (ed.torqueHealthy)    _sendNamedFloat("TORQ_NM",  ed.torque);
         if (ed.titHealthy)       _sendNamedFloat("TIT_C",    ed.tit);
-        if (HardwareConfig::hasFuelFlow) _sendNamedFloat("FUEL_KGH", ed.fuelFlow);
+        if (HardwareConfig::hasFuelFlow) _sendNamedFloat("FUEL_FLOW", ed.fuelFlow);
         _sendNamedFloat("THR_PCT",  ed.throttleDemand * 100.0f);
     }
 

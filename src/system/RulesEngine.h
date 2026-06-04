@@ -3,45 +3,100 @@
 //  RulesEngine — simple "if sensor op threshold then actuator"
 //  automation rules, evaluated every control tick.
 //
-//  Rules are defined on the Config page ("Automation Rules"
-//  section) and stored in config JSON under "rules": [...].
+//  Rules are edited in the Sequence page Control Rules tab and
+//  stored in the settings section of ecu_config.json under "rules".
 //
-//  Rules run AFTER the sequencer and controller writes, so
-//  they can augment but not override safety shutdowns.
-//  Evaluation is suppressed in STANDBY (engine off).
+//  Rules run after the sequencer and controller writes while
+//  STARTUP/RUNNING is active. They are disabled during shutdown
+//  so a rule cannot re-assert a fuel or thrust actuator after a cut.
 // ============================================================
 #include "Config.h"
+#include "HardwareConfig.h"
 #include "../engine/EngineData.h"
 
 class RulesEngine {
 public:
     // Sensor indices (match UI dropdown order)
     enum Sensor   : uint8_t { OIL_TEMP=0, TOT=1, N1_RPM=2, OIL_PRESS=3, TIT=4, BATT_V=5, N2_RPM=6,
-                              DI_CH0=7, DI_CH1=8, DI_CH2=9, DI_CH3=10 };
+                              DI_CH0=7, DI_CH1=8, DI_CH2=9, DI_CH3=10, FUEL_PRESS=11,
+                              FUEL_FLOW=12, P1=13, P2=14, TORQUE=15, FLAME=16,
+                              THROTTLE_INPUT=17, IDLE_INPUT=18, AB_FLAME=19,
+                              GLOW_CURRENT=20, IGNITER_CURRENT=21, IGNITER2_CURRENT=22,
+                              OIL_PUMP_CURRENT=23, AB_INPUT=24, START_SWITCH=25, STOP_SWITCH=26 };
     // Comparison operators
     enum Op       : uint8_t { GT=0, LT=1, GTE=2, LTE=3, EQ=4 };
     // Controllable actuators
-    enum Actuator : uint8_t { COOL_FAN=0, BLEED_VALVE=1, FUEL_PUMP2=2 };
+    enum Actuator : uint8_t { COOL_FAN=0, BLEED_VALVE=1, FUEL_PUMP2=2, OIL_SCAVENGE=3,
+                              THROTTLE=4, STARTER=5, STARTER_ENABLE=6, OIL_PUMP=7,
+                              FUEL_SOL=8, IGNITER=9, IGNITER2=10, AB_SOL=11, AB_PUMP=12,
+                              REQUEST_SHUTDOWN=13, REQUEST_FAULT=14, AIRSTARTER=15,
+                              GLOW_PLUG=16, PROP_PITCH=17 };
+
+    using ShutdownCallback = void (*)();
+    using FaultCallback = void (*)(const char*);
+    static void begin(ShutdownCallback shutdownCb, FaultCallback faultCb) {
+        _shutdownCb = shutdownCb;
+        _faultCb = faultCb;
+    }
 
     // Called once per control tick (Core 1, ~10 ms cycle)
     static void evaluate() {
         auto& ed = EngineData::instance();
-        // Only evaluate when engine is doing something real
-        if (ed.mode == SysMode::STANDBY || ed.benchMode) return;
+        if ((ed.mode != SysMode::STARTUP && ed.mode != SysMode::RUNNING) ||
+            ed.benchMode) return;
 
         for (int i = 0; i < Config::ruleCount; i++) {
             const Config::Rule& r = Config::rules[i];
             if (!r.enabled) continue;
 
             float sval = _readSensor(r.sensor, ed);
-            bool  met  = _evalOp(sval, r.op, r.threshold);
+            bool  met  = _sensorUsable(r.sensor, ed) && _evalOp(sval, r.op, r.threshold, r.sensor);
             float dem  = met ? r.onValue : r.offValue;
 
-            _applyActuator(r.actuator, dem, ed);
+            if (dem < 0.0f) continue;  // negative value = leave current output unchanged
+            if (_actuatorUsable(r.actuator))
+                _applyActuator(r.actuator, dem, ed);
+            if (ed.mode == SysMode::SHUTDOWN) return;
         }
     }
 
 private:
+    static bool _sensorUsable(uint8_t s, const EngineData& ed) {
+        switch (s) {
+            case OIL_TEMP:        return HardwareConfig::hasOilTemp && ed.oilTempHealthy;
+            case TOT:             return HardwareConfig::hasTot && ed.totHealthy;
+            case N1_RPM:          return HardwareConfig::hasN1Rpm && ed.n1Healthy;
+            case OIL_PRESS:       return HardwareConfig::hasOilPress && ed.oilHealthy;
+            case TIT:             return HardwareConfig::hasTit && ed.titHealthy;
+            case BATT_V:          return HardwareConfig::hasBattVoltage && ed.battHealthy;
+            case N2_RPM:          return HardwareConfig::hasN2Rpm && ed.n2Healthy;
+            case DI_CH0:          return HardwareConfig::diCh[0].pin >= 0;
+            case DI_CH1:          return HardwareConfig::diCh[1].pin >= 0;
+            case DI_CH2:          return HardwareConfig::diCh[2].pin >= 0;
+            case DI_CH3:          return HardwareConfig::diCh[3].pin >= 0;
+            case FUEL_PRESS:      return HardwareConfig::hasFuelPress && ed.fuelPressHealthy;
+            case FUEL_FLOW:       return HardwareConfig::hasFuelFlow;
+            case P1:              return HardwareConfig::hasP1;
+            case P2:              return HardwareConfig::hasP2;
+            case TORQUE:          return HardwareConfig::hasTorque && ed.torqueHealthy;
+            case FLAME:           return HardwareConfig::hasFlame;
+            case THROTTLE_INPUT:  return HardwareConfig::hasThrottleInput &&
+                                         (!HardwareConfig::throttleInputRcPwm || ed.rcThrottleValid);
+            case IDLE_INPUT:      return HardwareConfig::hasIdleInput &&
+                                         (!HardwareConfig::idleInputRcPwm || ed.rcIdleValid);
+            case AB_FLAME:        return HardwareConfig::hasAbFlame;
+            case GLOW_CURRENT:    return HardwareConfig::hasGlowCurrentSensor;
+            case IGNITER_CURRENT: return HardwareConfig::hasIgniterCurrentSensor;
+            case IGNITER2_CURRENT:return HardwareConfig::hasIgniter2CurrentSensor;
+            case OIL_PUMP_CURRENT:return HardwareConfig::hasOilPumpCurrentSensor;
+            case AB_INPUT:        return HardwareConfig::hasAfterburner &&
+                                         HardwareConfig::abInputPin >= 0;
+            case START_SWITCH:    return HardwareConfig::startPin >= 0;
+            case STOP_SWITCH:     return HardwareConfig::stopPin >= 0;
+            default:              return false;
+        }
+    }
+
     static float _readSensor(uint8_t s, const EngineData& ed) {
         switch (s) {
             case OIL_TEMP:  return ed.oilTemp;
@@ -55,17 +110,93 @@ private:
             case DI_CH1:    return ed.diState[1] ? 1.0f : 0.0f;
             case DI_CH2:    return ed.diState[2] ? 1.0f : 0.0f;
             case DI_CH3:    return ed.diState[3] ? 1.0f : 0.0f;
+            case FUEL_PRESS:return ed.fuelPressure;
+            case FUEL_FLOW: return ed.fuelFlow;
+            case P1:        return ed.p1;
+            case P2:        return ed.p2;
+            case TORQUE:    return ed.torque;
+            case FLAME:     return ed.flameDetected ? 1.0f : 0.0f;
+            case THROTTLE_INPUT: {
+                if (HardwareConfig::throttleInputRcPwm)
+                    return ed.rcThrottleValid ? ed.rcThrottleNorm : 0.0f;
+                int range = Config::throttleMaxRaw - Config::throttleMinRaw;
+                return range ? constrain((ed.throttleInputRaw - Config::throttleMinRaw) /
+                                         (float)range, 0.0f, 1.0f) : 0.0f;
+            }
+            case IDLE_INPUT: {
+                if (HardwareConfig::idleInputRcPwm)
+                    return ed.rcIdleValid ? ed.rcIdleNorm : 0.0f;
+                int range = Config::idleMaxRaw - Config::idleMinRaw;
+                return range ? constrain((ed.idleInputRaw - Config::idleMinRaw) /
+                                         (float)range, 0.0f, 1.0f) : 0.0f;
+            }
+            case AB_FLAME:  return ed.abFlameOn ? 1.0f : 0.0f;
+            case GLOW_CURRENT: return ed.glowCurrentAmps;
+            case IGNITER_CURRENT: return ed.igniterCurrentAmps;
+            case IGNITER2_CURRENT: return ed.igniter2CurrentAmps;
+            case OIL_PUMP_CURRENT: return ed.oilPumpCurrentAmps;
+            case AB_INPUT:   return constrain(ed.abInputRaw / 4095.0f, 0.0f, 1.0f);
+            case START_SWITCH:return ed.startSwitchActive ? 1.0f : 0.0f;
+            case STOP_SWITCH: return ed.stopSwitchActive ? 1.0f : 0.0f;
             default:        return 0.0f;
         }
     }
 
-    static bool _evalOp(float val, uint8_t op, float threshold) {
+    static bool _actuatorUsable(uint8_t act) {
+        switch (act) {
+            case COOL_FAN:         return HardwareConfig::hasCoolFan;
+            case BLEED_VALVE:      return HardwareConfig::hasBleedValve;
+            case FUEL_PUMP2:       return HardwareConfig::hasFuelPump2;
+            case OIL_SCAVENGE:     return HardwareConfig::hasOilScavengePump;
+            case THROTTLE:         return HardwareConfig::hasThrottle;
+            case STARTER:          return HardwareConfig::hasStarter;
+            case STARTER_ENABLE:   return HardwareConfig::hasStarterEn;
+            case OIL_PUMP:         return HardwareConfig::hasOilPump;
+            case FUEL_SOL:         return HardwareConfig::hasFuelSol;
+            case IGNITER:          return HardwareConfig::hasIgniter;
+            case IGNITER2:         return HardwareConfig::hasIgniter2;
+            case AB_SOL:           return HardwareConfig::hasAfterburner &&
+                                          HardwareConfig::hasAbSol;
+            case AB_PUMP:          return HardwareConfig::hasAfterburner &&
+                                          HardwareConfig::hasAbPump;
+            case AIRSTARTER:       return HardwareConfig::hasAirstarterSol;
+            case GLOW_PLUG:        return HardwareConfig::hasGlowPlug;
+            case PROP_PITCH:       return HardwareConfig::hasPropPitch;
+            case REQUEST_SHUTDOWN:
+            case REQUEST_FAULT:    return true;
+            default:               return false;
+        }
+    }
+
+    static bool _evalOp(float val, uint8_t op, float threshold, uint8_t sensor) {
         switch (op) {
             case GT:  return val >  threshold;
             case LT:  return val <  threshold;
             case GTE: return val >= threshold;
             case LTE: return val <= threshold;
-            case EQ:  return fabsf(val - threshold) < 1.0f;
+            case EQ: {
+                float tolerance = 0.01f;
+                switch (sensor) {
+                    case OIL_TEMP:
+                    case TOT:
+                    case TIT:
+                    case N1_RPM:
+                    case N2_RPM: tolerance = 1.0f; break;
+                    case THROTTLE_INPUT:
+                    case IDLE_INPUT:
+                    case AB_INPUT: tolerance = 0.005f; break;
+                    case DI_CH0:
+                    case DI_CH1:
+                    case DI_CH2:
+                    case DI_CH3:
+                    case FLAME:
+                    case AB_FLAME:
+                    case START_SWITCH:
+                    case STOP_SWITCH: tolerance = 0.1f; break;
+                    default: break;
+                }
+                return fabsf(val - threshold) < tolerance;
+            }
             default:  return false;
         }
     }
@@ -75,7 +206,29 @@ private:
             case COOL_FAN:    ed.coolFanOn      = (dem >= 0.5f); break;
             case BLEED_VALVE: ed.bleedValveOpen = (dem >= 0.5f); break;
             case FUEL_PUMP2:  ed.fuelPump2Demand = constrain(dem, 0.0f, 1.0f); break;
+            case OIL_SCAVENGE:ed.oilScavengeOn  = (dem >= 0.5f); break;
+            case THROTTLE:    ed.throttleDemand = constrain(dem, 0.0f, 1.0f); break;
+            case STARTER:     ed.starterDemand  = constrain(dem, 0.0f, 1.0f); break;
+            case STARTER_ENABLE: ed.starterEnabled = (dem >= 0.5f); break;
+            case OIL_PUMP:    ed.oilPumpPct     = constrain(dem, 0.0f, 1.0f) * 100.0f; break;
+            case FUEL_SOL:    ed.fuelSolOpen    = (dem >= 0.5f); break;
+            case IGNITER:     ed.igniterOn      = (dem >= 0.5f); break;
+            case IGNITER2:    ed.igniter2On     = (dem >= 0.5f); break;
+            case AB_SOL:      ed.abSolOpen      = (dem >= 0.5f); break;
+            case AB_PUMP:     ed.abPumpDemand   = constrain(dem, 0.0f, 1.0f); break;
+            case REQUEST_SHUTDOWN:
+                if (dem >= 0.5f && _shutdownCb) _shutdownCb();
+                break;
+            case REQUEST_FAULT:
+                if (dem >= 0.5f && _faultCb) _faultCb("CONTROL_RULE");
+                break;
+            case AIRSTARTER: ed.airstarterOpen = (dem >= 0.5f); break;
+            case GLOW_PLUG:  ed.glowPlugDemand = constrain(dem, 0.0f, 1.0f); break;
+            case PROP_PITCH: ed.propPitchDemand = constrain(dem, 0.0f, 1.0f); break;
             default: break;
         }
     }
+
+    static inline ShutdownCallback _shutdownCb = nullptr;
+    static inline FaultCallback _faultCb = nullptr;
 };

@@ -10,7 +10,7 @@
 // ============================================================
 
 // ── Profile identity ─────────────────────────────────────────
-// profile_id MUST match the "profile_id" field in config.json.
+// Initial profile_id used when creating a new ecu_config.json engine file.
 // A mismatch at boot locks out all engine operations.
 #define OT_PROFILE_ID     "my_turbine_v1"
 #define OT_PROFILE_DESC   "Example turbine build — edit me"
@@ -132,7 +132,11 @@
 // Throttle ESC (servo PWM)
 // Signal range — standard unidirectional ESC: 1000–2000 µs
 #define OT_HAS_THROTTLE
-#define OT_THROTTLE_PIN          22
+#ifdef OT_PLATFORM_ESP32S3
+  #define OT_THROTTLE_PIN        16
+#else
+  #define OT_THROTTLE_PIN        22
+#endif
 #define OT_THROTTLE_SERVO_MIN_US 1000  // armed / idle position
 #define OT_THROTTLE_SERVO_MAX_US 2000  // full throttle
 
@@ -141,7 +145,11 @@
 //   Standard unidirectional ESC : 1000–2000 µs  (armed=1000, full=2000)
 //   Bidirectional ESC           : 1500–2000 µs  (neutral=1500, full forward=2000)
 #define OT_HAS_STARTER
-#define OT_STARTER_PIN           23
+#ifdef OT_PLATFORM_ESP32S3
+  #define OT_STARTER_MOTOR_PIN   17
+#else
+  #define OT_STARTER_MOTOR_PIN   23
+#endif
 #define OT_STARTER_SERVO_MIN_US  1500  // bidirectional — change to 1000 for standard ESC
 #define OT_STARTER_SERVO_MAX_US  2000
 
@@ -189,7 +197,11 @@
 
 // Starter enable relay (powers ESC)
 #define OT_HAS_STARTER_EN
-#define OT_STARTER_EN_PIN     25
+#ifdef OT_PLATFORM_ESP32S3
+  #define OT_STARTER_EN_PIN   39
+#else
+  #define OT_STARTER_EN_PIN   25
+#endif
 #define OT_STARTER_EN_ACTIVE_H true
 
 // Optional actuators:
@@ -232,31 +244,31 @@
 #define OT_SAFETY_OVERTEMP        // TOT > TOT_LIMIT → shutdown
 #define OT_SAFETY_LOW_OIL         // oil < min bar → shutdown
 #define OT_SAFETY_OIL_ZERO        // oil near-zero during RUNNING → catastrophic loss fault
-#define OT_SAFETY_FLAMEOUT        // flame lost sustained → shutdown
+#define OT_SAFETY_FLAMEOUT        // configured combustion source lost sustained → shutdown
 
 // Optional:
-// #define OT_SAFETY_LOW_FUEL     // requires OT_HAS_FUEL_FLOW
+// Low-fuel safety is not implemented as a built-in monitor. Use a Control Rule
+// with the fuel-flow sensor if your installation needs a custom low-flow action.
+// #define OT_SAFETY_LOW_FUEL
 
 // ── Startup sequence ─────────────────────────────────────────
 // Order matters. Comment out to remove a block.
-// Post-ignition dwell (stabilise before spool) is handled by TimedDelay;
-// set its duration via sequence.startup.timed_delay_ms in the config.
+// Stock sensor-free startup: pre-lube first, energize ignition before fuel,
+// then hold ignition through a conservative timed light-up interval.
 #define OT_STARTUP_SEQ \
-    OT_BLOCK(OilPrime)       \
-    OT_BLOCK(StarterSpin)    \
-    OT_BLOCK(PreIgnSpark)    \
-    OT_BLOCK(FuelOpen)       \
-    OT_BLOCK(FlameConfirm)   \
-    OT_BLOCK(TimedDelay)     \
-    OT_BLOCK(Spool)          \
-    OT_BLOCK(SafetyHold)
+    OT_BLOCK(OilPumpOn)      \
+    OT_BLOCK(TimedDelay)      \
+    OT_BLOCK(IgniterOn)      \
+    OT_BLOCK(FuelPumpIdle)   \
+    OT_BLOCK(TimedDelay)      \
+    OT_BLOCK(IgniterOff)     \
+    OT_BLOCK(TimedDelay)
 
 // ── Shutdown sequence ─────────────────────────────────────────
 #define OT_SHUTDOWN_SEQ \
     OT_BLOCK(ImmediateCut)   \
-    OT_BLOCK(RPMDrop)        \
-    OT_BLOCK(CooldownSpin)   \
-    OT_BLOCK(FinalStop)
+    OT_BLOCK(TimedDelay)     \
+    OT_BLOCK(OilPumpOff)
 
 // ── Optional feature blocks ──────────────────────────────────
 // #define OT_HAS_AFTERBURNER
@@ -293,8 +305,8 @@
 #if defined(OT_SAFETY_LOW_OIL) && !defined(OT_HAS_OIL_PRESS)
   #error "OT_SAFETY_LOW_OIL requires OT_HAS_OIL_PRESS"
 #endif
-#if defined(OT_SAFETY_FLAMEOUT) && !defined(OT_HAS_FLAME)
-  #error "OT_SAFETY_FLAMEOUT requires OT_HAS_FLAME"
+#if defined(OT_SAFETY_FLAMEOUT) && !(defined(OT_HAS_FLAME) || defined(OT_HAS_N1_RPM) || defined(OT_HAS_TOT))
+  #error "OT_SAFETY_FLAMEOUT requires OT_HAS_FLAME, OT_HAS_N1_RPM, or OT_HAS_TOT"
 #endif
 #if defined(OT_HAS_OIL_LOOP) && !(defined(OT_HAS_OIL_PRESS) && defined(OT_HAS_OIL_PUMP))
   #error "OT_HAS_OIL_LOOP requires OT_HAS_OIL_PRESS and OT_HAS_OIL_PUMP"
@@ -328,6 +340,7 @@
 //                        Using these destroys flash communication.
 //  _OT_FLASH_S3(p)    — GPIO 26–32: internal flash/PSRAM on most S3 modules.
 //  _OT_USB_S3(p)      — GPIO 19–20: USB D−/D+ on S3. Cannot be used for anything.
+//  _OT_GAP_S3(p)      — GPIO 22–25: not implemented on ESP32-S3.
 //  _OT_IN_ONLY(p)     — GPIO 34/35/36/39: input-only on ESP32 (no driver, no pull-up).
 //                        Fine for ADC/digital-in; fatal if used as an output.
 //  _OT_NO_PULLUP(p)   — same set: no internal pull-up, so unsuitable for active-low
@@ -336,6 +349,7 @@
 #define _OT_FLASH_ESP32(p) ((p) >= 6  && (p) <= 11)
 #define _OT_FLASH_S3(p)    ((p) >= 26 && (p) <= 32)
 #define _OT_USB_S3(p)      ((p) == 19 || (p) == 20)
+#define _OT_GAP_S3(p)      ((p) >= 22 && (p) <= 25)
 #define _OT_IN_ONLY(p)     ((p) == 34 || (p) == 35 || (p) == 36 || (p) == 39)
 #define _OT_NO_PULLUP(p)   _OT_IN_ONLY(p)
 
@@ -359,8 +373,8 @@
   #if _OT_FLASH_ESP32(OT_THROTTLE_PIN)
     #error "OT_THROTTLE_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
   #endif
-  #if _OT_FLASH_ESP32(OT_STARTER_PIN)
-    #error "OT_STARTER_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
+  #if _OT_FLASH_ESP32(OT_STARTER_MOTOR_PIN)
+    #error "OT_STARTER_MOTOR_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
   #endif
   #if _OT_FLASH_ESP32(OT_OIL_PUMP_PIN)
     #error "OT_OIL_PUMP_PIN: GPIO 6-11 are internal flash pins on ESP32 — do not use"
@@ -384,8 +398,8 @@
   #if _OT_IN_ONLY(OT_THROTTLE_PIN)
     #error "OT_THROTTLE_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive servo/ESC"
   #endif
-  #if _OT_IN_ONLY(OT_STARTER_PIN)
-    #error "OT_STARTER_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive servo/ESC"
+  #if _OT_IN_ONLY(OT_STARTER_MOTOR_PIN)
+    #error "OT_STARTER_MOTOR_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive servo/ESC"
   #endif
   #if _OT_IN_ONLY(OT_OIL_PUMP_PIN)
     #error "OT_OIL_PUMP_PIN: GPIO 34/35/36/39 are input-only on ESP32 — cannot drive PWM"
@@ -423,7 +437,7 @@
   #if _OT_USB_S3(OT_OIL_PRESS_PIN) || _OT_USB_S3(OT_FLAME_PIN)
     #error "Sensor pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
   #endif
-  #if _OT_USB_S3(OT_THROTTLE_PIN) || _OT_USB_S3(OT_STARTER_PIN) || _OT_USB_S3(OT_OIL_PUMP_PIN)
+  #if _OT_USB_S3(OT_THROTTLE_PIN) || _OT_USB_S3(OT_STARTER_MOTOR_PIN) || _OT_USB_S3(OT_OIL_PUMP_PIN)
     #error "Actuator pin: GPIO 19/20 are USB D-/D+ on ESP32-S3 — never assign these"
   #endif
   #if _OT_USB_S3(OT_FUEL_SOL_PIN) || _OT_USB_S3(OT_IGNITER_PIN)
@@ -445,7 +459,7 @@
   #if _OT_FLASH_S3(OT_OIL_PRESS_PIN) || _OT_FLASH_S3(OT_FLAME_PIN)
     #error "Sensor pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
   #endif
-  #if _OT_FLASH_S3(OT_THROTTLE_PIN) || _OT_FLASH_S3(OT_STARTER_PIN) || _OT_FLASH_S3(OT_OIL_PUMP_PIN)
+  #if _OT_FLASH_S3(OT_THROTTLE_PIN) || _OT_FLASH_S3(OT_STARTER_MOTOR_PIN) || _OT_FLASH_S3(OT_OIL_PUMP_PIN)
     #error "Actuator pin: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
   #endif
   #if _OT_FLASH_S3(OT_FUEL_SOL_PIN) || _OT_FLASH_S3(OT_IGNITER_PIN)
@@ -453,6 +467,25 @@
   #endif
   #if defined(OT_HAS_STARTER_EN) && _OT_FLASH_S3(OT_STARTER_EN_PIN)
     #error "OT_STARTER_EN_PIN: GPIO 26-32 are internal flash/PSRAM on most ESP32-S3 modules"
+  #endif
+  // GPIO 22-25 are absent on ESP32-S3.
+  #if _OT_GAP_S3(OT_STOP_PIN) || _OT_GAP_S3(OT_START_PIN) || _OT_GAP_S3(OT_N1_RPM_PIN)
+    #error "Input pin: GPIO 22-25 do not exist on ESP32-S3"
+  #endif
+  #if _OT_GAP_S3(OT_TOT_CLK) || _OT_GAP_S3(OT_TOT_CS) || _OT_GAP_S3(OT_TOT_MISO)
+    #error "OT_TOT SPI pin: GPIO 22-25 do not exist on ESP32-S3"
+  #endif
+  #if _OT_GAP_S3(OT_OIL_PRESS_PIN) || _OT_GAP_S3(OT_FLAME_PIN)
+    #error "Sensor pin: GPIO 22-25 do not exist on ESP32-S3"
+  #endif
+  #if _OT_GAP_S3(OT_THROTTLE_PIN) || _OT_GAP_S3(OT_STARTER_MOTOR_PIN) || _OT_GAP_S3(OT_OIL_PUMP_PIN)
+    #error "Actuator pin: GPIO 22-25 do not exist on ESP32-S3"
+  #endif
+  #if _OT_GAP_S3(OT_FUEL_SOL_PIN) || _OT_GAP_S3(OT_IGNITER_PIN)
+    #error "Actuator pin: GPIO 22-25 do not exist on ESP32-S3"
+  #endif
+  #if defined(OT_HAS_STARTER_EN) && _OT_GAP_S3(OT_STARTER_EN_PIN)
+    #error "OT_STARTER_EN_PIN: GPIO 22-25 do not exist on ESP32-S3"
   #endif
 #endif  // OT_PLATFORM_ESP32S3
 //

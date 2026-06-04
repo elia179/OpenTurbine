@@ -1,6 +1,8 @@
 #pragma once
 #include "../IBlock.h"
 #include "../../EngineData.h"
+#include "../../../system/Config.h"
+#include "../../../system/HardwareConfig.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -23,9 +25,17 @@ public:
 
     void onEnter() override {
         auto& ed = EngineData::instance();
-        float norm = constrain(ed.idleInputRaw / 4095.0f, 0.0f, 1.0f);
+        float norm;
+        if (HardwareConfig::idleInputRcPwm) {
+            norm = ed.rcIdleValid ? ed.rcIdleNorm : 0.0f;
+        } else {
+            int range = Config::idleMaxRaw - Config::idleMinRaw;
+            norm = range == 0 ? 0.0f :
+                constrain((ed.idleInputRaw - Config::idleMinRaw) / (float)range, 0.0f, 1.0f);
+        }
         float pct  = minPct + norm * (maxPct - minPct);
         ed.throttleDemand = constrain(pct / 100.0f, 0.0f, 1.0f);
+        if (ed.throttleDemand > 0.0f) ed.fuelEverOpened = true;
     }
 
     BlockResult tick() override {

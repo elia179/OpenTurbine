@@ -66,6 +66,13 @@ public:
         auto& ed = EngineData::instance();
         unsigned long elapsed = millis() - _startMs;
 
+        if (_doTorch && !ed.totHealthy) {
+            Serial.println("[AB] Ignite fault: TOT sensor unavailable during torch");
+            _cutTorch(ed);
+            _done = true;
+            return BlockResult::Fault;
+        }
+
         // Safety: cut torch if TOT is getting too hot
         if (_doTorch && torchTotLimit > 0 && ed.totHealthy && ed.tot > torchTotLimit) {
             Serial.printf("[AB] Ignite: torch cut — TOT %.1f > limit %.1f\n",

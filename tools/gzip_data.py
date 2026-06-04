@@ -15,10 +15,12 @@ for fname in os.listdir(SRC):
         continue
     src_path = os.path.join(SRC, fname)
     dst_path = os.path.join(DST, fname + ".gz")
-    with open(src_path, "rb") as f_in, gzip.open(dst_path, "wb", compresslevel=9) as f_out:
+    tmp_path = dst_path + ".tmp"
+    with open(src_path, "rb") as f_in, gzip.open(tmp_path, "wb", compresslevel=9) as f_out:
         shutil.copyfileobj(f_in, f_out)
+    os.replace(tmp_path, dst_path)
     src_kb = os.path.getsize(src_path) / 1024
     dst_kb = os.path.getsize(dst_path) / 1024
     print(f"  {fname}: {src_kb:.0f}KB -> {dst_kb:.0f}KB gz")
 
-print("Done. Run: pio run -t uploadfs -e esp32dev")
+print("Done. Flash with uploadfs once, or choose all generated data/*.gz files in Tools > Web UI Assets Update.")

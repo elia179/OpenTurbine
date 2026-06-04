@@ -33,6 +33,9 @@ public:
         // even if a future library version adds teardown logic.
         if (_tc) _tc->~MAX6675();
         _tc = new (_tcBuf) MAX6675(_clkPin, _csPin, _misoPin);
+        // An absent converter otherwise leaves MISO floating and may appear
+        // as a plausible turbine temperature.
+        pinMode(_misoPin, INPUT_PULLUP);
         _filled  = 0;
         _idx     = 0;
         _temp    = 0;
@@ -52,7 +55,10 @@ public:
         // NaN = open circuit; 0 = often returned on disconnect; >1023.75 = impossible
         if (isnan(t) || t <= 0.0f || t > 1023.75f) {
             _healthy = false;
-            return;   // don't push bad samples into the average
+            // Retain the last value but reset filter history after a fault.
+            _filled = 0;
+            _idx = 0;
+            return;
         }
         _healthy     = true;
         _buf[_idx]   = t;

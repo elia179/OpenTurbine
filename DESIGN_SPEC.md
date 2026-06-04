@@ -5,6 +5,13 @@ License: MIT
 
 ---
 
+> **Status:** historical design notes. The current firmware now stores the
+> complete per-engine hardware and settings in `ecu_config.json`, edited through
+> the web UI. Use `README.md`, `hardware_profile.h`, and the web UI text as the
+> release-facing guidance.
+
+---
+
 ## 1. Project Philosophy
 
 OpenTurbine is a universal turbine engine ECU firmware targeting ESP32-class microcontrollers.

@@ -299,6 +299,16 @@
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar-idle" style="width:0%"></div></div>
     <div class="bar-range"><span id="idle-range-lo">0</span><span id="idle-range-hi">4095</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Idle Input Min / Max Calibration</div>
+      <div class="wizard-steps" id="idle-wiz-steps">Move idle input to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.</div>
+      <div class="wiz-buttons" style="margin-bottom:.4rem">
+        <button onclick="captureIdleMin()">Capture Min</button>
+        <button onclick="captureIdleMax()">Capture Max</button>
+        <button onclick="saveIdle()" id="btn-idle-save" disabled>Save</button>
+      </div>
+      <div id="idle-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
   </div>
 
   <!-- Oil Temp NTC (shown only when oil temp sensor is NTC type) -->
@@ -573,6 +583,7 @@ let live = {};
 let oilPts = [];
 let flameNoise = null;
 let thMin = null, thMax = null;
+let idleMin = null, idleMax = null;
 let cfg = {};
 
 // Input types reported by firmware ('adc', 'servo', or 'none')
@@ -581,8 +592,12 @@ let idleInputType     = 'adc';
 
 let fpRawZero = null, fpRawRef = null;
 
-fetch('/api/config').then(r=>r.json()).then(c => {
+Promise.all([
+  fetch('/api/config').then(r=>r.json()),
+  fetch('/api/hardware').then(r=>r.json())
+]).then(([c, hw]) => {
   cfg = c;
+  c.hardware = hw;
   // Show fuel press cal row if fitted
   const fpRow = document.getElementById('fuelpress-cal-row');
   if (fpRow) fpRow.style.display = (c.hardware?.sensors?.fuel_press?.enabled) ? '' : 'none';
@@ -622,6 +637,13 @@ fetch('/api/config').then(r=>r.json()).then(c => {
     document.getElementById('th-lo').textContent = mn;
     document.getElementById('th-hi').textContent = mx;
     document.getElementById('btn-th-save').disabled = false;
+  }
+  const imn = c.calibration?.idle_min_raw, imx = c.calibration?.idle_max_raw;
+  if (imn !== undefined && imx !== undefined) {
+    idleMin = imn; idleMax = imx;
+    document.getElementById('idle-range-lo').textContent = imn;
+    document.getElementById('idle-range-hi').textContent = imx;
+    document.getElementById('btn-idle-save').disabled = false;
   }
 
   // ── Hardware-conditional row visibility (based on hardware settings) ─────────
@@ -675,6 +697,10 @@ function applyInputTypeLabels(d) {
     idleInputType = idleType;
     const isServo = idleType === 'servo';
     setText('idle-raw-label', isServo ? 'Servo Signal' : 'Raw ADC');
+    const steps = document.getElementById('idle-wiz-steps');
+    if (steps) steps.innerHTML = isServo
+      ? 'Move idle input to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.<br><span style="color:var(--dim)">Values captured in microseconds (servo signal).</span>'
+      : 'Move idle input to minimum position, click Capture Min.<br>Move to maximum, click Capture Max.';
     // Hide row if idle input is not fitted
     const idRow = document.getElementById('idle-cal-row');
     if (idRow) idRow.style.display = idleType === 'none' ? 'none' : '';
@@ -744,8 +770,11 @@ window.applyData = function(d) {
   bar('bar-flame', d.flame_raw ?? 0, 0, 4095, true);
 
   // ── Idle input ────────────────────────────────────────────────
-  const rcMin = cfg.rc?.rc_min_us ?? 1000;
-  const rcMax = cfg.rc?.rc_max_us ?? 2000;
+  let rcMin = cfg.calibration?.idle_min_raw ?? (idleInputType === 'servo' ? 1000 : 0);
+  let rcMax = cfg.calibration?.idle_max_raw ?? (idleInputType === 'servo' ? 2000 : 4095);
+  if (idleInputType === 'servo' && rcMin === 0 && rcMax === 4095) {
+    rcMin = 1000; rcMax = 2000;
+  }
   if (idleInputType === 'servo') {
     // Servo signal: show µs, bar over rcMin–rcMax
     const us = d.idle_input_us ?? rcMin;
@@ -759,17 +788,17 @@ window.applyData = function(d) {
     // ADC: show counts, bar over 0–4095
     const idleRaw = d.idle_input_raw ?? 0;
     setText('cal-idle-raw', d.idle_input_raw !== undefined ? d.idle_input_raw : '—');
-    const idlePosP = Math.round((idleRaw / 4095) * 100);
+    const idlePosP = Math.round(((idleRaw - rcMin) / (rcMax - rcMin)) * 100);
     setText('cal-idle-pct', idlePosP + '%');
-    setText('idle-range-lo', '0');
-    setText('idle-range-hi', '4095');
-    bar('bar-idle', idleRaw, 0, 4095, true);
+    setText('idle-range-lo', String(rcMin));
+    setText('idle-range-hi', String(rcMax));
+    bar('bar-idle', idleRaw, rcMin, rcMax, true);
   }
   // Idle→throttle % mapping (same regardless of signal type)
   {
     const idleNorm = idleInputType === 'servo'
       ? Math.max(0, Math.min(1, ((d.idle_input_us ?? rcMin) - rcMin) / (rcMax - rcMin)))
-      : Math.max(0, Math.min(1, (d.idle_input_raw ?? 0) / 4095));
+      : Math.max(0, Math.min(1, ((d.idle_input_raw ?? rcMin) - rcMin) / (rcMax - rcMin)));
     const idleThLo = cfg.throttle?.idle_min_pct ?? 8;
     const idleThHi = cfg.throttle?.idle_max_pct ?? 18;
     setText('cal-idle-thr', (idleThLo + idleNorm * (idleThHi - idleThLo)).toFixed(1) + '%');
@@ -859,9 +888,14 @@ window.applyData = function(d) {
   }
 
   // ── Throttle input ────────────────────────────────────────────
+  let thRangeMin = cfg.calibration?.throttle_min_raw ?? (throttleInputType === 'servo' ? 1000 : 0);
+  let thRangeMax = cfg.calibration?.throttle_max_raw ?? (throttleInputType === 'servo' ? 2000 : 4095);
+  if (throttleInputType === 'servo' && thRangeMin === 0 && thRangeMax === 4095) {
+    thRangeMin = 1000; thRangeMax = 2000;
+  }
   if (throttleInputType === 'servo') {
     // Servo signal: show µs
-    const us = d.throttle_input_us ?? rcMin;
+    const us = d.throttle_input_us ?? thRangeMin;
     setText('cal-th-raw', us + ' µs');
     // Set bar range labels to µs if not yet set by captured min/max
     if (thMin === null && thMax === null) {
@@ -873,7 +907,7 @@ window.applyData = function(d) {
       setText('cal-th-pct', Math.max(0, Math.min(100, pct)) + '%');
       bar('bar-th', us, thMin, thMax, true);
     } else {
-      bar('bar-th', us, rcMin, rcMax, true);
+      bar('bar-th', us, thRangeMin, thRangeMax, true);
     }
   } else {
     // ADC: show counts
@@ -1269,6 +1303,39 @@ function saveThrottle() {
 }
 
 // ── P1 / P2 zero calibration ─────────────────────────────────
+function _idleCurrentValue() {
+  return idleInputType === 'servo' ? live.idle_input_us : live.idle_input_raw;
+}
+function _idleUnit() {
+  return idleInputType === 'servo' ? ' us' : '';
+}
+function captureIdleMin() {
+  const val = _idleCurrentValue();
+  if (val === undefined) { alert('No idle input data yet'); return; }
+  idleMin = val;
+  renderIdleStatus();
+}
+function captureIdleMax() {
+  const val = _idleCurrentValue();
+  if (val === undefined) { alert('No idle input data yet'); return; }
+  idleMax = val;
+  renderIdleStatus();
+}
+function renderIdleStatus() {
+  let msg = '';
+  if (idleMin !== null) msg += `Min: ${idleMin}${_idleUnit()}   `;
+  if (idleMax !== null) msg += `Max: ${idleMax}${_idleUnit()}`;
+  document.getElementById('idle-status').textContent = msg;
+  document.getElementById('btn-idle-save').disabled = idleMin === null || idleMax === null;
+}
+function saveIdle() {
+  patchConfig({ calibration: { idle_min_raw: idleMin, idle_max_raw: idleMax } },
+    `Idle input calibrated: ${idleMin} - ${idleMax}${_idleUnit()}`);
+  if (!cfg.calibration) cfg.calibration = {};
+  cfg.calibration.idle_min_raw = idleMin;
+  cfg.calibration.idle_max_raw = idleMax;
+}
+
 function captureZero(ch) {
   const val = live[ch];  // current gauge bar (already offset-subtracted in firmware)
   if (val === undefined) { alert('No live ' + ch.toUpperCase() + ' data yet'); return; }
@@ -1510,7 +1577,7 @@ function ffClear() {
 }
 
 // ── Current sensor calibration (glow + igniter) ───────────────
-// Saves mVperA and zeroV back to hardware.json (no reboot needed via PATCH)
+// Saves mVperA and zeroV to the hardware section of ecu_config.json (no reboot needed via PATCH).
 const _curState = {};
 function curCaptureZero(which) {
   const rawKeys = { glow: 'glow_current_raw', ign: 'igniter_current_raw', ign2: 'igniter2_current_raw', oilpump: 'oil_pump_current_raw' };
@@ -1548,7 +1615,7 @@ function curSave(which) {
   const deltaV  = ((st.refRaw - st.zeroRaw) / 4095.0) * 3300.0;  // mV
   const mvPerA  = deltaV / st.refAmps;
   const statusEl = document.getElementById(which + '-cur-status');
-  // All current sensors live inside their actuator objects in hardware JSON
+  // All current sensors live inside actuator objects in the hardware section.
   if (which === 'oilpump') {
     patchHardware({ actuators: { oil_pump: { current_zero_v: +zeroV.toFixed(4), current_mv_a: +mvPerA.toFixed(4) } } }, () => {
       statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';

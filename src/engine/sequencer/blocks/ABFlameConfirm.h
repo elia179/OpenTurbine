@@ -47,7 +47,7 @@ public:
         }
 
         // Overall timeout → fault (ignition failed)
-        if (elapsed >= (unsigned long)flameTimeoutMs) {
+        if (elapsed > (unsigned long)flameTimeoutMs) {
             Serial.println("[AB] FlameConfirm: TIMEOUT — ignition failed");
             return BlockResult::Fault;
         }
@@ -62,9 +62,11 @@ public:
 
             case 1: // TOT rise
             {
-                // Guard: a sensor glitch that spikes tot high would produce a
-                // false rise confirmation.  Skip the check while TOT is unhealthy.
-                if (!ed.totHealthy) break;
+                // A TOT-dependent confirmation cannot be trusted without its sensor.
+                if (!ed.totHealthy) {
+                    Serial.println("[AB] FlameConfirm fault: TOT sensor unavailable");
+                    return BlockResult::Fault;
+                }
                 float rise = ed.tot - _totBaseline;
                 if (rise >= totRiseDegC) {
                     Serial.printf("[AB] FlameConfirm: TOT rose %.1f °C — confirmed\n",

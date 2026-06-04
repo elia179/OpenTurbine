@@ -97,11 +97,8 @@ public:
                 }
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "abort");
                 _blocks[_idx]->onExit();
-                // Call _abort() BEFORE clearing _running so that the callback
-                // can still read currentBlockName() and get the real block name
-                // rather than "IDLE".  enterAbortStandby() uses this for logging.
-                if (_abort) _abort();
                 _running = false;
+                if (_abort) _abort();
                 break;
 
             case BlockResult::Fault:

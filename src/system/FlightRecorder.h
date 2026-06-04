@@ -43,6 +43,7 @@ public:
     static void logRunSummary();   // called automatically by shutdown handlers
 
     static void clear();
+    static void requestClear();  // Core 1: defer file removal to Core 0
 
     // Current number of records in the log (0 before first write).
     static int recordCount();
@@ -54,6 +55,8 @@ public:
     // racing against _append()'s ring-buffer eviction (remove + rename).
     static void lockLog();
     static void unlockLog();
+    static void beginRawDownload();
+    static void endRawDownload();
 
     // Called from Core 0 (web task tick) to offload ring-buffer eviction off Core 1.
     // No-op unless a previous _append() set the eviction-pending flag.

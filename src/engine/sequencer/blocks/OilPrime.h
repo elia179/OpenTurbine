@@ -22,6 +22,7 @@ public:
 
     void onEnter() override {
         _entryMs = millis();
+        _completed = false;
         auto& ed = EngineData::instance();
         ed.oilMinBar = 0;  // not yet checking min during prime
         if (HardwareConfig::hasOilPress) {
@@ -41,6 +42,7 @@ public:
             // No pressure sensor, OR bench mode — run pump for configured time then proceed
             if (elapsed >= timeoutMs) {
                 clearWaitReason();
+                _completed = true;
                 return BlockResult::Complete;
             }
             char buf[80];
@@ -55,6 +57,7 @@ public:
         // Pressure sensor present and not bench mode — wait for pressure to come up
         if (ed.oilHealthy && ed.oilPressure >= oilArmMinBar) {
             clearWaitReason();
+            _completed = true;
             return BlockResult::Complete;
         }
         if (elapsed > timeoutMs) {
@@ -69,9 +72,10 @@ public:
 
     void onExit() override {
         // Arm oil safety check — sequencer sets the real threshold in StarterSpin
-        EngineData::instance().oilMinBar = oilArmMinBar;
+        if (_completed) EngineData::instance().oilMinBar = oilArmMinBar;
     }
 
 private:
     unsigned long _entryMs = 0;
+    bool          _completed = false;
 };

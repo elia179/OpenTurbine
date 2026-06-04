@@ -52,7 +52,7 @@ public:
 
     void begin() override {
         analogSetAttenuation(ADC_11db); // 0–3.3 V full range
-        analogSetWidth(12);             // 12-bit (0–4095)
+        analogReadResolution(12);       // 12-bit (0–4095), portable across ESP32 targets
     }
 
     void update() override {

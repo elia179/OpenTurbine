@@ -1,6 +1,7 @@
 #pragma once
 #include "../IBlock.h"
 #include "../../EngineData.h"
+#include "../../../system/HardwareConfig.h"
 #include <Arduino.h>
 
 // Post-spool safety hold: verify stable RPM and oil pressure
@@ -43,8 +44,10 @@ public:
         // Final sanity check before handing off to RUNNING
         // (skipped in bench mode — no real sensors)
         if (!ed.benchMode) {
-            if (ed.n1Healthy && ed.n1Rpm < finalCheckRpm) return BlockResult::Fault;
-            if (ed.oilHealthy && ed.oilPressure < runningOilMin) return BlockResult::Fault;
+            if (HardwareConfig::hasN1Rpm &&
+                (!ed.n1Healthy || ed.n1Rpm < finalCheckRpm)) return BlockResult::Fault;
+            if (HardwareConfig::hasOilPress &&
+                (!ed.oilHealthy || ed.oilPressure < runningOilMin)) return BlockResult::Fault;
         }
 
         return BlockResult::Complete;

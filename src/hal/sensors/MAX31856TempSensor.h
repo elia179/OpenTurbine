@@ -39,7 +39,9 @@ public:
     void begin() override {
         pinMode(_cs,   OUTPUT); digitalWrite(_cs,   HIGH);
         pinMode(_clk,  OUTPUT); digitalWrite(_clk,  HIGH);  // CPOL=1 idle high
-        pinMode(_miso, INPUT);
+        // A real converter overrides this weak pull-up; without a converter,
+        // it prevents floating SPI data from becoming a valid temperature.
+        pinMode(_miso, INPUT_PULLUP);
         if (_mosi >= 0) { pinMode(_mosi, OUTPUT); digitalWrite(_mosi, LOW); }
 
         // CR0 = 0x81: 50 Hz noise filter + auto-convert mode (continuous)
@@ -74,13 +76,14 @@ public:
         int32_t val = (int32_t)((raw & 0xFFFFE0u) >> 5);    // 19-bit signed
         if (val & 0x40000) val |= (int32_t)0xFFF80000;  // sign extend
 
-        _temp = val * 0.0078125f;
+        float temp = val * 0.0078125f;
 
         // Physical sanity check
-        if (_temp < -210.0f || _temp > 1800.0f) {
+        if (temp < -210.0f || temp > 1800.0f) {
             _healthy = false;
             return;
         }
+        _temp = temp;
         _healthy = true;
     }
 

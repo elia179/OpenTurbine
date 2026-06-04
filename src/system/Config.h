@@ -3,16 +3,15 @@
 #include "../engine/EngineData.h"
 
 // ============================================================
-//  Config — loads config.json from LittleFS, validates profile ID
+//  Config — manages the settings section of ecu_config.json and validates profile ID
 //
 //  Boot sequence:
 //    1. load()
 //    2. If no file → generateDefaults() + save() + proceed
-//    3. If profile_id mismatch → set mode=FAULT, block engine ops
+//    3. If hardware/settings profile_id values differ → block engine ops
 //    4. If OK → populate config values into runtime structs
 //
-//  During STARTUP/RUNNING/SHUTDOWN: all write() calls rejected
-//  unless OT_DEV_MODE is defined.
+//  During STARTUP/RUNNING/SHUTDOWN: all config write() calls are rejected.
 // ============================================================
 
 class Config {
@@ -81,6 +80,10 @@ public:
     // ── Safety ────────────────────────────────────────────────
     static int   safetyCheckIntervalMs;
     static float flameoutShutdownMs;
+    // Flameout source: 0=auto, 1=flame sensor, 2=N1 below threshold, 3=TOT drop.
+    static int   flameoutSource;
+    static float flameoutN1MinRpm;
+    static float flameoutTotDropC;
     static float totRiseRateLimitDegPerSec;  // °C/s — 0 = disabled
     static float titLimit;                   // °C TIT overtemp limit (0 = disabled)
     static float oilTempLimit;              // °C oil temp limit (0 = disabled)
@@ -91,6 +94,9 @@ public:
     // ── Relight ───────────────────────────────────────────────
     static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
     static float    relightMinRpm;       // min N1 to attempt relight (falls below → fault)
+    static int      relightConfirmSource; // 0=auto, 1=flame, 2=N1 recovered, 3=TOT rise
+    static float    relightConfirmRpm;
+    static float    relightTotRiseC;
     static int      relightTimeoutMs;    // ms to keep trying after first relight trigger (0 = unlimited)
 
     // ── Tool test durations (standby diagnostics) ─────────────
@@ -101,8 +107,9 @@ public:
     static uint32_t toolFuelSolTestMs;
 
     // ── Telemetry intervals ───────────────────────────────────
-    static uint32_t wsIntervalMs;        // WebSocket push rate (ms)
+    static uint32_t wsIntervalMs;        // Browser telemetry request interval (ms; >=333)
     static uint32_t snapshotIntervalMs;  // FlightRecorder RUNNING_SNAP rate (ms)
+    static bool     logStandby;          // include periodic flight-log snapshots while idle
 
     // ── Starter assist ────────────────────────────────────────
     static float starterAssistPct;       // assist duty % (e.g. 15 or 30)
@@ -202,7 +209,8 @@ public:
     // Running
     static float abPumpMinPct;         // AB pump minimum % when running
     static float abPumpMaxPct;         // AB pump maximum % when running
-    static bool  abPumpFollowThrottle; // scale pump between min/max with throttle demand
+    static int   abPumpControlMode;    // 0=fixed max, 1=main throttle, 2=dedicated AB input
+    static bool  abPumpFollowThrottle; // legacy compatibility mirror of mode == 1
     static float abMainFuelOffsetPct;  // add this to main throttle demand while AB running
     static int   abStabilizeMs;        // hold time in ABStabilize block
     static float abStabilizeMaxTot;    // TOT limit during stabilize; abort if exceeded
@@ -273,11 +281,13 @@ public:
     static constexpr uint32_t SLOG_OIL_PCT   = 1u << 16;  // oil pump duty %
     static constexpr uint32_t SLOG_DEFAULT = SLOG_N1 | SLOG_TOT | SLOG_OIL;
     static uint32_t sessionLogMask;
-    static uint32_t sessionLogIntervalMs;  // session CSV row interval (default 500 = 2 Hz)
+    static uint32_t sessionLogIntervalMs;  // session CSV row interval (default 1000 = 1 Hz)
 
     // ── Calibration ───────────────────────────────────────────
     static int   throttleMinRaw;
     static int   throttleMaxRaw;
+    static int   idleMinRaw;
+    static int   idleMaxRaw;
     static int   flameThreshold;
     static float oilPolyA, oilPolyB, oilPolyC, oilPolyD;
     static float oilPolyXMin, oilPolyXMax;
@@ -322,14 +332,20 @@ public:
     static bool    profileMatch;
 
     // ── Config version ────────────────────────────────────────
-    static constexpr uint8_t CONFIG_VERSION = 1;
+    static constexpr uint8_t CONFIG_VERSION = 2;
 
     // ── API ───────────────────────────────────────────────────
     static void load();
     static bool save();          // write-to-tmp + rename; returns false on LittleFS error
     static void requestSave();   // Core 1: mark save needed, zero file I/O
     static bool flushPendingSave(); // Core 0: perform deferred save; returns true if it ran
+    static void requestRuntimeStatsSave(); // Core 1: persist hour meter through NVS
+    static bool flushPendingRuntimeStats(); // Core 0: perform deferred NVS write
+    static void loadRuntimeStats(); // merge per-engine NVS hour meter after profile load
+    static void clearRuntimeStats(); // factory reset current engine's hour meter
     static bool isLocked();
+    static bool acquireStorageWrite(); // serialize all ecu_config.json replacement operations
+    static void releaseStorageWrite();
 
     // Serialize current config to JSON string (for web download)
     static size_t toJson(char* buf, size_t len);
@@ -337,6 +353,8 @@ public:
     static void   toJson(JsonDocument& doc);
 
     // Parse and apply JSON from web upload
+    static bool validateJson(const char* json, size_t len);
+    static bool validateJson(const JsonDocument& doc);
     static bool fromJson(const char* json, size_t len);
     static bool fromJson(const JsonDocument& doc);  // PATCH merge variant
 
@@ -345,4 +363,6 @@ private:
     static void _fromDoc(const JsonDocument& doc);
     static void _toDoc(JsonDocument& doc);
     static volatile bool _savePending;
+    static volatile bool _runtimeStatsSavePending;
+    static bool _missingRequiredSections;
 };

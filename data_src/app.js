@@ -18,6 +18,8 @@ function setTempUnit(v)  { _unitPrefs.temp  = v; _saveUP(); applyUnitLabels(); i
 function setPressUnit(v) { _unitPrefs.press = v; _saveUP(); applyUnitLabels(); if (_lastData) applyData(_lastData); }
 function toDispTemp(c)   { return tempUnit()  === 'F'   ? c * 9/5 + 32  : c; }
 function fromDispTemp(v) { return tempUnit()  === 'F'   ? (v - 32) * 5/9 : v; }
+function toDispTempDelta(c)   { return tempUnit() === 'F' ? c * 9/5 : c; }
+function fromDispTempDelta(v) { return tempUnit() === 'F' ? v * 5/9 : v; }
 function toDispPress(b)  { return pressUnit() === 'psi' ? b * 14.5038   : b; }
 function fromDispPress(v){ return pressUnit() === 'psi' ? v / 14.5038   : v; }
 function dispTempUnit()  { return tempUnit()  === 'F'   ? '°F' : '°C'; }
@@ -29,6 +31,35 @@ function applyUnitLabels() {
   if (bt) bt.textContent = tempUnit()  === 'C'   ? '°F'  : '°C';
   const bp = document.getElementById('unit-press-btn');
   if (bp) bp.textContent = pressUnit() === 'bar' ? 'PSI' : 'bar';
+}
+
+function applyContextTooltips(root = document) {
+  root.querySelectorAll('.tool-card, .cfg-field, .hw-field, .hw-item-card').forEach(el => {
+    if (el.title) return;
+    const label = el.querySelector('.tool-name, .cfg-label, .hw-label, b')?.textContent?.trim() || '';
+    const desc = el.querySelector('.tool-desc, .cfg-desc, .hw-desc')?.textContent?.trim() || '';
+    if (desc) el.title = label ? label + ': ' + desc : desc;
+  });
+}
+window.applyContextTooltips = applyContextTooltips;
+
+function organizeDashboardCards() {
+  const groups = {
+    'temperature-cards': ['tot-card', 'tit-card', 'oil-temp-card'],
+    'speed-cards': ['n1-card', 'n2-card'],
+    'pressure-cards': ['oil-card', 'p1-card', 'p2-card'],
+    'combustion-cards': ['flame-card', 'fuel-press-card', 'fuel-flow-card'],
+    'electrical-cards': ['batt-card', 'torque-card', 'glow-current-card',
+      'igniter-current-card', 'igniter2-current-card', 'oilpump-current-card']
+  };
+  Object.entries(groups).forEach(([targetId, cardIds]) => {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    cardIds.forEach(cardId => {
+      const card = document.getElementById(cardId);
+      if (card) target.appendChild(card);
+    });
+  });
 }
 
 // ── Sparkline circular buffers ────────────────────────────────
@@ -79,6 +110,26 @@ let ws = null;
 let _lastMsgMs = 0;
 let _lastConnectMs = 0;
 let _pullTimer = null;
+let _pullPeriodMs = 0;
+
+function desiredPullPeriodMs() {
+  const livePage = location.pathname === '/' ||
+    location.pathname === '/index.html' ||
+    location.pathname === '/calibration.html';
+  if (!livePage) return 2000;
+  const configured = _lastData && Number(_lastData.ws_interval_ms);
+  return Math.max(333, Number.isFinite(configured) ? configured : 333);
+}
+
+function startPullTimer() {
+  const period = desiredPullPeriodMs();
+  if (_pullTimer && _pullPeriodMs === period) return;
+  if (_pullTimer) clearInterval(_pullTimer);
+  _pullPeriodMs = period;
+  _pullTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
+  }, period);
+}
 
 function connect() {
   if (ws && ws.readyState <= WebSocket.OPEN) return;
@@ -92,26 +143,16 @@ function connect() {
     _lastMsgMs = Date.now();
     // Start sending pull requests — server responds with full telemetry each time.
     // Server also sends one frame on WS_EVT_CONNECT so the UI populates immediately.
-    // Dashboard needs 10 Hz for smooth live gauges; other pages (log, config, etc.)
-    // only need the connection indicator — 2 s is enough and keeps the ESP32 free
-    // to serve page fetches without queuing behind a flood of WS events.
-    const _pullMs = (location.pathname === '/' || location.pathname === '/index.html') ? 100 : 2000;
-    _pullTimer = setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
-    }, _pullMs);
+    // Dashboard and calibration require responsive live values. Keep them at about 3 Hz;
+    // other pages only need the connection indicator and can poll more slowly.
+    startPullTimer();
   };
 
   ws.onclose = () => {
-    if (_pullTimer) { clearInterval(_pullTimer); _pullTimer = null; }
+    if (_pullTimer) { clearInterval(_pullTimer); _pullTimer = null; _pullPeriodMs = 0; }
     document.getElementById('conn').className = 'conn-dot disconnected';
     const lbl = document.getElementById('conn-label');
-    if (lbl) { lbl.textContent = 'Disconnected'; lbl.style.color = 'var(--dim)'; }
-    ['n1','n2','tot','oil','p1','p2','oil-temp','batt-voltage','torque'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.textContent = '—';
-    });
-    ['n1-approach-warn','tot-approach-warn','oil-approach-warn'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.style.display = 'none';
-    });
+    if (lbl) { lbl.textContent = 'Reconnecting - values retained'; lbl.style.color = 'var(--yellow)'; }
     const wait = 1000 - (Date.now() - _lastConnectMs);
     if (wait <= 0) {
       connect();
@@ -137,6 +178,7 @@ function applyData(d) {
   if (!_lastData) _lastData = {};
   Object.assign(_lastData, d);
   d = _lastData;
+  if (ws && ws.readyState === WebSocket.OPEN) startPullTimer();
   // ── Channel labels ─────────────────────────────────────────
   if (d.labels) {
     Object.assign(_labels, d.labels);
@@ -154,43 +196,99 @@ function applyData(d) {
   }
   // Coerce to Number so .toFixed/.toLocaleString always work even if JSON sent as int
   setText('n1',  d.n1  !== undefined ? Number(d.n1).toLocaleString()  : '—');
+  const n1Card = document.getElementById('n1-card');
+  if (n1Card && d.has_n1 !== undefined) n1Card.style.display = d.has_n1 ? '' : 'none';
   setText('n2',  d.n2  !== undefined ? Number(d.n2).toLocaleString()  : '—');
   const n2Card = document.getElementById('n2-card');
   if (n2Card && d.has_n2 !== undefined) n2Card.style.display = d.has_n2 ? '' : 'none';
   setText('tot', d.tot !== undefined ? toDispTemp(Number(d.tot)).toFixed(1)       : '—');
+  const totCard = document.getElementById('tot-card');
+  if (totCard && d.has_tot !== undefined) totCard.style.display = d.has_tot ? '' : 'none';
   setText('max-n1',  d.max_n1  !== undefined ? Number(d.max_n1).toLocaleString() : '—');
   setText('max-n2',  d.max_n2  !== undefined ? Number(d.max_n2).toLocaleString() : '—');
   setText('max-tot', d.max_tot !== undefined ? toDispTemp(Number(d.max_tot)).toFixed(1) : '—');
   setText('oil', d.oil !== undefined ? toDispPress(Number(d.oil)).toFixed(2)       : '—');
+  const oilCard = document.getElementById('oil-card');
+  if (oilCard && d.has_oil_press !== undefined) oilCard.style.display = d.has_oil_press ? '' : 'none';
   setText('oil-demand-val', d.oil_demand !== undefined ? toDispPress(Number(d.oil_demand)).toFixed(2) : '—');
-  setText('throttle-demand', d.throttle_demand !== undefined
-    ? (Number(d.throttle_demand) * 100).toFixed(1) + '%' : '—');
+  const baseThrottle = d.throttle_demand !== undefined ? Number(d.throttle_demand) : undefined;
+  const effectiveThrottle = d.throttle_effective !== undefined ? Number(d.throttle_effective) : baseThrottle;
+  setText('throttle-demand', effectiveThrottle !== undefined
+    ? (effectiveThrottle * 100).toFixed(1) + '%' : '—');
+  const throttleOutputCard = document.getElementById('throttle-output-card');
+  if (throttleOutputCard && d.has_throttle !== undefined) {
+    throttleOutputCard.style.display = d.has_throttle ? '' : 'none';
+  }
   // Throttle gauge bar
-  if (d.throttle_demand !== undefined) {
+  if (effectiveThrottle !== undefined) {
     const gb = document.getElementById('throttle-gauge-bar');
-    if (gb) gb.style.width = (Number(d.throttle_demand) * 100).toFixed(1) + '%';
+    if (gb) gb.style.width = (effectiveThrottle * 100).toFixed(1) + '%';
+  }
+  const feedbackInhibit = document.getElementById('throttle-feedback-inhibit-note');
+  if (feedbackInhibit) {
+    const sensorBlocksIncrease = !d.bench_mode &&
+      (d.mode === 'RUNNING' || d.mode === 'STARTUP') &&
+      ((d.has_tot && d.tot_healthy === false) ||
+       (d.has_n1 && d.n1_healthy === false));
+    feedbackInhibit.style.display = sensorBlocksIncrease ? '' : 'none';
   }
   // Physical throttle input display (when throttle input is configured)
   {
     const iRow = document.getElementById('throttle-input-row');
     const iVal = document.getElementById('throttle-input-pct');
     const hasInput = d.throttle_input_type && d.throttle_input_type !== 'none';
-    if (iRow) iRow.style.display = hasInput ? '' : 'none';
+    if (iRow) iRow.style.display = hasInput && d.mode === 'RUNNING' ? '' : 'none';
     if (iVal && hasInput) {
       const rawNorm = d.throttle_input_raw !== undefined ? Number(d.throttle_input_raw) / 4095 : 0;
-      const pct = (d.throttle_input_type === 'servo' && d.rc_throttle_norm !== undefined)
-        ? (Number(d.rc_throttle_norm) * 100).toFixed(1)
-        : (rawNorm * 100).toFixed(1);
+      const norm = d.throttle_input_norm !== undefined
+        ? Number(d.throttle_input_norm)
+        : (d.throttle_input_type === 'servo' && d.rc_throttle_norm !== undefined)
+          ? Number(d.rc_throttle_norm) : rawNorm;
+      const pct = (norm * 100).toFixed(1);
       iVal.textContent = pct;
     }
   }
   setText('oil-pct',     d.oil_pct  !== undefined ? d.oil_pct + '%'          : '—');
+  const oilOutputCard = document.getElementById('oil-output-card');
+  if (oilOutputCard && d.has_oil_pump !== undefined) {
+    oilOutputCard.style.display = d.has_oil_pump ? '' : 'none';
+  }
+  const speedGroup = document.getElementById('speed-group');
+  if (speedGroup) speedGroup.style.display = (d.has_n1 || d.has_n2) ? '' : 'none';
+  const temperatureGroup = document.getElementById('temperature-group');
+  if (temperatureGroup) temperatureGroup.style.display =
+    (d.has_tot || d.has_tit || d.has_oil_temp) ? '' : 'none';
   setText('uptime',      d.uptime_s !== undefined ? formatUptime(d.uptime_s)  : '—');
   setText('last-event',  d.last_event || '—');
 
   // Throttle sub-labels: idle floor + dynamic idle target
   if (d.idle_min_pct !== undefined) {
     setText('throttle-idle-floor', Number(d.idle_min_pct).toFixed(1));
+  }
+  const floorRow = document.getElementById('throttle-floor-row');
+  if (floorRow) floorRow.style.display = d.mode === 'STARTUP' ? 'none' : '';
+  const startupRangeRow = document.getElementById('throttle-startup-range-row');
+  if (startupRangeRow) {
+    const showStartupRange = d.mode === 'STARTUP' &&
+      d.fuel_idle_min_pct !== undefined && d.fuel_idle_max_pct !== undefined;
+    startupRangeRow.style.display = showStartupRange ? '' : 'none';
+    if (showStartupRange) {
+      setText('throttle-startup-range',
+        Number(d.fuel_idle_min_pct).toFixed(1) + ' to ' + Number(d.fuel_idle_max_pct).toFixed(1));
+    }
+  }
+  const effectiveNote = document.getElementById('throttle-effective-note');
+  if (effectiveNote) {
+    const showEffective = baseThrottle !== undefined && effectiveThrottle !== undefined &&
+      Math.abs(effectiveThrottle - baseThrottle) > 0.0005;
+    effectiveNote.style.display = showEffective ? '' : 'none';
+    if (showEffective) setText('throttle-base-demand', (baseThrottle * 100).toFixed(1));
+  }
+  const oilStartupNote = document.getElementById('oil-startup-setting-note');
+  if (oilStartupNote) {
+    const showOilStartup = d.mode === 'STARTUP' && d.oil_pump_on_pct !== undefined;
+    oilStartupNote.style.display = showOilStartup ? '' : 'none';
+    if (showOilStartup) setText('oil-startup-setting', Number(d.oil_pump_on_pct).toFixed(1));
   }
   const diWrap = document.getElementById('throttle-di-wrap');
   if (diWrap) {
@@ -252,7 +350,11 @@ function applyData(d) {
   }
 
   // Flame progress bar + threshold marker
-  if (d.flame_raw !== undefined) {
+  if (d.has_flame === false) {
+    setText('flame-raw-val', 'No data');
+    const fill = document.getElementById('flame-bar-fill');
+    if (fill) fill.style.width = '0%';
+  } else if (d.flame_raw !== undefined) {
     const pct = Math.max(0, Math.min(100, (d.flame_raw / 4095) * 100));
     const fill = document.getElementById('flame-bar-fill');
     if (fill) {
@@ -270,7 +372,11 @@ function applyData(d) {
 
   // Pressure sensors — show/hide based on whether sensors are fitted
   const psSection = document.getElementById('pressure-section');
-  if (psSection) psSection.style.display = (d.has_p1 || d.has_p2) ? '' : 'none';
+  if (psSection) psSection.style.display = (d.has_oil_press || d.has_p1 || d.has_p2) ? '' : 'none';
+  const p1Card = document.getElementById('p1-card');
+  if (p1Card && d.has_p1 !== undefined) p1Card.style.display = d.has_p1 ? '' : 'none';
+  const p2Card = document.getElementById('p2-card');
+  if (p2Card && d.has_p2 !== undefined) p2Card.style.display = d.has_p2 ? '' : 'none';
   setText('p1', d.p1 !== undefined ? toDispPress(Number(d.p1)).toFixed(2) : '—');
   setText('p2', d.p2 !== undefined ? toDispPress(Number(d.p2)).toFixed(2) : '—');
   setText('max-p1', d.max_p1 !== undefined ? toDispPress(Number(d.max_p1)).toFixed(2) : '—');
@@ -284,7 +390,12 @@ function applyData(d) {
   setDot('n2-health',  engineOp ? d.n2_healthy : null, lbl('n2') + ' RPM');
   setDot('tot-health', d.tot_healthy, lbl('tot'));
   setDot('oil-health', d.oil_healthy, lbl('oil_press'));
-  setDot('flame-dot',  d.flame, 'Flame sensor');
+  setDot('flame-dot',  d.has_flame === false ? null : d.flame, 'Flame sensor');
+  const flameCard = document.getElementById('flame-card');
+  if (flameCard && d.has_flame !== undefined) flameCard.style.display = d.has_flame ? '' : 'none';
+  const combustionGroup = document.getElementById('combustion-group');
+  if (combustionGroup) combustionGroup.style.display =
+    (d.has_flame || d.has_fuel_press || d.has_fuel_flow) ? '' : 'none';
 
   // Mode badge
   const badge = document.getElementById('mode-badge');
@@ -305,6 +416,14 @@ function applyData(d) {
 
   // Start/Stop buttons — disable + hardware glow when physical button is pressed
   const running = d.mode === 'RUNNING' || d.mode === 'STARTUP' || d.mode === 'SHUTDOWN';
+  const startBtn = document.getElementById('btn-start');
+  if (startBtn) {
+    startBtn.textContent = d.mode === 'STARTUP' ? 'Starting...' : 'START';
+    if (d.mode !== 'STANDBY' && startBtn._startTimeout) {
+      clearTimeout(startBtn._startTimeout);
+      startBtn._startTimeout = null;
+    }
+  }
   setDisabled('btn-start', running || d.mode === 'FAULT' || d.stop_switch_active);
   setDisabled('btn-stop',  !running);
   setHwActive('btn-start', !!d.start_switch_active);
@@ -342,7 +461,7 @@ function applyData(d) {
     const mismatch = d.profile_match === false;
     mismatchBanner.style.display = mismatch ? '' : 'none';
   }
-  // legacy small error banner (kept for compat)
+  // Older pages may still include this compact profile-error element.
   const profErr = document.getElementById('profile-error');
   if (profErr) profErr.style.display = (d.profile_match === false) ? '' : 'none';
 
@@ -441,10 +560,9 @@ function applyData(d) {
   // ── Extended sensors (oil temp, battery, torque, current sensors) ──
   const extSection = document.getElementById('ext-sensors-section');
   if (extSection) {
-    const anyExt = d.has_oil_temp || d.has_batt_voltage || d.has_torque
-                || d.has_glow_current || d.has_igniter_current || d.has_igniter2_current
-                || d.has_oil_pump_current
-                || d.has_fuel_flow || d.has_tit || d.has_fuel_press;
+    const anyExt = d.has_batt_voltage || d.has_torque ||
+                   d.has_glow_current || d.has_igniter_current ||
+                   d.has_igniter2_current || d.has_oil_pump_current;
     extSection.style.display = anyExt ? '' : 'none';
   }
 
@@ -701,7 +819,7 @@ function applyData(d) {
       }
       setDot('ab-sol-dot',   !!d.ab_sol_open,        'AB Solenoid');
       setDot('ab-arm-dot',   !!d.ab_arm_switch_on,   'AB Arm switch');
-      setDot('ab-flame-dot', !!d.ab_flame_on,        'AB flame sensor');
+      setDot('ab-flame-dot', d.has_ab_flame === false ? null : !!d.ab_flame_on, 'AB flame sensor');
       setDot('ab-trig-dot',  !!d.ab_trigger_active,  'AB trigger');
 
       // FIRE: only enabled when engine is RUNNING and AB is Off or Fault
@@ -814,9 +932,9 @@ function _showRunSummary(d, durationMs) {
 
   const stats = [
     { label: 'Duration', value: durStr },
-    d.max_n1  !== undefined ? { label: 'Peak N1',  value: Number(d.max_n1).toLocaleString() + ' RPM' } : null,
-    d.max_tot !== undefined ? { label: 'Peak TOT', value: toDispTemp(Number(d.max_tot)).toFixed(0) + ' ' + dispTempUnit() } : null,
-    (d.oil_min_bar !== undefined && Number(d.oil_min_bar) > 0)
+    (d.has_n1 && d.max_n1 !== undefined) ? { label: 'Peak N1',  value: Number(d.max_n1).toLocaleString() + ' RPM' } : null,
+    (d.has_tot && d.max_tot !== undefined) ? { label: 'Peak TOT', value: toDispTemp(Number(d.max_tot)).toFixed(0) + ' ' + dispTempUnit() } : null,
+    (d.has_oil_press && d.oil_min_bar !== undefined && Number(d.oil_min_bar) > 0)
       ? { label: 'Min oil', value: toDispPress(Number(d.oil_min_bar)).toFixed(2) + ' ' + dispPressUnit() } : null,
   ].filter(Boolean);
 
@@ -827,7 +945,10 @@ function _showRunSummary(d, durationMs) {
     ).join('');
     if (isFault && d.fault_description && d.fault_description.length > 0) {
       const line = d.fault_description.split('\n')[0].slice(0, 120);
-      statsEl.innerHTML += `<div style="width:100%;color:var(--red);font-size:.78rem;margin-top:.3rem">Fault: ${line}</div>`;
+      const faultEl = document.createElement('div');
+      faultEl.style.cssText = 'width:100%;color:var(--red);font-size:.78rem;margin-top:.3rem';
+      faultEl.textContent = 'Fault: ' + line;
+      statsEl.appendChild(faultEl);
     }
   }
 
@@ -925,6 +1046,15 @@ function sendAbCmd(cmd) {
 
 // ── Boot: prime dashboard via REST for instant first paint, then WS takes over ─
 applyUnitLabels();
+organizeDashboardCards();
+document.addEventListener('DOMContentLoaded', () => {
+  applyContextTooltips();
+  new MutationObserver(records => {
+    records.forEach(record => record.addedNodes.forEach(node => {
+      if (node.nodeType === 1) applyContextTooltips(node);
+    }));
+  }).observe(document.body, { childList: true, subtree: true });
+});
 connect();
 fetch('/api/data')
   .then(r => r.json())

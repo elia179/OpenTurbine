@@ -21,7 +21,7 @@ static HardwareSerial _mavSerial(2);  // UART2
 // ── Global hardware objects (always compiled in) ──────────────
 OT_DECLARE_HARDWARE;
 
-// ── Sequence arrays — built at runtime from hardware.json ─────
+// ── Sequence arrays — built from the ecu_config.json hardware section ─────
 // Block name → pointer registry (all sequence blocks)
 struct BlockEntry { const char* name; IBlock* blk; };
 static const BlockEntry _blockRegistry[] = {
@@ -64,6 +64,7 @@ static const BlockEntry _blockRegistry[] = {
     {"FuelPulse",      &g_blkFuelPulse},
     {"WaitTOTCool",    &g_blkWaitTOTCool},
     {"WaitForInput",   &g_blkWaitForInput},
+    {"WaitForInputOff",&g_blkWaitForInputOff},
     {"ThrottleSet",    &g_blkThrottleSet},
     {"PreHeat",        &g_blkPreHeat},
     // Advanced / extended hardware blocks
@@ -84,54 +85,56 @@ static const BlockEntry _blockRegistry[] = {
 static constexpr size_t _blockRegistryLen = sizeof(_blockRegistry) / sizeof(BlockEntry);
 
 static IBlock* _startupBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static TimedDelay _startupDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _startupCount  = 0;
 static IBlock* _shutdownBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static TimedDelay _shutdownDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _shutdownCount = 0;
 static IBlock* _abIgnBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static TimedDelay _abIgnDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _abIgnCount    = 0;
 static IBlock* _abShutBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static TimedDelay _abShutDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _abShutCount   = 0;
 static void validateSequences();  // defined after buildSequences
 
 static void buildSequences() {
     auto& hw = HardwareConfig::instance();
-    _startupCount = 0;
-    for (int i = 0; i < hw.startupSeqLen; i++) {
+    auto addBlock = [](const char* name, int delayMs, TimedDelay& delay,
+                       IBlock** blocks, int& count) {
+        if (strcmp(name, "TimedDelay") == 0) {
+            delay.dwellMs = (unsigned long)(delayMs > 0 ? delayMs : Config::timedDelayMs);
+            blocks[count++] = &delay;
+            return;
+        }
         for (size_t j = 0; j < _blockRegistryLen; j++) {
-            if (strcmp(_blockRegistry[j].name, hw.startupSeq[i]) == 0) {
-                _startupBlocks[_startupCount++] = _blockRegistry[j].blk;
-                break;
+            if (strcmp(_blockRegistry[j].name, name) == 0) {
+                blocks[count++] = _blockRegistry[j].blk;
+                return;
             }
         }
+    };
+    _startupCount = 0;
+    for (int i = 0; i < hw.startupSeqLen; i++) {
+        addBlock(hw.startupSeq[i], hw.startupDelayMs[i], _startupDelays[i],
+                 _startupBlocks, _startupCount);
     }
     _shutdownCount = 0;
     for (int i = 0; i < hw.shutdownSeqLen; i++) {
-        for (size_t j = 0; j < _blockRegistryLen; j++) {
-            if (strcmp(_blockRegistry[j].name, hw.shutdownSeq[i]) == 0) {
-                _shutdownBlocks[_shutdownCount++] = _blockRegistry[j].blk;
-                break;
-            }
-        }
+        addBlock(hw.shutdownSeq[i], hw.shutdownDelayMs[i], _shutdownDelays[i],
+                 _shutdownBlocks, _shutdownCount);
     }
     // AB ignition sequence
     _abIgnCount = 0;
     for (int i = 0; i < hw.abSeqLen; i++) {
-        for (size_t j = 0; j < _blockRegistryLen; j++) {
-            if (strcmp(_blockRegistry[j].name, hw.abSeq[i]) == 0) {
-                _abIgnBlocks[_abIgnCount++] = _blockRegistry[j].blk;
-                break;
-            }
-        }
+        addBlock(hw.abSeq[i], hw.abDelayMs[i], _abIgnDelays[i],
+                 _abIgnBlocks, _abIgnCount);
     }
     // AB shutdown sequence
     _abShutCount = 0;
     for (int i = 0; i < hw.abShutSeqLen; i++) {
-        for (size_t j = 0; j < _blockRegistryLen; j++) {
-            if (strcmp(_blockRegistry[j].name, hw.abShutSeq[i]) == 0) {
-                _abShutBlocks[_abShutCount++] = _blockRegistry[j].blk;
-                break;
-            }
-        }
+        addBlock(hw.abShutSeq[i], hw.abShutDelayMs[i], _abShutDelays[i],
+                 _abShutBlocks, _abShutCount);
     }
     Serial.printf("[OT] Sequences: startup=%d, shutdown=%d, ab_ign=%d, ab_shut=%d blocks\n",
                   _startupCount, _shutdownCount, _abIgnCount, _abShutCount);
@@ -230,6 +233,10 @@ static void validateSequences() {
             if (!hw.hasOilPump)
                 addIssue(nm, "No oil pump actuator configured — block will run for timeout with no physical effect", false);
         }
+        else if (strcmp(nm, "OilPumpOn") == 0) {
+            if (!hw.hasOilPump)
+                addIssue(nm, "No oil pump actuator configured - stock pre-lube step has no physical output", false);
+        }
         else if (strcmp(nm, "GlowPreheat") == 0) {
             if (!hw.hasGlowPlug)
                 addIssue(nm, "No glow plug configured — block will complete immediately with no effect", false);
@@ -238,9 +245,35 @@ static void validateSequences() {
             if (!hw.hasIgniter)
                 addIssue(nm, "No igniter configured — block will complete with no spark", false);
         }
+        else if (strcmp(nm, "PreHeat") == 0) {
+            if (!hw.hasIgniter)
+                addIssue(nm, "No igniter configured - pre-heat has no physical ignition output", false);
+        }
+        else if (strcmp(nm, "IgniterOn") == 0) {
+            if (!hw.hasIgniter)
+                addIssue(nm, "No igniter actuator configured - timed light-up has no ignition output", false);
+        }
         else if (strcmp(nm, "FuelOpen") == 0) {
             if (!hw.hasFuelSol)
                 addIssue(nm, "No fuel solenoid configured — fuel will not open", false);
+        }
+        else if (strcmp(nm, "FuelPulse") == 0) {
+            if (!hw.hasFuelSol)
+                addIssue(nm, "No fuel solenoid configured - fuel pulse has no physical output", false);
+        }
+        else if (strcmp(nm, "FuelPumpIdle") == 0) {
+            if (!hw.hasThrottle)
+                addIssue(nm, "No throttle / fuel ESC actuator configured - idle fuel demand has no physical output", false);
+        }
+        else if (strcmp(nm, "ModifiedIdle") == 0 || strcmp(nm, "ThrottleSet") == 0) {
+            if (!hw.hasThrottle)
+                addIssue(nm, "No throttle / fuel ESC actuator configured - throttle demand has no physical output", false);
+        }
+        else if (strcmp(nm, "WaitForInput") == 0) {
+            if (Config::waitForInputChannel < 0 ||
+                Config::waitForInputChannel >= HardwareConfig::MAX_DI ||
+                hw.diCh[Config::waitForInputChannel].pin < 0)
+                addIssue(nm, "No switch assigned to the selected DI channel - startup cannot continue", true);
         }
         else if (strcmp(nm, "BleedOpen") == 0 || strcmp(nm, "BleedClose") == 0) {
             if (!hw.hasBleedValve)
@@ -265,7 +298,8 @@ static void validateSequences() {
         bool hasFuelDelivery = false;
         for (int i = 0; i < _startupCount; i++) {
             const char* nm = _startupBlocks[i]->name();
-            if (strcmp(nm, "FuelOpen") == 0 || strcmp(nm, "FuelPulse") == 0) {
+            if (strcmp(nm, "FuelOpen") == 0 || strcmp(nm, "FuelPulse") == 0 ||
+                strcmp(nm, "FuelPumpIdle") == 0) {
                 hasFuelDelivery = true; break;
             }
         }
@@ -274,32 +308,73 @@ static void validateSequences() {
     }
 
     // ── Check shutdown blocks ─────────────────────────────────
+    bool hasCombustionConfirmation = false;
+    bool hasTimedIgnition = false;
+    bool ignitionOn = false;
+    for (int i = 0; i < _startupCount; i++) {
+        const char* nm = _startupBlocks[i]->name();
+        if (strcmp(nm, "FlameConfirm") == 0 || strcmp(nm, "TempConfirm") == 0)
+            hasCombustionConfirmation = true;
+        if (strcmp(nm, "IgniterOn") == 0 || strcmp(nm, "PreIgnSpark") == 0)
+            ignitionOn = true;
+        if (strcmp(nm, "IgniterOff") == 0)
+            ignitionOn = false;
+        if (ignitionOn && strcmp(nm, "TimedDelay") == 0)
+            hasTimedIgnition = true;
+    }
+    if (hasTimedIgnition && !hasCombustionConfirmation)
+        addIssue("TimedDelay", "Timed light-up does not confirm combustion - replace with TempConfirm or FlameConfirm when a sensor is fitted", false);
+
     for (int i = 0; i < _shutdownCount; i++) {
         const char* nm = _shutdownBlocks[i]->name();
         if (strcmp(nm, "RPMDrop") == 0 && !hw.hasN1Rpm)
             addIssue(nm, "No N1 RPM sensor — will wait for full timeout then proceed", false);
         else if (strcmp(nm, "CooldownSpin") == 0 && !hw.hasStarter && !hw.hasCoolFan)
             addIssue(nm, "No starter or cooling fan — cooldown will run for timeout with no airflow", false);
+        else if (strcmp(nm, "WaitForInputOff") == 0 &&
+                 (Config::waitForInputChannel < 0 ||
+                  Config::waitForInputChannel >= HardwareConfig::MAX_DI ||
+                  hw.diCh[Config::waitForInputChannel].pin < 0))
+            addIssue(nm, "No switch assigned to the selected DI channel - shutdown cannot finish", true);
     }
 
     // ── Check AB ignition blocks ──────────────────────────────
     // AB is optional equipment — issues here should never block main engine START.
     // Skip entirely if no AB hardware is fitted (hasAbSol / hasAbPump).
     const bool abFitted = hw.hasAbSol || hw.hasAbPump;
+    if (hw.hasAfterburner && !abFitted)
+        addIssue("Afterburner", "Afterburner is enabled but no AB fuel output is configured", false);
     if (abFitted) {
+        if (Config::abPumpControlMode == 2 && hw.abInputPin < 0)
+            addIssue("AB Pump", "Dedicated AB input pump command is selected but no AB input pin is configured", false);
+        if (hw.abTriggerSource == 3 && hw.abInputPin < 0)
+            addIssue("AB Trigger", "Analog / RC trigger is selected but no AB input pin is configured", false);
         for (int i = 0; i < _abIgnCount; i++) {
             const char* nm = _abIgnBlocks[i]->name();
-            if (strcmp(nm, "ABIgnite") == 0) {
-                if (!hw.hasIgniter && !hw.hasAbSol)
-                    addIssue(nm, "No igniter or AB solenoid configured — AB ignition will have no effect", false);
+            if (strcmp(nm, "ABPumpOn") == 0 && !hw.hasAbPump) {
+                addIssue(nm, "No AB pump actuator configured - block has no physical output", false);
+            }
+            else if (strcmp(nm, "ABSolOpen") == 0 && !hw.hasAbSol) {
+                addIssue(nm, "No AB solenoid configured - block has no physical output", false);
+            }
+            else if (strcmp(nm, "ABIgnOn") == 0 && !hw.hasIgniter2) {
+                addIssue(nm, "No AB igniter actuator configured - block has no physical output", false);
+            }
+            else if (strcmp(nm, "ABIgnite") == 0) {
+                if (!g_blkABIgnite.useTorch && !g_blkABIgnite.useIgniter)
+                    addIssue(nm, "Neither torch nor AB igniter is enabled - AB ignition has no ignition source", false);
+                if (g_blkABIgnite.useIgniter && !hw.hasIgniter2)
+                    addIssue(nm, "AB igniter is enabled but no igniter2 actuator is configured", false);
                 // Torch is silently skipped at runtime when torchTotLimit == 0.
                 // Warn so the user knows to set abTorchTotLimit in config.
                 if (g_blkABIgnite.useTorch && g_blkABIgnite.torchTotLimit == 0.0f)
                     addIssue(nm, "useTorch=true but abTorchTotLimit is 0 — torch will be silently disabled at runtime (no TOT safety cap). Set abTorchTotLimit > 0 in engine settings to enable torch.", false);
             }
             else if (strcmp(nm, "ABFlameConfirm") == 0) {
-                if (!hw.hasFlame && !hw.hasTot)
-                    addIssue(nm, "No flame sensor or TOT sensor — AB flame confirm will abort on timeout", false);
+                if (g_blkABFlameConfirm.flameMode == 0 && !hw.hasAbFlame)
+                    addIssue(nm, "AB flame sensor mode is selected but no dedicated AB flame sensor is configured", false);
+                if (g_blkABFlameConfirm.flameMode == 1 && !hw.hasTot)
+                    addIssue(nm, "TOT-rise confirmation is selected but no TOT sensor is configured", false);
             }
         }
     }
@@ -312,6 +387,44 @@ static void validateSequences() {
         addIssue("DynamicIdle", "idleUseN2=true but no N2 RPM sensor configured — "
                                 "DynamicIdle will ramp throttle to maximum with no feedback. "
                                 "Disable idleUseN2 or configure an N2 sensor.", true);
+
+    if (hw.safetyOverspeed && !hw.hasN1Rpm)
+        addIssue("Overspeed", "Overspeed safety is enabled but no N1 RPM sensor is configured", true);
+    if (hw.safetyOvertemp && !hw.hasTot)
+        addIssue("Overtemp", "Overtemp safety is enabled but no TOT sensor is configured", true);
+    if ((hw.safetyLowOil || hw.safetyOilZero) && !hw.hasOilPress)
+        addIssue("Oil Safety", "Oil pressure safety is enabled but no oil pressure sensor is configured", true);
+    if (hw.safetyFlameout) {
+        int flameoutSrc = Config::flameoutSource;
+        if (flameoutSrc == 0) {
+            if (hw.hasFlame) flameoutSrc = 1;
+            else if (hw.hasN1Rpm) flameoutSrc = 2;
+            else if (hw.hasTot) flameoutSrc = 3;
+        }
+        if ((flameoutSrc == 1 && !hw.hasFlame) ||
+            (flameoutSrc == 2 && !hw.hasN1Rpm) ||
+            (flameoutSrc == 3 && !hw.hasTot) ||
+            flameoutSrc == 0) {
+            addIssue("Flameout", "Flameout safety is enabled but the selected source is not configured", true);
+        }
+    }
+    if (hw.safetyHotStart && (!hw.hasTot || Config::hotStartTotThreshold <= 0.0f))
+        addIssue("Hot Start", "Hot-start safety requires a TOT sensor and a threshold above zero", true);
+    if (hw.safetyTitOvertemp && (!hw.hasTit || Config::titLimit <= 0.0f))
+        addIssue("TIT Safety", "TIT overtemp safety requires a TIT sensor and a limit above zero", true);
+    if (hw.safetyOilTempHigh && (!hw.hasOilTemp || Config::oilTempLimit <= 0.0f))
+        addIssue("Oil Temp", "Oil temperature safety requires a sensor and a limit above zero", true);
+    if (hw.safetyFuelPressLow && (!hw.hasFuelPress || Config::fuelPressMin <= 0.0f))
+        addIssue("Fuel Pressure", "Fuel pressure safety requires a sensor and a minimum above zero", true);
+    if (hw.safetyBattLow && (!hw.hasBattVoltage || Config::battVoltMin <= 0.0f))
+        addIssue("Battery", "Battery safety requires a voltage sensor and a minimum above zero", true);
+    if (hw.safetySurge && (!hw.hasN1Rpm || Config::surgeDetectRpmVariance <= 0.0f))
+        addIssue("Surge", "Surge safety requires N1 RPM and a variance threshold above zero", true);
+
+    if (Config::relightEnabled && !hw.hasN1Rpm)
+        addIssue("AutoRelight", "Auto-relight is enabled but no N1 RPM sensor is configured. "
+                                 "Relight requires N1 feedback to prove the engine is still windmilling.",
+                 false);
 
     if (ed.seqIssueCount == 0)
         Serial.println("[VALIDATE] All sequences OK");
@@ -412,33 +525,39 @@ static bool anyToolTimerActive() {
 // Igniter held ON while relight criteria hold (flame gone, N1 above min, RUNNING).
 // Cleared when: flame returns, N1 drops below min, or mode leaves RUNNING.
 static bool          _relightActive    = false;
+static unsigned long _relightBeginMs   = 0;
+static float         _relightBeginTot  = 0.0f;
+
+static bool deadlineExpired(unsigned long now, unsigned long deadline) {
+    return deadline && (long)(now - deadline) >= 0;
+}
 
 static void checkToolTimers() {
     if (EngineData::instance().mode != SysMode::STANDBY) return;
     auto& ed = EngineData::instance();
     unsigned long now = millis();
-    if (_fuelPrimeUntilMs && now >= _fuelPrimeUntilMs)  { ed.fuelSolOpen   = false; _fuelPrimeUntilMs = 0; }
-    if (_oilPrimeUntilMs  && now >= _oilPrimeUntilMs)   {
+    if (deadlineExpired(now, _fuelPrimeUntilMs))  { ed.fuelSolOpen   = false; _fuelPrimeUntilMs = 0; }
+    if (deadlineExpired(now, _oilPrimeUntilMs))   {
         // Hand off to standby feed level if windmill protection is still active,
         // otherwise zero. Without this, a 100 % prime demand would stay latched
         // after expiry whenever the standby feed was running concurrently.
         ed.oilPumpPct = ed.standbyOilFeedActive ? Config::standbyOilFeedPct : 0.0f;
         _oilPrimeUntilMs = 0;
     }
-    if (_ignTestUntilMs   && now >= _ignTestUntilMs)     { ed.igniterOn      = false; _ignTestUntilMs   = 0; }
-    if (_ign2TestUntilMs  && now >= _ign2TestUntilMs)    { ed.igniter2On     = false; _ign2TestUntilMs  = 0; }
-    if (_startTestUntilMs && now >= _startTestUntilMs)   { ed.starterDemand = 0; ed.starterEnabled = false; _startTestUntilMs = 0; }
-    if (_idleTestUntilMs  && now >= _idleTestUntilMs)    { ed.throttleDemand = 0;    _idleTestUntilMs  = 0; }
-    if (_oilScavTestUntilMs    && now >= _oilScavTestUntilMs)    { ed.oilScavengeOn  = false; _oilScavTestUntilMs    = 0; }
-    if (_coolFanTestUntilMs    && now >= _coolFanTestUntilMs)    { ed.coolFanOn       = false; _coolFanTestUntilMs    = 0; }
-    if (_airstarterTestUntilMs && now >= _airstarterTestUntilMs) { ed.airstarterOpen  = false; _airstarterTestUntilMs = 0; }
-    if (_bleedValveTestUntilMs && now >= _bleedValveTestUntilMs) { ed.bleedValveOpen  = false; _bleedValveTestUntilMs = 0; }
-    if (_glowTestUntilMs       && now >= _glowTestUntilMs)       { ed.glowPlugDemand  = 0.0f;  _glowTestUntilMs       = 0; }
-    if (_fuelPump2TestUntilMs  && now >= _fuelPump2TestUntilMs)  { ed.fuelPump2Demand = 0.0f;  _fuelPump2TestUntilMs  = 0; }
-    if (_abSolTestUntilMs      && now >= _abSolTestUntilMs)      { ed.abSolOpen       = false; _abSolTestUntilMs      = 0; }
-    if (_abPumpTestUntilMs     && now >= _abPumpTestUntilMs)     { ed.abPumpDemand  = 0.0f;  _abPumpTestUntilMs     = 0; }
-    if (_starterEnTestUntilMs  && now >= _starterEnTestUntilMs)  { ed.starterEnabled  = false; _starterEnTestUntilMs  = 0; }
-    if (_propPitchTestUntilMs  && now >= _propPitchTestUntilMs)  { ed.propPitchDemand = 0;     _propPitchTestUntilMs  = 0; }
+    if (deadlineExpired(now, _ignTestUntilMs))     { ed.igniterOn      = false; _ignTestUntilMs   = 0; }
+    if (deadlineExpired(now, _ign2TestUntilMs))    { ed.igniter2On     = false; _ign2TestUntilMs  = 0; }
+    if (deadlineExpired(now, _startTestUntilMs))   { ed.starterDemand = 0; ed.starterEnabled = false; _startTestUntilMs = 0; }
+    if (deadlineExpired(now, _idleTestUntilMs))    { ed.throttleDemand = 0;    _idleTestUntilMs  = 0; }
+    if (deadlineExpired(now, _oilScavTestUntilMs))    { ed.oilScavengeOn  = false; _oilScavTestUntilMs    = 0; }
+    if (deadlineExpired(now, _coolFanTestUntilMs))    { ed.coolFanOn       = false; _coolFanTestUntilMs    = 0; }
+    if (deadlineExpired(now, _airstarterTestUntilMs)) { ed.airstarterOpen  = false; _airstarterTestUntilMs = 0; }
+    if (deadlineExpired(now, _bleedValveTestUntilMs)) { ed.bleedValveOpen  = false; _bleedValveTestUntilMs = 0; }
+    if (deadlineExpired(now, _glowTestUntilMs))       { ed.glowPlugDemand  = 0.0f;  _glowTestUntilMs       = 0; }
+    if (deadlineExpired(now, _fuelPump2TestUntilMs))  { ed.fuelPump2Demand = 0.0f;  _fuelPump2TestUntilMs  = 0; }
+    if (deadlineExpired(now, _abSolTestUntilMs))      { ed.abSolOpen       = false; _abSolTestUntilMs      = 0; }
+    if (deadlineExpired(now, _abPumpTestUntilMs))     { ed.abPumpDemand  = 0.0f;  _abPumpTestUntilMs     = 0; }
+    if (deadlineExpired(now, _starterEnTestUntilMs))  { ed.starterEnabled  = false; _starterEnTestUntilMs  = 0; }
+    if (deadlineExpired(now, _propPitchTestUntilMs))  { ed.propPitchDemand = 0;     _propPitchTestUntilMs  = 0; }
 }
 
 // ── Extra Cooldown monitor ────────────────────────────────────
@@ -459,7 +578,7 @@ static void checkExtraCooldown() {
         return;
     }
 
-    if (ed.extraCooldownUntilMs && millis() >= ed.extraCooldownUntilMs) {
+    if (deadlineExpired(millis(), ed.extraCooldownUntilMs)) {
         ed.extraCooldownActive = false;
         ed.starterDemand       = 0;
         ed.starterEnabled      = false;
@@ -473,6 +592,36 @@ static void checkExtraCooldown() {
 // Keeps igniter ON continuously while relight criteria hold.
 // Fuel stays open (engine was RUNNING) — SafetyMonitor detects re-ignition.
 // Igniter type (relay = full-on / PWM = dwell pattern) is handled by Hardware layer.
+static int effectiveRelightConfirmSource() {
+    if (Config::relightConfirmSource >= 1 && Config::relightConfirmSource <= 3)
+        return Config::relightConfirmSource;
+    if (Config::flameoutSource >= 1 && Config::flameoutSource <= 3)
+        return Config::flameoutSource;
+    if (HardwareConfig::hasFlame) return 1;
+    if (HardwareConfig::hasN1Rpm) return 2;
+    if (HardwareConfig::hasTot) return 3;
+    return 0;
+}
+
+static bool relightConfirmed(const EngineData& ed) {
+    switch (effectiveRelightConfirmSource()) {
+        case 1:
+            return HardwareConfig::hasFlame && ed.flameDetected;
+        case 2: {
+            float target = Config::relightConfirmRpm > 0.0f
+                         ? Config::relightConfirmRpm
+                         : Config::minRpm * 1.05f;
+            return HardwareConfig::hasN1Rpm && ed.n1Healthy && ed.n1Rpm >= target
+                && (millis() - _relightBeginMs) >= 1000UL;
+        }
+        case 3:
+            return HardwareConfig::hasTot && ed.totHealthy && Config::relightTotRiseC > 0.0f
+                && ed.tot >= (_relightBeginTot + Config::relightTotRiseC);
+        default:
+            return false;
+    }
+}
+
 static void checkRelight() {
     if (!_relightActive) return;
     auto& ed = EngineData::instance();
@@ -480,21 +629,23 @@ static void checkRelight() {
     // Engine left RUNNING state — abort cleanly
     if (ed.mode != SysMode::RUNNING) {
         _relightActive  = false;
+        _relightBeginMs = 0;
         ed.igniterOn    = false;
         return;
     }
     // Success: flame returned — turn igniter off, SafetyMonitor will clear flameout timer
-    if (ed.flameDetected) {
+    if (relightConfirmed(ed)) {
         _relightActive  = false;
         ed.igniterOn    = false;
-        Serial.println("[OT] Relight successful — flame detected");
+        _relightBeginMs = 0;
+        Serial.println("[OT] Relight successful");
         return;
     }
     // Abort: N1 dropped below minimum — engine winding down, stop trying.
-    // Only abort on RPM if the sensor is healthy; a sensor fault returning
-    // stale-zero would otherwise kill a valid relight attempt.
-    if (ed.n1Healthy && ed.n1Rpm < Config::relightMinRpm) {
+    // A fitted N1 sensor must remain trustworthy throughout the attempt.
+    if (!HardwareConfig::hasN1Rpm || !ed.n1Healthy || ed.n1Rpm < Config::relightMinRpm) {
         _relightActive  = false;
+        _relightBeginMs = 0;
         ed.igniterOn    = false;
         Serial.printf("[OT] Relight aborted — N1 below min (%.0f < %.0f)\n",
             (double)ed.n1Rpm, (double)Config::relightMinRpm);
@@ -747,14 +898,7 @@ static void checkABTrigger() {
     if (!HardwareConfig::hasAfterburner) return;
     auto& ed  = EngineData::instance();
     auto& hw  = HardwareConfig::instance();
-
-    // Only active in RUNNING mode
-    if (ed.mode != SysMode::RUNNING) {
-        if (ed.abMode != ABMode::Off) {
-            enterABShutdown();
-        }
-        return;
-    }
+    static bool _abTriggerPrev = false;
 
     // If AB is running and main engine shuts down, close AB
     // (handled above)
@@ -767,11 +911,11 @@ static void checkABTrigger() {
             break;
 
         case 1: // throttle threshold
-            // Read ThrottleSlew's clean output — NOT ed.throttleDemand, which may
-            // already have the AB fuel offset baked in from the previous tick.
-            // Using the offset-inflated value would prevent shutdown when the pilot
-            // drops throttle below the threshold (offset keeps it above it).
-            triggerAsserted = (g_ctrlThrottleSlew.currentDemand() >= Config::abThrottleThreshold);
+            // Use the protected demand when slew is active; otherwise the ordinary
+            // controller demand is already clean because AB offset is applied at output.
+            triggerAsserted = ((hw.hasThrottleSlew ? g_ctrlThrottleSlew.currentDemand()
+                                                   : ed.throttleDemand)
+                                >= Config::abThrottleThreshold);
             break;
 
         case 2: // dedicated switch
@@ -782,7 +926,7 @@ static void checkABTrigger() {
             break;
 
         case 3: // analog / RC input
-            triggerAsserted = (ed.abInputRaw >= hw.abInputThreshold);
+            triggerAsserted = ed.abInputValid && (ed.abInputRaw >= hw.abInputThreshold);
             break;
     }
 
@@ -793,11 +937,18 @@ static void checkABTrigger() {
         if (!ed.abArmSwitchOn) triggerAsserted = false;
     }
 
+    if (ed.mode != SysMode::RUNNING) {
+        _abTriggerPrev = triggerAsserted;
+        if (ed.abMode != ABMode::Off) {
+            enterABShutdown();
+        }
+        return;
+    }
+
     // ── State transitions ────────────────────────────────────
     // Rising-edge latch: only re-enter from Off/Fault on a fresh trigger assertion.
     // Without this, a Fault set while the trigger is still held causes an immediate
     // re-entry on the very next tick — creating the same rapid loop as Off did.
-    static bool _abTriggerPrev = false;
     bool triggerRisingEdge = triggerAsserted && !_abTriggerPrev;
 
     switch (ed.abMode) {
@@ -816,12 +967,18 @@ static void checkABTrigger() {
             // (toward throttleDemand, which is already offset) every tick.
             ed.abFuelOffset = Config::abMainFuelOffsetPct / 100.0f;
             // Apply AB pump demand: follow throttle (lerp min→max) or fixed at max.
-            // Use ThrottleSlew's clean output so the AB pump tracks true pilot demand.
+            // Track the protected throttle demand when available.
             {
                 float pct;
-                if (Config::abPumpFollowThrottle) {
+                if (Config::abPumpControlMode == 1) {
+                    float throttle = hw.hasThrottleSlew ? g_ctrlThrottleSlew.currentDemand()
+                                                        : ed.throttleDemand;
                     pct = Config::abPumpMinPct + (Config::abPumpMaxPct - Config::abPumpMinPct)
-                          * g_ctrlThrottleSlew.currentDemand();
+                          * throttle;
+                } else if (Config::abPumpControlMode == 2) {
+                    float command = ed.abInputValid ? ed.abInputNorm : 0.0f;
+                    pct = Config::abPumpMinPct + (Config::abPumpMaxPct - Config::abPumpMinPct)
+                          * command;
                 } else {
                     pct = Config::abPumpMaxPct;
                 }
@@ -862,6 +1019,12 @@ static void checkCooldownSkip() {
                  >= (unsigned long)Config::cooldownSkipHoldMs)
         {
             _cooldownSkipHoldStart = 0;
+            if (HardwareConfig::hasTot &&
+                (!ed.totHealthy || ed.tot > Config::totCooldownTarget)) {
+                strncpy(ed.lastEvent, "Cooldown skip blocked: turbine still hot",
+                        sizeof(ed.lastEvent) - 1);
+                return;
+            }
             Serial.println("[OT] Cooldown skip — both buttons held");
             strncpy(ed.lastEvent, "Cooldown skipped by operator", sizeof(ed.lastEvent) - 1);
             enterStandby();
@@ -924,7 +1087,6 @@ static void checkStarterAssist() {
 static void enterRunning() {
     auto& ed = EngineData::instance();
     ed.mode               = SysMode::RUNNING;
-    ed.throttleDemand     = 0;    // clear ModifiedIdle/Spool demand; throttle controller takes over
     // Dev mode and bench mode runs are not real engine starts — don't count toward run log
     if (!ed.benchMode && !ed.devMode) ed.runCount = ed.runCount + 1;
     ed.relightArmed       = true;   // arm relight for this run
@@ -950,6 +1112,7 @@ static void enterShutdown() {
     // Clear operator-hold states so igniter/flags don't persist into cooldown
     ed.manualRelightActive = false;
     ed.igniterOn           = false;
+    if (HardwareConfig::hasAfterburner) enterABShutdown();
     strncpy(ed.lastEvent, "Normal shutdown commanded", sizeof(ed.lastEvent) - 1);
     FlightRecorder::logNormalShutdown();
     g_sequencer.startSequence(_shutdownBlocks, _shutdownCount);
@@ -959,6 +1122,7 @@ static void enterShutdown() {
 static void enterFaultShutdown() {
     auto& ed = EngineData::instance();
     const char* fault = g_safety.lastFault();
+    if (!fault || !fault[0]) fault = "UNKNOWN";
     FlightRecorder::logFault(fault);           // sensor snapshot at moment of fault
     FlightRecorder::logFaultShutdown(fault);   // shutdown event record
     ed.mode = SysMode::SHUTDOWN;
@@ -994,7 +1158,9 @@ static void enterStandby() {
         if (!ed.benchMode && !ed.devMode) {
             uint32_t elapsed = (millis() - _runStartMs) / 1000;
             Config::totalRunSeconds += elapsed;
-            Config::requestSave();   // deferred to Core 0 — no LittleFS I/O on Core 1
+            // Runtime statistics are not engine configuration. Persist them
+            // through NVS so stopping a run does not rewrite ecu_config.json.
+            Config::requestRuntimeStatsSave();
         }
         _runStartMs = 0;
     }
@@ -1031,6 +1197,8 @@ static void enterStandby() {
     _starterEnTestUntilMs  = 0;
     _propPitchTestUntilMs  = 0;
     _relightActive         = false;
+    _relightBeginMs        = 0;
+    _relightBeginTot       = 0.0f;
     ed.limpMode           = false;
     ed.clusterCode        = 0;
     ed.fuelEverOpened     = false;
@@ -1050,7 +1218,7 @@ static void enterStandby() {
 
 static void enterAbortStandby() {
     auto& ed = EngineData::instance();
-    const char* blockName = g_sequencer.currentBlockName();
+    const char* blockName = ed.currentBlock[0] ? ed.currentBlock : "UNKNOWN";
     snprintf(ed.lastEvent, sizeof(ed.lastEvent), "Aborted at: %s", blockName);
     FlightRecorder::logAbort(blockName, "startup_abort");
     // Set a plain-language description for the fault/abort banner
@@ -1112,9 +1280,18 @@ static void sequenceComplete() {
 static void handleCommand(const OTPacket& pkt) {
     auto& ed = EngineData::instance();
 
+    if (WebServer::otaInProgress() &&
+        pkt.cmd != OTCommand::STOP && pkt.cmd != OTCommand::AB_STOP) {
+        if (pkt.cmd == OTCommand::START) {
+            strncpy(ed.lastEvent, "START blocked: maintenance upload in progress", sizeof(ed.lastEvent) - 1);
+        }
+        Serial.println("[OT] Command blocked: maintenance upload in progress");
+        return;
+    }
+
     switch (pkt.cmd) {
         case OTCommand::START:
-            if (ed.mode == SysMode::STANDBY && Config::profileMatch) {
+            if (ed.mode == SysMode::STANDBY && Config::profileMatch && !ed.configLocked) {
                 // Check inhibit_start DI channels
                 {
                     auto& hwi = HardwareConfig::instance();
@@ -1148,7 +1325,7 @@ static void handleCommand(const OTPacket& pkt) {
                 strncpy(ed.lastEvent, "Start sequence initiated", sizeof(ed.lastEvent) - 1);
                 Hardware::applyConfig();  // re-apply config before each start
                 FlightRecorder::logStartAttempt();
-                SessionLogger::startSession();  // open new session CSV for this run
+                SessionLogger::startSession();  // request a new session CSV on the web task
                 g_sequencer.startSequence(_startupBlocks, _startupCount);
                 Serial.println("[OT] START commanded");
             }
@@ -1163,7 +1340,10 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::TOGGLE_DYNAMIC_IDLE:
-            ed.dynamicIdleEnabled = !ed.dynamicIdleEnabled;
+            if (HardwareConfig::hasDynamicIdle)
+                ed.dynamicIdleEnabled = !ed.dynamicIdleEnabled;
+            else
+                ed.dynamicIdleEnabled = false;
             break;
 
         case OTCommand::TOGGLE_LIMP_MODE:
@@ -1171,70 +1351,73 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::TOGGLE_SAFETY_CHECKS:
-            if (ed.devMode) ed.skipSafetyChecks = !ed.skipSafetyChecks;
+            if (ed.devMode && ed.benchMode && ed.mode == SysMode::STANDBY)
+                ed.skipSafetyChecks = !ed.skipSafetyChecks;
             break;
 
         case OTCommand::TOGGLE_DEV_MODE:
-            ed.devMode = !ed.devMode;
-            if (!ed.devMode) {
-                // Disabling dev mode also clears all dev-only overrides
-                ed.skipSafetyChecks = false;
-                ed.benchMode        = false;
+            if (ed.mode == SysMode::STANDBY) {
+                ed.devMode = !ed.devMode;
+                if (!ed.devMode) {
+                    ed.skipSafetyChecks = false;
+                    ed.benchMode        = false;
+                }
+                Serial.printf("[OT] Dev mode %s\n", ed.devMode ? "ENABLED" : "disabled");
             }
-            Serial.printf("[OT] Dev mode %s\n", ed.devMode ? "ENABLED" : "disabled");
             break;
 
         case OTCommand::TOGGLE_BENCH_MODE:
             // Bench mode only active in dev mode and only changeable in STANDBY
             if (ed.devMode && ed.mode == SysMode::STANDBY) {
                 ed.benchMode = !ed.benchMode;
+                if (!ed.benchMode) ed.skipSafetyChecks = false;
                 Serial.printf("[OT] Bench mode %s\n", ed.benchMode ? "ENABLED — safety/sensor waits bypassed" : "disabled");
             }
             break;
 
         case OTCommand::SET_OIL_DEMAND:
-            if (ed.mode == SysMode::STANDBY || ed.devMode) {
+            if (ed.mode == SysMode::STANDBY) {
                 ed.oilTargetBar = constrain(pkt.fParam, 0.0f, 20.0f);  // bar; 20 is well above any real turbine oil pressure
             }
             break;
 
         case OTCommand::SET_OIL_PCT:
-            // Always allow in STANDBY (oil failsafe manual override), also in devMode during run
-            if (ed.mode == SysMode::STANDBY || ed.devMode) {
+            // Manual oil override is allowed only in STANDBY.
+            if (ed.mode == SysMode::STANDBY) {
                 ed.oilPumpPct = (float)constrain(pkt.iParam, 0, 100);
             }
             break;
 
         case OTCommand::FUEL_PRIME:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasFuelSol && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.fuelSolOpen    = true;
                 _fuelPrimeUntilMs = millis() + Config::toolFuelPrimeMs;
             }
             break;
 
         case OTCommand::OIL_PRIME:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasOilPump && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.oilPumpPct  = 100.0f;
                 _oilPrimeUntilMs = millis() + Config::toolOilPrimeMs;
             }
             break;
 
         case OTCommand::IGN_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasIgniter && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.igniterOn     = true;
                 _ignTestUntilMs  = millis() + Config::toolIgnTestMs;
             }
             break;
 
         case OTCommand::IGN2_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasIgniter2 && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.igniter2On    = true;
                 _ign2TestUntilMs = millis() + Config::toolIgnTestMs;
             }
             break;
 
         case OTCommand::START_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasStarter && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.starterEnabled  = true;
                 ed.starterDemand   = 0.3f;
                 _startTestUntilMs  = millis() + Config::toolStartTestMs;
@@ -1243,7 +1426,7 @@ static void handleCommand(const OTPacket& pkt) {
 
         case OTCommand::FUEL_SOL_TEST:
             // Brief solenoid pulse — audible click only, reuses fuel prime timer
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasFuelSol && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.fuelSolOpen    = true;
                 _fuelPrimeUntilMs = millis() + Config::toolFuelSolTestMs;
             }
@@ -1251,25 +1434,26 @@ static void handleCommand(const OTPacket& pkt) {
 
         case OTCommand::IDLE_TEST:
             // Move throttle servo to idle position for 3 s to verify mechanical travel
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasThrottle && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.throttleDemand = Config::throttleIdleMinPct / 100.0f;
                 _idleTestUntilMs  = millis() + 3000;
             }
             break;
 
         case OTCommand::EXTRA_COOLDOWN:
-            if (ed.mode == SysMode::STANDBY) {
+            if ((HardwareConfig::hasStarter || HardwareConfig::hasOilPump) && ed.mode == SysMode::STANDBY) {
                 if (!ed.extraCooldownActive && pkt.iParam > 0) {
                     // iParam = duration in seconds from UI slider (60–300 s)
-                    unsigned long durationMs  = (unsigned long)pkt.iParam * 1000UL;
+                    int seconds = constrain(pkt.iParam, 60, 300);
+                    unsigned long durationMs  = (unsigned long)seconds * 1000UL;
                     ed.extraCooldownActive    = true;
                     ed.oilFailsafeActive      = false;  // take manual control
-                    ed.starterEnabled         = true;
-                    ed.starterDemand          = 0.3f;
-                    ed.oilPumpPct           = 30.0f;
+                    ed.starterEnabled         = HardwareConfig::hasStarter;
+                    ed.starterDemand          = HardwareConfig::hasStarter ? 0.3f : 0.0f;
+                    ed.oilPumpPct             = HardwareConfig::hasOilPump ? 30.0f : 0.0f;
                     ed.extraCooldownUntilMs     = millis() + durationMs;
                     Serial.printf("[OT] Extra cooldown started (%lu s)\n",
-                        (unsigned long)pkt.iParam);
+                        (unsigned long)seconds);
                 } else {
                     // Cancel — either toggle-off or iParam == 0 (stop button)
                     ed.extraCooldownActive = false;
@@ -1293,7 +1477,7 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::CLEAR_LOG:
-            FlightRecorder::clear();
+            FlightRecorder::requestClear();
             break;
 
         case OTCommand::AB_FIRE:
@@ -1336,63 +1520,65 @@ static void handleCommand(const OTPacket& pkt) {
 
         // ── Actuator tests (STANDBY only, auto-expire via checkToolTimers) ────
         case OTCommand::OIL_SCAV_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasOilScavengePump && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.oilScavengeOn    = true;
                 _oilScavTestUntilMs = millis() + 2000;
             }
             break;
 
         case OTCommand::COOL_FAN_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasCoolFan && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.coolFanOn         = true;
                 _coolFanTestUntilMs  = millis() + 3000;
             }
             break;
 
         case OTCommand::AIRSTARTER_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasAirstarterSol && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.airstarterOpen       = true;
                 _airstarterTestUntilMs  = millis() + 1000;
             }
             break;
 
         case OTCommand::BLEED_VALVE_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasBleedValve && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.bleedValveOpen       = true;
                 _bleedValveTestUntilMs  = millis() + 1000;
             }
             break;
 
         case OTCommand::GLOW_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasGlowPlug && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.glowPlugDemand = 0.5f;
                 _glowTestUntilMs  = millis() + 3000;
             }
             break;
 
         case OTCommand::FUEL_PUMP2_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasFuelPump2 && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.fuelPump2Demand     = 0.3f;
                 _fuelPump2TestUntilMs  = millis() + 3000;
             }
             break;
 
         case OTCommand::AB_SOL_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasAfterburner && HardwareConfig::hasAbSol &&
+                ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.abSolOpen      = true;
                 _abSolTestUntilMs = millis() + 1000;
             }
             break;
 
         case OTCommand::AB_PUMP_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump &&
+                ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.abPumpDemand   = 0.3f;
                 _abPumpTestUntilMs  = millis() + 2000;
             }
             break;
 
         case OTCommand::STARTER_EN_TEST:
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasStarterEn && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.starterEnabled      = true;
                 _starterEnTestUntilMs  = millis() + 1000;
             }
@@ -1400,7 +1586,7 @@ static void handleCommand(const OTPacket& pkt) {
 
         case OTCommand::PROP_PITCH_TEST:
             // Move prop pitch to mid-travel (0.5) for 3 s — verify servo range
-            if (ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
+            if (HardwareConfig::hasPropPitch && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.propPitchDemand     = 0.5f;
                 _propPitchTestUntilMs  = millis() + 3000;
             }
@@ -1503,9 +1689,8 @@ void setup() {
     // Load hardware topology FIRST (pins, feature flags, sequence order).
     // Must be called after LittleFS is mounted (PlatformInit::begin() does that).
     HardwareConfig::load();
-    buildSequences();
 
-    // Re-init stop/start GPIO with runtime pins from hardware.json
+    // Re-init stop/start GPIO with runtime pins from ecu_config.json.
     {
         auto& hcfg = HardwareConfig::instance();
         pinMode(hcfg.stopPin,  hcfg.stopPullup  ? INPUT_PULLUP : INPUT);
@@ -1513,14 +1698,18 @@ void setup() {
     }
 
     Config::load();
+    Config::loadRuntimeStats();
+    buildSequences();
+    // Runtime toggle state must match the fitted controller after configuration
+    // dependencies have been normalized by HardwareConfig::load().
+    EngineData::instance().dynamicIdleEnabled = HardwareConfig::hasDynamicIdle;
     if (EngineData::instance().mode == SysMode::FAULT) {
         Serial.println("[OT] FAULT: profile ID mismatch — engine ops locked");
         // Web server still starts so user can see the error and fix config
     }
 
-    // Cross-check: hardware.json and settings sections should share the same profile_id.
-    // A divergence means the user edited one section independently. This is not fatal
-    // (Config::profileMatch already governs engine ops), but worth a loud warning.
+    // Cross-check: hardware and settings sections in ecu_config.json share one profile_id.
+    // A divergence means the file has mixed engine sections and START is inhibited.
     if (HardwareConfig::profileId[0] != '\0'
         && Config::profileId[0] != '\0'
         && strcmp(HardwareConfig::profileId, Config::profileId) != 0)
@@ -1538,8 +1727,12 @@ void setup() {
     Hardware::applyConfig();
 
     FlightRecorder::begin();
-    SessionLogger::begin();
-    CommandQueue::begin();
+    if (!SessionLogger::begin()) {
+        Serial.println("[OT] ERROR: session logger queue allocation failed; CSV logging unavailable");
+    }
+    if (!CommandQueue::begin()) {
+        Serial.println("[OT] FATAL: command queue allocation failed; controls unavailable");
+    }
 
     Hardware::initSensors();
     Hardware::initActuators();
@@ -1571,6 +1764,10 @@ void setup() {
     g_sequencer.setCallbacks(sequenceComplete, enterAbortStandby, enterFaultShutdown);
     g_abSequencer.setCallbacks(abSequenceDone, abSequenceAbort, abSequenceFault);
     g_safety.begin(enterShutdown, enterFaultShutdown);
+    RulesEngine::begin(enterShutdown, [](const char* code) {
+        g_safety.setExternalFault(code);
+        enterFaultShutdown();
+    });
     // Safety thresholds are applied via Hardware::applyConfig() above
 
     // Relight callback — fires on flameout if relightEnabled and conditions met.
@@ -1582,6 +1779,8 @@ void setup() {
             // SafetyMonitor owns the timeout; this callback just lights the igniter.
             ed.relightAttempts = ed.relightAttempts + 1;
             _relightActive     = true;
+            _relightBeginMs    = millis();
+            _relightBeginTot   = ed.tot;
             ed.clusterCode     = 2;   // ClCode::RelightActive
             FlightRecorder::logRelight(ed.relightAttempts);
             Serial.printf("[OT] Relight started — N1=%.0f RPM\n", (double)ed.n1Rpm);
@@ -1595,7 +1794,9 @@ void setup() {
     // Priority 8: high enough to time-share Core 0 with async_tcp (prio 10)
     // instead of being fully preempted during file serving. Keeps WS updates
     // regular even when the browser is fetching pages.
-    xTaskCreatePinnedToCore(webTask, "web", 12288, nullptr, 8, nullptr, 0);
+    if (xTaskCreatePinnedToCore(webTask, "web", 12288, nullptr, 8, nullptr, 0) != pdPASS) {
+        Serial.println("[OT] ERROR: web task allocation failed; network controls and log draining unavailable");
+    }
 
     FlightRecorder::logBoot();
 
@@ -1635,15 +1836,6 @@ void loop() {
 
     Hardware::runControllers();
 
-    // Limp mode throttle cap (applied after controllers so it overrides DynamicIdle floor)
-    {
-        auto& ed = EngineData::instance();
-        if (ed.limpMode && ed.mode == SysMode::RUNNING) {
-            float cap = Config::limpMaxThrottlePct / 100.0f;
-            if (ed.throttleDemand > cap) ed.throttleDemand = cap;
-        }
-    }
-
     checkToolTimers();
     checkExtraCooldown();
     checkRelight();
@@ -1654,9 +1846,10 @@ void loop() {
     buzzerTick();
     checkCooldownSkip();
 
-    // Automation rules — run last in the control chain, after all normal writes
-    // and safety checks, so rules can augment but not override safety shutdowns.
+    // Rules may override ordinary demand targets; throttle still passes
+    // through limp limits and slew/sensor safeguards before output.
     RulesEngine::evaluate();
+    Hardware::applyThrottleProtection();
 
     Hardware::updateActuators();
 

@@ -27,6 +27,10 @@ public:
     }
 
     void begin() override {
+        if (_ppr <= 0.0f) {
+            Serial.printf("[%s] Invalid pulses/rev %.3f; using 1.0\n", _name, (double)_ppr);
+            _ppr = 1.0f;
+        }
         pcnt_unit_config_t unitCfg = {
             .low_limit  = -1,
             .high_limit = H_LIM,
@@ -130,7 +134,8 @@ private:
         // The old check (rpm > 0 && _lastCount == 0) was impossible — if _lastCount
         // is 0 there are no pulses, so rpm would also be 0.  The real fault is a
         // sensor stuck high (hardware oscillating) or suddenly silent after running.
-        if (_prevRpm > 500.0f && delta == 0) {
+        int requiredZeros = zeroStuckLimit > 0 ? zeroStuckLimit : 1;
+        if (_prevRpm > 2000.0f && delta == 0 && (_zeroCount + 1) >= requiredZeros) {
             _health.set(RpmHealth::SATURATED);
         }
 
@@ -145,7 +150,7 @@ private:
 
         // Zero-stuck: engine clearly running but reading zero
         if (_prevRpm > 2000.0f && rpm < 1.0f) {
-            if (++_zeroCount >= zeroStuckLimit) {
+            if (++_zeroCount >= requiredZeros) {
                 _health.set(RpmHealth::ZERO_STUCK);
             } else {
                 _health.set(RpmHealth::ZERO_GLITCH);

@@ -20,6 +20,7 @@ public:
 
     void onEnter() override {
         _startMs = millis();
+        _completed = false;
         Serial.printf("[AB] Stabilize: holding %d ms\n", stabilizeMs);
     }
 
@@ -27,6 +28,10 @@ public:
         auto& ed = EngineData::instance();
 
         // TOT guard
+        if (stabilizeMaxTot > 0 && !ed.totHealthy) {
+            Serial.println("[AB] Stabilize fault: TOT sensor unavailable");
+            return BlockResult::Fault;
+        }
         if (stabilizeMaxTot > 0 && ed.totHealthy && ed.tot > stabilizeMaxTot) {
             Serial.printf("[AB] Stabilize: TOT %.1f > limit %.1f — FAULT\n",
                           (double)ed.tot, (double)stabilizeMaxTot);
@@ -34,12 +39,14 @@ public:
         }
 
         if ((millis() - _startMs) >= (unsigned long)stabilizeMs) {
+            _completed = true;
             return BlockResult::Complete;
         }
         return BlockResult::Running;
     }
 
     void onExit() override {
+        if (!_completed) return;
         // Signal the AB state machine that AB is now running
         EngineData::instance().abMode = ABMode::Running;
         Serial.println("[AB] Stabilize: complete — AB RUNNING");
@@ -47,4 +54,5 @@ public:
 
 private:
     unsigned long _startMs = 0;
+    bool          _completed = false;
 };

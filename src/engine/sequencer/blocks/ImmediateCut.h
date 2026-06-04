@@ -13,6 +13,12 @@ public:
         ed.throttleDemand     = 0;
         ed.fuelSolOpen        = false;
         ed.igniterOn          = false;
+        ed.igniter2On         = false;
+        ed.abSolOpen          = false;
+        ed.abPumpDemand       = 0;
+        ed.abFuelOffset       = 0;
+        ed.fuelPump2Demand    = 0;
+        ed.glowPlugDemand     = 0;
         ed.starterDemand      = 0;
         ed.starterEnabled     = false;
         ed.flameMonitorActive = false;

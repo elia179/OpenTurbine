@@ -2,6 +2,7 @@
 #include "../IBlock.h"
 #include "../../EngineData.h"
 #include "../../../system/Config.h"
+#include "../../../system/HardwareConfig.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -39,22 +40,34 @@ public:
         // Must be in RUNNING mode
         if (ed.mode != SysMode::RUNNING) return BlockResult::Abort;
 
+        // A configured N1 ignition window must be enforceable.
+        if ((minN1 > 0 || maxN1 > 0) &&
+            (!HardwareConfig::hasN1Rpm || !ed.n1Healthy)) {
+            Serial.println("[AB] CheckReady abort: N1 sensor unavailable");
+            return BlockResult::Abort;
+        }
+
         // N1 floor
-        if (ed.n1Healthy && ed.n1Rpm < minN1) {
+        if (minN1 > 0 && ed.n1Rpm < minN1) {
             Serial.printf("[AB] CheckReady abort: N1 too low (%.0f < %.0f)\n",
                           (double)ed.n1Rpm, (double)minN1);
             return BlockResult::Abort;
         }
 
         // N1 ceiling (compressor too fast — AB won't light)
-        if (maxN1 > 0 && ed.n1Healthy && ed.n1Rpm > maxN1) {
+        if (maxN1 > 0 && ed.n1Rpm > maxN1) {
             Serial.printf("[AB] CheckReady abort: N1 too high (%.0f > %.0f)\n",
                           (double)ed.n1Rpm, (double)maxN1);
             return BlockResult::Abort;
         }
 
         // TOT must be below the "too hot to light" limit
-        if (maxTotForLight > 0 && ed.totHealthy && ed.tot > maxTotForLight) {
+        if (maxTotForLight > 0 &&
+            (!HardwareConfig::hasTot || !ed.totHealthy)) {
+            Serial.println("[AB] CheckReady abort: TOT sensor unavailable");
+            return BlockResult::Abort;
+        }
+        if (maxTotForLight > 0 && ed.tot > maxTotForLight) {
             Serial.printf("[AB] CheckReady abort: TOT too high for light (%.1f > %.1f)\n",
                           (double)ed.tot, (double)maxTotForLight);
             return BlockResult::Abort;

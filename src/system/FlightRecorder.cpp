@@ -1,5 +1,4 @@
 #include "FlightRecorder.h"
-#include "hardware_profile.h"
 #include "Config.h"
 #include "HardwareConfig.h"
 #include <LittleFS.h>
@@ -9,6 +8,8 @@
 
 SemaphoreHandle_t FlightRecorder::_mutex          = nullptr;
 volatile bool     FlightRecorder::_evictionPending = false;
+static volatile bool s_clearPending = false;
+static volatile int  s_activeRawDownloads = 0;
 unsigned long     FlightRecorder::_lastSnapshotMs  = 0;
 float             FlightRecorder::_runMaxN1        = 0.0f;
 float             FlightRecorder::_runMaxTot       = 0.0f;
@@ -19,7 +20,22 @@ uint32_t          FlightRecorder::_runStartSec     = 0;
 // -1 means not yet initialised (counted on first _append call).
 static int s_lineCount = -1;
 
+static void jsonSafeCopy(char* dst, size_t len, const char* src) {
+    if (!dst || len == 0) return;
+    size_t out = 0;
+    for (size_t i = 0; src && src[i] && out + 1 < len; i++) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == '"' || c == '\\') dst[out++] = '\'';
+        else if (c < 0x20) dst[out++] = ' ';
+        else dst[out++] = (char)c;
+    }
+    dst[out] = '\0';
+}
+
 void FlightRecorder::begin() {
+    if (!LittleFS.exists(PATH) && LittleFS.exists("/logs/events.bak")) {
+        LittleFS.rename("/logs/events.bak", PATH);
+    }
     if (!LittleFS.exists("/logs")) {
         LittleFS.mkdir("/logs");
     }
@@ -30,6 +46,8 @@ void FlightRecorder::begin() {
 void FlightRecorder::tick() {
     auto& ed = EngineData::instance();
     auto& hw = HardwareConfig::instance();
+
+    if (ed.mode == SysMode::STANDBY && !Config::logStandby) return;
 
     // Track run peaks (only meaningful during RUNNING, but harmless otherwise)
     if (ed.n1Rpm  > _runMaxN1)                              _runMaxN1 = ed.n1Rpm;
@@ -70,7 +88,8 @@ void FlightRecorder::logBoot() {
     char buf[160];
     snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"bc\":%lu,\"ev\":\"BOOT\",\"profile\":\"%s\",\"chip\":\"%s\"}",
-        _uptimeSec(), (unsigned long)EngineData::instance().bootCount, OT_PROFILE_ID, chipHex);
+        _uptimeSec(), (unsigned long)EngineData::instance().bootCount,
+        HardwareConfig::profileId, chipHex);
     _append(buf);
 }
 
@@ -84,16 +103,22 @@ void FlightRecorder::logStartAttempt() {
 }
 
 void FlightRecorder::logBlockEnter(const char* blockName) {
+    char safeBlock[48];
+    jsonSafeCopy(safeBlock, sizeof(safeBlock), blockName);
     char buf[96];
     snprintf(buf, sizeof(buf), "{\"t\":%lu,\"ev\":\"BLOCK_ENTER\",\"block\":\"%s\"}",
-        _uptimeSec(), blockName);
+        _uptimeSec(), safeBlock);
     _append(buf);
 }
 
 void FlightRecorder::logBlockExit(const char* blockName, const char* result) {
+    char safeBlock[48];
+    char safeResult[40];
+    jsonSafeCopy(safeBlock, sizeof(safeBlock), blockName);
+    jsonSafeCopy(safeResult, sizeof(safeResult), result);
     char buf[96];
     snprintf(buf, sizeof(buf), "{\"t\":%lu,\"ev\":\"BLOCK_EXIT\",\"block\":\"%s\",\"res\":\"%s\"}",
-        _uptimeSec(), blockName, result);
+        _uptimeSec(), safeBlock, safeResult);
     _append(buf);
 }
 
@@ -117,19 +142,16 @@ void FlightRecorder::logFault(const char* code) {
     // Truncate faultDescription to 120 chars to keep the record within the
     // 500-byte snprintf buffer without risking overflow.
     char desc[121];
-    strncpy(desc, ed.faultDescription, 120);
-    desc[120] = '\0';
-    // Sanitise for raw JSON embedding — replace chars that would break the string literal.
-    for (char* p = desc; *p; p++) {
-        if (*p == '"' || *p == '\\') *p = '\'';
-    }
+    jsonSafeCopy(desc, sizeof(desc), ed.faultDescription);
+    char safeCode[48];
+    jsonSafeCopy(safeCode, sizeof(safeCode), code);
     char buf[500];
     snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"FAULT\",\"code\":\"%s\","
         "\"n1Rpm\":%.0f,\"totDegC\":%.1f,\"titDegC\":%.1f,"
         "\"oilBar\":%.2f,\"oilTempC\":%.1f,\"fuelBar\":%.2f,\"battV\":%.2f,"
         "\"desc\":\"%s\"}",
-        _uptimeSec(), code,
+        _uptimeSec(), safeCode,
         ed.n1Rpm, ed.tot, ed.tit,
         ed.oilPressure, ed.oilTemp, ed.fuelPressure, ed.battVoltage,
         desc);
@@ -161,24 +183,32 @@ void FlightRecorder::logNormalShutdown() {
 
 void FlightRecorder::logFaultShutdown(const char* code) {
     logRunSummary();
+    char safeCode[48];
+    jsonSafeCopy(safeCode, sizeof(safeCode), code);
     char buf[96];
-    snprintf(buf, sizeof(buf), "{\"t\":%lu,\"ev\":\"FAULT_SHUTDOWN\",\"code\":\"%s\"}", _uptimeSec(), code);
+    snprintf(buf, sizeof(buf), "{\"t\":%lu,\"ev\":\"FAULT_SHUTDOWN\",\"code\":\"%s\"}", _uptimeSec(), safeCode);
     _append(buf);
 }
 
 void FlightRecorder::logAbort(const char* blockName, const char* reason) {
+    char safeBlock[48];
+    char safeReason[64];
+    jsonSafeCopy(safeBlock, sizeof(safeBlock), blockName);
+    jsonSafeCopy(safeReason, sizeof(safeReason), reason);
     char buf[128];
     snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"ABORT\",\"block\":\"%s\",\"reason\":\"%s\"}",
-        _uptimeSec(), blockName, reason);
+        _uptimeSec(), safeBlock, safeReason);
     _append(buf);
 }
 
 void FlightRecorder::logConfigChange(const char* field, float oldVal, float newVal) {
+    char safeField[64];
+    jsonSafeCopy(safeField, sizeof(safeField), field);
     char buf[128];
     snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"CONFIG_CHANGE\",\"field\":\"%s\",\"old\":%.4f,\"new\":%.4f}",
-        _uptimeSec(), field, oldVal, newVal);
+        _uptimeSec(), safeField, oldVal, newVal);
     _append(buf);
 }
 
@@ -201,6 +231,10 @@ void FlightRecorder::clear() {
     LittleFS.remove(PATH);
     s_lineCount = 0;
     if (_mutex) xSemaphoreGive(_mutex);
+}
+
+void FlightRecorder::requestClear() {
+    s_clearPending = true;
 }
 
 size_t FlightRecorder::toJson(char* buf, size_t len) {
@@ -248,16 +282,42 @@ void FlightRecorder::unlockLog() {
     if (_mutex) xSemaphoreGive(_mutex);
 }
 
+void FlightRecorder::beginRawDownload() {
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    s_activeRawDownloads = s_activeRawDownloads + 1;
+    if (_mutex) xSemaphoreGive(_mutex);
+}
+
+void FlightRecorder::endRawDownload() {
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+    if (s_activeRawDownloads > 0) s_activeRawDownloads = s_activeRawDownloads - 1;
+    if (_mutex) xSemaphoreGive(_mutex);
+}
+
 // ── Core 0 eviction (offloaded from ECU loop) ─────────────────
 
 void FlightRecorder::runEviction() {
-    if (!_evictionPending) return;
+    if (s_activeRawDownloads > 0) return;
+    if (!s_clearPending && !_evictionPending) return;
 
     // portMAX_DELAY is safe — this runs on Core 0 (web task), not the ECU loop.
     if (_mutex && xSemaphoreTake(_mutex, portMAX_DELAY) != pdTRUE) return;
+    if (s_activeRawDownloads > 0) {
+        if (_mutex) xSemaphoreGive(_mutex);
+        return;
+    }
+
+    if (s_clearPending) {
+        LittleFS.remove(PATH);
+        s_lineCount = 0;
+        _evictionPending = false;
+        s_clearPending = false;
+        if (_mutex) xSemaphoreGive(_mutex);
+        return;
+    }
 
     // Re-check under mutex: Core 1 may have already cleared the flag.
-    if (!_evictionPending) { xSemaphoreGive(_mutex); return; }
+    if (!_evictionPending) { if (_mutex) xSemaphoreGive(_mutex); return; }
 
     int keepFrom = MAX_RECORDS / 5;   // drop oldest 20%, keep newest 80%
     File fr = LittleFS.open(PATH, "r");
@@ -267,18 +327,29 @@ void FlightRecorder::runEviction() {
         if (fw) fw.close();
     } else {
         int seen = 0;
+        int kept = 0;
         while (fr.available()) {
             String line = fr.readStringUntil('\n');
             line.trim();
             if (line.length() == 0 || line[0] != '{') continue;
             seen++;
-            if (seen > keepFrom) fw.println(line.c_str());
+            if (seen > keepFrom) {
+                fw.println(line.c_str());
+                kept++;
+            }
         }
         fr.close();
         fw.close();
-        LittleFS.remove(PATH);
-        LittleFS.rename("/logs/events.tmp", PATH);
-        s_lineCount = MAX_RECORDS - keepFrom;
+        LittleFS.remove("/logs/events.bak");
+        bool hadOriginal = LittleFS.exists(PATH);
+        if (hadOriginal && !LittleFS.rename(PATH, "/logs/events.bak")) {
+            LittleFS.remove("/logs/events.tmp");
+        } else if (!LittleFS.rename("/logs/events.tmp", PATH)) {
+            if (hadOriginal) LittleFS.rename("/logs/events.bak", PATH);
+        } else {
+            if (hadOriginal) LittleFS.remove("/logs/events.bak");
+            s_lineCount = kept;
+        }
     }
     _evictionPending = false;
     if (_mutex) xSemaphoreGive(_mutex);

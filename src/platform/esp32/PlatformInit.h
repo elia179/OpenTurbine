@@ -3,6 +3,7 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include "../../../hardware_profile.h"
 #include "../../engine/EngineData.h"
 
 // ============================================================
@@ -15,19 +16,36 @@
 class PlatformInit {
 public:
     static void begin() {
+        // Drive compiled relay outputs inactive before filesystem/config work.
+        // External pull-offs are still required to guarantee the reset interval.
+#ifdef OT_HAS_FUEL_SOL
+        pinMode(OT_FUEL_SOL_PIN, OUTPUT);
+        digitalWrite(OT_FUEL_SOL_PIN, OT_FUEL_SOL_ACTIVE_H ? LOW : HIGH);
+#endif
+#ifdef OT_HAS_IGNITER
+        pinMode(OT_IGNITER_PIN, OUTPUT);
+        digitalWrite(OT_IGNITER_PIN, OT_IGNITER_ACTIVE_H ? LOW : HIGH);
+#endif
+#ifdef OT_HAS_STARTER_EN
+        pinMode(OT_STARTER_EN_PIN, OUTPUT);
+        digitalWrite(OT_STARTER_EN_PIN, OT_STARTER_EN_ACTIVE_H ? LOW : HIGH);
+#endif
+
         Serial.begin(115200);
         delay(100);
-        Serial.println("\n[OT] OpenTurbine booting — " OT_PROFILE_ID);
+        Serial.println("\n[OT] OpenTurbine booting — default profile: " OT_PROFILE_ID);
 
         // LittleFS
-        if (!LittleFS.begin(true)) {  // true = format on fail
-            Serial.println("[OT] LittleFS mount failed — formatted");
+        // Never format automatically on a control-system boot: a transient
+        // mount failure must not erase configuration and logs.
+        if (!LittleFS.begin(false)) {
+            Serial.println("[OT] ERROR: LittleFS mount failed - storage unavailable");
         } else {
             Serial.println("[OT] LittleFS OK");
         }
 
         // ADC: 12-bit, 11 dB attenuation (0–3.3V full range)
-        analogSetWidth(12);
+        analogReadResolution(12);
         analogSetAttenuation(ADC_11db);
 
         // NVS boot counter via Preferences

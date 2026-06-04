@@ -60,14 +60,28 @@ class CommandQueue {
 public:
     static constexpr int QUEUE_DEPTH = 16;
 
-    static void begin() {
+    static bool begin() {
         _queue = xQueueCreate(QUEUE_DEPTH, sizeof(OTPacket));
+        return _queue != nullptr;
     }
 
     // Called from Core 0 (web handler) — non-blocking
     static bool push(const OTPacket& pkt) {
         if (!_queue) return false;
         return xQueueSendToBack(_queue, &pkt, 0) == pdTRUE;
+    }
+
+    static bool pushFront(const OTPacket& pkt) {
+        if (!_queue) return false;
+        return xQueueSendToFront(_queue, &pkt, 0) == pdTRUE;
+    }
+
+    // A main-engine STOP supersedes every pending web command.
+    static bool pushEmergencyStop(const OTPacket& pkt) {
+        if (!_queue) return false;
+        if (pushFront(pkt)) return true;
+        xQueueReset(_queue);
+        return pushFront(pkt);
     }
 
     // Called from Core 1 (ECU loop) — drains all pending commands

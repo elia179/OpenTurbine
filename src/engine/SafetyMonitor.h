@@ -32,6 +32,9 @@ public:
     float         battVoltMin          = 0.0f;    // V — 0 = disabled
     float         surgeRpmVariance     = 0.0f;    // RPM² variance threshold — 0 = disabled
     float         flameoutShutdownMs   = 3000.0f;
+    int           flameoutSource       = 0;
+    float         flameoutN1MinRpm     = 0.0f;
+    float         flameoutTotDropC     = 80.0f;
     unsigned long checkIntervalMs      = 100;
     float         totRiseRateLimit     = 0.0f;   // °C/s — 0 = disabled
 
@@ -41,6 +44,8 @@ public:
         _lastCheckMs      = 0;
         _flameoutMs       = 0;
         _relightStartMs   = 0;
+        _relightStartTot  = 0.0f;
+        _runningTotRef    = -1.0f;
         _startupSpooled   = false;
     }
 
@@ -59,6 +64,8 @@ public:
         if (!inOp) {
             _flameoutMs     = 0;
             _relightStartMs = 0;
+            _relightStartTot = 0.0f;
+            _runningTotRef   = -1.0f;
             _lastTot        = -1.0f;
             _lastTotMs      = 0;
             ed.totRiseRate  = 0.0f;
@@ -74,7 +81,7 @@ public:
         }
 
         // ── Hot start — abort startup if TOT still too high ──
-        if (HardwareConfig::safetyHotStart && m == SysMode::STARTUP
+        if (HardwareConfig::safetyHotStart && HardwareConfig::hasTot && m == SysMode::STARTUP
             && ed.totHealthy && Config::hotStartTotThreshold > 0
             && ed.tot > Config::hotStartTotThreshold)
         {
@@ -83,7 +90,8 @@ public:
         }
 
         // ── Overspeed — always immediate ─────────────────────
-        if (HardwareConfig::safetyOverspeed && ed.n1Healthy && ed.n1Rpm > rpmLimit) {
+        if (HardwareConfig::safetyOverspeed && HardwareConfig::hasN1Rpm &&
+            ed.n1Healthy && ed.n1Rpm > rpmLimit) {
             _trigger("OVERSPEED");
             return;
         }
@@ -94,7 +102,7 @@ public:
         _lastCheckMs = now;
 
         // ── EGT rate-of-rise ─────────────────────────────────
-        if (ed.totHealthy) {
+        if (HardwareConfig::hasTot && ed.totHealthy) {
             float currentTot = ed.tot;
             if (_lastTot >= 0.0f && _lastTotMs > 0) {
                 float dtSec = (now - _lastTotMs) / 1000.0f;
@@ -115,12 +123,13 @@ public:
             ed.totRiseRate = 0.0f;
         }
 
-        if (HardwareConfig::safetyOvertemp && ed.totHealthy && ed.tot > totLimit) {
+        if (HardwareConfig::safetyOvertemp && HardwareConfig::hasTot &&
+            ed.totHealthy && ed.tot > totLimit) {
             _trigger("OVERTEMP");
             return;
         }
 
-        if (HardwareConfig::safetyLowOil
+        if (HardwareConfig::safetyLowOil && HardwareConfig::hasOilPress
             && ed.oilMinBar > 0 && ed.oilHealthy && ed.oilPressure < ed.oilMinBar)
         {
             _trigger("LOW_OIL");
@@ -130,7 +139,7 @@ public:
         // Oil near-zero while sensor is ADC-healthy → catastrophic failure or
         // disconnected fitting.  Distinguished from LOW_OIL (calibrated range)
         // and from sensor-rail fault (oilHealthy=false).
-        if (HardwareConfig::safetyOilZero
+        if (HardwareConfig::safetyOilZero && HardwareConfig::hasOilPress
             && m == SysMode::RUNNING && ed.oilHealthy
             && ed.oilPressure < Config::oilZeroBar)
         {
@@ -138,21 +147,26 @@ public:
             return;
         }
 
-        if (HardwareConfig::safetyFlameout && m == SysMode::RUNNING && ed.flameMonitorActive) {
-            if (!ed.flameDetected) {
+        _updateFlameoutReference(ed);
+        if (HardwareConfig::safetyFlameout &&
+            m == SysMode::RUNNING && ed.flameMonitorActive && _flameoutSourceUsable()) {
+            if (_flameoutLost(ed)) {
                 if (_flameoutMs == 0) _flameoutMs = now;
 
                 if ((now - _flameoutMs) > (unsigned long)flameoutShutdownMs) {
                     // Relight path: enabled, armed, N1 still viable
-                    bool n1Ok = !ed.n1Healthy || ed.n1Rpm >= Config::relightMinRpm;
+                    bool n1Ok = HardwareConfig::hasN1Rpm && ed.n1Healthy
+                             && ed.n1Rpm >= Config::relightMinRpm;
                     if (Config::relightEnabled && ed.relightArmed && n1Ok && _relight) {
                         if (_relightStartMs == 0) {
                             // First trigger — start continuous ignition
                             _relight();
                             _relightStartMs = now;
+                            _relightStartTot = ed.tot;
                         } else {
                             // Relight window: check N1 still viable and timeout not expired
-                            bool stillViable = !ed.n1Healthy || ed.n1Rpm >= Config::relightMinRpm;
+                            bool stillViable = HardwareConfig::hasN1Rpm && ed.n1Healthy
+                                            && ed.n1Rpm >= Config::relightMinRpm;
                             bool timedOut    = Config::relightTimeoutMs > 0
                                            && (now - _relightStartMs) > (unsigned long)Config::relightTimeoutMs;
                             if (!stillViable || timedOut) {
@@ -168,12 +182,13 @@ public:
                 }
             } else {
                 _flameoutMs     = 0;
+                _relightStartTot = 0.0f;
                 _relightStartMs = 0;  // flame returned — reset relight state
             }
         }
 
         // ── TIT overtemp ─────────────────────────────────────
-        if (HardwareConfig::safetyTitOvertemp && titLimit > 0.0f
+        if (HardwareConfig::safetyTitOvertemp && HardwareConfig::hasTit && titLimit > 0.0f
             && ed.titHealthy && ed.tit > titLimit)
         {
             _trigger("TIT_OVERTEMP");
@@ -181,7 +196,7 @@ public:
         }
 
         // ── Oil temperature high ──────────────────────────────
-        if (HardwareConfig::safetyOilTempHigh && oilTempLimit > 0.0f
+        if (HardwareConfig::safetyOilTempHigh && HardwareConfig::hasOilTemp && oilTempLimit > 0.0f
             && ed.oilTempHealthy && ed.oilTemp > oilTempLimit)
         {
             _trigger("OIL_TEMP_HIGH");
@@ -189,7 +204,7 @@ public:
         }
 
         // ── Fuel pressure low ────────────────────────────────
-        if (HardwareConfig::safetyFuelPressLow && fuelPressMin > 0.0f
+        if (HardwareConfig::safetyFuelPressLow && HardwareConfig::hasFuelPress && fuelPressMin > 0.0f
             && m == SysMode::RUNNING && ed.fuelPressHealthy
             && ed.fuelPressure < fuelPressMin)
         {
@@ -246,6 +261,10 @@ public:
         //          where the engine must pass through 0→minRpm on its way to idle).
         if (m == SysMode::RUNNING) {
             if (ed.n1Healthy && ed.n1Rpm < minRpm) {
+                if (HardwareConfig::safetyFlameout && ed.flameMonitorActive
+                    && _effectiveFlameoutSource() == 2) {
+                    return;
+                }
                 _trigger("UNDERSPEED");
                 return;
             }
@@ -275,13 +294,58 @@ private:
     unsigned long _lastCheckMs    = 0;
     unsigned long _flameoutMs     = 0;
     unsigned long _relightStartMs = 0;   // millis() when relight was first triggered; 0 = not active
+    float         _relightStartTot = 0.0f;
     const char*   _lastFault      = nullptr;
     float         _lastTot        = -1.0f;   // for dEGT/dt calculation
     unsigned long _lastTotMs      = 0;
+    float         _runningTotRef  = -1.0f;
     bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
     uint8_t       _n1BufIdx       = 0;
     uint8_t       _n1BufCount     = 0;
+
+    int _effectiveFlameoutSource() const {
+        if (flameoutSource >= 1 && flameoutSource <= 3) return flameoutSource;
+        if (HardwareConfig::hasFlame) return 1;
+        if (HardwareConfig::hasN1Rpm) return 2;
+        if (HardwareConfig::hasTot) return 3;
+        return 0;
+    }
+
+    bool _flameoutSourceUsable() const {
+        switch (_effectiveFlameoutSource()) {
+            case 1: return HardwareConfig::hasFlame;
+            case 2: return HardwareConfig::hasN1Rpm;
+            case 3: return HardwareConfig::hasTot;
+            default: return false;
+        }
+    }
+
+    void _updateFlameoutReference(const EngineData& ed) {
+        if (_effectiveFlameoutSource() != 3) {
+            _runningTotRef = -1.0f;
+            return;
+        }
+        if (!HardwareConfig::hasTot || !ed.totHealthy) return;
+        if (_runningTotRef < 0.0f || ed.tot > _runningTotRef) _runningTotRef = ed.tot;
+    }
+
+    bool _flameoutLost(const EngineData& ed) const {
+        switch (_effectiveFlameoutSource()) {
+            case 1:
+                return HardwareConfig::hasFlame && !ed.flameDetected;
+            case 2: {
+                float threshold = flameoutN1MinRpm > 0.0f ? flameoutN1MinRpm : minRpm;
+                return HardwareConfig::hasN1Rpm && ed.n1Healthy && ed.n1Rpm < threshold;
+            }
+            case 3:
+                return HardwareConfig::hasTot && ed.totHealthy && _runningTotRef >= 0.0f
+                    && flameoutTotDropC > 0.0f
+                    && ed.tot <= (_runningTotRef - flameoutTotDropC);
+            default:
+                return false;
+        }
+    }
 
     void _trigger(const char* code) {
         _lastFault = code;
@@ -306,8 +370,8 @@ private:
             "What to do: Inspect oil pump, lines, and fittings before any restart. "
             "Do not run the engine until oil supply is confirmed.";
         else if (strcmp(code, "FLAMEOUT")   == 0) desc =
-            "Flameout: the flame sensor lost flame and relight was not possible.\n"
-            "What to do: Check fuel supply, fuel valve, and flame sensor. "
+            "Flameout: combustion was lost according to the configured flameout source, and relight was not possible.\n"
+            "What to do: Check fuel supply, fuel valve, and the selected flameout sensor/source. "
             "Ensure ignition system is working. Try a normal start.";
         else if (strcmp(code, "UNDERSPEED") == 0) desc =
             "Under-speed: RPM dropped below the minimum running threshold.\n"

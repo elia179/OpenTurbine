@@ -40,8 +40,12 @@ public:
             return BlockResult::Complete;
         }
 
-        bool state = (channelIdx >= 0 && channelIdx < HardwareConfig::MAX_DI)
-                     ? ed.diState[channelIdx] : false;
+        if (channelIdx < 0 || channelIdx >= HardwareConfig::MAX_DI) {
+            Serial.printf("[WaitForInput] Invalid input channel %d\n", channelIdx);
+            return BlockResult::Abort;
+        }
+
+        bool state = ed.diState[channelIdx];
 
         if (state == expectedState) {
             Serial.printf("[WaitForInput] ch%d condition met\n", channelIdx);
@@ -56,4 +60,10 @@ public:
 
 private:
     unsigned long _entryMs = 0;
+};
+
+// Uses the same configured channel and timeout, but waits for switch release.
+class WaitForInputOff : public WaitForInput {
+public:
+    const char* name() override { return "WaitForInputOff"; }
 };

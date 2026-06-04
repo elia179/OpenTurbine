@@ -30,7 +30,9 @@ public:
         digitalWrite(_cs, HIGH);
         // Software SPI — no conflicts with other SPI devices or bus sharing issues
         pinMode(_clk,  OUTPUT);
-        pinMode(_miso, INPUT);
+        // A real converter overrides this weak pull-up; without a converter,
+        // it prevents floating SPI data from appearing as hot exhaust.
+        pinMode(_miso, INPUT_PULLUP);
         _temp    = 0;
         _healthy = false;
         _lastMs  = 0;
@@ -43,6 +45,11 @@ public:
 
         uint32_t raw = _read32();
 
+        if (raw == 0x00000000UL || raw == 0xFFFFFFFFUL) {
+            _healthy = false;
+            return;
+        }
+
         // Fault bits — bit 16 is the summary fault flag
         if (raw & 0x00010000UL) {
             _healthy = false;
@@ -54,13 +61,14 @@ public:
         // Sign-extend 14-bit value to 16-bit
         if (tc & 0x2000) tc |= 0xC000;
 
-        _temp = tc * 0.25f;
+        float temp = tc * 0.25f;
         // MAX31855 physical range: -200 to +1350 °C
         // Values outside this range indicate hardware / wiring fault
-        if (_temp < -200.0f || _temp > 1350.0f) {
+        if (temp < -200.0f || temp > 1350.0f) {
             _healthy = false;
             return;
         }
+        _temp = temp;
         _healthy = true;
     }
 

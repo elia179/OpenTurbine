@@ -53,8 +53,8 @@ struct EngineData {
     volatile int      oilPressureRaw  = 0;      // raw ADC counts
     volatile int      flameSensorRaw  = 0;      // raw ADC counts
     volatile int      torqueRaw       = 0;      // raw ADC counts (ADC torque sensor only)
-    volatile int      throttleInputRaw = 0;     // ADC counts (ADC mode) or equivalent synthetic (servo mode)
-    volatile int      idleInputRaw     = 0;     // ADC counts (ADC mode) or equivalent synthetic (servo mode)
+    volatile int      throttleInputRaw = 0;     // ADC counts (ADC mode) or pulse width us (servo mode)
+    volatile int      idleInputRaw     = 0;     // ADC counts (ADC mode) or pulse width us (servo mode)
 
     // ── Sensor health ─────────────────────────────────────────
     volatile bool     n1Healthy       = false;
@@ -101,6 +101,8 @@ struct EngineData {
     volatile bool     abFlameOn       = false;  // AB flame sensor detected (or TOT-rise confirmed)
     volatile bool     abSolOpen       = false;  // AB fuel solenoid (g_actAbSol)
     volatile int      abInputRaw      = 0;      // raw ADC/RC counts for analog/RC AB trigger
+    volatile float    abInputNorm     = 0.0f;   // normalized 0.0-1.0 AB command input
+    volatile bool     abInputValid    = false;  // false when a configured servo signal has timed out
     // Additive offset applied at the throttle actuator while AB is Running.
     // Written by checkABTrigger(); read by Hardware::updateActuators().
     // NOT fed into throttleDemand — keeps ThrottleSlew's feedback loop clean.

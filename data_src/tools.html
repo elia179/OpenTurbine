@@ -33,15 +33,15 @@
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
 // toggleKey     → EngineData field name in telemetry (for ON/OFF state display)
-// visibleIf(hw) → optional predicate on hardware JSON; tool hidden when it returns false
+// visibleIf(hw) -> optional predicate on the hardware section; tool hidden when it returns false
 const TOOLS = [
-  { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid — primes fuel lines.' },
-  { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100 % — primes oil circuit.' },
-  { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 — verify spark visually.' },
+  { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid - primes fuel lines.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
+  { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100% - primes oil circuit. This is a direct bench command, not the controller minimum duty.', visibleIf: hw => !!hw?.actuators?.oil_pump?.enabled },
+  { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 - verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter?.enabled },
   { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
-  { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at 30 % — verify motor turns.' },
-  { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse — audible click to confirm valve.' },
-  { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, desc:'Moves throttle to idle position — verify servo travel.' },
+  { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at 30% - verify motor turns.', visibleIf: hw => !!hw?.actuators?.starter?.enabled },
+  { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse - audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
+  { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, desc:'Moves the throttle/fuel ESC output to its configured running idle floor - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
   // ── Conditionally visible actuator tests (shown only when hardware is fitted) ──
   { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, desc:'Energises starter enable relay for 1 s — audible click to confirm.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
   { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, desc:'Runs oil scavenge pump for 2 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
@@ -49,12 +49,14 @@ const TOOLS = [
   { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, desc:'Opens airstarter solenoid for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
   { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, desc:'Opens bleed valve for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
   { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:3000, desc:'Runs glow plug at 50 % for 3 s — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
-  { id:'FUEL_PUMP2_TEST',  name:'Fuel Pump 2 Test',    durationMs:3000, desc:'Runs secondary fuel pump at 30 % for 3 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
-  { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, desc:'Opens AB fuel solenoid for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.ab_sol?.enabled },
-  { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, desc:'Runs AB pump at 30 % for 2 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.ab_pump?.enabled },
+  { id:'FUEL_PUMP2_TEST',  name:'Auxiliary Fuel Pump 2 Test', durationMs:3000, desc:'Runs the independent auxiliary fuel pump at 30 % for 3 s; it does not follow throttle automatically.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
+  { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, desc:'Opens AB fuel solenoid for 1 s - audible click to confirm valve.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_sol?.enabled) },
+  { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, desc:'Runs AB pump at 30% for 2 s - confirm operation.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_pump?.enabled) },
   { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, desc:'Moves prop pitch servo to mid-travel for 3 s — verify servo range and travel direction.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
   // ── Toggle tools ─────────────────────────────────────────────
-  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, desc:'Closed-loop idle RPM hold.', toggleKey:'dynamic_idle_enabled' },
+  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, desc:'Turns closed-loop idle RPM hold on or off while running. Available only when it is enabled in Hardware and has throttle output plus RPM feedback.', toggleKey:'dynamic_idle_enabled',
+    visibleIf: hw => !!(hw?.controllers?.dynamic_idle && hw?.actuators?.throttle?.enabled &&
+      (hw?.sensors?.n1_rpm?.enabled || (hw?.has_two_shaft && hw?.sensors?.n2_rpm?.enabled))) },
   { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode' },
 ];
 
@@ -74,14 +76,14 @@ function renderTools() {
     const isToggle = t.durationMs === 0;
     if (isToggle && !dividerDone) { html += '<hr class="tool-divider">'; dividerDone = true; }
     html += `
-    <div class="tool-card" id="card-${t.id}">
+    <div class="tool-card" id="card-${t.id}" title="${t.desc.replace(/"/g, '&quot;')}">
       <div class="tool-header">
         <div class="tool-name">${t.name}</div>
         <div class="tool-state" id="state-${t.id}">${isToggle ? 'OFF' : 'Ready'}</div>
       </div>
       ${!isToggle ? `<div class="prog-track"><div class="prog-fill" id="prog-${t.id}"></div></div>` : ''}
       <div class="tool-footer">
-        <div class="tool-desc">${t.desc}</div>
+        <div class="tool-desc">${t.desc}${t.id === 'TOGGLE_LIMP_MODE' ? ' <span id="limp-cap-inline" style="color:var(--yellow)"></span>' : ''}</div>
         ${!isToggle ? `<div class="tool-time" id="time-${t.id}">${(t.durationMs/1000).toFixed(0)} s</div>` : ''}
         <button id="btn-${t.id}" onclick="runTool('${t.id}')" disabled>
           ${isToggle ? 'Toggle' : 'Run'}
@@ -91,8 +93,9 @@ function renderTools() {
   });
 
   // ── Extra Cooldown — slider-based special card ────────────
-  html += `<hr class="tool-divider">
-  <div class="tool-card" id="card-EXTRA_COOLDOWN">
+  if (hwCfg?.actuators?.starter?.enabled || hwCfg?.actuators?.oil_pump?.enabled) {
+    html += `<hr class="tool-divider">
+  <div class="tool-card" id="card-EXTRA_COOLDOWN" title="Runs fitted starter and/or oil pump for a timed post-stop cooling cycle. Available only with relevant fitted hardware.">
     <div class="tool-header">
       <div class="tool-name">Extra Cooldown</div>
       <div class="tool-state off" id="state-EXTRA_COOLDOWN">OFF</div>
@@ -119,7 +122,7 @@ function renderTools() {
 
   // ── Config Backup & Restore ──────────────────────────────────
   html += `<hr class="tool-divider">
-  <div class="tool-card" id="card-CONFIG_BACKUP">
+  <div class="tool-card" id="card-CONFIG_BACKUP" title="Export or restore the complete engine configuration file while the engine is stopped.">
     <div class="tool-header">
       <div class="tool-name">Config Backup &amp; Restore</div>
       <div class="tool-state off" id="cfg-backup-state">Ready</div>
@@ -140,7 +143,7 @@ function renderTools() {
 
   // ── OTA Firmware Update ─────────────────────────────────────
   html += `<hr class="tool-divider">
-  <div class="tool-card" id="card-OTA">
+  <div class="tool-card" id="card-OTA" title="Upload firmware only. Upload web UI assets separately when dashboard pages also change.">
     <div class="tool-header">
       <div class="tool-name">OTA Firmware Update</div>
       <div class="tool-state off" id="ota-state">Ready</div>
@@ -150,7 +153,8 @@ function renderTools() {
     </div>
     <div class="tool-footer" style="margin-top:.5rem">
       <div class="tool-desc" style="flex:1">
-        Upload a compiled <code>.bin</code> file directly from your device.
+        Upload a compiled firmware <code>.bin</code> file directly from your device.
+        This updates firmware only; web pages are stored in LittleFS and must be uploaded separately.
         Works over WiFi AP — no internet needed. ESP32 reboots automatically.
       </div>
       <label style="cursor:pointer">
@@ -159,6 +163,32 @@ function renderTools() {
       </label>
     </div>
     <div id="ota-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
+  </div>`;
+  }
+
+  // Web UI asset update. This uploads only page assets rather than replacing
+  // the LittleFS partition, so configuration and logs remain on the device.
+  html += `<hr class="tool-divider">
+  <div class="tool-card" id="card-WEB-ASSETS" title="Upload generated web pages without replacing stored settings or logs.">
+    <div class="tool-header">
+      <div class="tool-name">Web UI Assets Update</div>
+      <div class="tool-state off" id="assets-state">Ready</div>
+    </div>
+    <div class="prog-track" id="assets-prog-track" style="display:none">
+      <div class="prog-fill running" id="assets-prog-fill" style="width:0%"></div>
+    </div>
+    <div class="tool-footer" style="margin-top:.5rem">
+      <div class="tool-desc" style="flex:1">
+        Updates the dashboard pages without erasing config or logs.
+        First run <code>tools/gzip_data.py</code>, then select all nine generated
+        <code>data/*.gz</code> files. Requires idle STANDBY with no active outputs.
+      </div>
+      <label style="cursor:pointer">
+        <input type="file" id="assets-files" accept=".gz" multiple style="display:none" onchange="startWebAssetsUpdate(this)">
+        <button onclick="document.getElementById('assets-files').click()" id="assets-btn">Choose .gz files</button>
+      </label>
+    </div>
+    <div id="assets-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
   </div>`;
 
   document.getElementById('tool-area').innerHTML = html;
@@ -170,7 +200,7 @@ function renderTools() {
     <div style="padding:.45rem .75rem;background:rgba(220,50,50,.09);border:1px solid var(--red);border-radius:6px;margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem">
       <span style="font-size:.78rem;color:var(--red);font-weight:700">⚠ DEVELOPMENT MODE ACTIVE — Not for engine operation</span>
     </div>
-    <div class="tool-card" id="card-TOGGLE_SAFETY_CHECKS" style="border-color:var(--red)">
+    <div class="tool-card" id="card-TOGGLE_SAFETY_CHECKS" style="display:none;border-color:var(--red)">
       <div class="tool-header">
         <div class="tool-name" style="color:var(--red)">Skip Safety Checks</div>
         <div class="tool-state off" id="state-TOGGLE_SAFETY_CHECKS">Active</div>
@@ -181,20 +211,6 @@ function renderTools() {
           Engine will not protect itself. Use only for sensor/wiring tests — never with fuel.
         </div>
         <button id="btn-TOGGLE_SAFETY_CHECKS" onclick="toggleSafetyChecks()" class="danger">Toggle</button>
-      </div>
-    </div>
-    <div class="tool-card" id="card-TOGGLE_BENCH_MODE" style="border-color:var(--yellow);margin-top:.55rem">
-      <div class="tool-header">
-        <div class="tool-name" style="color:var(--yellow)">Bench / Debug Mode</div>
-        <div class="tool-state off" id="state-TOGGLE_BENCH_MODE">OFF</div>
-      </div>
-      <div class="tool-footer">
-        <div class="tool-desc" style="color:var(--dim)">
-          All sequencer blocks complete on their configured timeout — no sensor feedback required.
-          Safety faults are bypassed. Use to verify actuator wiring and sequence timing without a connected engine or sensors.
-          <b style="color:var(--yellow)">Standby only. Never use with fuel or a running engine.</b>
-        </div>
-        <button id="btn-TOGGLE_BENCH_MODE" onclick="toggleBenchMode()" class="danger">Enable Bench Mode</button>
       </div>
     </div>
   </div>`;
@@ -222,20 +238,35 @@ function renderTools() {
   // Dev mode — always-visible card so it's easy to find before the dev section appears
   const devToggleHtml = `
   <hr class="tool-divider" style="margin-top:1.4rem">
-  <div class="tool-card" style="border-color:var(--red);margin-top:.75rem;opacity:.75" id="card-dev-mode">
+  <div class="tool-card" style="border-color:var(--red);margin-top:.75rem;opacity:.75" id="card-dev-mode" title="Developer Mode unlocks Bench Mode for dry testing. Never use during engine operation.">
     <div class="tool-header">
       <div class="tool-name" style="color:var(--red)">Developer Mode</div>
       <div class="tool-state off" id="dev-mode-label">OFF</div>
     </div>
     <div class="tool-footer">
       <div class="tool-desc" style="color:var(--dim)">
-        Unlocks safety bypass and bench mode controls above.
+        Unlocks Bench Mode for dry sequence and actuator testing.
         <b style="color:var(--red)">Never enable during engine operation.</b>
       </div>
       <button id="btn-dev-mode" onclick="toggleDevMode()" class="danger">Enable Dev Mode</button>
     </div>
+  </div>
+  <div class="tool-card" id="card-TOGGLE_BENCH_MODE" title="Bench Mode bypasses safety fault shutdowns and sensor waits for dry testing only." style="display:none;border-color:var(--yellow);margin-top:.55rem">
+    <div class="tool-header">
+      <div class="tool-name" style="color:var(--yellow)">Bench Mode (No Fault Stops)</div>
+      <div class="tool-state off" id="state-TOGGLE_BENCH_MODE">OFF</div>
+    </div>
+    <div class="tool-footer">
+      <div class="tool-desc" style="color:var(--dim)">
+        Makes sequencer sensor/fault waits complete for dry actuator and timing testing.
+        It also bypasses safety fault shutdowns.
+        <b style="color:var(--yellow)">Enable Developer Mode first. Standby only. Never use with fuel or a running engine.</b>
+      </div>
+      <button id="btn-TOGGLE_BENCH_MODE" onclick="toggleBenchMode()" class="danger" disabled>Enable Bench Mode</button>
+    </div>
   </div>`;
-  document.getElementById('tool-area').insertAdjacentHTML('beforeend', devToggleHtml);
+  document.getElementById('tool-area').insertAdjacentHTML('afterbegin', devToggleHtml);
+  if (window.applyContextTooltips) window.applyContextTooltips(document.getElementById('tool-area'));
 }
 
 // ── Run a standard tool ───────────────────────────────────────
@@ -363,6 +394,10 @@ window.applyData = function(d) {
 
   // Toggle state badges
   TOOLS.forEach(t => { if (t.toggleKey) refreshToggleState(t); });
+  const limpCap = document.getElementById('limp-cap-inline');
+  if (limpCap && liveData.limp_throttle_cap !== undefined) {
+    limpCap.textContent = '(cap: ' + Number(liveData.limp_throttle_cap).toFixed(0) + '% throttle)';
+  }
 
   // Dev mode section visibility
   const devOn     = !!d.dev_mode;
@@ -377,8 +412,14 @@ window.applyData = function(d) {
   }
   const devCard = document.getElementById('card-dev-mode');
   if (devCard) devCard.style.opacity = devOn ? '1' : '.75';
+  const benchCard = document.getElementById('card-TOGGLE_BENCH_MODE');
+  if (benchCard) benchCard.style.display = devOn ? '' : 'none';
   const devBtn = document.getElementById('btn-dev-mode');
-  if (devBtn) devBtn.textContent = devOn ? 'Disable Dev Mode' : 'Enable Dev Mode';
+  if (devBtn) {
+    devBtn.textContent = devOn ? 'Disable Dev Mode' : 'Enable Dev Mode';
+    devBtn.disabled = d.mode !== 'STANDBY';
+    devBtn.title = d.mode === 'STANDBY' ? '' : 'Developer mode can only be changed in STANDBY.';
+  }
 
   // Safety checks state badge
   const skipSafety  = !!d.skip_safety_checks;
@@ -401,16 +442,16 @@ window.applyData = function(d) {
   const benchBtn = document.getElementById('btn-TOGGLE_BENCH_MODE');
   if (benchBtn) {
     benchBtn.textContent = benchOn ? 'Disable Bench Mode' : 'Enable Bench Mode';
-    benchBtn.disabled = (d.mode !== 'STANDBY');
+    benchBtn.disabled = (!devOn || d.mode !== 'STANDBY');
+    benchBtn.title = !devOn ? 'Enable Developer Mode first.' :
+                     (d.mode !== 'STANDBY' ? 'Bench mode can only be changed in STANDBY.' : '');
   }
 
   // Config restore button — standby only
   const cfgRestoreBtn = document.getElementById('cfg-restore-btn');
   if (cfgRestoreBtn) cfgRestoreBtn.disabled = (d.mode !== 'STANDBY');
 
-  // Config version mismatch banner
-  // Shown when the saved config was written by an older firmware version;
-  // new fields will have compile-time defaults and may need review.
+  // Config schema mismatch banner: missing or unsupported fields may need review.
   let cvmBanner = document.getElementById('cfg-version-mismatch-banner');
   if (d.config_version_mismatch) {
     if (!cvmBanner) {
@@ -421,9 +462,9 @@ window.applyData = function(d) {
         'border-radius:6px;padding:.55rem .85rem;margin-bottom:.8rem;' +
         'font-size:.78rem;color:var(--yellow);line-height:1.5';
       cvmBanner.innerHTML =
-        '<b>⚠ Config version mismatch</b><br>' +
-        'Your saved settings were written by an older firmware. New parameters have been ' +
-        'set to factory defaults — review <a href="/config.html" style="color:inherit">Config</a> ' +
+        '<b>⚠ Config schema mismatch</b><br>' +
+        'This engine file uses a different firmware settings schema. Missing or unsupported parameters may use ' +
+        'factory defaults — review <a href="/config.html" style="color:inherit">Config</a> ' +
         'and <a href="/hardware.html" style="color:inherit">Hardware</a> before starting the engine.';
       const main = document.querySelector('main');
       if (main) main.insertBefore(cvmBanner, main.firstChild);
@@ -450,6 +491,10 @@ window.applyData = function(d) {
 // ── Dev mode toggle ───────────────────────────────────────────
 function toggleDevMode() {
   const on = !!(liveData && liveData.dev_mode);
+  if (liveData && liveData.mode !== 'STANDBY') {
+    alert('Developer mode can only be changed in STANDBY.');
+    return;
+  }
   const msg = on
     ? 'Disable dev mode?'
     : 'Enable dev mode?\n\nThis unlocks the safety bypass controls.\nOnly use for bench testing — never for engine operation.';
@@ -463,10 +508,9 @@ function toggleDevMode() {
 
 // ── Safety checks bypass (dev mode only) ─────────────────────
 function toggleSafetyChecks() {
-  const fw  = !!(liveData && liveData.dev_mode_fw);
   const on  = !!(liveData && liveData.skip_safety_checks);
-  if (!fw) {
-    alert('Safety bypass is only available in firmware compiled with OT_DEV_MODE.\nRecompile with that flag to enable this feature.');
+  if (!(liveData && liveData.dev_mode && liveData.bench_mode && liveData.mode === 'STANDBY')) {
+    alert('Safety bypass requires Developer Mode and Bench Mode while in STANDBY.');
     return;
   }
   const msg = on
@@ -678,6 +722,76 @@ function startOTA(input) {
     btn.disabled = false;
   };
   xhr.send(form);
+}
+
+function startWebAssetsUpdate(input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+  if (engineMode !== 'STANDBY') {
+    alert('Engine must be in STANDBY before updating web assets.\nStop the engine first.');
+    input.value = '';
+    return;
+  }
+  const required = [
+    'app.js.gz', 'calibration.html.gz', 'config.html.gz', 'hardware.html.gz',
+    'index.html.gz', 'log.html.gz', 'sequence.html.gz', 'style.css.gz',
+    'tools.html.gz'
+  ];
+  const names = new Set(files.map(f => f.name));
+  const missing = required.filter(name => !names.has(name));
+  const invalid = files.filter(file => !required.includes(file.name));
+  if (missing.length || invalid.length || files.length !== required.length) {
+    alert('Choose exactly the nine generated data/*.gz web assets.\n\nMissing: ' +
+      (missing.join(', ') || 'none') + '\nUnexpected: ' +
+      (invalid.map(file => file.name).join(', ') || 'none'));
+    input.value = '';
+    return;
+  }
+
+  const btn = document.getElementById('assets-btn');
+  const state = document.getElementById('assets-state');
+  const track = document.getElementById('assets-prog-track');
+  const fill = document.getElementById('assets-prog-fill');
+  const msg = document.getElementById('assets-msg');
+  btn.disabled = true;
+  track.style.display = '';
+  state.textContent = 'Uploading...'; state.className = 'tool-state active';
+  msg.style.display = 'none';
+
+  const form = new FormData();
+  required.forEach(name => form.append('asset', files.find(file => file.name === name), name));
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/web_assets');
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = (e.loaded / e.total * 100).toFixed(0);
+      fill.style.width = pct + '%';
+      state.textContent = 'Uploading ' + pct + '%';
+    }
+  };
+  xhr.onload = () => {
+    try {
+      const r = JSON.parse(xhr.responseText);
+      if (!r.ok) throw new Error(r.error || 'Unknown error');
+      fill.style.width = '100%'; fill.classList.remove('running');
+      state.textContent = 'Done - rebooting...'; state.className = 'tool-state done';
+      msg.textContent = 'Web pages updated; configuration and logs were retained. Reconnect, then refresh the page without cache if styles or scripts look old.';
+      msg.style.color = 'var(--green)'; msg.style.display = '';
+    } catch (e) {
+      state.textContent = 'Error'; state.className = 'tool-state fault';
+      msg.textContent = 'Web asset update failed: ' + e.message;
+      msg.style.color = 'var(--red)'; msg.style.display = '';
+      btn.disabled = false;
+    }
+  };
+  xhr.onerror = () => {
+    state.textContent = 'Error'; state.className = 'tool-state fault';
+    msg.textContent = 'Network error - the existing web assets remain usable if the complete update was not applied.';
+    msg.style.color = 'var(--red)'; msg.style.display = '';
+    btn.disabled = false;
+  };
+  xhr.send(form);
+  input.value = '';
 }
 </script>
 </body>

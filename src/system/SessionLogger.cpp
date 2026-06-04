@@ -27,6 +27,8 @@ static uint32_t          _lastMs    = 0;
 static uint32_t          _rowCount  = 0;
 static char              _currentPath[40] = {};
 static QueueHandle_t     _rowQueue  = nullptr;
+static volatile bool     _startPending = false;
+static volatile bool     _endPending   = false;
 
 const char* SessionLogger::currentPath() { return _currentPath; }
 
@@ -71,9 +73,10 @@ static void _writeRow(const SessionRow& row) {
 }
 
 // ── One-time init ─────────────────────────────────────────────
-void SessionLogger::begin() {
+bool SessionLogger::begin() {
     if (!LittleFS.exists("/logs")) LittleFS.mkdir("/logs");
     if (!_rowQueue) _rowQueue = xQueueCreate(20, sizeof(SessionRow));
+    return _rowQueue != nullptr;
 }
 
 // ── Evict oldest session files if flash is low ────────────────
@@ -108,12 +111,10 @@ static void _evictOldSessions() {
     }
 }
 
-// ── Open a new session file (Core 1, called at STARTUP) ──────
-// One-time stall — acceptable before the engine enters tight loops.
-void SessionLogger::startSession() {
+// ── Core 0 lifecycle work requested by ECU transitions ───────
+static void _openSession() {
     if (_open) {
         _open = false;
-        vTaskDelay(pdMS_TO_TICKS(30));  // let Core 0 finish any in-progress drain
         _file.flush();
         _file.close();
     }
@@ -121,7 +122,9 @@ void SessionLogger::startSession() {
     _evictOldSessions();
 
     uint32_t run = EngineData::instance().runCount + 1;
-    snprintf(_currentPath, sizeof(_currentPath), "/logs/session_%lu.csv", (unsigned long)run);
+    do {
+        snprintf(_currentPath, sizeof(_currentPath), "/logs/session_%lu.csv", (unsigned long)run++);
+    } while (LittleFS.exists(_currentPath));
 
     _file = LittleFS.open(_currentPath, "w");
     if (!_file) {
@@ -149,8 +152,6 @@ void SessionLogger::startSession() {
     if (mask & Config::SLOG_PROP)       _file.print(",prop_pct");
     if (mask & Config::SLOG_OIL_PCT)    _file.print(",oil_pump_pct");
     _file.println();
-    _file.flush();
-
     _rowCount = 0;
     _lastMs   = 0;
     _open     = true;
@@ -158,16 +159,13 @@ void SessionLogger::startSession() {
         __builtin_popcount(mask), _currentPath);
 }
 
-// ── Close session file (Core 1, called at STANDBY) ───────────
-void SessionLogger::endSession() {
+static void _closeSession() {
     if (!_open) return;
 
-    // Signal Core 0 to stop draining, then wait one web-task cycle
-    // to ensure any in-progress drainQueue() call has returned.
+    // Lifecycle and draining both execute on Core 0.
     _open = false;
-    vTaskDelay(pdMS_TO_TICKS(30));
 
-    // Drain any rows Core 0 hasn't written yet — file is now ours alone.
+    // Drain any rows Core 0 hasn't written yet.
     if (_rowQueue) {
         SessionRow row;
         while (xQueueReceive(_rowQueue, &row, 0) == pdTRUE) _writeRow(row);
@@ -179,6 +177,15 @@ void SessionLogger::endSession() {
 }
 
 // ── Core 1: snapshot sensor state → queue (no file I/O) ──────
+void SessionLogger::startSession() {
+    _startPending = true;
+}
+
+void SessionLogger::endSession() {
+    _endPending = true;
+    _startPending = false;
+}
+
 void SessionLogger::tick() {
     if (!_open || !_rowQueue) return;
 
@@ -218,13 +225,23 @@ void SessionLogger::tick() {
 
 // ── Core 0: write queued rows to flash (no file I/O on Core 1) ──
 void SessionLogger::drainQueue() {
-    if (!_open || !_rowQueue) return;
-    uint32_t prevCount = _rowCount;
-    SessionRow row;
-    while (_open && xQueueReceive(_rowQueue, &row, 0) == pdTRUE) {
-        _writeRow(row);
+    if (_endPending) {
+        _endPending = false;
+        _closeSession();
     }
-    // Flush every 20 rows (~10 s at 500 ms log rate) — same durability as before
-    // but the stall now lands on Core 0, not the ECU loop.
-    if (_rowCount / 20 > prevCount / 20) _file.flush();
+    if (_startPending) {
+        _startPending = false;
+        _openSession();
+    }
+    if (!_open || !_rowQueue) return;
+    SessionRow row;
+    static constexpr uint8_t MAX_ROWS_PER_DRAIN = 2;
+    uint8_t drained = 0;
+    while (_open && drained < MAX_ROWS_PER_DRAIN &&
+           xQueueReceive(_rowQueue, &row, 0) == pdTRUE) {
+        _writeRow(row);
+        drained++;
+    }
+    // Finalise storage on session close. Mid-run LittleFS flushes can block
+    // network servicing for seconds while the ECU is being monitored.
 }

@@ -257,13 +257,25 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
   margin-bottom: 0.85rem;
   font-size: 0.83rem;
   line-height: 1.55;
-  color: var(--text-2);
+  color: #fff;
 }
+
+.telemetry-group { margin-bottom: 0.35rem; }
+.telemetry-group-title {
+  font-size: 0.64rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-family: var(--font-ui);
+  margin: 0.8rem 0 0.42rem;
+}
+.legacy-card-bin:empty { display: none !important; margin: 0; }
 .gs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-.gs-title  { font-weight: 700; font-size: 0.9rem; color: var(--text); }
+.gs-title  { font-weight: 700; font-size: 0.9rem; color: #fff; }
 .gs-dismiss { font-size: 0.75rem; color: var(--dim); background: none; border: 1px solid var(--border); cursor: pointer; padding: 0.2rem 0.7rem; border-radius: var(--r-sm); min-height: 32px; text-transform: none; letter-spacing: 0; }
-.gs-steps  { list-style: none; margin: 0.4rem 0 0; display: flex; flex-direction: column; gap: 0.35rem; }
-.gs-step-text { font-size: 0.82rem; color: var(--text-2); }
+.gs-steps  { margin: 0.4rem 0 0 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; color: #fff; }
+.gs-steps a { color: #fff; }
+.gs-step-text { font-size: 0.82rem; color: #fff; }
 
 /* Gauge absolute-value label (shows "45,000 / 120,000 RPM" under the bar) */
 .gauge-abs-label {

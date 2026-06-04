@@ -44,6 +44,7 @@ public:
     void setCal(const NTCCal& cal) { _cal = cal; }
 
     float getValue() override {
+        if (!_calValid()) return -999.0f;
         float raw = _avg.avg();
         // Avoid divide-by-zero at rails
         if (raw <= 0.0f || raw >= 4095.0f) return -999.0f;
@@ -56,8 +57,16 @@ public:
         return (1.0f / invT) - 273.15f;   // Kelvin → °C
     }
 
-    bool isHealthy() override { return _railCheck() && _avg.avg() > 0; }
+    bool isHealthy() override {
+        float value = getValue();
+        return _calValid() && _railCheck() && _avg.avg() > 0 && isfinite(value);
+    }
 
 private:
+    bool _calValid() const {
+        return _cal.rFixed > 0.0f && _cal.r0 > 0.0f &&
+               _cal.beta > 0.0f && _cal.t0C > -273.15f;
+    }
+
     NTCCal _cal;
 };

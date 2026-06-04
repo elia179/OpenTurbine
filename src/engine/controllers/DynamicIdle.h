@@ -2,6 +2,7 @@
 #include "IController.h"
 #include "../EngineData.h"
 #include "../../system/Config.h"
+#include "../../system/HardwareConfig.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -28,7 +29,7 @@ public:
     float rampDownMs    = 20000.0f;
     float deadbandRpm   = 300.0f;
     float rpmLimit      = 60000.0f;  // disengage above this
-    float minMultiplier = 0.75f;     // floor = targetRpm * minMultiplier
+    float minMultiplier = 0.75f;     // floor = configured idle throttle * multiplier
 
     void begin() override {
         reset();
@@ -40,9 +41,16 @@ public:
 
         if (!ed.dynamicIdleEnabled) return;
         // Misconfigured limits would cause division by zero — bail out safely.
-        if (targetRpm <= 0.0f || rpmLimit <= 0.0f) return;
+        if (targetRpm <= 0.0f || rpmLimit <= 0.0f) {
+            reset();
+            return;
+        }
 
         bool  useN2   = Config::idleUseN2;
+        if (useN2 && !HardwareConfig::hasN2Rpm) {
+            reset();
+            return;
+        }
         float rpm     = useN2 ? ed.n2Rpm    : ed.n1Rpm;
         bool healthy  = useN2 ? ed.n2Healthy : ed.n1Healthy;
 
@@ -53,6 +61,7 @@ public:
         unsigned long now = millis();
         float dt          = (now - _lastMs) / 1000.0f;
         _lastMs           = now;
+        if (dt > 0.05f) dt = 0.05f;
 
         // Disengage at high RPM or if sensor not trustworthy
         if (!healthy || rpm > rpmLimit) {
@@ -69,12 +78,16 @@ public:
         float rampStep = 0.0f;
         if (fabsf(error) >= deadbandRpm) {
             float rampMs = (error > 0) ? rampUpMs : rampDownMs;
-            float maxStep = dt / (rampMs / 1000.0f);
+            float maxStep = rampMs > 0.0f ? dt / (rampMs / 1000.0f) : 1.0f;
             // Scale error as fraction of targetRpm so the proportional zone
             // is centred on the idle point rather than the disengage ceiling.
             rampStep = constrain(error / targetRpm, -maxStep, maxStep);
         }
-        float minFloor = (targetRpm * minMultiplier) / rpmLimit;
+        // This multiplier belongs to the calibrated running idle throttle
+        // floor. Deriving it from RPM ratios can impose a hidden high fuel
+        // minimum (for example 54% instead of an intended 7.2%).
+        float minFloor = constrain((Config::throttleIdleMinPct / 100.0f) * minMultiplier,
+                                   0.0f, 1.0f);
         _idleFloor = constrain(_idleFloor + rampStep, minFloor, 1.0f);
 
         // ── Integral path (optional — off when idleIGain = 0) ──

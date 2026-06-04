@@ -2,10 +2,11 @@
 #include <Arduino.h>
 #include "../../hardware_profile.h"
 #include "../system/Config.h"
+#include "../system/HardwareConfig.h"
 #include "../engine/EngineData.h"
 
 // ============================================================
-//  RCInput — hardware-level RC PWM input (compile-time selection)
+//  RCInput - hardware-level RC PWM input (runtime hardware selection)
 //
 //  *** EXPERIMENTAL — not yet field-tested with full edge-case coverage.
 //  *** Prefer ADC pot input for new builds until this is validated.
@@ -13,11 +14,8 @@
 //  *** rcFailsafeMs is set conservatively and test failsafe behaviour
 //  *** on the bench before flying.
 //
-//  Enabled by hardware_profile.h defines (see that file):
-//    OT_IDLE_INPUT_RC_PWM      — servo PWM replaces ADC on OT_IDLE_INPUT_PIN
-//    OT_THROTTLE_INPUT_RC_PWM  — servo PWM replaces ADC on OT_THROTTLE_INPUT_PIN
-//
-//  The GPIO pin is the SAME as the ADC version — only the signal
+//  Enabled by HardwareConfig::idleInputRcPwm / throttleInputRcPwm.
+//  The GPIO pin is the same as the ADC version - only the signal
 //  type changes.  Pulse width is calibrated via Config::rcMinUs /
 //  rcMaxUs / rcFailsafeMs (tunable at runtime).
 //
@@ -33,42 +31,58 @@ public:
 
     // ── Lifecycle ─────────────────────────────────────────────
     static void begin() {
-#if defined(OT_IDLE_INPUT_RC_PWM) && defined(OT_HAS_IDLE_INPUT)
-        _idle.pin = OT_IDLE_INPUT_PIN;
-        pinMode(_idle.pin, INPUT);
-        attachInterrupt(digitalPinToInterrupt(_idle.pin), _isrIdle, CHANGE);
-        Serial.printf("[RCInput] idle input → servo PWM on GPIO%d  %d–%d µs\n",
-            _idle.pin, Config::rcMinUs, Config::rcMaxUs);
-#endif
-#if defined(OT_THROTTLE_INPUT_RC_PWM) && defined(OT_HAS_THROTTLE_INPUT)
-        _thr.pin = OT_THROTTLE_INPUT_PIN;
-        pinMode(_thr.pin, INPUT);
-        attachInterrupt(digitalPinToInterrupt(_thr.pin), _isrThr, CHANGE);
-        Serial.printf("[RCInput] throttle input → servo PWM on GPIO%d  %d–%d µs\n",
-            _thr.pin, Config::rcMinUs, Config::rcMaxUs);
-#endif
+        auto& hw = HardwareConfig::instance();
+        if (hw.hasIdleInput && hw.idleInputRcPwm && hw.idleInputPin >= 0) {
+            _idle.pin = hw.idleInputPin;
+            pinMode(_idle.pin, INPUT);
+            attachInterrupt(digitalPinToInterrupt(_idle.pin), _isrIdle, CHANGE);
+            Serial.printf("[RCInput] idle input -> servo PWM on GPIO%d %d-%d us\n",
+                _idle.pin, Config::idleMinRaw, Config::idleMaxRaw);
+        }
+        if (hw.hasThrottleInput && hw.throttleInputRcPwm && hw.throttleInputPin >= 0) {
+            _thr.pin = hw.throttleInputPin;
+            pinMode(_thr.pin, INPUT);
+            attachInterrupt(digitalPinToInterrupt(_thr.pin), _isrThr, CHANGE);
+            Serial.printf("[RCInput] throttle input -> servo PWM on GPIO%d %d-%d us\n",
+                _thr.pin, Config::throttleMinRaw, Config::throttleMaxRaw);
+        }
+        if (hw.hasAfterburner && hw.abInputRcPwm && hw.abInputPin >= 0 &&
+            (hw.abTriggerSource == 3 || Config::abPumpControlMode == 2)) {
+            _ab.pin = hw.abInputPin;
+            pinMode(_ab.pin, INPUT);
+            attachInterrupt(digitalPinToInterrupt(_ab.pin), _isrAb, CHANGE);
+            Serial.printf("[RCInput] AB command input -> servo PWM on GPIO%d %d-%d us\n",
+                _ab.pin, hw.abInputMinUs, hw.abInputMaxUs);
+        }
     }
 
     // ── Called each loop tick ─────────────────────────────────
     static void tick() {
         auto& ed = EngineData::instance();
 
-#if defined(OT_IDLE_INPUT_RC_PWM) && defined(OT_HAS_IDLE_INPUT)
-        _updateCh(_idle, ed.rcIdleValid, ed.rcIdleNorm);
-        if (ed.rcIdleValid) {
-            // Synthesise idleInputRaw as equivalent ADC count (0–4095)
-            ed.idleInputRaw = (int)(ed.rcIdleNorm * 4095.0f);
+        auto& hw = HardwareConfig::instance();
+        if (hw.hasIdleInput && hw.idleInputRcPwm) {
+            _updateCh(_idle, ed.rcIdleValid, ed.rcIdleNorm);
+            if (ed.rcIdleValid) {
+                ed.idleInputRaw = (int)_idle.acceptedUs;
+            } else {
+                ed.idleInputRaw = Config::idleMinRaw;
+            }
         }
-#endif
 
-#if defined(OT_THROTTLE_INPUT_RC_PWM) && defined(OT_HAS_THROTTLE_INPUT)
-        _updateCh(_thr, ed.rcThrottleValid, ed.rcThrottleNorm);
-        if (ed.rcThrottleValid) {
-            // Synthesise throttleInputRaw as equivalent ADC count
-            ed.throttleInputRaw = Config::throttleMinRaw +
-                (int)(ed.rcThrottleNorm * (float)(Config::throttleMaxRaw - Config::throttleMinRaw));
+        if (hw.hasThrottleInput && hw.throttleInputRcPwm) {
+            _updateCh(_thr, ed.rcThrottleValid, ed.rcThrottleNorm);
+            if (ed.rcThrottleValid) {
+                ed.throttleInputRaw = (int)_thr.acceptedUs;
+            } else {
+                ed.throttleInputRaw = Config::throttleMinRaw;
+            }
         }
-#endif
+        if (hw.hasAfterburner && hw.abInputRcPwm && hw.abInputPin >= 0 &&
+            (hw.abTriggerSource == 3 || Config::abPumpControlMode == 2)) {
+            _updateCh(_ab, ed.abInputValid, ed.abInputNorm);
+            ed.abInputRaw = ed.abInputValid ? (int)(ed.abInputNorm * 4095.0f) : 0;
+        }
     }
 
 private:
@@ -79,17 +93,19 @@ private:
         volatile uint32_t pulseUs = 0;
         volatile bool     fresh   = false;
         uint32_t          lastMs  = 0;
+        uint32_t          acceptedUs = 0;
     };
 
     static Ch _thr;
     static Ch _idle;
+    static Ch _ab;
 
     static void IRAM_ATTR _isrThr() {
         if (digitalRead(_thr.pin) == HIGH) {
             _thr.riseUs = micros();
         } else {
             uint32_t pw = micros() - _thr.riseUs;
-            if (pw >= 800 && pw <= 2200) { _thr.pulseUs = pw; _thr.fresh = true; }
+            if (pw >= 500 && pw <= 2500) { _thr.pulseUs = pw; _thr.fresh = true; }
         }
     }
 
@@ -98,7 +114,16 @@ private:
             _idle.riseUs = micros();
         } else {
             uint32_t pw = micros() - _idle.riseUs;
-            if (pw >= 800 && pw <= 2200) { _idle.pulseUs = pw; _idle.fresh = true; }
+            if (pw >= 500 && pw <= 2500) { _idle.pulseUs = pw; _idle.fresh = true; }
+        }
+    }
+
+    static void IRAM_ATTR _isrAb() {
+        if (digitalRead(_ab.pin) == HIGH) {
+            _ab.riseUs = micros();
+        } else {
+            uint32_t pw = micros() - _ab.riseUs;
+            if (pw >= 500 && pw <= 2500) { _ab.pulseUs = pw; _ab.fresh = true; }
         }
     }
 
@@ -108,11 +133,23 @@ private:
         uint32_t now = millis();
 
         if (ch.fresh) {
+            uint32_t pulseUs = ch.pulseUs;
             ch.fresh  = false;
             ch.lastMs = now;
-            int range = Config::rcMaxUs - Config::rcMinUs;
+            bool isIdle = (&ch == &_idle);
+            bool isAb = (&ch == &_ab);
+            int minUs = isAb ? HardwareConfig::abInputMinUs : (isIdle ? Config::idleMinRaw : Config::throttleMinRaw);
+            int maxUs = isAb ? HardwareConfig::abInputMaxUs : (isIdle ? Config::idleMaxRaw : Config::throttleMaxRaw);
+            // ADC defaults are 0-4095. Until a servo channel has been
+            // calibrated, use standard receiver pulse endpoints.
+            if (minUs == 0 && maxUs == 4095) {
+                minUs = Config::rcMinUs;
+                maxUs = Config::rcMaxUs;
+            }
+            int range = maxUs - minUs;
             if (range == 0) { valid = false; return; }  // misconfigured — guard div/0
-            float n = (float)((int)ch.pulseUs - Config::rcMinUs) / (float)range;
+            ch.acceptedUs = pulseUs;
+            float n = (float)((int)pulseUs - minUs) / (float)range;
             norm  = constrain(n, 0.0f, 1.0f);
             valid = true;
         } else if (valid && (now - ch.lastMs) > (uint32_t)Config::rcFailsafeMs) {
@@ -125,3 +162,4 @@ private:
 // Static member definitions (header-only, so inline)
 inline RCInput::Ch RCInput::_thr{};
 inline RCInput::Ch RCInput::_idle{};
+inline RCInput::Ch RCInput::_ab{};

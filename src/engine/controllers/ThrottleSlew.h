@@ -1,6 +1,7 @@
 #pragma once
 #include "IController.h"
 #include "../EngineData.h"
+#include "../../system/HardwareConfig.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -41,8 +42,16 @@ public:
         unsigned long now = millis();
         float dt          = (now - _lastMs) / 1000.0f;
         _lastMs           = now;
+        if (dt > 0.05f) dt = 0.05f;
 
         float target = constrain(ed.throttleDemand, 0.0f, 1.0f);
+        // Dry Bench Mode intentionally permits actuator travel without fitted
+        // feedback. In normal operation this interlock must still prevent a
+        // fuel increase with missing speed or temperature feedback.
+        if (!ed.benchMode && ((HardwareConfig::hasN1Rpm && !ed.n1Healthy) ||
+            (HardwareConfig::hasTot && !ed.totHealthy))) {
+            if (target > _current) target = _current;
+        }
 
         // Safety pullback: approach overspeed
         // Guard: rpmHardLimit must be strictly above rpmSoftLimit — equal limits

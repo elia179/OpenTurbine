@@ -2,8 +2,8 @@
 #include "../IBlock.h"
 #include <Arduino.h>
 
-// General-purpose fixed time delay between any two sequence steps.
-// dwellMs is configurable at runtime via Config (sequence.startup.timed_delay_ms).
+// General-purpose time delay between any two sequence steps.
+// Each placed block receives its own dwellMs from the stored sequence slot.
 // No actuator changes — just waits.
 class TimedDelay : public IBlock {
 public:

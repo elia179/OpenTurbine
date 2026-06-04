@@ -23,14 +23,14 @@
     <span id="cfg-lock-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
     <div style="display:flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--dim)">
       Units:
-      <button id="unit-temp-btn"  onclick="setTempUnit(tempUnit()==='C'?'F':'C')"
+      <button id="unit-temp-btn"  onclick="setConfigTempUnit(tempUnit()==='C'?'F':'C')"
         style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">°F</button>
-      <button id="unit-press-btn" onclick="setPressUnit(pressUnit()==='bar'?'psi':'bar')"
+      <button id="unit-press-btn" onclick="setConfigPressUnit(pressUnit()==='bar'?'psi':'bar')"
         style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
     </div>
     <div class="view-toggle" style="margin-left:auto">
-      <button id="btn-view-basic"  class="active" onclick="setView('basic')">Basic</button>
-      <button id="btn-view-expert" onclick="setView('expert')">Expert</button>
+      <button id="btn-view-basic"  class="active" onclick="setView('basic')" title="Basic view shows the normal setup values needed for ordinary tuning and bench checks. Advanced/rare parameters stay hidden.">Basic</button>
+      <button id="btn-view-expert" onclick="setView('expert')" title="Expert view shows every configurable parameter, including advanced safety, controller, logging, and tuning values. Use when you know why you need the extra control.">Expert</button>
     </div>
     <button id="btn-dev-mode" onclick="toggleDevMode()" style="font-size:.75rem;padding:.2rem .75rem"
     title="Dev Mode lets you edit config while the engine is running. Wrong values can cause faults or damage. Experts only.">Dev Mode</button>
@@ -61,29 +61,6 @@
 
   <div id="cfg-form"><p style="color:var(--dim);font-size:.85rem">Loading config…</p></div>
 
-  <!-- ── Automation Rules ──────────────────────────────────── -->
-  <div id="rules-section" class="cfg-section" style="display:none">
-    <div class="cfg-title" style="display:flex;align-items:center;gap:.6rem">
-      Automation Rules
-      <span id="rules-count-label" style="font-size:.72rem;font-weight:normal;color:var(--dim)"></span>
-    </div>
-    <div style="font-size:.73rem;color:var(--dim);background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:5px;padding:.35rem .65rem;margin:.2rem 0 .6rem;line-height:1.55">
-      IF/THEN rules evaluated every control tick when the engine is RUNNING or starting up.
-      Each rule checks a sensor against a threshold and drives an actuator.
-      For <strong>Cooling Fan</strong> and <strong>Bleed Valve</strong>: ON=1, OFF=0.
-      For <strong>Fuel Pump 2</strong>: ON/OFF can be any demand fraction 0–1.
-      Rules run after all normal control — they can augment but not override safety shutdowns.
-    </div>
-    <div id="rules-list"></div>
-    <div style="margin-top:.5rem;display:flex;align-items:center;gap:.75rem">
-      <button id="btn-add-rule" onclick="addRule()"
-        style="font-size:.8rem;padding:.25rem .85rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">
-        + Add Rule
-      </button>
-      <span style="font-size:.72rem;color:var(--dim)">Up to 8 rules. Rules are saved with the rest of your config.</span>
-    </div>
-  </div>
-
   <!-- ── Save-recap modal ─────────────────────────────────── -->
   <div class="save-recap-backdrop" id="save-recap-modal" style="display:none" onclick="if(event.target===this)_cancelSaveRecap()">
     <div class="save-recap-card">
@@ -102,39 +79,10 @@
 
   <div class="save-bar">
     <button id="btn-save" class="primary" onclick="saveConfig()">Save to device</button>
-    <button onclick="downloadConfig()" style="color:var(--dim)" title="Settings only — for full backup use Hardware page">Download settings</button>
-    <button onclick="uploadClick()"    style="color:var(--dim)" title="Settings only — for full restore use Hardware page">Upload settings</button>
+    <a href="/tools.html" style="color:var(--dim)">Full engine file backup / restore</a>
     <span class="save-msg" id="save-msg"></span>
   </div>
-  <input type="file" id="file-input" accept=".json" style="display:none" onchange="handleFile(event)">
 </main>
-
-<!-- Upload diff preview modal -->
-<div id="upload-diff-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center">
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:640px;width:92vw;max-height:82vh;display:flex;flex-direction:column;padding:1.25rem 1.4rem;gap:.75rem">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <span style="font-size:.88rem;font-weight:600">Upload Preview — Changed Fields</span>
-      <button onclick="closeDiffModal()" style="background:none;border:none;color:var(--dim);font-size:1.1rem;cursor:pointer;padding:.1rem .4rem">✕</button>
-    </div>
-    <div style="font-size:.75rem;color:var(--dim)" id="upload-diff-subtitle"></div>
-    <div style="overflow-y:auto;flex:1;border:1px solid var(--border);border-radius:6px">
-      <table id="upload-diff-table" style="width:100%;border-collapse:collapse;font-size:.76rem;font-family:inherit">
-        <thead>
-          <tr style="background:var(--surface-2)">
-            <th style="padding:.35rem .7rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border)">Field</th>
-            <th style="padding:.35rem .7rem;text-align:right;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border)">Current</th>
-            <th style="padding:.35rem .7rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border)">→ New</th>
-          </tr>
-        </thead>
-        <tbody id="upload-diff-body"></tbody>
-      </table>
-    </div>
-    <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:.25rem">
-      <button onclick="closeDiffModal()" style="color:var(--dim)">Cancel</button>
-      <button id="upload-diff-apply" onclick="applyUpload()">Apply</button>
-    </div>
-  </div>
-</div>
 
 <script src="/app.js"></script>
 <script>
@@ -144,19 +92,19 @@ const SCHEMA = [
     { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum RPM — engine shuts down if N1 exceeds this. Set to your engine manufacturer\'s maximum. Typical range: 80,000–180,000 RPM.',                       step:1000, min:0,    basic:true },
     { key:'min_rpm',            path:['engine','min_rpm'],            label:'Min RPM (RPM)',           desc:'Minimum RPM in RUNNING — below this triggers underspeed fault. Should be set just below your engine\'s idle RPM. Typical: 25,000–50,000 RPM.',            step:1000, min:0,    basic:true },
     { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', desc:'Maximum exhaust gas temperature — engine shuts down if TOT exceeds this. Set to your engine\'s maximum rated TOT. Typical range: 650–900 °C / 1200–1650 °F.',             step:10,   min:0,    basic:true },
-    { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'TOT Soft Margin',    unitType:'temp', desc:'Soft warning threshold = TOT Limit minus this value. Used for cluster display warnings. Typical: 30–50 °C / 55–90 °F below the hard limit.',                         step:5,    min:0 },
+    { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'TOT Soft Margin',    unitType:'temp_delta', desc:'Soft warning threshold = TOT Limit minus this value. Used for cluster display warnings. Typical: 30–50 °C / 55–90 °F below the hard limit.',                         step:5,    min:0 },
     { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown Target',    unitType:'temp', desc:'Engine must cool to this temperature before the final stop sequence completes. Prevents hot shutdown. Typical: 100–200 °C / 212–390 °F.',                              step:10,   min:0 },
   ]},
-  { title: 'Oil System', id: 'oil', fields: [
+  { title: 'Oil System', id: 'oil-config-section', fields: [
     { key:'oil_sp',  path:['oil','startup_pressure'],   label:'Startup Target',  unitType:'press', desc:'Oil pressure the pump targets during the OilPrime block. Should match your engine\'s lubrication requirement at startup (typically 1–4 bar / 15–60 PSI).',                                                              step:0.1, min:0, basic:true },
     { key:'oil_am',  path:['oil','startup_min_bar'],    label:'Arm Minimum',     unitType:'press', desc:'Minimum oil pressure that must be reached before ignition is armed. If oil doesn\'t reach this, startup aborts. Set slightly below Startup Target.',                                                        step:0.1, min:0, basic:true },
     { key:'oil_rm',  path:['oil','running_min'],        label:'Running Min',     unitType:'press', desc:'Low-oil safety fault threshold while the engine is running. Shutdown occurs if oil drops below this. Set to your engine\'s minimum safe operating pressure.',                                               step:0.1, min:0, basic:true },
-    { key:'oil_zb',  path:['oil','zero_bar'],           label:'Zero-Pressure Threshold', unitType:'press', desc:'OIL_ZERO fault triggers if oil reads below this while the engine is running — indicates pump failure or broken fitting rather than calibrated low pressure. Default 0.1 bar. Set to just above your sensor noise floor.', step:0.05, min:0 },
+    { key:'oil_zb',  path:['oil_advanced','zero_bar'],  label:'Zero-Pressure Threshold', unitType:'press', desc:'OIL_ZERO fault triggers if oil reads below this while the engine is running — indicates pump failure or broken fitting rather than calibrated low pressure. Default 0.1 bar. Set to just above your sensor noise floor.', step:0.05, min:0 },
     { key:'oil_tm',  path:['oil','use_throttle_map'],   label:'Throttle-Map Pressure',       desc:'When ON: oil pressure target scales from Running Oil to Map Max as throttle increases. When OFF: oil targets Running Oil bar at all times (simpler, recommended for beginners).', type:'checkbox' },
     { key:'oil_mm',  path:['oil','map_min'],            label:'Running Oil',     unitType:'press', desc:'Oil pressure setpoint in RUNNING when throttle map is off (or the idle-end target when it\'s on). This is the most important oil tuning parameter.',                                                      step:0.1, min:0, basic:true },
     { key:'oil_mx',  path:['oil','map_max'],            label:'Map Max',         unitType:'press', desc:'Oil pressure target at full throttle when throttle map is enabled. Higher throttle → more oil for bearing cooling.',                                                                                       step:0.1, min:0, wrapId:'field-oil_mx' },
     { key:'oil_as',  path:['oil','adjust_scale'],       label:'Oil P-Gain',                  desc:'P-controller gain for oil pressure loop. Higher = faster response but may oscillate. Typical: 1.5–2.5.',                                                                                             step:0.05,min:0 },
-    { key:'oil_mp',  path:['oil','min_pct'],            label:'Min Pump %',                  desc:'Minimum oil pump duty cycle (0–100%). Prevents the pump from stopping completely during controller dips.',                                                                                                  step:1,   min:0, max:100 },
+    { key:'oil_mp',  path:['oil','min_pct'],            label:'Controller Minimum Duty %',   desc:'Minimum oil-pump duty used only by the closed-loop oil-pressure controller. This is a floor, not a maximum; startup OilPumpOn sequence steps may command a higher duty such as 100%.',                                               step:1,   min:0, max:100 },
     { key:'oil_fd',  path:['oil','failsafe_delay_ms'],  label:'Failsafe Delay (ms)',         desc:'If the oil pressure sensor goes unhealthy, the pump switches to a fixed duty after this delay (milliseconds).',                                                                                            step:100, min:0 },
     { key:'oil_fp',  path:['oil','failsafe_pct'],       label:'Failsafe Pump %',             desc:'Fixed pump duty % to use when the oil sensor is faulty. Should keep enough oil flowing to be safe. Typical: 50–80%.',                                                                                    step:5,   min:0, max:100 },
   ]},
@@ -183,12 +131,18 @@ const SCHEMA = [
   ]},
   { title: 'Safety Monitor', id: 'safety-monitor', fields: [
     { key:'sf_ci', path:['safety','check_interval_ms'],    label:'Check Interval (ms)',          desc:'How often the safety checks run (milliseconds). Lower = faster response. Default 100 ms. Rarely needs changing.',                                                     step:10,  min:0 },
-    { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Flameout Delay (ms)',          desc:'How long flame must be absent before a flameout fault is declared. Set longer if your flame sensor is noisy or unstable. Default: 3000 ms (3 seconds).',             step:200, min:0, basic:true },
+    { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Flameout Delay (ms)',          desc:'How long the selected flameout source must indicate combustion loss before a fault is declared. Set longer if the selected source is noisy or unstable. Default: 3000 ms (3 seconds).',             step:200, min:0, basic:true },
+    { key:'sf_fs', path:['safety','flameout_source'],      label:'Flameout Source', type:'select', options:[{v:0,l:'Auto best fitted source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 RPM drop'},{v:3,l:'TOT drop'}], desc:'Which signal declares a running flameout. Auto uses flame sensor if fitted, otherwise N1 RPM, otherwise TOT drop.', basic:true },
+    { key:'sf_fn', path:['safety','flameout_n1_min_rpm'],  label:'N1 Flameout RPM', desc:'For N1-source flameout: declare flameout if N1 stays below this RPM. 0 uses Min RPM. This is delayed by Flameout Delay.', step:1000, min:0 },
+    { key:'sf_ft', path:['safety','flameout_tot_drop_c'],  label:'TOT Drop for Flameout (C)', desc:'For TOT-source flameout: declare flameout after TOT drops this far below the highest running TOT reference. Use cautiously; throttle changes can affect TOT.', step:5, min:0 },
     { key:'sf_rr', path:['safety','tot_rise_rate_limit_deg_s'], label:'Max EGT Rise Rate (°C/s)', desc:'Shuts down if the exhaust temperature rises faster than this in a single second. Protects against hot starts or runaway rich fuel. 0 = disabled. Typical safe value: 50–100 °C/s. (Always entered in °C/s regardless of display unit.)', step:5, min:0 },
     { key:'sf_hs', path:['sequence','startup','hot_start_tot_threshold'], label:'Hot-Start TOT Threshold', unitType:'temp', desc:'Startup is aborted if the exhaust temp is above this when you press START. Prevents starting into a hot turbine section. 0 = disabled. Typical: 100–200 °C / 212–390 °F.', step:10, min:0, basic:true },
   ]},
   { title: 'Auto-Relight', id:'relight-section', sectionNote:'After a flameout during RUNNING, the ECU can fire the igniter briefly to attempt a hot re-start without stopping. This only works if N1 stays above the minimum RPM and the engine can still self-ignite. Disable if false-relight attempts would be hazardous on your installation.', fields: [
     { key:'rl_en', path:['relight','enabled'],      label:'Auto-Relight Enabled',  desc:'When ON: if the flame goes out while running, the igniter fires again automatically. The engine will attempt to relight before shutting down. Recommended ON for most setups.', type:'checkbox', basic:true },
+    { key:'rl_cs', path:['relight','confirm_source'], label:'Relight Confirm Source', type:'select', options:[{v:0,l:'Auto match flameout source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 recovered'},{v:3,l:'TOT recovered'}], desc:'Which fitted signal confirms that relight succeeded and lets the igniter turn off.' },
+    { key:'rl_cr', path:['relight','confirm_rpm'],         label:'N1 Recovery RPM', desc:'For N1 relight confirmation: igniter stays on until N1 recovers to this RPM. 0 uses Min RPM + 5%.', step:1000, min:0 },
+    { key:'rl_tr', path:['relight','tot_rise_c'],          label:'TOT Recovery Rise (C)', desc:'For TOT relight confirmation: igniter stays on until TOT rises this much above the temperature at relight start.', step:5, min:0 },
     { key:'rl_mr', path:['relight','min_rpm'],            label:'Min N1 for Relight (RPM)', desc:'Abort relight if N1 falls below this RPM — the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000–40,000 RPM.', step:1000, min:0 },
     { key:'rl_to', path:['relight','relight_timeout_ms'], label:'Relight Timeout (ms)',      desc:'How long to keep the igniter on trying to relight after a flameout. If flame is not restored within this window, the engine shuts down. 0 = no timeout (not recommended). Typical: 8,000–15,000 ms.', step:500, min:0 },
   ]},
@@ -225,9 +179,10 @@ const SCHEMA = [
     { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief solenoid pulse for click test',      step:50,  min:0 },
   ]},
   { title: 'Telemetry', fields: [
-    { key:'tm_ws', path:['telemetry','ws_interval_ms'],       label:'WS Interval ms',        desc:'WebSocket push rate to browser dashboard (ms). Lower = smoother live graph. Default 200 (5 Hz).',      step:50,  min:50 },
-    { key:'tm_sn', path:['telemetry','snapshot_interval_ms'], label:'Snapshot Interval ms',  desc:'FlightRecorder RUNNING_SNAP rate (ms). Lower = more history entries. Default 5000 ms (5 s).',          step:500, min:500 },
-    { key:'tm_sl', path:['session_log','interval_ms'],        label:'Session Log Rate (ms)', desc:'How often a row is written to the per-run CSV log. Default 500 ms (2 Hz). Use 200–100 for high-speed transient capture. Lower values increase LittleFS wear.', step:100, min:100, basic:true },
+    { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic flight-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox', basic:true },
+    { key:'tm_ws', path:['telemetry','ws_interval_ms'],       label:'Live Update Interval ms', desc:'Dashboard and Calibration request live data at this interval. Minimum reliable setting is 333 ms (3 Hz); larger values reduce network load.', step:1, min:333, basic:true },
+    { key:'tm_sn', path:['telemetry','snapshot_interval_ms'], label:'Snapshot Interval ms',  desc:'FlightRecorder RUNNING_SNAP rate (ms). Lower = more history entries. Default 10000 ms (10 s).',          step:500, min:500 },
+    { key:'tm_sl', path:['session_log','interval_ms'],        label:'Session Log Rate (ms)', desc:'How often a row is written to the per-run CSV log. Default 1000 ms (1 Hz). Use 500–100 ms only for high-speed transient capture. Lower values increase LittleFS wear and CPU/storage load.', step:100, min:100, basic:true },
     { key:'sl_n1', path:['session_log','n1'],       label:'Log N1 RPM',      type:'checkbox', desc:'Include N1 RPM column in session CSV.', basic:true },
     { key:'sl_n2', path:['session_log','n2'],        label:'Log N2 RPM',      type:'checkbox', desc:'Include N2 RPM column in session CSV.' },
     { key:'sl_tt', path:['session_log','tot'],       label:'Log TOT',         type:'checkbox', desc:'Include turbine outlet temperature column in session CSV.', basic:true },
@@ -241,7 +196,7 @@ const SCHEMA = [
     { key:'sl_fp', path:['session_log','fuel_press'],label:'Log Fuel Press',  type:'checkbox', desc:'Include fuel rail pressure column in session CSV.' },
     { key:'sl_ff', path:['session_log','fuel_flow'], label:'Log Fuel Flow',   type:'checkbox', desc:'Include fuel flow column in session CSV.' },
     { key:'sl_gw', path:['session_log','glow'],      label:'Log Glow Plug %', type:'checkbox', desc:'Include glow plug duty cycle column in session CSV.' },
-    { key:'sl_f2', path:['session_log','fp2'],       label:'Log Fuel Pump 2', type:'checkbox', desc:'Include secondary fuel pump demand (%) column in session CSV.' },
+    { key:'sl_f2', path:['session_log','fp2'],       label:'Log Auxiliary Fuel Pump 2', type:'checkbox', desc:'Include independent sequence/rule-commanded auxiliary fuel pump demand (%) column in session CSV. This channel does not automatically follow the main throttle input.' },
     { key:'sl_ab', path:['session_log','ab'],        label:'Log AB State',    type:'checkbox', desc:'Include afterburner mode + flame columns in session CSV.' },
     { key:'sl_pp', path:['session_log','prop'],      label:'Log Prop Pitch',  type:'checkbox', desc:'Include propeller pitch demand (%) column in session CSV.' },
     { key:'sl_op', path:['session_log','oil_pct'],   label:'Log Oil Pump %',  type:'checkbox', desc:'Include oil pump duty cycle (%) column in session CSV.' },
@@ -301,9 +256,9 @@ const SCHEMA = [
     { key:'ab_fto', path:['afterburner','flame_timeout_ms'],    label:'Confirmation Timeout (ms)', desc:'Overall deadline for flame confirmation. Exceeding this triggers an AB fault and shuts down the afterburner. Typical: 3000–5000 ms.', step:200, min:0 },
   ]},
   { title: 'Afterburner — Running', id: 'ab-run-section', fields: [
-    { key:'ab_pmn', path:['afterburner','pump_min_pct'],         label:'AB Pump Min %',         desc:'Minimum AB fuel pump demand when afterburner is running (used as fixed value when follow-throttle is off).', step:5, min:0, max:100 },
-    { key:'ab_pmx', path:['afterburner','pump_max_pct'],         label:'AB Pump Max %',         desc:'Maximum AB fuel pump demand at full throttle when follow-throttle is enabled.', step:5, min:0, max:100 },
-    { key:'ab_pft', path:['afterburner','pump_follow_throttle'], label:'Follow Throttle',       desc:'Scale AB pump linearly between Min and Max with current throttle demand. When off, pump runs at Max %.', type:'checkbox' },
+    { key:'ab_pcm', path:['afterburner','pump_control_mode'],     label:'Pump Command Source',   type:'select', options:[{v:0,l:'Fixed Max Output'},{v:1,l:'Follow Main Throttle'},{v:2,l:'Dedicated AB Input'}], desc:'Choose how AB pump flow is commanded while lit. Dedicated AB Input uses the ADC or servo-PWM AB input configured in Hardware.' },
+    { key:'ab_pmn', path:['afterburner','pump_min_pct'],         label:'AB Pump Min %',         desc:'Minimum AB fuel pump demand for a variable command source. With a missing servo-PWM AB input, demand fails to this minimum.', step:5, min:0, max:100 },
+    { key:'ab_pmx', path:['afterburner','pump_max_pct'],         label:'AB Pump Max %',         desc:'Maximum AB fuel pump demand. Fixed Max Output holds this value while AB is running.', step:5, min:0, max:100 },
     { key:'ab_mo',  path:['afterburner','main_fuel_offset_pct'], label:'Main Fuel Offset %',    desc:'Add this to main throttle demand while AB is running (extra air/fuel for compressor). 0 = none.', step:2, min:-20, max:50 },
     { key:'ab_sms', path:['afterburner','stabilize_ms'],         label:'Stabilize Hold (ms)',   desc:'Hold time in ABStabilize after confirmed ignition before transitioning to AB Running. Typical: 500–2000 ms.', step:100, min:0 },
     { key:'ab_smt', path:['afterburner','stabilize_max_tot'],    label:'Stabilize Max TOT',  unitType:'temp', desc:'AB faults if TOT exceeds this during the stabilize hold. 0 = disabled.', step:10, min:0 },
@@ -329,39 +284,9 @@ const SCHEMA = [
     { key:'gl_mx', path:['glow_plug','preheat_max_pct'], label:'Preheat Peak %',        desc:'Duty cycle at the peak of the preheat ramp (0–100%). Use lower values for nichrome elements, higher for ceramic. Typical: 60–90%.',        step:5,   min:0, max:100 },
     { key:'gl_hd', path:['glow_plug','hold_pct'],        label:'Hold Duty %',           desc:'Duty cycle to hold after preheat completes (during ignition window). Keeps element at temperature without burning out. Typical: 20–40%.', step:5,   min:0, max:100 },
   ]},
-  { title: 'RC PWM Calibration', id: 'rc-pwm-section', fields: [
-    { key:'rc_mn', path:['rc_input','min_us'],      label:'Min Pulse µs',  desc:'Pulse width = 0 % (typically 1000 µs). Active when RC PWM input is enabled in Hardware → Throttle Input or Idle Input.', step:10, min:500, max:1500 },
-    { key:'rc_mx', path:['rc_input','max_us'],      label:'Max Pulse µs',  desc:'Pulse width = 100 % (typically 2000 µs).', step:10, min:1500, max:2500 },
+  { title: 'Servo Input Failsafe', id: 'rc-pwm-section', sectionNote:'Throttle and idle pulse endpoints are calibrated independently on the Calibration page.', fields: [
     { key:'rc_fs', path:['rc_input','failsafe_ms'], label:'Failsafe ms',   desc:'Mark RC signal invalid if no pulse received within this time.', step:50, min:100 },
   ]},
-];
-
-// ── Automation Rules metadata ─────────────────────────────────
-// Must match RulesEngine.h enum values (Sensor / Op / Actuator)
-const RULE_SENSORS = [
-  { v: 0, l: 'Oil Temp',   unit: 'temp'  },
-  { v: 1, l: 'TOT',        unit: 'temp'  },
-  { v: 2, l: 'N1 RPM',     unit: 'rpm'   },
-  { v: 3, l: 'Oil Press',  unit: 'press' },
-  { v: 4, l: 'TIT',        unit: 'temp'  },
-  { v: 5, l: 'Battery V',  unit: 'volt'  },
-  { v: 6,  l: 'N2 RPM',      unit: 'rpm'   },
-  { v: 7,  l: 'DI Channel 1', unit: 'di'   },
-  { v: 8,  l: 'DI Channel 2', unit: 'di'   },
-  { v: 9,  l: 'DI Channel 3', unit: 'di'   },
-  { v: 10, l: 'DI Channel 4', unit: 'di'   },
-];
-const RULE_OPS = [
-  { v: 0, l: '>'  },
-  { v: 1, l: '<'  },
-  { v: 2, l: '≥'  },
-  { v: 3, l: '≤'  },
-  { v: 4, l: '='  },
-];
-const RULE_ACTUATORS = [
-  { v: 0, l: 'Cooling Fan'  },
-  { v: 1, l: 'Bleed Valve'  },
-  { v: 2, l: 'Fuel Pump 2'  },
 ];
 
 let cfg      = {};
@@ -484,6 +409,66 @@ function applyView() {
   });
 }
 
+function _fieldToDisplay(f, value) {
+  if (f.unitType === 'temp') return toDispTemp(value);
+  if (f.unitType === 'temp_delta') return toDispTempDelta(value);
+  if (f.unitType === 'press') return toDispPress(value);
+  return value;
+}
+
+function _fieldFromDisplay(f, value) {
+  if (f.unitType === 'temp') return fromDispTemp(value);
+  if (f.unitType === 'temp_delta') return fromDispTempDelta(value);
+  if (f.unitType === 'press') return fromDispPress(value);
+  return value;
+}
+
+function _fieldStepToDisplay(f, value) {
+  if (f.unitType === 'temp' || f.unitType === 'temp_delta') {
+    return tempUnit() === 'F' ? value * 9 / 5 : value;
+  }
+  if (f.unitType === 'press') return toDispPress(value);
+  return value;
+}
+
+function _roundedDisplay(value) {
+  return String(Math.round(value * 1000) / 1000);
+}
+
+function _switchConfigUnit(unitTypes, setter, nextUnit) {
+  const fields = [];
+  SCHEMA.forEach(sec => sec.fields.forEach(f => {
+    if (!unitTypes.includes(f.unitType)) return;
+    const el = document.getElementById('cf-' + f.key);
+    if (!el || el.type === 'checkbox') return;
+    const current = parseFloat(el.value);
+    const snap = parseFloat(_fieldSnap[el.id]);
+    fields.push({
+      f, el,
+      current: isNaN(current) ? null : _fieldFromDisplay(f, current),
+      snap: isNaN(snap) ? null : _fieldFromDisplay(f, snap)
+    });
+  }));
+  setter(nextUnit);
+  fields.forEach(({ f, el, current, snap }) => {
+    if (current !== null) el.value = _roundedDisplay(_fieldToDisplay(f, current));
+    if (snap !== null) _fieldSnap[el.id] = _roundedDisplay(_fieldToDisplay(f, snap));
+    if (f.min !== undefined) el.min = _roundedDisplay(_fieldToDisplay(f, f.min));
+    if (f.max !== undefined) el.max = _roundedDisplay(_fieldToDisplay(f, f.max));
+    if (f.step !== undefined) el.step = _roundedDisplay(_fieldStepToDisplay(f, f.step));
+  });
+  _refreshChangedBorders();
+  runValidation();
+}
+
+function setConfigTempUnit(value) {
+  _switchConfigUnit(['temp', 'temp_delta'], setTempUnit, value);
+}
+
+function setConfigPressUnit(value) {
+  _switchConfigUnit(['press'], setPressUnit, value);
+}
+
 function renderForm() {
   document.getElementById('cfg-form').innerHTML = SCHEMA.map(sec => {
     // A section is "basic" if at least one field in it has basic:true
@@ -502,18 +487,20 @@ function renderForm() {
           const isSel = f.type === 'select';
           // Convert stored SI value to display unit for number fields only
           if (!isCb && !isSel && f.unitType && val !== undefined) {
-            val = f.unitType === 'temp'  ? toDispTemp(val)  : toDispPress(val);
+            val = _fieldToDisplay(f, val);
             val = Math.round(val * 1000) / 1000; // trim float noise
           }
-          const unitSuffix = (!isSel && f.unitType) ? ` (<span data-unit="${f.unitType}">${f.unitType === 'temp' ? dispTempUnit() : dispPressUnit()}</span>)` : '';
-          const min = (!isCb && !isSel && f.min !== undefined) ? ` min="${f.min}"` : '';
-          const max = (!isCb && !isSel && f.max !== undefined) ? ` max="${f.max}"` : '';
+          const isTempUnit = f.unitType === 'temp' || f.unitType === 'temp_delta';
+          const unitSuffix = (!isSel && f.unitType) ? ` (<span data-unit="${isTempUnit ? 'temp' : 'press'}">${isTempUnit ? dispTempUnit() : dispPressUnit()}</span>)` : '';
+          const min = (!isCb && !isSel && f.min !== undefined) ? ` min="${_roundedDisplay(_fieldToDisplay(f, f.min))}"` : '';
+          const max = (!isCb && !isSel && f.max !== undefined) ? ` max="${_roundedDisplay(_fieldToDisplay(f, f.max))}"` : '';
+          const step = (!isCb && !isSel) ? _roundedDisplay(_fieldStepToDisplay(f, f.step || 1)) : null;
           const inp = isCb
             ? `<input type="checkbox" id="cf-${f.key}"${val ? ' checked' : ''}${isLocked ? ' disabled' : ''}>`
             : isSel
             ? `<select id="cf-${f.key}"${isLocked ? ' disabled' : ''}>${(f.options||[]).map(o => `<option value="${o.v}"${val == o.v ? ' selected' : ''}>${o.l}</option>`).join('')}</select>`
             : `<input type="number" id="cf-${f.key}" value="${val !== undefined ? val : ''}"
-              step="${f.step || 1}"${min}${max}${isLocked ? ' disabled' : ''}>`;
+              step="${step}"${min}${max}${isLocked ? ' disabled' : ''}>`;
           const wid = f.wrapId ? ` id="${f.wrapId}"` : '';
           const expertAttr2 = !f.basic ? ' data-expert' : '';
           return `<div class="cfg-field"${wid}${expertAttr2}>
@@ -545,6 +532,11 @@ function renderForm() {
   const _abFmEl = document.getElementById('cf-ab_fm');
   if (_abUtEl) _abUtEl.addEventListener('change', applyAbIgnitionParamVisibility);
   if (_abFmEl) _abFmEl.addEventListener('change', applyAbIgnitionParamVisibility);
+  const _flSrcEl = document.getElementById('cf-sf_fs');
+  const _rlSrcEl = document.getElementById('cf-rl_cs');
+  if (_flSrcEl) _flSrcEl.addEventListener('change', applyFlameoutRelightVisibility);
+  if (_rlSrcEl) _rlSrcEl.addEventListener('change', applyFlameoutRelightVisibility);
+  applyFlameoutRelightVisibility();
 
   // Mark form dirty whenever any input changes
   const cfgForm = document.getElementById('cfg-form');
@@ -631,7 +623,8 @@ function runValidation() {
 
   // 5. Safety-zero: tot_limit = 0 disables overtemperature protection
   const totLimitVal = fv('tot_limit');
-  if (totLimitVal !== undefined && totLimitVal === 0) {
+  const totLimitCanonical = totLimitVal !== undefined ? fromDispTemp(totLimitVal) : undefined;
+  if (totLimitCanonical !== undefined && Math.abs(totLimitCanonical) < 0.001) {
     warnings.push({
       section: 'Engine Limits',
       key:     'warn-tot-zero',
@@ -760,16 +753,12 @@ function saveConfig() {
       } else {
         let v = parseFloat(el.value);
         if (!isNaN(v)) {
-          if (f.unitType === 'temp')  v = fromDispTemp(v);
-          if (f.unitType === 'press') v = fromDispPress(v);
+          v = _fieldFromDisplay(f, v);
           setPath(cfg, f.path, v);
         }
       }
     });
   });
-
-  // Collect automation rules from the rules UI into cfg.rules
-  _collectRules();
 
   // Run hard validation first (errors block save entirely)
   if (!validateBeforeSave(cfg)) return;
@@ -790,9 +779,9 @@ function saveConfig() {
 
   const rows = changes.map(c =>
     `<tr>
-      <td>${c.label}</td>
-      <td class="val-was">${c.was}</td>
-      <td class="val-now">${c.now}</td>
+      <td>${_escHtml(c.label)}</td>
+      <td class="val-was">${_escHtml(c.was)}</td>
+      <td class="val-now">${_escHtml(c.now)}</td>
     </tr>`
   ).join('');
   body.innerHTML =
@@ -839,103 +828,6 @@ function _doSave() {
   });
 }
 
-// ── Download / Upload ─────────────────────────────────────────
-function downloadConfig() {
-  fetch('/api/config').then(r => r.blob()).then(b => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(b);
-    a.download = 'config.json';
-    a.click();
-  });
-}
-function uploadClick() { document.getElementById('file-input').click(); }
-let _pendingUpload = null;
-
-function handleFile(ev) {
-  const file = ev.target.files[0]; if (!file) return;
-  ev.target.value = '';  // reset so same file can be re-selected
-  const reader = new FileReader();
-  reader.onload = e => {
-    let incoming;
-    try { incoming = JSON.parse(e.target.result); }
-    catch (_) { alert('Invalid JSON file'); return; }
-    _pendingUpload = { raw: e.target.result, parsed: incoming };
-
-    // Fetch current config and compute diff
-    fetch('/api/config').then(r => r.json()).then(current => {
-      const diffs = diffConfigs(current, incoming);
-      const body  = document.getElementById('upload-diff-body');
-      const sub   = document.getElementById('upload-diff-subtitle');
-      if (!diffs.length) {
-        sub.textContent = 'No changes detected — file matches current config.';
-        body.innerHTML  = '<tr><td colspan="3" style="padding:.6rem .7rem;color:var(--dim);text-align:center">No differences</td></tr>';
-      } else {
-        sub.textContent = diffs.length + ' field' + (diffs.length !== 1 ? 's' : '') + ' will change';
-        body.innerHTML  = diffs.map((d, i) =>
-          `<tr style="background:${i%2?'var(--surface)':'var(--bg)'}">
-            <td style="padding:.3rem .7rem;color:var(--dim)">${d.path}</td>
-            <td style="padding:.3rem .7rem;text-align:right;color:var(--red)">${fmt(d.old)}</td>
-            <td style="padding:.3rem .7rem;color:var(--green)">${fmt(d.nw)}</td>
-          </tr>`
-        ).join('');
-      }
-      document.getElementById('upload-diff-modal').style.display = 'flex';
-    }).catch(() => {
-      // Can't fetch current — apply directly
-      applyUpload();
-    });
-  };
-  reader.readAsText(file);
-}
-
-function fmt(v) {
-  if (v === undefined) return '—';
-  if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'number')  return v.toString();
-  return JSON.stringify(v);
-}
-
-function diffConfigs(cur, nw, prefix, out) {
-  prefix = prefix || '';
-  out    = out    || [];
-  for (const k of new Set([...Object.keys(cur || {}), ...Object.keys(nw || {})])) {
-    const path = prefix ? prefix + '.' + k : k;
-    const cv = cur ? cur[k] : undefined;
-    const nv = nw  ? nw[k]  : undefined;
-    if (cv !== null && nv !== null && typeof cv === 'object' && typeof nv === 'object'
-        && !Array.isArray(cv) && !Array.isArray(nv)) {
-      diffConfigs(cv, nv, path, out);
-    } else if (JSON.stringify(cv) !== JSON.stringify(nv)) {
-      out.push({ path, old: cv, nw: nv });
-    }
-  }
-  return out;
-}
-
-function closeDiffModal() {
-  document.getElementById('upload-diff-modal').style.display = 'none';
-  _pendingUpload = null;
-}
-
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDiffModal(); });
-
-function applyUpload() {
-  if (!_pendingUpload) return;
-  const body = _pendingUpload.raw;
-  closeDiffModal();
-  fetch('/api/config', { method: 'POST', body,
-    headers: { 'Content-Type': 'application/json' } })
-    .then(r => r.json())
-    .then(d => {
-      if (d.ok) {
-        document.getElementById('save-msg').textContent = '✓ Uploaded — reloading…';
-        setTimeout(() => location.reload(), 600);
-      } else {
-        alert('Upload failed: ' + JSON.stringify(d));
-      }
-    });
-}
-
 // ── Engine type presets ───────────────────────────────────────
 // Each preset sets key config parameters via PATCH.
 // Hardware pins are NOT touched — user handles those in hardware.html.
@@ -946,7 +838,7 @@ const PRESETS = {
       engine: { rpm_limit: 120000, min_rpm: 35000, tot_limit: 870, tot_safe_margin: 30, tot_cooldown_target: 150 },
       dynamic_idle: { target_rpm: 45000 },
       sequence: {
-        startup: { spool_rpm_target: 60000, spool_timeout_ms: 30000, safety_hold_ms: 5000,
+        startup: { rpm_target: 60000, rpm_timeout_ms: 30000, safety_hold_ms: 5000,
                    pre_ign_rpm: 20000, flame_timeout_ms: 8000 }
       }
     }
@@ -957,7 +849,7 @@ const PRESETS = {
       engine: { rpm_limit: 90000, min_rpm: 28000, tot_limit: 800, tot_safe_margin: 30, tot_cooldown_target: 150 },
       dynamic_idle: { target_rpm: 35000 },
       sequence: {
-        startup: { spool_rpm_target: 50000, spool_timeout_ms: 35000, safety_hold_ms: 6000,
+        startup: { rpm_target: 50000, rpm_timeout_ms: 35000, safety_hold_ms: 6000,
                    pre_ign_rpm: 18000, flame_timeout_ms: 10000 }
       }
     }
@@ -968,7 +860,7 @@ const PRESETS = {
       engine: { rpm_limit: 72000, min_rpm: 22000, tot_limit: 750, tot_safe_margin: 25, tot_cooldown_target: 120 },
       dynamic_idle: { target_rpm: 28000 },
       sequence: {
-        startup: { spool_rpm_target: 42000, spool_timeout_ms: 45000, safety_hold_ms: 8000,
+        startup: { rpm_target: 42000, rpm_timeout_ms: 45000, safety_hold_ms: 8000,
                    pre_ign_rpm: 15000, flame_timeout_ms: 12000 }
       }
     }
@@ -979,7 +871,7 @@ const PRESETS = {
       engine: { rpm_limit: 80000, min_rpm: 20000, tot_limit: 700, tot_safe_margin: 30, tot_cooldown_target: 100 },
       dynamic_idle: { target_rpm: 25000 },
       sequence: {
-        startup: { spool_rpm_target: 40000, spool_timeout_ms: 60000, safety_hold_ms: 10000,
+        startup: { rpm_target: 40000, rpm_timeout_ms: 60000, safety_hold_ms: 10000,
                    pre_ign_rpm: 12000, flame_timeout_ms: 15000 }
       }
     }
@@ -990,7 +882,7 @@ const PRESETS = {
       engine: { rpm_limit: 50000, min_rpm: 10000, tot_limit: 650, tot_safe_margin: 30, tot_cooldown_target: 80 },
       dynamic_idle: { target_rpm: 15000 },
       sequence: {
-        startup: { spool_rpm_target: 25000, spool_timeout_ms: 60000, safety_hold_ms: 12000,
+        startup: { rpm_target: 25000, rpm_timeout_ms: 60000, safety_hold_ms: 12000,
                    pre_ign_rpm: 8000, flame_timeout_ms: 15000 }
       }
     }
@@ -1003,7 +895,7 @@ const PRESETS = {
       dynamic_idle: { target_rpm: 15000 },
       glow_plug: { preheat_ms: 12000, preheat_max_pct: 80, hold_pct: 30 },
       sequence: {
-        startup: { spool_rpm_target: 25000, spool_timeout_ms: 60000, safety_hold_ms: 8000,
+        startup: { rpm_target: 25000, rpm_timeout_ms: 60000, safety_hold_ms: 8000,
                    pre_ign_rpm: 6000, flame_timeout_ms: 15000, hot_start_tot_threshold: 150 }
       },
       safety: { flameout_shutdown_ms: 4000 }
@@ -1033,7 +925,6 @@ function applyPreset(key) {
   deepMerge(cfg, preset.patch);
   // Repopulate the form and indicate unsaved changes
   renderForm();
-  renderRulesSection();
   _applyAllVisibility();
   hookValidation();
   runValidation();
@@ -1100,7 +991,6 @@ window.applyData = function(d) {
     isLocked = locked;
     _clearDirty();  // re-render resets form values from cfg
     renderForm();
-    renderRulesSection();
     _snapshotFields();
     _applyAllVisibility();
   }
@@ -1131,7 +1021,7 @@ window.applyData = function(d) {
   if (d.has_starter_assist !== undefined && !!d.has_starter_assist !== _hasStarterAssistCfg) {
     _hasStarterAssistCfg = !!d.has_starter_assist; extChanged = true;
   }
-  const hasSafetyExt = !!(d.has_oil_temp || d.has_batt_voltage || d.fuel_press_min > 0 || d.tit_limit > 0 || d.has_governor);
+  const hasSafetyExt = !!(d.has_oil_temp || d.has_batt_voltage || d.fuel_press_min > 0 || d.has_tit || d.tit_limit > 0 || d.has_governor);
   if (hasSafetyExt !== _hasSafetyExtCfg) {
     _hasSafetyExtCfg = hasSafetyExt; extChanged = true;
   }
@@ -1202,6 +1092,22 @@ function applyAbIgnitionParamVisibility() {
   showF('ab_ams',  flameMode === 2);
 }
 
+function _cfgShowField(key, show) {
+  const el = document.getElementById('cf-' + key);
+  const wrap = el?.closest('.cfg-field');
+  if (wrap) wrap.style.display = show ? '' : 'none';
+}
+
+function applyFlameoutRelightVisibility() {
+  const flSrc = parseInt(document.getElementById('cf-sf_fs')?.value || '0', 10);
+  const rlSrc = parseInt(document.getElementById('cf-rl_cs')?.value || '0', 10);
+  const effRl = rlSrc || flSrc;
+  _cfgShowField('sf_fn', flSrc === 2);
+  _cfgShowField('sf_ft', flSrc === 3);
+  _cfgShowField('rl_cr', effRl === 2);
+  _cfgShowField('rl_tr', effRl === 3);
+}
+
 // ── RC PWM section — show only when RC PWM is active ─────────
 let rcPwmActive = false;
 function applyRcPwmVisibility() {
@@ -1248,12 +1154,22 @@ function applyHwConditions() {
   const s  = hwCfg.sensors    || {};
   const a  = hwCfg.actuators  || {};
   const hasOilPress    = !!(s.oil_press?.enabled  || hwCfg.has_oil_press);
-  const hasN2          = !!(s.n2_rpm?.enabled     || hwCfg.has_n2_rpm || hwCfg.has_two_shaft);
+  const hasN1          = !!(s.n1_rpm?.enabled     || hwCfg.has_n1_rpm);
+  const hasN2          = !!(hwCfg.has_two_shaft && (s.n2_rpm?.enabled || hwCfg.has_n2_rpm));
   const hasScavengePump= !!(a.oil_scavenge_pump?.enabled || hwCfg.has_scavenge_pump);
   const hasOilTemp     = !!(s.oil_temp?.enabled   || hwCfg.has_oil_temp);
   const hasFuelPress   = !!(s.fuel_press?.enabled || hwCfg.has_fuel_press);
   const hasBattVolt    = !!(s.batt_voltage?.enabled  || hwCfg.has_batt_voltage);
   const hasFlame       = !!(s.flame?.enabled      || hwCfg.has_flame);
+  const hasTot         = !!(s.tot?.enabled        || hwCfg.has_tot);
+  const hasAB          = !!hwCfg.has_afterburner;
+  const hasAbFlame     = !!(hasAB && hwCfg.ab_flame?.enabled);
+  const hasAbInput     = !!(hasAB && (hwCfg.ab_trigger?.input_pin ?? -1) >= 0);
+  const hasAbIgniter   = !!(hasAB && (a.igniter2?.enabled || hwCfg.has_igniter2));
+  const hasThrottleOut = !!(a.throttle?.enabled   || hwCfg.has_throttle);
+  const hasOilPump     = !!(a.oil_pump?.enabled   || hwCfg.has_oil_pump);
+  const hasAbPump      = !!(hasAB && (a.ab_pump?.enabled || hwCfg.has_ab_pump));
+  const hasClusterSerial = !!hwCfg.cluster_serial?.enabled;
 
   function showField(key, show) {
     const el = document.getElementById('cf-' + key);
@@ -1262,19 +1178,39 @@ function applyHwConditions() {
     if (wrap) wrap.style.display = show ? '' : 'none';
   }
 
+  function ghostField(key, available, reason) {
+    const el = document.getElementById('cf-' + key);
+    const wrap = el?.closest('.cfg-field');
+    if (!el || !wrap) return;
+    el.disabled = isLocked || !available;
+    wrap.style.opacity = available ? '' : '0.35';
+    wrap.style.cursor = available ? '' : 'not-allowed';
+    wrap.title = available ? '' : reason;
+  }
+
+  function ghostSelectOption(key, value, available, reason) {
+    const el = document.getElementById('cf-' + key);
+    const opt = el?.querySelector(`option[value="${value}"]`);
+    if (!opt) return;
+    if (!opt.dataset.baseLabel) opt.dataset.baseLabel = opt.textContent;
+    opt.disabled = !available;
+    opt.textContent = opt.dataset.baseLabel + (available ? '' : ' (not configured)');
+    if (el && !available && String(el.value) === String(value)) {
+      const wrap = el.closest('.cfg-field');
+      if (wrap) wrap.title = reason;
+    }
+  }
+
   // ── Oil system: hide pressure-control fields when no sensor ──────────────
-  // Without a sensor the P-controller doesn't run; only the fixed pump % (oil_mp) matters.
-  const oilPressFields = ['oil_sp','oil_am','oil_rm','oil_tm','oil_mx','oil_as','oil_fd','oil_fp','oa_zb','oa_db'];
+  // Without a sensor the closed-loop controller does not run; direct pump
+  // output during startup and shutdown is configured on the Sequence page.
+  const oilPressFields = ['oil_sp','oil_am','oil_rm','oil_tm','oil_mx','oil_as','oil_mp','oil_fd','oil_fp','oa_zb','oa_db'];
   oilPressFields.forEach(k => showField(k, hasOilPress));
-  // Map Min (oil_mm) — rename to "Fixed Pump Duty %" hint in label when no sensor
   const oilMpEl  = document.getElementById('cf-oil_mp');
   const oilMmEl  = document.getElementById('cf-oil_mm');
   if (oilMpEl) {
     const label = oilMpEl.closest('.cfg-field')?.querySelector('.cfg-label');
-    if (label) label.textContent = hasOilPress ? 'Min Pump %' : 'Pump Duty % (fixed, no sensor)';
-    // Oil min % is the ONLY pump field when no sensor → make it visible + basic
-    const wrap = oilMpEl.closest('.cfg-field');
-    if (wrap) { wrap.style.display = ''; wrap.removeAttribute('data-expert'); }
+    if (label) label.textContent = 'Controller Minimum Duty %';
   }
   if (oilMmEl) { const w = oilMmEl.closest('.cfg-field'); if (w) w.style.display = hasOilPress ? '' : 'none'; }
 
@@ -1285,7 +1221,7 @@ function applyHwConditions() {
       oilNote = document.createElement('div');
       oilNote.id = 'hw-oil-no-sensor-note';
       oilNote.style.cssText = 'font-size:.72rem;color:var(--yellow);background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.3);border-radius:5px;padding:.35rem .65rem;margin:.15rem 0 .45rem;line-height:1.5;grid-column:1/-1';
-      oilNote.textContent = '⚠ No oil pressure sensor — pressure-control parameters are hidden. Only "Pump Duty % (fixed)" is used to drive the oil pump.';
+      oilNote.textContent = 'No oil pressure sensor - closed-loop oil-pressure settings are hidden. Set actual startup oil-pump output in Sequence > Oil Pump On (or Oil Prime).';
       // Insert after the Oil System title
       const oilGrid = oilMpEl?.closest('.cfg-grid');
       if (oilGrid) oilGrid.prepend(oilNote);
@@ -1323,6 +1259,28 @@ function applyHwConditions() {
   // ── N2 / two-shaft fields ────────────────────────────────────────────────
   showField('di_n2', hasN2);
   if (!hasN2) showField('cl_n2', false); // applyClusterVisibility guards show, we guard N2
+  ghostField('cl_en', hasClusterSerial, 'Cluster serial output is not fitted/enabled in Hardware.');
+
+  ghostSelectOption('sf_fs', 1, hasFlame, 'Flame sensor is not configured in Hardware.');
+  ghostSelectOption('sf_fs', 2, hasN1, 'N1 RPM sensor is not configured in Hardware.');
+  ghostSelectOption('sf_fs', 3, hasTot, 'TOT sensor is not configured in Hardware.');
+  ghostSelectOption('rl_cs', 1, hasFlame, 'Flame sensor is not configured in Hardware.');
+  ghostSelectOption('rl_cs', 2, hasN1, 'N1 RPM sensor is not configured in Hardware.');
+  ghostSelectOption('rl_cs', 3, hasTot, 'TOT sensor is not configured in Hardware.');
+  ['rl_en','rl_mr','rl_cs','rl_cr','rl_tr','rl_to'].forEach(k =>
+    ghostField(k, hasN1, 'Auto-relight requires N1 RPM feedback so the ECU can prove the engine is still windmilling.'));
+
+  // Afterburner choices remain visible but cannot select hardware that is absent.
+  ghostSelectOption('ab_fm', 0, hasAbFlame, 'AB flame sensor is not configured in Hardware.');
+  ghostSelectOption('ab_fm', 1, hasTot, 'TOT sensor is not configured in Hardware.');
+  ghostSelectOption('ab_pcm', 2, hasAbInput, 'Dedicated AB input is not configured in Hardware.');
+  ghostField('ab_ui', hasAbIgniter, 'AB igniter output is not configured in Hardware.');
+  ghostField('ab_ut', hasThrottleOut, 'Main throttle/fuel output is not configured in Hardware.');
+  ghostField('ab_mt', hasTot, 'TOT sensor is not configured in Hardware.');
+  ghostField('ab_ttl', hasTot && hasThrottleOut, 'Torch TOT protection needs TOT sensing and a main fuel output.');
+  ghostField('ab_smt', hasTot, 'TOT sensor is not configured in Hardware.');
+  ['ab_pcm','ab_pmn','ab_pmx','ab_mo','ab_sms'].forEach(k =>
+    ghostField(k, hasAbPump, 'AB fuel pump output is not configured in Hardware.'));
 
   // ── Session log ghosting — checkbox remains visible but locked when hardware is absent ─
   // ghostSlogField(key, hasHw, hwLabel) — keeps field visible with ghost treatment when absent
@@ -1356,18 +1314,22 @@ function applyHwConditions() {
   const hasFuelFlow  = !!(s.fuel_flow?.enabled    || hwCfg.has_fuel_flow);
   const hasGlowPlug  = !!(a.glow_plug?.enabled    || hwCfg.has_glow_plug);
   const hasFuelPump2 = !!(a.fuel_pump2?.enabled   || hwCfg.has_fuel_pump2);
-  const hasAB        = !!(a.ab_sol?.enabled       || hwCfg.has_afterburner);
   const hasPropPitch = !!(a.prop_pitch?.enabled   || hwCfg.has_prop_pitch);
 
-  ghostSlogField('sl_n2', hasN2,       'N2 RPM sensor');
-  ghostSlogField('sl_ti', hasTit,      'TIT sensor');
-  ghostSlogField('sl_bv', hasBattVolt, 'Battery voltage sensor');
-  ghostSlogField('sl_fp', hasFuelPress,'Fuel pressure sensor');
-  ghostSlogField('sl_ff', hasFuelFlow, 'Fuel flow sensor');
-  ghostSlogField('sl_gw', hasGlowPlug, 'Glow plug');
-  ghostSlogField('sl_f2', hasFuelPump2,'Fuel Pump 2');
-  ghostSlogField('sl_ab', hasAB,       'Afterburner');
-  ghostSlogField('sl_pp', hasPropPitch,'Prop pitch');
+  ghostSlogField('sl_n1', hasN1,          'N1 RPM sensor');
+  ghostSlogField('sl_n2', hasN2,          'N2 RPM sensor');
+  ghostSlogField('sl_tt', hasTot,         'TOT sensor');
+  ghostSlogField('sl_ti', hasTit,         'TIT sensor');
+  ghostSlogField('sl_ol', hasOilPress,    'Oil pressure sensor');
+  ghostSlogField('sl_th', hasThrottleOut, 'Throttle output');
+  ghostSlogField('sl_op', hasOilPump,     'Oil pump output');
+  ghostSlogField('sl_bv', hasBattVolt,    'Battery voltage sensor');
+  ghostSlogField('sl_fp', hasFuelPress,   'Fuel pressure sensor');
+  ghostSlogField('sl_ff', hasFuelFlow,    'Fuel flow sensor');
+  ghostSlogField('sl_gw', hasGlowPlug,    'Glow plug');
+  ghostSlogField('sl_f2', hasFuelPump2,   'Fuel Pump 2');
+  ghostSlogField('sl_ab', hasAB,          'Afterburner');
+  ghostSlogField('sl_pp', hasPropPitch,   'Prop pitch');
 
   // ── Flame Detection section — only with flame sensor ─────────────────────
   const flameDetectSec = document.getElementById('flame-detect-section');
@@ -1375,11 +1337,6 @@ function applyHwConditions() {
 }
 
 // ── Re-render form when user switches units ───────────────────
-const _baseApplyUnitLabels = applyUnitLabels;
-function applyUnitLabels() {
-  _baseApplyUnitLabels();
-  if (cfg) { renderForm(); renderRulesSection(); _applyAllVisibility(); }
-}
 
 // ── Shared re-render helper ──────────────────────────────
 function _applyAllVisibility() {
@@ -1388,6 +1345,7 @@ function _applyAllVisibility() {
   applyOilMapVisibility();
   applyAbCfgVisibility();
   applyAbIgnitionParamVisibility();
+  applyFlameoutRelightVisibility();
   applyExtSectionVisibility();
   applyHwConditions();
   // Re-run view filter AFTER hw conditions — applyHwConditions() may un-hide expert-only
@@ -1395,184 +1353,10 @@ function _applyAllVisibility() {
   applyView();
 }
 
-// ── Automation Rules UI ───────────────────────────────────────
-
 function _escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function _ruleSensorUnit(sIdx) {
-  const m = RULE_SENSORS[sIdx];
-  if (!m) return '';
-  if (m.unit === 'temp')  return dispTempUnit();
-  if (m.unit === 'press') return dispPressUnit();
-  if (m.unit === 'rpm')   return 'RPM';
-  if (m.unit === 'volt')  return 'V';
-  if (m.unit === 'di')    return '(0/1)';
-  return '';
-}
-
-function _ruleThreshToDisp(thresh, sIdx) {
-  const m = RULE_SENSORS[sIdx];
-  if (!m) return thresh;
-  if (m.unit === 'temp')  return Math.round(toDispTemp(thresh)  * 100) / 100;
-  if (m.unit === 'press') return Math.round(toDispPress(thresh) * 100) / 100;
-  return thresh;
-}
-
-function _ruleThreshFromDisp(val, sIdx) {
-  const m = RULE_SENSORS[sIdx];
-  if (!m) return val;
-  if (m.unit === 'temp')  return fromDispTemp(val);
-  if (m.unit === 'press') return fromDispPress(val);
-  return val;
-}
-
-// Called when sensor dropdown changes — updates the threshold unit label and input constraints live
-function updateRuleThresholdLabel(i) {
-  const sEl = document.getElementById('rule-sensor-' + i);
-  const uEl = document.getElementById('rule-unit-' + i);
-  const tEl = document.getElementById('rule-thresh-' + i);
-  if (!sEl) return;
-  const sIdx = parseInt(sEl.value);
-  if (uEl) uEl.textContent = _ruleSensorUnit(sIdx);
-  // DI channels are binary (0/1) — constrain the threshold input accordingly
-  const isDI = (RULE_SENSORS[sIdx] || {}).unit === 'di';
-  if (tEl) {
-    if (isDI) {
-      tEl.min  = '0'; tEl.max = '1'; tEl.step = '1';
-      // Snap current threshold to nearest valid value (0 or 1)
-      const cur = parseFloat(tEl.value);
-      tEl.value = (!isNaN(cur) && cur < 0.5) ? '0' : '1';
-    } else {
-      tEl.min  = ''; tEl.max = ''; tEl.step = 'any';
-    }
-  }
-}
-
-// Build HTML for a single rule row
-function _buildRuleRow(r, i) {
-  const sOpts  = RULE_SENSORS  .map(s => `<option value="${s.v}"${r.sensor   === s.v ? ' selected' : ''}>${s.l}</option>`).join('');
-  const opOpts = RULE_OPS      .map(o => `<option value="${o.v}"${r.op       === o.v ? ' selected' : ''}>${o.l}</option>`).join('');
-  const aOpts  = RULE_ACTUATORS.map(a => `<option value="${a.v}"${r.actuator === a.v ? ' selected' : ''}>${a.l}</option>`).join('');
-
-  const unit  = _ruleSensorUnit(r.sensor);
-  const isDI  = (RULE_SENSORS[r.sensor] || {}).unit === 'di';
-  const disp  = isDI
-    ? (Math.round(r.threshold ?? 1) === 0 ? 0 : 1)   // clamp stored value to 0 or 1
-    : _ruleThreshToDisp(r.threshold ?? 0, r.sensor);
-  const threshAttrs = isDI ? 'min="0" max="1" step="1"' : 'step="any"';
-  const lk   = isLocked ? ' disabled' : '';
-  const ss   = 'font-size:.78rem;padding:.18rem .3rem;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text)';
-  const dim  = 'font-size:.7rem;color:var(--dim);white-space:nowrap';
-
-  return `<div class="rules-row" id="rule-row-${i}"
-    style="display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;padding:.42rem .65rem;border:1px solid var(--border);border-radius:6px;margin-bottom:.3rem;background:var(--surface)">
-    <input type="checkbox" id="rule-en-${i}"${r.enabled ? ' checked' : ''}${lk}
-      title="Enable / disable this rule" onchange="_markDirty()">
-    <input type="text" id="rule-name-${i}" value="${_escHtml(r.name || '')}" placeholder="Name…"
-      maxlength="23"${lk} oninput="_markDirty()"
-      style="${ss};width:7rem" title="Short description (up to 23 chars)">
-    <span style="${dim}">IF</span>
-    <select id="rule-sensor-${i}"${lk}
-      onchange="updateRuleThresholdLabel(${i});_markDirty()" style="${ss}">${sOpts}</select>
-    <select id="rule-op-${i}"${lk} onchange="_markDirty()" style="${ss};width:3rem">${opOpts}</select>
-    <input type="number" id="rule-thresh-${i}" value="${disp}" ${threshAttrs}${lk}
-      oninput="_markDirty()" style="${ss};width:4.5rem;text-align:right"
-      title="${isDI ? 'DI value: 0 = LOW/OFF, 1 = HIGH/ON' : 'Threshold in displayed units (°C/°F, bar/PSI, RPM, V)'}">
-    <span id="rule-unit-${i}" style="${dim};min-width:2rem">${unit}</span>
-    <span style="${dim}">→ SET</span>
-    <select id="rule-act-${i}"${lk} onchange="_markDirty()" style="${ss}">${aOpts}</select>
-    <span style="${dim}">ON:</span>
-    <input type="number" id="rule-on-${i}" value="${r.on_value ?? 1}" min="0" max="1" step="0.05"${lk}
-      oninput="_markDirty()" style="${ss};width:3.2rem;text-align:right"
-      title="Actuator value when condition is TRUE (1=ON for fan/valve; 0–1 demand for pump)">
-    <span style="${dim}">OFF:</span>
-    <input type="number" id="rule-off-${i}" value="${r.off_value ?? 0}" min="0" max="1" step="0.05"${lk}
-      oninput="_markDirty()" style="${ss};width:3.2rem;text-align:right"
-      title="Actuator value when condition is FALSE">
-    <button onclick="removeRule(${i})"${lk} title="Delete rule"
-      style="background:none;border:1px solid var(--border);color:var(--dim);cursor:pointer;border-radius:4px;padding:.1rem .4rem;font-size:.8rem;margin-left:auto">✕</button>
-  </div>`;
-}
-
-// Render (or re-render) the full rules section from cfg.rules
-function renderRulesSection() {
-  const sec  = document.getElementById('rules-section');
-  const list = document.getElementById('rules-list');
-  const cnt  = document.getElementById('rules-count-label');
-  const btn  = document.getElementById('btn-add-rule');
-  if (!sec || !list) return;
-
-  sec.style.display = '';
-  const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
-
-  list.innerHTML = rules.length
-    ? rules.map((r, i) => _buildRuleRow(r, i)).join('')
-    : '<div style="font-size:.78rem;color:var(--dim);padding:.25rem 0">No rules yet — click "+ Add Rule" to create your first automation rule.</div>';
-
-  if (cnt) cnt.textContent = rules.length + ' / 8';
-  if (btn) btn.disabled = (rules.length >= 8) || isLocked;
-}
-
-// Add a new blank rule (default: cool fan ON if oil temp > 90 °C)
-function addRule() {
-  if (isLocked) return;
-  if (!cfg.rules) cfg.rules = [];
-  if (cfg.rules.length >= 8) return;
-  cfg.rules.push({ enabled: true, name: '', sensor: 0, op: 0,
-                   threshold: 90, actuator: 0, on_value: 1, off_value: 0 });
-  renderRulesSection();
-  _markDirty();
-}
-
-// Remove a rule by index (sync current UI into cfg first so indices are consistent)
-function removeRule(i) {
-  if (isLocked) return;
-  _collectRules();
-  if (!cfg.rules || i >= cfg.rules.length) return;
-  cfg.rules.splice(i, 1);
-  renderRulesSection();
-  _markDirty();
-}
-
-// Read the current rules UI state into cfg.rules (called before save)
-function _collectRules() {
-  const list = document.getElementById('rules-list');
-  if (!list) return;
-  const rows = list.querySelectorAll('.rules-row');
-  if (!rows.length) { cfg.rules = []; return; }
-  const out = [];
-  rows.forEach((_, i) => {
-    const en     = document.getElementById('rule-en-'     + i);
-    const name   = document.getElementById('rule-name-'   + i);
-    const sensor = document.getElementById('rule-sensor-' + i);
-    const op     = document.getElementById('rule-op-'     + i);
-    const thresh = document.getElementById('rule-thresh-' + i);
-    const act    = document.getElementById('rule-act-'    + i);
-    const onV    = document.getElementById('rule-on-'     + i);
-    const offV   = document.getElementById('rule-off-'    + i);
-    if (!sensor) return;
-    const sIdx = parseInt(sensor.value);
-    let threshold = parseFloat(thresh ? thresh.value : '0');
-    if (isNaN(threshold)) threshold = 0;
-    threshold = _ruleThreshFromDisp(threshold, sIdx);
-    // DI channels are binary — clamp to 0 or 1 at collect time
-    if ((RULE_SENSORS[sIdx] || {}).unit === 'di') threshold = threshold < 0.5 ? 0 : 1;
-    out.push({
-      enabled:   en    ? en.checked                             : false,
-      name:      name  ? name.value.substring(0, 23)            : '',
-      sensor:    sIdx,
-      op:        op    ? parseInt(op.value)                     : 0,
-      threshold: Math.round(threshold * 100) / 100,
-      actuator:  act   ? parseInt(act.value)                    : 0,
-      on_value:  onV   ? Math.max(0, Math.min(1, parseFloat(onV.value)  || 0)) : 1,
-      off_value: offV  ? Math.max(0, Math.min(1, parseFloat(offV.value) || 0)) : 0,
-    });
-  });
-  cfg.rules = out;
 }
 
 // ── Boot: load config + hardware config, then render ────────
@@ -1582,7 +1366,6 @@ Promise.all([fetch('/api/config'), fetch('/api/hardware')])
     cfg   = c;
     hwCfg = hw;
     renderForm();
-    renderRulesSection();
     _snapshotFields();   // baseline for orange-border tracking
     _applyAllVisibility();
     hookValidation();

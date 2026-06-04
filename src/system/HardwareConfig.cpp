@@ -1,15 +1,175 @@
 #include "HardwareConfig.h"
+#include "Config.h"
 #include "hardware_profile.h"
+#include "../engine/EngineData.h"
 #include <LittleFS.h>
 #include <cstring>
 
+namespace {
+#if defined(OT_PLATFORM_ESP32S3)
+constexpr int DEFAULT_STATUS_LED_PIN = -1;
+#else
+constexpr int DEFAULT_STATUS_LED_PIN = 2;
+#endif
+
+bool gpioAllowed(int pin) {
+    if (pin < 0) return true;
+#if defined(OT_PLATFORM_ESP32S3)
+    return pin <= 48 && pin != 19 && pin != 20 && !(pin >= 22 && pin <= 32);
+#else
+    return pin <= 39 && !(pin >= 6 && pin <= 11);
+#endif
+}
+
+bool outputGpioAllowed(int pin) {
+    if (!gpioAllowed(pin)) return false;
+#if defined(OT_PLATFORM_ESP32)
+    return pin < 0 || (pin != 34 && pin != 35 && pin != 36 && pin != 39);
+#else
+    return pin != 46;
+#endif
+}
+
+bool adcGpioAllowed(int pin) {
+    if (pin < 0) return true;
+#if defined(OT_PLATFORM_ESP32S3)
+    return pin >= 1 && pin <= 10;
+#else
+    return pin == 32 || pin == 33 || pin == 34 || pin == 35 || pin == 36 || pin == 39;
+#endif
+}
+
+int jsonPin(JsonVariantConst object, const char* field) {
+    return object[field].isNull() ? -1 : object[field].as<int>();
+}
+
+bool enabled(JsonVariantConst object) {
+    return !object["enabled"].isNull() && object["enabled"].as<bool>();
+}
+
+bool validatePlatformPins(const JsonDocument& doc) {
+    const bool hasAfterburner = doc["has_afterburner"] | false;
+    const bool hasTwoShaft = doc["has_two_shaft"] | false;
+    JsonVariantConst controls = doc["controls"];
+    const int stopPin = jsonPin(controls, "stop_pin");
+    const int startPin = jsonPin(controls, "start_pin");
+    if (!gpioAllowed(stopPin) || !gpioAllowed(startPin) ||
+        (stopPin >= 0 && stopPin == startPin)) return false;
+
+    JsonVariantConst sensors = doc["sensors"];
+    if (enabled(sensors["n1_rpm"]) && !gpioAllowed(jsonPin(sensors["n1_rpm"], "pin"))) return false;
+    if (hasTwoShaft && enabled(sensors["n2_rpm"]) &&
+        !gpioAllowed(jsonPin(sensors["n2_rpm"], "pin"))) return false;
+
+    const char* analogSensors[] = { "oil_press", "flame", "fuel_press", "p1", "p2", "batt_voltage" };
+    for (const char* key : analogSensors)
+        if (enabled(sensors[key]) && !adcGpioAllowed(jsonPin(sensors[key], "pin"))) return false;
+
+    JsonVariantConst fuelFlow = sensors["fuel_flow"];
+    if (enabled(fuelFlow) &&
+        !((fuelFlow["type"] | 0) ? gpioAllowed(jsonPin(fuelFlow, "pin"))
+                                 : adcGpioAllowed(jsonPin(fuelFlow, "pin")))) return false;
+
+    const char* inputSensors[] = { "throttle_input", "idle_input" };
+    for (const char* key : inputSensors) {
+        JsonVariantConst item = sensors[key];
+        if (enabled(item) &&
+            !((item["rc_pwm"] | false) ? gpioAllowed(jsonPin(item, "pin"))
+                                       : adcGpioAllowed(jsonPin(item, "pin")))) return false;
+    }
+
+    const char* spiSensors[] = { "tot", "tit" };
+    for (const char* key : spiSensors) {
+        JsonVariantConst item = sensors[key];
+        if (enabled(item) &&
+            (!outputGpioAllowed(jsonPin(item, "clk")) ||
+             !outputGpioAllowed(jsonPin(item, "cs")) ||
+             !gpioAllowed(jsonPin(item, "miso")) ||
+             !outputGpioAllowed(jsonPin(item, "mosi")))) return false;
+    }
+
+    JsonVariantConst oilTemp = sensors["oil_temp"];
+    if (enabled(oilTemp)) {
+        const char* chip = oilTemp["chip"] | "ntc";
+        if (strcmp(chip, "ntc") == 0 && !adcGpioAllowed(jsonPin(oilTemp, "pin"))) return false;
+        if (strcmp(chip, "ds18b20") == 0 && !gpioAllowed(jsonPin(oilTemp, "pin"))) return false;
+        if (strcmp(chip, "ntc") != 0 && strcmp(chip, "ds18b20") != 0 &&
+            (!outputGpioAllowed(jsonPin(oilTemp, "clk")) ||
+             !outputGpioAllowed(jsonPin(oilTemp, "cs")) ||
+             !gpioAllowed(jsonPin(oilTemp, "miso")) ||
+             !outputGpioAllowed(jsonPin(oilTemp, "mosi")))) return false;
+    }
+
+    JsonVariantConst torque = sensors["torque"];
+    if (enabled(torque)) {
+        if (torque["hx711"] | false) {
+            if (!gpioAllowed(jsonPin(torque, "dt_pin")) ||
+                !outputGpioAllowed(jsonPin(torque, "clk_pin"))) return false;
+        } else if (!adcGpioAllowed(jsonPin(torque, "pin"))) return false;
+    }
+
+    JsonVariantConst actuators = doc["actuators"];
+    const char* actuatorNames[] = {
+        "throttle", "starter", "oil_pump", "fuel_sol", "igniter", "igniter2",
+        "starter_en", "ab_sol", "airstarter_sol", "cool_fan", "ab_pump",
+        "oil_scavenge_pump", "fuel_pump2", "bleed_valve", "prop_pitch",
+        "glow_plug", "status_led"
+    };
+    for (const char* key : actuatorNames) {
+        JsonVariantConst item = actuators[key];
+        if (!hasAfterburner &&
+            (strcmp(key, "ab_sol") == 0 || strcmp(key, "ab_pump") == 0)) continue;
+        if (enabled(item)) {
+            const int pin = jsonPin(item, "pin");
+            if (!outputGpioAllowed(pin) ||
+                (pin >= 0 && (pin == stopPin || pin == startPin))) return false;
+        }
+    }
+
+    const char* currentSensorOwners[] = { "glow_plug", "igniter", "igniter2", "oil_pump" };
+    for (const char* key : currentSensorOwners) {
+        JsonVariantConst item = actuators[key];
+        if (enabled(item) && (item["has_current"] | false) &&
+            !adcGpioAllowed(jsonPin(item, "current_pin"))) return false;
+    }
+
+    JsonVariantConst cluster = doc["cluster_serial"];
+    JsonVariantConst mavlink = doc["mavlink"];
+    JsonVariantConst buzzer = doc["buzzer"];
+    if (enabled(cluster) && !outputGpioAllowed(jsonPin(cluster, "tx_pin"))) return false;
+    if (enabled(mavlink) && !outputGpioAllowed(jsonPin(mavlink, "tx_pin"))) return false;
+    if (enabled(buzzer) && !outputGpioAllowed(jsonPin(buzzer, "pin"))) return false;
+
+    if (hasAfterburner) {
+        JsonVariantConst abTrigger = doc["ab_trigger"];
+        const int abSource = abTrigger["source"] | 0;
+        if (abSource == 2 && !gpioAllowed(jsonPin(abTrigger, "switch_pin"))) return false;
+        if (!abTrigger["input_pin"].isNull()) {
+            const int inputPin = jsonPin(abTrigger, "input_pin");
+            if (!((abTrigger["input_rc_pwm"] | false) ? gpioAllowed(inputPin)
+                                                       : adcGpioAllowed(inputPin))) return false;
+        }
+        if (abSource != 0 && (abTrigger["requires_arm"] | false) &&
+            !gpioAllowed(jsonPin(abTrigger, "arm_pin"))) return false;
+        JsonVariantConst abFlame = doc["ab_flame"];
+        if (enabled(abFlame) && !adcGpioAllowed(jsonPin(abFlame, "pin"))) return false;
+    }
+
+    for (JsonVariantConst ch : doc["di_channels"].as<JsonArrayConst>())
+        if (!gpioAllowed(jsonPin(ch, "pin"))) return false;
+
+    return true;
+}
+}
+
 // ── Static member definitions ─────────────────────────────────
 // Default values mirror hardware_profile.h so that a missing
-// hardware.json produces identical behaviour to the current build.
+// an ecu_config.json without a hardware section produces identical behaviour to the current build.
 
 char  HardwareConfig::profileId[64]    = {};
 char  HardwareConfig::profileDesc[64]  = {};
 char  HardwareConfig::wifiPassword[32] = {};   // empty = open network
+int   HardwareConfig::wifiTxPowerDbm   = 8;
 bool  HardwareConfig::hasAfterburner   = false;
 bool  HardwareConfig::hasTwoShaft      = false;
 
@@ -22,12 +182,12 @@ bool  HardwareConfig::startActiveH     = false;  // active-low
 bool  HardwareConfig::startPullup      = true;   // enable internal pull-up by default
 
 // Sensor feature flags
-bool  HardwareConfig::hasN1Rpm         = true;
+bool  HardwareConfig::hasN1Rpm         = false;
 bool  HardwareConfig::hasN2Rpm         = false;
 bool  HardwareConfig::hasTot           = true;
 bool  HardwareConfig::hasTit           = false;
-bool  HardwareConfig::hasOilPress      = true;
-bool  HardwareConfig::hasFlame         = true;
+bool  HardwareConfig::hasOilPress      = false;
+bool  HardwareConfig::hasFlame         = false;
 bool  HardwareConfig::hasFuelFlow      = false;
 bool  HardwareConfig::hasFuelPress     = false;
 bool  HardwareConfig::hasP1            = false;
@@ -83,15 +243,20 @@ float HardwareConfig::battVoltDivider  = 5.7f;
 int   HardwareConfig::torquePin        = -1;
 float HardwareConfig::torqueScale      = 30.3f;
 float HardwareConfig::torqueOffset     = 0.0f;
+bool  HardwareConfig::torqueHx711      = false;
+int   HardwareConfig::torqueDtPin      = -1;
+int   HardwareConfig::torqueClkPin     = -1;
+float HardwareConfig::torqueHxScale    = 1.0f;
+long  HardwareConfig::torqueHxZero     = 0;
 
 // Actuator feature flags
 bool  HardwareConfig::hasThrottle      = true;
-bool  HardwareConfig::hasStarter       = true;
+bool  HardwareConfig::hasStarter       = false;
 bool  HardwareConfig::hasOilPump       = true;
-bool  HardwareConfig::hasFuelSol       = true;
+bool  HardwareConfig::hasFuelSol       = false;
 bool  HardwareConfig::hasIgniter       = true;
 bool  HardwareConfig::hasIgniter2      = false;
-bool  HardwareConfig::hasStarterEn     = true;
+bool  HardwareConfig::hasStarterEn     = false;
 bool  HardwareConfig::hasAbSol         = false;
 bool  HardwareConfig::hasAirstarterSol = false;
 bool  HardwareConfig::hasCoolFan       = false;
@@ -107,7 +272,7 @@ bool  HardwareConfig::hasIgniter2CurrentSensor   = false;
 bool  HardwareConfig::hasOilPumpCurrentSensor    = false;
 bool  HardwareConfig::hasGovernor      = false;
 bool  HardwareConfig::hasMAVLink       = false;
-bool  HardwareConfig::hasStatusLed     = false;
+bool  HardwareConfig::hasStatusLed     = DEFAULT_STATUS_LED_PIN >= 0;
 bool  HardwareConfig::hasClusterSerial = false;
 bool  HardwareConfig::hasBuzzer        = false;
 int   HardwareConfig::buzzerPin        = -1;
@@ -155,14 +320,16 @@ int   HardwareConfig::throttleType        = 0;     // default: servo
 int   HardwareConfig::throttleMinUs       = OT_THROTTLE_SERVO_MIN_US;
 int   HardwareConfig::throttleMaxUs       = OT_THROTTLE_SERVO_MAX_US;
 bool  HardwareConfig::throttleInverted    = false;
+bool  HardwareConfig::throttleActiveH     = true;
 int   HardwareConfig::throttleLedcFreqHz  = 10000;
 int   HardwareConfig::throttleLedcBits    = 12;
 
-int   HardwareConfig::starterPin          = OT_STARTER_PIN;
+int   HardwareConfig::starterPin          = OT_STARTER_MOTOR_PIN;
 int   HardwareConfig::starterType         = 0;     // default: servo
 int   HardwareConfig::starterMinUs        = OT_STARTER_SERVO_MIN_US;
 int   HardwareConfig::starterMaxUs        = OT_STARTER_SERVO_MAX_US;
 bool  HardwareConfig::starterInverted     = false;
+bool  HardwareConfig::starterActiveH      = true;
 int   HardwareConfig::starterLedcFreqHz   = 10000;
 int   HardwareConfig::starterLedcBits     = 12;
 bool  HardwareConfig::starterAssistEnabled = true;   // enabled by default for servo/PWM types
@@ -242,6 +409,8 @@ int   HardwareConfig::abPumpResBits    = 12;
 
 int   HardwareConfig::oilScavPumpPin     = -1;
 int   HardwareConfig::oilScavPumpType    = 2;
+int   HardwareConfig::oilScavPumpMinUs   = 1000;
+int   HardwareConfig::oilScavPumpMaxUs   = 2000;
 bool  HardwareConfig::oilScavPumpActiveH = true;
 int   HardwareConfig::oilScavPumpFreqHz  = 10000;
 int   HardwareConfig::oilScavPumpResBits = 12;
@@ -253,13 +422,16 @@ bool  HardwareConfig::abArmSwitchActiveH = false;
 int   HardwareConfig::abSwitchPin        = -1;
 bool  HardwareConfig::abSwitchActiveH    = false;
 int   HardwareConfig::abInputPin         = -1;
+bool  HardwareConfig::abInputRcPwm       = false;
+int   HardwareConfig::abInputMinUs       = 1000;
+int   HardwareConfig::abInputMaxUs       = 2000;
 int   HardwareConfig::abInputThreshold   = 2048;
 
 bool  HardwareConfig::hasAbFlame         = false;
 int   HardwareConfig::abFlamePin         = -1;
 int   HardwareConfig::abFlameThreshold   = 500;
 
-int   HardwareConfig::statusLedPin     = -1;
+int   HardwareConfig::statusLedPin     = DEFAULT_STATUS_LED_PIN;
 
 // Cluster serial
 int   HardwareConfig::clusterTxPin     = 17;
@@ -267,16 +439,16 @@ int   HardwareConfig::clusterBaud      = 115200;
 int   HardwareConfig::clusterIntervalMs= 50;
 
 // Controller feature flags
-bool  HardwareConfig::hasOilLoop       = true;
+bool  HardwareConfig::hasOilLoop       = false;
 bool  HardwareConfig::hasThrottleSlew  = true;
-bool  HardwareConfig::hasDynamicIdle   = true;
+bool  HardwareConfig::hasDynamicIdle   = false;
 
 // Safety enables
-bool  HardwareConfig::safetyOverspeed  = true;
+bool  HardwareConfig::safetyOverspeed  = false;
 bool  HardwareConfig::safetyOvertemp   = true;
-bool  HardwareConfig::safetyLowOil     = true;
-bool  HardwareConfig::safetyOilZero    = true;
-bool  HardwareConfig::safetyFlameout   = true;
+bool  HardwareConfig::safetyLowOil     = false;
+bool  HardwareConfig::safetyOilZero    = false;
+bool  HardwareConfig::safetyFlameout   = false;
 bool  HardwareConfig::safetyLowFuel    = false;
 bool  HardwareConfig::safetyHotStart   = false;
 bool  HardwareConfig::safetyTitOvertemp  = false;
@@ -305,24 +477,43 @@ HardwareConfig::DiChannel HardwareConfig::diCh[HardwareConfig::MAX_DI] = {};
 
 // Sequences
 char  HardwareConfig::startupSeq[MAX_SEQ_BLOCKS][24] = {
-    "OilPrime", "StarterSpin", "PreIgnSpark", "FuelOpen",
-    "FuelPumpIdle", "FlameConfirm", "TimedDelay", "Spool", "SafetyHold"
+    "OilPumpOn", "TimedDelay", "IgniterOn", "FuelPumpIdle",
+    "TimedDelay", "IgniterOff", "TimedDelay"
 };
-int   HardwareConfig::startupSeqLen    = 9;
+int   HardwareConfig::startupSeqLen    = 7;
+int   HardwareConfig::startupDelayMs[MAX_SEQ_BLOCKS] = {0, 15000, 0, 0, 10000, 0, 5000};
 
 char  HardwareConfig::shutdownSeq[MAX_SEQ_BLOCKS][24] = {
-    "ImmediateCut", "RPMDrop", "CooldownSpin", "FinalStop"
+    "ImmediateCut", "TimedDelay", "OilPumpOff"
 };
-int   HardwareConfig::shutdownSeqLen   = 4;
+int   HardwareConfig::shutdownSeqLen   = 3;
+int   HardwareConfig::shutdownDelayMs[MAX_SEQ_BLOCKS] = {0, 15000, 0};
 
 char  HardwareConfig::abSeq[MAX_SEQ_BLOCKS][24]    = {};
 int   HardwareConfig::abSeqLen                     = 0;
+int   HardwareConfig::abDelayMs[MAX_SEQ_BLOCKS]    = {};
 char  HardwareConfig::abShutSeq[MAX_SEQ_BLOCKS][24]= {};
 int   HardwareConfig::abShutSeqLen                 = 0;
+int   HardwareConfig::abShutDelayMs[MAX_SEQ_BLOCKS]= {};
 
 // ── Load ──────────────────────────────────────────────────────
+static void inhibitStartForHardwareConfigFailure(const char* reason) {
+    auto& ed = EngineData::instance();
+    ed.configLocked = true;
+    strncpy(ed.faultDescription, reason, sizeof(ed.faultDescription) - 1);
+    ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
+}
+
 void HardwareConfig::load() {
     applyDefaults();
+    EngineData::instance().configLocked = false;
+
+    static constexpr const char* BAK_PATH = "/ecu_config.bak";
+    if (!LittleFS.exists(PATH) && LittleFS.exists(BAK_PATH)) {
+        if (LittleFS.rename(BAK_PATH, PATH)) {
+            Serial.println("[HWCfg] Recovered ecu_config.json from backup");
+        }
+    }
 
     // ── Migration: always check legacy file first, even if unified file exists.
     if (LittleFS.exists(LEGACY_PATH)) {
@@ -331,10 +522,28 @@ void HardwareConfig::load() {
             JsonDocument doc;
             if (deserializeJson(doc, old) == DeserializationError::Ok) {
                 old.close();
+                const char* id = doc["profile_id"] | "";
+                if (!id[0]) {
+                    inhibitStartForHardwareConfigFailure(
+                        "Cannot start: stored hardware profile ID is missing.");
+                    Serial.println("[HWCfg] Legacy hardware profile ID is missing - START inhibited");
+                    return;
+                }
+                if (!validatePlatformPins(doc)) {
+                    inhibitStartForHardwareConfigFailure(
+                        "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");
+                    Serial.println("[HWCfg] Legacy hardware GPIO validation failed - START inhibited");
+                    return;
+                }
                 _fromDoc(doc);
-                save();
-                LittleFS.remove(LEGACY_PATH);
-                Serial.println("[HWCfg] Migrated hardware.json -> ecu_config.json");
+                if (save()) {
+                    LittleFS.remove(LEGACY_PATH);
+                    Serial.println("[HWCfg] Migrated hardware.json -> ecu_config.json");
+                } else {
+                    inhibitStartForHardwareConfigFailure(
+                        "Cannot start: hardware configuration could not be saved to storage.");
+                    Serial.println("[HWCfg] Migration save failed - retaining hardware.json");
+                }
                 return;
             }
             old.close();
@@ -343,13 +552,18 @@ void HardwareConfig::load() {
 
     if (!LittleFS.exists(PATH)) {
         Serial.println("[HWCfg] No ecu_config.json — using compiled defaults, generating file");
-        save();
+        if (!save()) {
+            inhibitStartForHardwareConfigFailure(
+                "Cannot start: hardware configuration storage is unavailable.");
+        }
         return;
     }
 
     File f = LittleFS.open(PATH, "r");
     if (!f) {
         Serial.println("[HWCfg] Failed to open ecu_config.json — using defaults");
+        inhibitStartForHardwareConfigFailure(
+            "Cannot start: failed to read the hardware configuration.");
         return;
     }
     JsonDocument fullDoc;
@@ -357,6 +571,8 @@ void HardwareConfig::load() {
     f.close();
     if (err) {
         Serial.printf("[HWCfg] JSON parse error: %s — using defaults\n", err.c_str());
+        inhibitStartForHardwareConfigFailure(
+            "Cannot start: the hardware configuration file is corrupted.");
         return;
     }
 
@@ -364,32 +580,90 @@ void HardwareConfig::load() {
     JsonDocument workDoc;
     if (fullDoc[SECTION].is<JsonObject>()) {
         workDoc.set(fullDoc[SECTION]);
+    } else if (fullDoc["settings"].is<JsonObject>()) {
+        Serial.println("[HWCfg] Hardware section missing - adding compiled defaults");
+        if (!save()) {
+            inhibitStartForHardwareConfigFailure(
+                "Cannot start: no stored hardware configuration is available.");
+        }
+        return;
     } else {
         workDoc.set(fullDoc);   // legacy flat — re-save in new format next save()
     }
 
+    const char* id = workDoc["profile_id"] | "";
+    if (!id[0]) {
+        inhibitStartForHardwareConfigFailure(
+            "Cannot start: stored hardware profile ID is missing.");
+        Serial.println("[HWCfg] Hardware profile ID is missing - START inhibited");
+        return;
+    }
+    if (!validatePlatformPins(workDoc)) {
+        inhibitStartForHardwareConfigFailure(
+            "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");
+        Serial.println("[HWCfg] Hardware GPIO validation failed - START inhibited");
+        return;
+    }
     _fromDoc(workDoc);
     Serial.printf("[HWCfg] Loaded OK — profile: %s\n", profileId);
 }
 
 // ── Save ──────────────────────────────────────────────────────
 bool HardwareConfig::save() {
+    static constexpr const char* TMP_PATH = "/ecu_config.hw.tmp";
+    static constexpr const char* BAK_PATH = "/ecu_config.bak";
+    if (!Config::acquireStorageWrite()) {
+        Serial.println("[HWCfg] Timed out waiting to write ecu_config.json");
+        return false;
+    }
+    struct StorageRelease {
+        ~StorageRelease() { Config::releaseStorageWrite(); }
+    } release;
     // Read-modify-write: preserve other sections (settings etc.)
     JsonDocument fullDoc;
     File fr = LittleFS.open(PATH, "r");
-    if (fr) { deserializeJson(fullDoc, fr); fr.close(); }
+    if (fr) {
+        DeserializationError err = deserializeJson(fullDoc, fr);
+        fr.close();
+        if (err) {
+            Serial.printf("[HWCfg] Refusing to overwrite unreadable ecu_config.json: %s\n",
+                          err.c_str());
+            return false;
+        }
+    }
 
     JsonDocument hwDoc;
     _toDoc(hwDoc);
     fullDoc[SECTION].set(hwDoc);
+    if (fullDoc["settings"].is<JsonObject>())
+        fullDoc["settings"]["profile_id"] = profileId;
 
-    File fw = LittleFS.open(PATH, "w");
+    File fw = LittleFS.open(TMP_PATH, "w");
     if (!fw) {
-        Serial.println("[HWCfg] Failed to open ecu_config.json for write");
+        Serial.println("[HWCfg] Failed to open ecu_config.hw.tmp for write");
         return false;
     }
-    serializeJsonPretty(fullDoc, fw);
+    size_t expected = measureJsonPretty(fullDoc);
+    size_t written = serializeJsonPretty(fullDoc, fw);
     fw.close();
+    if (written != expected) {
+        LittleFS.remove(TMP_PATH);
+        Serial.println("[HWCfg] Incomplete write to ecu_config.hw.tmp");
+        return false;
+    }
+    LittleFS.remove(BAK_PATH);
+    bool hadOriginal = LittleFS.exists(PATH);
+    if (hadOriginal && !LittleFS.rename(PATH, BAK_PATH)) {
+        LittleFS.remove(TMP_PATH);
+        Serial.println("[HWCfg] failed to preserve previous ecu_config.json");
+        return false;
+    }
+    if (!LittleFS.rename(TMP_PATH, PATH)) {
+        Serial.println("[HWCfg] rename ecu_config.hw.tmp failed");
+        if (hadOriginal) LittleFS.rename(BAK_PATH, PATH);
+        return false;
+    }
+    if (hadOriginal) LittleFS.remove(BAK_PATH);
     return true;
 }
 
@@ -398,7 +672,7 @@ bool HardwareConfig::save() {
 // Static member initialisers already handle this at program start;
 // this function is used when resetting to defaults at runtime.
 void HardwareConfig::applyDefaults() {
-    strncpy(profileId,   "OpenTurbine",   sizeof(profileId)   - 1);
+    strncpy(profileId,   OT_PROFILE_ID,   sizeof(profileId)   - 1);
     strncpy(profileDesc, OT_PROFILE_DESC, sizeof(profileDesc) - 1);
     hasAfterburner = false;
     hasTwoShaft    = false;
@@ -406,8 +680,8 @@ void HardwareConfig::applyDefaults() {
     stopPin      = OT_STOP_PIN;  stopActiveH  = false;  stopPullup  = true;
     startPin     = OT_START_PIN; startActiveH = false;  startPullup = true;
 
-    hasN1Rpm  = true;  hasN2Rpm = false; hasTot = true; hasTit = false;
-    hasOilPress = true; hasFlame = true;
+    hasN1Rpm  = false; hasN2Rpm = false; hasTot = true; hasTit = false;
+    hasOilPress = false; hasFlame = false;
     hasFuelFlow = false; hasFuelPress = false; hasP1 = false; hasP2 = false;
     hasThrottleInput = true; hasIdleInput = true;
     hasOilTemp = false; hasBattVoltage = false; hasTorque = false;
@@ -433,16 +707,18 @@ void HardwareConfig::applyDefaults() {
     ntcBeta = 3950.0f; ntcR0 = 10000.0f; ntcRFixed = 10000.0f;
     battVoltPin = -1; battVoltDivider = 5.7f;
     torquePin = -1; torqueScale = 30.3f; torqueOffset = 0.0f;
+    torqueHx711 = false; torqueDtPin = -1; torqueClkPin = -1;
+    torqueHxScale = 1.0f; torqueHxZero = 0;
 
-    hasThrottle = true; hasStarter = true; hasOilPump = true;
-    hasFuelSol  = true; hasIgniter = true; hasIgniter2 = false; hasStarterEn = true;
+    hasThrottle = true; hasStarter = false; hasOilPump = true;
+    hasFuelSol  = false; hasIgniter = true; hasIgniter2 = false; hasStarterEn = false;
     hasAbSol = false; hasAirstarterSol = false; hasCoolFan = false;
     hasAbPump = false; hasFuelPump2 = false; hasBleedValve = false;
     hasPropPitch = false; hasGlowPlug = false;
     hasGlowCurrentSensor = false; hasIgniterCurrentSensor = false;
     hasIgniter2CurrentSensor = false; hasOilPumpCurrentSensor = false;
     hasGovernor = false; hasMAVLink = false;
-    hasStatusLed = false; hasClusterSerial = false;
+    hasStatusLed = DEFAULT_STATUS_LED_PIN >= 0; hasClusterSerial = false;
     hasBuzzer = false; buzzerPin = -1;
 
     fuelPump2Pin = -1; fuelPump2Type = 1; fuelPump2MinUs = 1000; fuelPump2MaxUs = 2000;
@@ -457,13 +733,13 @@ void HardwareConfig::applyDefaults() {
     mavlinkTxPin = -1; mavlinkBaud = 57600; mavlinkIntervalMs = 100;
 
     throttlePin        = OT_THROTTLE_PIN;
-    throttleType       = 0; throttleInverted = false;
+    throttleType       = 0; throttleInverted = false; throttleActiveH = true;
     throttleMinUs      = OT_THROTTLE_SERVO_MIN_US;
     throttleMaxUs      = OT_THROTTLE_SERVO_MAX_US;
     throttleLedcFreqHz = 10000; throttleLedcBits = 12;
 
-    starterPin        = OT_STARTER_PIN;
-    starterType       = 0; starterInverted = false;
+    starterPin        = OT_STARTER_MOTOR_PIN;
+    starterType       = 0; starterInverted = false; starterActiveH = true;
     starterMinUs      = OT_STARTER_SERVO_MIN_US;
     starterMaxUs      = OT_STARTER_SERVO_MAX_US;
     starterLedcFreqHz = 10000; starterLedcBits = 12;
@@ -519,6 +795,8 @@ void HardwareConfig::applyDefaults() {
     hasOilScavengePump = false;
     oilScavPumpPin     = -1;
     oilScavPumpType    = 2;
+    oilScavPumpMinUs   = 1000;
+    oilScavPumpMaxUs   = 2000;
     oilScavPumpActiveH = true;
     oilScavPumpFreqHz  = 10000;
     oilScavPumpResBits = 12;
@@ -530,26 +808,29 @@ void HardwareConfig::applyDefaults() {
     abSwitchPin         = -1;
     abSwitchActiveH     = false;
     abInputPin          = -1;
+    abInputRcPwm        = false;
+    abInputMinUs        = 1000;
+    abInputMaxUs        = 2000;
     abInputThreshold    = 2048;
     hasAbFlame          = false;
     abFlamePin          = -1;
     abFlameThreshold    = 500;
 
-    statusLedPin = -1;
+    statusLedPin = DEFAULT_STATUS_LED_PIN;
 
     clusterTxPin    = 17;
     clusterBaud     = 115200;
     clusterIntervalMs = 50;
 
-    hasOilLoop      = true;
+    hasOilLoop      = false;
     hasThrottleSlew = true;
-    hasDynamicIdle  = true;
+    hasDynamicIdle  = false;
 
-    safetyOverspeed = true;
+    safetyOverspeed = false;
     safetyOvertemp  = true;
-    safetyLowOil    = true;
-    safetyOilZero   = true;
-    safetyFlameout  = true;
+    safetyLowOil    = false;
+    safetyOilZero   = false;
+    safetyFlameout  = false;
     safetyLowFuel       = false;
     safetyHotStart      = false;
     safetyTitOvertemp   = false;
@@ -559,15 +840,21 @@ void HardwareConfig::applyDefaults() {
     safetySurge         = false;
 
     const char* defStart[] = {
-        "OilPrime","StarterSpin","PreIgnSpark","FuelOpen",
-        "FuelPumpIdle","FlameConfirm","TimedDelay","Spool","SafetyHold"
+        "OilPumpOn","TimedDelay","IgniterOn","FuelPumpIdle",
+        "TimedDelay","IgniterOff","TimedDelay"
     };
-    startupSeqLen = 9;
+    startupSeqLen = 7;
+    memset(startupDelayMs, 0, sizeof(startupDelayMs));
+    startupDelayMs[1] = 15000;
+    startupDelayMs[4] = 10000;
+    startupDelayMs[6] = 5000;
     for (int i = 0; i < startupSeqLen; i++)
         strncpy(startupSeq[i], defStart[i], sizeof(startupSeq[i]) - 1);
 
-    const char* defStop[] = { "ImmediateCut","RPMDrop","CooldownSpin","FinalStop" };
-    shutdownSeqLen = 4;
+    const char* defStop[] = { "ImmediateCut","TimedDelay","OilPumpOff" };
+    shutdownSeqLen = 3;
+    memset(shutdownDelayMs, 0, sizeof(shutdownDelayMs));
+    shutdownDelayMs[1] = 15000;
     for (int i = 0; i < shutdownSeqLen; i++)
         strncpy(shutdownSeq[i], defStop[i], sizeof(shutdownSeq[i]) - 1);
 
@@ -577,6 +864,7 @@ void HardwareConfig::applyDefaults() {
     };
     abSeqLen = 6;
     memset(abSeq, 0, sizeof(abSeq));
+    memset(abDelayMs, 0, sizeof(abDelayMs));
     for (int i = 0; i < abSeqLen; i++)
         strncpy(abSeq[i], defAbIgn[i], sizeof(abSeq[i]) - 1);
 
@@ -584,31 +872,58 @@ void HardwareConfig::applyDefaults() {
     const char* defAbShut[] = { "ABSolClose", "ABPumpOff" };
     abShutSeqLen = 2;
     memset(abShutSeq, 0, sizeof(abShutSeq));
+    memset(abShutDelayMs, 0, sizeof(abShutDelayMs));
     for (int i = 0; i < abShutSeqLen; i++)
         strncpy(abShutSeq[i], defAbShut[i], sizeof(abShutSeq[i]) - 1);
 }
 
 // ── toJson ────────────────────────────────────────────────────
-size_t HardwareConfig::toJson(char* buf, size_t len) {
+static constexpr const char* WIFI_PASSWORD_RETAINED = "__KEEP_PASSWORD__";
+
+size_t HardwareConfig::toJson(char* buf, size_t len, bool redactPassword) {
     JsonDocument doc;
     _toDoc(doc);
+    if (redactPassword)
+        doc["wifi_password"] = wifiPassword[0] ? WIFI_PASSWORD_RETAINED : "";
     return serializeJson(doc, buf, len);
 }
 
 // ── fromJson ──────────────────────────────────────────────────
-bool HardwareConfig::fromJson(const char* json, size_t len) {
+bool HardwareConfig::validateJson(const char* json, size_t len) {
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, json, len);
     if (err) return false;
+    return validateJson(doc);
+}
+
+bool HardwareConfig::validateJson(const JsonDocument& doc) {
+    const char* id = doc["profile_id"] | "";
+    if (!id[0]) return false;
+    const char* password = doc["wifi_password"] | "";
+    if (strcmp(password, WIFI_PASSWORD_RETAINED) != 0 && password[0] && strlen(password) < 8) return false;
+    if (!validatePlatformPins(doc)) return false;
+    return true;
+}
+
+bool HardwareConfig::fromJson(const char* json, size_t len) {
+    if (!validateJson(json, len)) return false;
+    JsonDocument doc;
+    if (deserializeJson(doc, json, len)) return false;
     _fromDoc(doc);
     return true;
 }
 
 // ── _toDoc ────────────────────────────────────────────────────
 void HardwareConfig::_toDoc(JsonDocument& doc) {
+#ifdef OT_PLATFORM_ESP32S3
+    doc["platform"]         = "esp32s3";
+#else
+    doc["platform"]         = "esp32";
+#endif
     doc["profile_id"]       = profileId;
     doc["profile_desc"]     = profileDesc;
     doc["wifi_password"]    = wifiPassword;
+    doc["wifi_tx_power_dbm"] = wifiTxPowerDbm;
     doc["has_afterburner"]  = hasAfterburner;
     doc["has_two_shaft"]    = hasTwoShaft;
 
@@ -663,7 +978,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto oilt = sensors["oil_temp"].to<JsonObject>();
     oilt["enabled"] = hasOilTemp; oilt["chip"] = oilTempChip;
-    oilt["pin"] = oilTempPin; oilt["cs"] = oilTempCs;
+    oilt["pin"] = oilTempPin; oilt["clk"] = oilTempPin; oilt["cs"] = oilTempCs;
     oilt["miso"] = oilTempMiso; oilt["mosi"] = oilTempMosi;
     oilt["tc_type"] = oilTempTcType;
     oilt["resolution"]  = oilTempResolution;
@@ -678,6 +993,9 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     auto torqs = sensors["torque"].to<JsonObject>();
     torqs["enabled"] = hasTorque; torqs["pin"] = torquePin;
     torqs["scale"] = torqueScale; torqs["offset"] = torqueOffset;
+    torqs["hx711"] = torqueHx711; torqs["dt_pin"] = torqueDtPin;
+    torqs["clk_pin"] = torqueClkPin; torqs["hx_scale"] = torqueHxScale;
+    torqs["hx_zero"] = torqueHxZero;
 
     auto acts = doc["actuators"].to<JsonObject>();
 
@@ -686,6 +1004,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     thr["type"]      = throttleType;
     thr["min_us"]    = throttleMinUs; thr["max_us"] = throttleMaxUs;
     thr["inverted"]  = throttleInverted;
+    thr["active_h"]   = throttleActiveH;
     thr["ledc_freq"] = throttleLedcFreqHz; thr["ledc_bits"] = throttleLedcBits;
 
     auto str = acts["starter"].to<JsonObject>();
@@ -693,6 +1012,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     str["type"]      = starterType;
     str["min_us"]    = starterMinUs; str["max_us"] = starterMaxUs;
     str["inverted"]         = starterInverted;
+    str["active_h"]         = starterActiveH;
     str["ledc_freq"]        = starterLedcFreqHz; str["ledc_bits"] = starterLedcBits;
     str["assist_enabled"]   = starterAssistEnabled;
 
@@ -757,6 +1077,8 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     scav["enabled"]   = hasOilScavengePump;
     scav["pin"]       = oilScavPumpPin;
     scav["type"]      = oilScavPumpType;
+    scav["min_us"]    = oilScavPumpMinUs;
+    scav["max_us"]    = oilScavPumpMaxUs;
     scav["active_h"]  = oilScavPumpActiveH;
     scav["freq_hz"]   = oilScavPumpFreqHz;
     scav["res_bits"]  = oilScavPumpResBits;
@@ -825,9 +1147,13 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto ss = doc["startup_seq"].to<JsonArray>();
     for (int i = 0; i < startupSeqLen; i++) ss.add(startupSeq[i]);
+    auto ssd = doc["startup_delay_ms"].to<JsonArray>();
+    for (int i = 0; i < startupSeqLen; i++) ssd.add(startupDelayMs[i]);
 
     auto ds = doc["shutdown_seq"].to<JsonArray>();
     for (int i = 0; i < shutdownSeqLen; i++) ds.add(shutdownSeq[i]);
+    auto dsd = doc["shutdown_delay_ms"].to<JsonArray>();
+    for (int i = 0; i < shutdownSeqLen; i++) dsd.add(shutdownDelayMs[i]);
 
     auto abt = doc["ab_trigger"].to<JsonObject>();
     abt["source"]           = abTriggerSource;
@@ -837,6 +1163,9 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     abt["switch_pin"]       = abSwitchPin;
     abt["switch_active_h"]  = abSwitchActiveH;
     abt["input_pin"]        = abInputPin;
+    abt["input_rc_pwm"]     = abInputRcPwm;
+    abt["input_min_us"]     = abInputMinUs;
+    abt["input_max_us"]     = abInputMaxUs;
     abt["input_threshold"]  = abInputThreshold;
 
     auto abfl = doc["ab_flame"].to<JsonObject>();
@@ -846,9 +1175,13 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto as = doc["ab_seq"].to<JsonArray>();
     for (int i = 0; i < abSeqLen; i++) as.add(abSeq[i]);
+    auto asd = doc["ab_delay_ms"].to<JsonArray>();
+    for (int i = 0; i < abSeqLen; i++) asd.add(abDelayMs[i]);
 
     auto ass = doc["ab_shut_seq"].to<JsonArray>();
     for (int i = 0; i < abShutSeqLen; i++) ass.add(abShutSeq[i]);
+    auto assd = doc["ab_shut_delay_ms"].to<JsonArray>();
+    for (int i = 0; i < abShutSeqLen; i++) assd.add(abShutDelayMs[i]);
 
     auto lbl = doc["labels"].to<JsonObject>();
     lbl["tot"]        = labelTot;
@@ -884,9 +1217,15 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     const char* id   = doc["profile_id"]    | profileId;
     const char* desc = doc["profile_desc"]  | profileDesc;
     const char* pwd  = doc["wifi_password"] | (const char*)wifiPassword;
+    if (strcmp(pwd, WIFI_PASSWORD_RETAINED) == 0) pwd = wifiPassword;
     strncpy(profileId,    id,   sizeof(profileId)    - 1);
     strncpy(profileDesc,  desc, sizeof(profileDesc)  - 1);
     strncpy(wifiPassword, pwd,  sizeof(wifiPassword) - 1);
+    wifiTxPowerDbm = constrain(doc["wifi_tx_power_dbm"] | wifiTxPowerDbm, 2, 20);
+    if (wifiPassword[0] && strlen(wifiPassword) < 8) {
+        Serial.println("[HWCfg] Invalid WiFi password length; using open access point");
+        wifiPassword[0] = '\0';
+    }
     if (!doc["has_afterburner"].isNull()) hasAfterburner = doc["has_afterburner"].as<bool>();
     if (!doc["has_two_shaft"].isNull())   hasTwoShaft    = doc["has_two_shaft"].as<bool>();
 
@@ -907,6 +1246,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto n2 = s["n2_rpm"];
     if (!n2["enabled"].isNull()) hasN2Rpm = n2["enabled"].as<bool>();
+    hasN2Rpm = hasTwoShaft && hasN2Rpm;
     n2RpmPin = n2["pin"] | n2RpmPin;
     n2RpmPpr = n2["ppr"] | n2RpmPpr;
 
@@ -967,7 +1307,12 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     auto oilt = s["oil_temp"];
     if (!oilt["enabled"].isNull()) hasOilTemp = oilt["enabled"].as<bool>();
     { const char* v = oilt["chip"] | oilTempChip; strncpy(oilTempChip, v, sizeof(oilTempChip) - 1); }
-    oilTempPin  = oilt["pin"]  | oilTempPin;
+    if (strcmp(oilTempChip, "ntc") == 0 || strcmp(oilTempChip, "ds18b20") == 0)
+        oilTempPin = oilt["pin"] | oilTempPin;
+    else if (!oilt["clk"].isNull())
+        oilTempPin = oilt["clk"].as<int>();
+    else
+        oilTempPin = oilt["pin"] | oilTempPin; // legacy SPI documents stored CLK as pin
     oilTempCs   = oilt["cs"]   | oilTempCs;
     oilTempMiso = oilt["miso"] | oilTempMiso;
     oilTempMosi = oilt["mosi"] | oilTempMosi;
@@ -987,6 +1332,11 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     torquePin    = torqs["pin"]    | torquePin;
     torqueScale  = torqs["scale"]  | torqueScale;
     torqueOffset = torqs["offset"] | torqueOffset;
+    if (!torqs["hx711"].isNull()) torqueHx711 = torqs["hx711"].as<bool>();
+    torqueDtPin   = torqs["dt_pin"]  | torqueDtPin;
+    torqueClkPin  = torqs["clk_pin"] | torqueClkPin;
+    torqueHxScale = torqs["hx_scale"] | torqueHxScale;
+    torqueHxZero  = torqs["hx_zero"] | torqueHxZero;
 
     auto a = doc["actuators"];
 
@@ -997,6 +1347,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     throttleMinUs      = thr["min_us"]    | throttleMinUs;
     throttleMaxUs      = thr["max_us"]    | throttleMaxUs;
     if (!thr["inverted"].isNull()) throttleInverted  = thr["inverted"].as<bool>();
+    if (!thr["active_h"].isNull())  throttleActiveH   = thr["active_h"].as<bool>();
     throttleLedcFreqHz = thr["ledc_freq"] | throttleLedcFreqHz;
     throttleLedcBits   = thr["ledc_bits"] | throttleLedcBits;
 
@@ -1005,6 +1356,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     starterPin         = str["pin"]       | starterPin;
     starterType        = str["type"]      | starterType;
     if (!str["inverted"].isNull()) starterInverted    = str["inverted"].as<bool>();
+    if (!str["active_h"].isNull())  starterActiveH     = str["active_h"].as<bool>();
     starterLedcFreqHz  = str["ledc_freq"] | starterLedcFreqHz;
     starterLedcBits    = str["ledc_bits"] | starterLedcBits;
     starterMinUs = str["min_us"] | starterMinUs;
@@ -1022,7 +1374,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     oilPumpMaxUs   = op["max_us"]   | oilPumpMaxUs;
     oilPumpFreqHz  = op["freq_hz"]  | oilPumpFreqHz;
     oilPumpResBits = op["res_bits"] | oilPumpResBits;
-    if (!op["has_current"].isNull()) hasOilPumpCurrentSensor = op["has_current"].as<bool>();
+    if (!op["has_current"].isNull()) hasOilPumpCurrentSensor = hasOilPump && op["has_current"].as<bool>();
     oilPumpCurrentPin     = op["current_pin"]    | oilPumpCurrentPin;
     oilPumpCurrentMvPerA  = op["current_mv_a"]   | oilPumpCurrentMvPerA;
     oilPumpCurrentZeroV   = op["current_zero_v"] | oilPumpCurrentZeroV;
@@ -1045,7 +1397,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     igniterCurrentPin     = ign["current_pin"]    | igniterCurrentPin;
     igniterCurrentMvPerA  = ign["current_mv_a"]   | igniterCurrentMvPerA;
     igniterCurrentZeroV   = ign["current_zero_v"] | igniterCurrentZeroV;
-    if (!ign["has_current"].isNull()) hasIgniterCurrentSensor = ign["has_current"].as<bool>();
+    if (!ign["has_current"].isNull()) hasIgniterCurrentSensor = hasIgniter && ign["has_current"].as<bool>();
 
     auto ign2 = a["igniter2"];
     if (!ign2["enabled"].isNull()) hasIgniter2    = ign2["enabled"].as<bool>();
@@ -1059,7 +1411,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     igniter2CurrentPin     = ign2["current_pin"]    | igniter2CurrentPin;
     igniter2CurrentMvPerA  = ign2["current_mv_a"]   | igniter2CurrentMvPerA;
     igniter2CurrentZeroV   = ign2["current_zero_v"] | igniter2CurrentZeroV;
-    if (!ign2["has_current"].isNull()) hasIgniter2CurrentSensor = ign2["has_current"].as<bool>();
+    if (!ign2["has_current"].isNull()) hasIgniter2CurrentSensor = hasIgniter2 && ign2["has_current"].as<bool>();
 
     auto sen = a["starter_en"];
     if (!sen["enabled"].isNull()) hasStarterEn   = sen["enabled"].as<bool>();
@@ -1068,7 +1420,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     starterEnDelayMs   = sen["delay_ms"]  | starterEnDelayMs;
 
     auto abs2 = a["ab_sol"];
-    if (!abs2["enabled"].isNull()) hasAbSol   = abs2["enabled"].as<bool>();
+    if (!abs2["enabled"].isNull()) hasAbSol   = hasAfterburner && abs2["enabled"].as<bool>();
     abSolPin   = abs2["pin"]      | abSolPin;
     if (!abs2["active_h"].isNull()) abSolActiveH = abs2["active_h"].as<bool>();
 
@@ -1088,7 +1440,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     coolFanResBits= fan["res_bits"] | coolFanResBits;
 
     auto abp = a["ab_pump"];
-    if (!abp["enabled"].isNull()) hasAbPump = abp["enabled"].as<bool>();
+    if (!abp["enabled"].isNull()) hasAbPump = hasAfterburner && abp["enabled"].as<bool>();
     abPumpPin    = abp["pin"]      | abPumpPin;
     abPumpType   = abp["type"]     | abPumpType;
     if (!abp["active_h"].isNull()) abPumpActiveH = abp["active_h"].as<bool>();
@@ -1101,6 +1453,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!scav["enabled"].isNull()) hasOilScavengePump = scav["enabled"].as<bool>();
     oilScavPumpPin     = scav["pin"]      | oilScavPumpPin;
     oilScavPumpType    = scav["type"]     | oilScavPumpType;
+    oilScavPumpMinUs   = scav["min_us"]   | oilScavPumpMinUs;
+    oilScavPumpMaxUs   = scav["max_us"]   | oilScavPumpMaxUs;
     if (!scav["active_h"].isNull()) oilScavPumpActiveH = scav["active_h"].as<bool>();
     oilScavPumpFreqHz  = scav["freq_hz"]  | oilScavPumpFreqHz;
     oilScavPumpResBits = scav["res_bits"] | oilScavPumpResBits;
@@ -1144,7 +1498,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     glowCurrentMvPerA   = glw["current_mv_a"]    | glowCurrentMvPerA;
     glowCurrentZeroV    = glw["current_zero_v"]  | glowCurrentZeroV;
     glowCurrentReadyAmps= glw["current_ready_a"] | glowCurrentReadyAmps;
-    if (!glw["has_current"].isNull()) hasGlowCurrentSensor = glw["has_current"].as<bool>();
+    if (!glw["has_current"].isNull()) hasGlowCurrentSensor = hasGlowPlug && glw["has_current"].as<bool>();
 
     auto led = a["status_led"];
     if (!led["enabled"].isNull()) hasStatusLed = led["enabled"].as<bool>();
@@ -1171,6 +1525,18 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!contrl["throttle_slew"].isNull()) hasThrottleSlew = contrl["throttle_slew"].as<bool>();
     if (!contrl["dynamic_idle"].isNull())  hasDynamicIdle  = contrl["dynamic_idle"].as<bool>();
     if (!contrl["governor"].isNull())      hasGovernor     = contrl["governor"].as<bool>();
+    if (hasOilLoop && (!hasOilPress || !hasOilPump)) {
+        Serial.println("[HWCfg] Oil pressure loop disabled: requires oil pressure sensor and oil pump");
+        hasOilLoop = false;
+    }
+    if (hasDynamicIdle && (!hasThrottle || (!hasN1Rpm && !hasN2Rpm))) {
+        Serial.println("[HWCfg] Dynamic idle disabled: requires throttle output and an RPM sensor");
+        hasDynamicIdle = false;
+    }
+    if (hasGovernor && (!hasN2Rpm || (!hasThrottle && !hasPropPitch))) {
+        Serial.println("[HWCfg] Governor disabled: requires N2 RPM and throttle or prop pitch output");
+        hasGovernor = false;
+    }
 
     auto saf = doc["safety"];
     if (!saf["overspeed"].isNull()) safetyOverspeed = saf["overspeed"].as<bool>();
@@ -1185,14 +1551,39 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!saf["fuel_press_low"].isNull()) safetyFuelPressLow  = saf["fuel_press_low"].as<bool>();
     if (!saf["batt_low"].isNull())       safetyBattLow       = saf["batt_low"].as<bool>();
     if (!saf["surge"].isNull())          safetySurge         = saf["surge"].as<bool>();
+    // This legacy switch has no flow threshold/runtime evaluator.
+    safetyLowFuel = false;
+    if (!hasN1Rpm) {
+        safetyOverspeed = false;
+        safetySurge = false;
+    }
+    if (!hasTot) {
+        safetyOvertemp = false;
+        safetyHotStart = false;
+    }
+    if (!hasOilPress) {
+        safetyLowOil = false;
+        safetyOilZero = false;
+    }
+    if (!hasFlame && !hasN1Rpm && !hasTot) safetyFlameout = false;
+    if (!hasTit) safetyTitOvertemp = false;
+    if (!hasOilTemp) safetyOilTempHigh = false;
+    if (!hasFuelPress) safetyFuelPressLow = false;
+    if (!hasBattVoltage) safetyBattLow = false;
 
     if (doc["startup_seq"].is<JsonArrayConst>()) {
         JsonArrayConst ss = doc["startup_seq"];
         int n = (int)ss.size();
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         startupSeqLen = n;
+        memset(startupDelayMs, 0, sizeof(startupDelayMs));
         for (int i = 0; i < n; i++)
             strncpy(startupSeq[i], ss[i] | "", sizeof(startupSeq[i]) - 1);
+    }
+    if (doc["startup_delay_ms"].is<JsonArrayConst>()) {
+        JsonArrayConst d = doc["startup_delay_ms"];
+        for (int i = 0; i < startupSeqLen && i < (int)d.size(); i++)
+            startupDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
 
     if (doc["shutdown_seq"].is<JsonArrayConst>()) {
@@ -1200,8 +1591,14 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         int n = (int)ds.size();
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         shutdownSeqLen = n;
+        memset(shutdownDelayMs, 0, sizeof(shutdownDelayMs));
         for (int i = 0; i < n; i++)
             strncpy(shutdownSeq[i], ds[i] | "", sizeof(shutdownSeq[i]) - 1);
+    }
+    if (doc["shutdown_delay_ms"].is<JsonArrayConst>()) {
+        JsonArrayConst d = doc["shutdown_delay_ms"];
+        for (int i = 0; i < shutdownSeqLen && i < (int)d.size(); i++)
+            shutdownDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
 
     auto abt = doc["ab_trigger"];
@@ -1212,10 +1609,13 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     abSwitchPin        = abt["switch_pin"]      | abSwitchPin;
     if (!abt["switch_active_h"].isNull()) abSwitchActiveH   = abt["switch_active_h"].as<bool>();
     abInputPin         = abt["input_pin"]       | abInputPin;
+    if (!abt["input_rc_pwm"].isNull()) abInputRcPwm = abt["input_rc_pwm"].as<bool>();
+    abInputMinUs       = abt["input_min_us"]    | abInputMinUs;
+    abInputMaxUs       = abt["input_max_us"]    | abInputMaxUs;
     abInputThreshold   = abt["input_threshold"] | abInputThreshold;
 
     auto abfl = doc["ab_flame"];
-    if (!abfl["enabled"].isNull()) hasAbFlame   = abfl["enabled"].as<bool>();
+    if (!abfl["enabled"].isNull()) hasAbFlame   = hasAfterburner && abfl["enabled"].as<bool>();
     abFlamePin         = abfl["pin"]       | abFlamePin;
     abFlameThreshold   = abfl["threshold"] | abFlameThreshold;
 
@@ -1224,8 +1624,14 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         int n = (int)as.size();
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         abSeqLen = n;
+        memset(abDelayMs, 0, sizeof(abDelayMs));
         for (int i = 0; i < n; i++)
             strncpy(abSeq[i], as[i] | "", sizeof(abSeq[i]) - 1);
+    }
+    if (doc["ab_delay_ms"].is<JsonArrayConst>()) {
+        JsonArrayConst d = doc["ab_delay_ms"];
+        for (int i = 0; i < abSeqLen && i < (int)d.size(); i++)
+            abDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
 
     if (doc["ab_shut_seq"].is<JsonArrayConst>()) {
@@ -1233,9 +1639,33 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         int n = (int)ass.size();
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         abShutSeqLen = n;
+        memset(abShutDelayMs, 0, sizeof(abShutDelayMs));
         for (int i = 0; i < n; i++)
             strncpy(abShutSeq[i], ass[i] | "", sizeof(abShutSeq[i]) - 1);
     }
+    if (doc["ab_shut_delay_ms"].is<JsonArrayConst>()) {
+        JsonArrayConst d = doc["ab_shut_delay_ms"];
+        for (int i = 0; i < abShutSeqLen && i < (int)d.size(); i++)
+            abShutDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
+    }
+
+    auto migrateNamedDelays = [](char (*seq)[24], int* delays, int len) {
+        for (int i = 0; i < len; i++) {
+            int legacyMs = 0;
+            if (strcmp(seq[i], "Delay15s") == 0) legacyMs = 15000;
+            else if (strcmp(seq[i], "Delay10s") == 0) legacyMs = 10000;
+            else if (strcmp(seq[i], "Delay5s") == 0) legacyMs = 5000;
+            if (legacyMs > 0) {
+                strncpy(seq[i], "TimedDelay", sizeof(startupSeq[i]) - 1);
+                seq[i][sizeof(startupSeq[i]) - 1] = '\0';
+                if (delays[i] <= 0) delays[i] = legacyMs;
+            }
+        }
+    };
+    migrateNamedDelays(startupSeq, startupDelayMs, startupSeqLen);
+    migrateNamedDelays(shutdownSeq, shutdownDelayMs, shutdownSeqLen);
+    migrateNamedDelays(abSeq, abDelayMs, abSeqLen);
+    migrateNamedDelays(abShutSeq, abShutDelayMs, abShutSeqLen);
 
     if (doc["labels"].is<JsonObjectConst>()) {
         auto lbld = doc["labels"].as<JsonObjectConst>();
@@ -1273,4 +1703,57 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             i++;
         }
     }
+
+    if (n1RpmPpr <= 0.0f) n1RpmPpr = 1.0f;
+    if (n2RpmPpr <= 0.0f) n2RpmPpr = 1.0f;
+    if (igniterDwellMs < 1) igniterDwellMs = 1;
+    if (igniterRestMs < 1) igniterRestMs = 1;
+    if (igniter2DwellMs < 1) igniter2DwellMs = 1;
+    if (igniter2RestMs < 1) igniter2RestMs = 1;
+    if (mavlinkIntervalMs < 20) mavlinkIntervalMs = 100;
+    if (clusterIntervalMs < 10) clusterIntervalMs = 50;
+    if (starterEnDelayMs < 0) starterEnDelayMs = 0;
+    if (fuelFlowType < 0 || fuelFlowType > 1) fuelFlowType = 0;
+    if (fuelFlowPulsesPerLitre <= 0.0f) fuelFlowPulsesPerLitre = 100.0f;
+    if (oilTempResolution < 9 || oilTempResolution > 12) oilTempResolution = 12;
+    if (ntcBeta <= 0.0f) ntcBeta = 3950.0f;
+    if (ntcR0 <= 0.0f) ntcR0 = 10000.0f;
+    if (ntcRFixed <= 0.0f) ntcRFixed = 10000.0f;
+
+    auto sanitizePwm = [](int& freqHz, int& resBits, int defaultFreq, int defaultBits) {
+        if (freqHz < 1) freqHz = defaultFreq;
+        if (resBits < 8 || resBits > 14) resBits = defaultBits;
+    };
+    sanitizePwm(throttleLedcFreqHz, throttleLedcBits, 10000, 12);
+    sanitizePwm(starterLedcFreqHz, starterLedcBits, 10000, 12);
+    sanitizePwm(oilPumpFreqHz, oilPumpResBits, 10000, 12);
+    sanitizePwm(coolFanFreqHz, coolFanResBits, 10000, 12);
+    sanitizePwm(abPumpFreqHz, abPumpResBits, 10000, 12);
+    sanitizePwm(oilScavPumpFreqHz, oilScavPumpResBits, 10000, 12);
+    sanitizePwm(fuelPump2FreqHz, fuelPump2ResBits, 10000, 12);
+    sanitizePwm(bleedValveFreqHz, bleedValveResBits, 1000, 10);
+    sanitizePwm(propPitchFreqHz, propPitchResBits, 1000, 10);
+    sanitizePwm(glowPlugFreqHz, glowPlugResBits, 1000, 8);
+    for (int i = 0; i < MAX_DI; i++) {
+        if (diCh[i].debounceMs < 0) diCh[i].debounceMs = 0;
+    }
+
+    auto sanitizeServoRange = [](int& minUs, int& maxUs) {
+        minUs = constrain(minUs, 500, 2500);
+        maxUs = constrain(maxUs, 500, 2500);
+        if (maxUs <= minUs) {
+            minUs = 1000;
+            maxUs = 2000;
+        }
+    };
+    sanitizeServoRange(throttleMinUs, throttleMaxUs);
+    sanitizeServoRange(starterMinUs, starterMaxUs);
+    sanitizeServoRange(oilPumpMinUs, oilPumpMaxUs);
+    sanitizeServoRange(coolFanMinUs, coolFanMaxUs);
+    sanitizeServoRange(abPumpMinUs, abPumpMaxUs);
+    sanitizeServoRange(abInputMinUs, abInputMaxUs);
+    sanitizeServoRange(oilScavPumpMinUs, oilScavPumpMaxUs);
+    sanitizeServoRange(fuelPump2MinUs, fuelPump2MaxUs);
+    sanitizeServoRange(bleedValveMinUs, bleedValveMaxUs);
+    sanitizeServoRange(propPitchMinUs, propPitchMaxUs);
 }

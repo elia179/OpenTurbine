@@ -174,10 +174,12 @@ void ClusterSerial::tick() {
     int  n = snprintf(pkt, sizeof(pkt), "D:%.0f,%.1f,%.2f,%d",
         (double)ed.n1Rpm, (double)ed.tot,
         (double)ed.oilPressure, ed.flameDetected ? 1 : 0);
+    if (n < 0 || n >= (int)sizeof(pkt)) return;
     if (HardwareConfig::hasN2Rpm) {
-        n += snprintf(pkt + n, sizeof(pkt) - n, ",%.0f", (double)ed.n2Rpm);
+        int remaining = (int)sizeof(pkt) - n;
+        int appended = snprintf(pkt + n, (size_t)remaining, ",%.0f", (double)ed.n2Rpm);
+        if (appended < 0 || appended >= remaining) return;
     }
-    (void)n;
     _port.println(pkt);
 }
 

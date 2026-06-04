@@ -2,7 +2,7 @@
 // ============================================================
 //  Hardware.h — runtime hardware dispatch
 //
-//  Reads HardwareConfig (loaded from /hardware.json) at boot.
+//  Reads HardwareConfig (loaded from the hardware section of /ecu_config.json) at boot.
 //  All sensor/actuator objects are always compiled in; feature
 //  enable/disable is controlled by HardwareConfig runtime flags
 //  instead of compile-time #ifdef OT_HAS_* guards.
@@ -12,7 +12,7 @@
 //  (OT_STOP_PIN, OT_START_PIN, etc.) still referenced in main.cpp.
 //
 //  Pin assignments pass through Hardware::initSensors/initActuators
-//  at boot time; changing hardware.json and rebooting applies new pins.
+//  at boot time; changing the hardware section and rebooting applies new pins.
 //
 //  main.cpp includes this once and calls Hardware::init* / update*.
 // ============================================================
@@ -28,6 +28,7 @@
 #include "hal/sensors/AnalogSensor.h"
 #include "hal/sensors/NTCSensor.h"
 #include "hal/sensors/DS18B20TempSensor.h"
+#include "hal/sensors/HX711Sensor.h"
 
 // ── All actuator headers — always included ────────────────────
 #include "hal/actuators/ServoActuator.h"
@@ -78,7 +79,7 @@
 //  set to the active one by initActuators().
 // ============================================================
 
-// Servo signal range defaults (used when hardware.json has no override)
+// Servo signal range defaults (used when the engine file has no override)
 #ifndef OT_THROTTLE_SERVO_MIN_US
   #define OT_THROTTLE_SERVO_MIN_US 1000
 #endif
@@ -123,6 +124,7 @@
     /* Battery voltage and torque sensors */                                      \
     AnalogLinearSensor   g_sensorBattVolt(-1, "BATT_VOLT");                      \
     AnalogLinearSensor   g_sensorTorque(-1, "TORQUE");                           \
+    HX711Sensor           g_sensorTorqueHx711(-1, -1, "TORQUE_HX711");            \
     AnalogPolySensor   g_sensorOilPress(OT_OIL_PRESS_PIN, "OIL_PRESS");          \
     AnalogThSensor     g_sensorFlame(OT_FLAME_PIN, "FLAME");                     \
     AnalogLinearSensor g_sensorIdleInput(OT_IDLE_INPUT_PIN, "IDLE_INPUT");       \
@@ -145,16 +147,17 @@
     RelayActuator  g_actThrottleOnOff(OT_THROTTLE_PIN, true, "THROTTLE_ONOFF");   \
     IActuator*     g_actThrottle = nullptr;                                        \
     /* Starter: servo / LEDC-PWM / on-off */                                       \
-    ServoActuator  g_actStarterServo(OT_STARTER_PIN, OT_STARTER_SERVO_MIN_US, OT_STARTER_SERVO_MAX_US, "STARTER_SRV"); \
-    LEDCActuator   g_actStarterLedc(OT_STARTER_PIN, 10000, 12, "STARTER_LEDC");   \
-    RelayActuator  g_actStarterOnOff(OT_STARTER_PIN, true, "STARTER_ONOFF");      \
+    ServoActuator  g_actStarterServo(OT_STARTER_MOTOR_PIN, OT_STARTER_SERVO_MIN_US, OT_STARTER_SERVO_MAX_US, "STARTER_SRV"); \
+    LEDCActuator   g_actStarterLedc(OT_STARTER_MOTOR_PIN, 10000, 12, "STARTER_LEDC"); \
+    RelayActuator  g_actStarterOnOff(OT_STARTER_MOTOR_PIN, true, "STARTER_ONOFF"); \
     IActuator*     g_actStarter = nullptr;                                         \
     /* Oil pump: servo / LEDC-PWM / on-off */                                      \
     ServoActuator  g_actOilPumpServo(OT_OIL_PUMP_PIN, 1000, 2000, "OIL_PUMP_SRV"); \
     LEDCActuator   g_actOilPumpLedc(OT_OIL_PUMP_PIN, OT_OIL_PUMP_FREQ_HZ, OT_OIL_PUMP_RES_BITS, "OIL_PUMP"); \
     RelayActuator  g_actOilPumpRelay(OT_OIL_PUMP_PIN, OT_OIL_PUMP_ONOFF_ACTIVE_H, "OIL_PUMP_RELAY"); \
     IActuator*     g_actOilPump = nullptr;                                        \
-    /* Scavenge pump: LEDC-PWM / on-off */                                             \
+    /* Scavenge pump: servo / LEDC-PWM / on-off */                                     \
+    ServoActuator  g_actOilScavServo(-1, 1000, 2000, "OIL_SCAV_SRV");                 \
     LEDCActuator   g_actOilScavLedc(-1, 10000, 12, "OIL_SCAV_LEDC");                 \
     RelayActuator  g_actOilScavRelay(-1, true, "OIL_SCAV");                           \
     IActuator*     g_actOilScavPump = nullptr;                                         \
@@ -231,7 +234,7 @@
     /* ── MoreBlocks ─────────────────────────────────────────────────────────── */ \
     FuelPulse    g_blkFuelPulse;                                                  \
     WaitTOTCool  g_blkWaitTOTCool;                                                \
-    WaitForInput g_blkWaitForInput;                                               \
+    WaitForInput g_blkWaitForInput; WaitForInputOff g_blkWaitForInputOff;         \
     ThrottleSet  g_blkThrottleSet;                                                \
     PreHeat      g_blkPreHeat;                                                    \
     /* ── Advanced sequence blocks ───────────────────────────────────────────── */ \
@@ -272,6 +275,7 @@ extern DS18B20TempSensor   g_sensorOilTempDs18b20;
 extern ISensor*            g_pSensorOilTemp;
 extern AnalogLinearSensor  g_sensorBattVolt;
 extern AnalogLinearSensor  g_sensorTorque;
+extern HX711Sensor          g_sensorTorqueHx711;
 extern AnalogPolySensor   g_sensorOilPress;
 extern AnalogThSensor     g_sensorFlame;
 extern AnalogLinearSensor g_sensorIdleInput;
@@ -300,6 +304,7 @@ extern ServoActuator  g_actOilPumpServo;
 extern LEDCActuator   g_actOilPumpLedc;
 extern RelayActuator  g_actOilPumpRelay;
 extern IActuator*     g_actOilPump;
+extern ServoActuator  g_actOilScavServo;
 extern LEDCActuator   g_actOilScavLedc;
 extern RelayActuator  g_actOilScavRelay;
 extern IActuator*     g_actOilScavPump;
@@ -370,6 +375,7 @@ extern OilScavengeOff g_blkOilScavengeOff;
 extern FuelPulse     g_blkFuelPulse;
 extern WaitTOTCool   g_blkWaitTOTCool;
 extern WaitForInput  g_blkWaitForInput;
+extern WaitForInputOff g_blkWaitForInputOff;
 extern ThrottleSet   g_blkThrottleSet;
 extern PreHeat       g_blkPreHeat;
 extern GlowPreheat   g_blkGlowPreheat;
@@ -410,6 +416,9 @@ namespace Hardware {
         g_blkWaitForInput.channelIdx      = Config::waitForInputChannel;
         g_blkWaitForInput.expectedState   = Config::waitForInputExpected;
         g_blkWaitForInput.timeoutMs       = (unsigned long)Config::waitForInputTimeoutMs;
+        g_blkWaitForInputOff.channelIdx   = Config::waitForInputChannel;
+        g_blkWaitForInputOff.expectedState= false;
+        g_blkWaitForInputOff.timeoutMs    = (unsigned long)Config::waitForInputTimeoutMs;
         g_blkFlameConfirm.timeoutMs           = Config::flameTimeoutMs;
         g_blkFlameConfirm.checkIntervalMs     = Config::flameCheckIntervalMs;
         g_blkFlameConfirm.requiredCount       = Config::flameRequiredCount;
@@ -517,6 +526,9 @@ namespace Hardware {
         g_safety.battVoltMin          = Config::battVoltMin;
         g_safety.surgeRpmVariance     = Config::surgeDetectRpmVariance;
         g_safety.flameoutShutdownMs   = Config::flameoutShutdownMs;
+        g_safety.flameoutSource       = Config::flameoutSource;
+        g_safety.flameoutN1MinRpm     = Config::flameoutN1MinRpm;
+        g_safety.flameoutTotDropC     = Config::flameoutTotDropC;
         g_safety.checkIntervalMs      = Config::safetyCheckIntervalMs;
         g_safety.totRiseRateLimit     = Config::totRiseRateLimitDegPerSec;
 
@@ -614,7 +626,10 @@ namespace Hardware {
             // ADC 0–4095 → 0–3.3 V; multiply by divider to get Vbatt
             g_sensorBattVolt.setCal({ 0.0f, 4095.0f, 0.0f, hw.battVoltDivider * 3.3f });
         }
-        if (hw.hasTorque && hw.torquePin >= 0) {
+        if (hw.hasTorque && hw.torqueHx711 && hw.torqueDtPin >= 0 && hw.torqueClkPin >= 0) {
+            g_sensorTorqueHx711.begin(hw.torqueDtPin, hw.torqueClkPin,
+                                      hw.torqueHxScale, (long)hw.torqueHxZero);
+        } else if (hw.hasTorque && hw.torquePin >= 0) {
             g_sensorTorque.begin(hw.torquePin);
             // torqueScale = Nm/V; torqueOffset = zero-point in Nm
             g_sensorTorque.setCal({ 0.0f, 4095.0f, hw.torqueOffset,
@@ -622,7 +637,8 @@ namespace Hardware {
         }
         if (hw.hasOilPress) g_sensorOilPress.begin(hw.oilPressPin);
         if (hw.hasFlame)   g_sensorFlame.begin(hw.flamePin);
-        if (hw.hasIdleInput)  g_sensorIdleInput.begin(hw.idleInputPin);
+        if (hw.hasIdleInput && !hw.idleInputRcPwm)
+            g_sensorIdleInput.begin(hw.idleInputPin);
         if (hw.hasThrottleInput && !hw.throttleInputRcPwm)
             g_sensorThrottleInput.begin(hw.throttleInputPin);
         if (hw.hasFuelFlow) {
@@ -657,7 +673,8 @@ namespace Hardware {
             g_sensorAbFlame.begin(hw.abFlamePin);
             g_sensorAbFlame.setThreshold(hw.abFlameThreshold);
         }
-        if (hw.abInputPin >= 0 && hw.abTriggerSource == 3)
+        if (hw.hasAfterburner && hw.abInputPin >= 0 && !hw.abInputRcPwm &&
+            (hw.abTriggerSource == 3 || Config::abPumpControlMode == 2))
             g_sensorAbInput.begin(hw.abInputPin);
         if (hw.abRequiresArmSwitch && hw.abArmSwitchPin >= 0)
             pinMode(hw.abArmSwitchPin, hw.abArmSwitchActiveH ? INPUT : INPUT_PULLUP);
@@ -724,7 +741,7 @@ namespace Hardware {
             ed.flameSensorRaw = g_sensorFlame.rawCounts();
             ed.flameDetected  = g_sensorFlame.getValue() > 0.5f;
         }
-        if (hw.hasIdleInput) {
+        if (hw.hasIdleInput && !hw.idleInputRcPwm) {
             g_sensorIdleInput.update();
             ed.idleInputRaw = g_sensorIdleInput.rawCounts();
         }
@@ -739,9 +756,12 @@ namespace Hardware {
             ed.abFlameOn = (g_sensorAbFlame.getValue() > 0.5f);
         }
         // AB analog/RC trigger input
-        if (hw.abTriggerSource == 3 && hw.abInputPin >= 0) {
+        if (hw.hasAfterburner && hw.abInputPin >= 0 && !hw.abInputRcPwm &&
+            (hw.abTriggerSource == 3 || Config::abPumpControlMode == 2)) {
             g_sensorAbInput.update();
             ed.abInputRaw = g_sensorAbInput.rawCounts();
+            ed.abInputNorm = constrain(ed.abInputRaw / 4095.0f, 0.0f, 1.0f);
+            ed.abInputValid = true;
         }
         // AB arm switch
         if (hw.abRequiresArmSwitch && hw.abArmSwitchPin >= 0) {
@@ -763,10 +783,17 @@ namespace Hardware {
             if (ed.battHealthy && ed.battVoltage > ed.maxBattVoltage) ed.maxBattVoltage = ed.battVoltage;
         }
         if (hw.hasTorque) {
-            g_sensorTorque.update();
-            ed.torque        = g_sensorTorque.getValue();
-            ed.torqueRaw     = g_sensorTorque.rawCounts();
-            ed.torqueHealthy = g_sensorTorque.isHealthy();
+            if (hw.torqueHx711) {
+                g_sensorTorqueHx711.update();
+                ed.torque        = g_sensorTorqueHx711.getValue();
+                ed.torqueRaw     = (int)g_sensorTorqueHx711.rawCounts();
+                ed.torqueHealthy = g_sensorTorqueHx711.isHealthy();
+            } else {
+                g_sensorTorque.update();
+                ed.torque        = g_sensorTorque.getValue();
+                ed.torqueRaw     = g_sensorTorque.rawCounts();
+                ed.torqueHealthy = g_sensorTorque.isHealthy();
+            }
             // shaft power = torque × angular velocity of N2
             if (ed.torqueHealthy && ed.n2Healthy && ed.n2Rpm > 0) {
                 float omega = ed.n2Rpm * (2.0f * 3.14159f / 60.0f); // rad/s
@@ -829,7 +856,7 @@ namespace Hardware {
                 g_actThrottleLedc.setInverted(hw.throttleInverted);
                 g_actThrottle = &g_actThrottleLedc;
             } else if (hw.throttleType == 2) {
-                g_actThrottleOnOff.begin(hw.throttlePin, true);
+                g_actThrottleOnOff.begin(hw.throttlePin, hw.throttleActiveH);
                 g_actThrottle = &g_actThrottleOnOff;
             } else {
                 g_actThrottleServo.begin(hw.throttlePin, hw.throttleMinUs, hw.throttleMaxUs);
@@ -842,7 +869,7 @@ namespace Hardware {
                 g_actStarterLedc.setInverted(hw.starterInverted);
                 g_actStarter = &g_actStarterLedc;
             } else if (hw.starterType == 2) {
-                g_actStarterOnOff.begin(hw.starterPin, true);
+                g_actStarterOnOff.begin(hw.starterPin, hw.starterActiveH);
                 g_actStarter = &g_actStarterOnOff;
             } else {
                 g_actStarterServo.begin(hw.starterPin, hw.starterMinUs, hw.starterMaxUs);
@@ -918,7 +945,12 @@ namespace Hardware {
             }
         }
         if (hw.hasOilScavengePump && hw.oilScavPumpPin >= 0) {
-            if (hw.oilScavPumpType == 1) {
+            if (hw.oilScavPumpType == 0) {
+                g_actOilScavServo.begin(hw.oilScavPumpPin,
+                                        hw.oilScavPumpMinUs,
+                                        hw.oilScavPumpMaxUs);
+                g_actOilScavPump = &g_actOilScavServo;
+            } else if (hw.oilScavPumpType == 1) {
                 g_actOilScavLedc.begin(hw.oilScavPumpPin,
                                        (uint32_t)hw.oilScavPumpFreqHz,
                                        (uint8_t)hw.oilScavPumpResBits);
@@ -1115,6 +1147,12 @@ namespace Hardware {
         if (hw.hasPropPitch  && g_actPropPitch)   g_actPropPitch->set(0.0f);  // return to fine pitch
         if (hw.hasGlowPlug)    g_actGlowPlug.off();
         auto& _ed = EngineData::instance();
+        _ed.throttleDemand  = 0;
+        _ed.fuelSolOpen     = false;
+        _ed.igniterOn       = false;
+        _ed.starterDemand   = 0;
+        _ed.starterEnabled  = false;
+        _ed.oilPumpPct      = 0;
         _ed.oilScavengeOn   = false;
         _ed.abSolOpen       = false;
         _ed.abPumpDemand    = 0;
@@ -1165,7 +1203,11 @@ namespace Hardware {
             if (hw.throttleInputRcPwm) {
                 norm = (ed.rcThrottleValid) ? ed.rcThrottleNorm : 0.0f;
             } else {
-                norm = constrain(ed.throttleInputRaw / 4095.0f, 0.0f, 1.0f);
+                int range = Config::throttleMaxRaw - Config::throttleMinRaw;
+                norm = (range != 0)
+                    ? constrain((ed.throttleInputRaw - Config::throttleMinRaw) /
+                                (float)range, 0.0f, 1.0f)
+                    : 0.0f;
             }
             // Apply throttle expo if configured (softens stick sensitivity)
             float expo = Config::throttleExpo;  // 0=linear, 1=max expo
@@ -1196,9 +1238,22 @@ namespace Hardware {
         //     Running DI after the governor ensures the floor is always the last
         //     word: when governor reduces throttle below the DI floor both controllers
         //     no longer fight each tick, and ThrottleSlew sees a stable target.
-        //  3. ThrottleSlew last — rate-limits whatever the controllers settled on.
-        if (hw.hasGovernor    && mode == SysMode::RUNNING) g_ctrlGovernor.tick();
+        // Final throttle protection runs after automation rules so a rule can
+        // request throttle without bypassing limp or slew/sensor safeguards.
+        if (hw.hasGovernor && hw.hasN2Rpm && mode == SysMode::RUNNING) g_ctrlGovernor.tick();
         if (hw.hasDynamicIdle && mode == SysMode::RUNNING) g_ctrlDynamicIdle.tick();
+    }
+
+    inline void applyThrottleProtection() {
+        auto& hw   = HardwareConfig::instance();
+        auto& ed   = EngineData::instance();
+        auto  mode = ed.mode;
+        if (mode != SysMode::RUNNING && mode != SysMode::STARTUP) return;
+
+        if (ed.limpMode && mode == SysMode::RUNNING) {
+            float cap = constrain(Config::limpMaxThrottlePct / 100.0f, 0.0f, 1.0f);
+            if (ed.throttleDemand > cap) ed.throttleDemand = cap;
+        }
         if (hw.hasThrottleSlew) g_ctrlThrottleSlew.tick();
     }
 

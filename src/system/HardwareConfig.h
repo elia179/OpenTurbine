@@ -2,7 +2,7 @@
 #include <ArduinoJson.h>
 
 // ============================================================
-//  HardwareConfig — loads hardware.json from LittleFS
+//  HardwareConfig — manages the hardware section of ecu_config.json
 //
 //  Replaces compile-time hardware_profile.h for runtime hardware
 //  topology configuration (pins, feature flags, servo ranges,
@@ -24,12 +24,12 @@ public:
     static constexpr const char* SECTION     = "hardware";
 
     // ── Profile identity ──────────────────────────────────────
-    // profileId must match the settings section value and OT_PROFILE_ID.
-    // Used as the WiFi AP SSID. Divergence from Config::profileId is logged
-    // as a warning at boot (setup() cross-checks both after loading).
+    // profileId identifies the loaded engine and is used as the WiFi AP SSID.
+    // It must match the settings section profileId within the same ecu_config.json.
     static char  profileId[64];
     static char  profileDesc[64];
     static char  wifiPassword[32];   // WiFi AP password — empty = open network
+    static int   wifiTxPowerDbm;     // AP transmit power, dBm; lower reduces heat/current draw
 
     // ── System features ───────────────────────────────────────
     static bool  hasAfterburner;     // shows AB hardware sections; renames to "Fuel Pump 2" etc when false
@@ -107,10 +107,15 @@ public:
     static float battVoltDivider;   // voltage divider ratio: Vbatt = ADC_volt × divider
                                     // e.g. 5.7 for a 10k/47k divider on a 3.3 V ADC
 
-    // torque sensor — analog 0–3.3 V output, linear calibration
+    // torque sensor - analog output or persisted HX711 wiring/calibration
     static int   torquePin;         // ADC pin
     static float torqueScale;       // Nm per volt (e.g. 100 Nm / 3.3 V → 30.3)
     static float torqueOffset;      // zero-offset in Nm (subtracted from raw)
+    static bool  torqueHx711;
+    static int   torqueDtPin;
+    static int   torqueClkPin;
+    static float torqueHxScale;
+    static long  torqueHxZero;
 
     // ── Actuator feature flags ────────────────────────────────
     static bool hasThrottle;
@@ -147,6 +152,7 @@ public:
     static int   throttleMinUs;
     static int   throttleMaxUs;
     static bool  throttleInverted;   // LEDC type: invert duty (0%→full, 100%→off)
+    static bool  throttleActiveH;    // on-off mode active polarity
     static int   throttleLedcFreqHz;
     static int   throttleLedcBits;
 
@@ -155,6 +161,7 @@ public:
     static int   starterMinUs;
     static int   starterMaxUs;
     static bool  starterInverted;
+    static bool  starterActiveH;     // on-off mode active polarity
     static int   starterLedcFreqHz;
     static int   starterLedcBits;
     static bool  starterAssistEnabled;  // allow starter assist in RUNNING (servo/PWM types)
@@ -220,9 +227,11 @@ public:
     static int   abPumpFreqHz;
     static int   abPumpResBits;
 
-    // oilScavPumpType: 1=ledc_pwm, 2=onoff
+    // oilScavPumpType: 0=servo, 1=ledc_pwm, 2=onoff
     static int   oilScavPumpPin;
     static int   oilScavPumpType;
+    static int   oilScavPumpMinUs;
+    static int   oilScavPumpMaxUs;
     static bool  oilScavPumpActiveH;
     static int   oilScavPumpFreqHz;
     static int   oilScavPumpResBits;
@@ -306,8 +315,11 @@ public:
     static bool  abArmSwitchActiveH;
     static int   abSwitchPin;          // dedicated trigger switch (source=2)
     static bool  abSwitchActiveH;
-    static int   abInputPin;           // analog/RC pin (source=3)
-    static int   abInputThreshold;     // raw ADC threshold for analog trigger
+    static int   abInputPin;           // optional AB command/trigger input
+    static bool  abInputRcPwm;         // false=ADC, true=servo PWM input
+    static int   abInputMinUs;         // servo PWM zero-command endpoint
+    static int   abInputMaxUs;         // servo PWM full-command endpoint
+    static int   abInputThreshold;     // normalized 0-4095 trigger threshold
 
     // AB flame sensor (optional, dedicated — separate from main flame sensor)
     static bool  hasAbFlame;
@@ -349,12 +361,16 @@ public:
     static constexpr int MAX_SEQ_BLOCKS = 16;
     static char  startupSeq[MAX_SEQ_BLOCKS][24];
     static int   startupSeqLen;
+    static int   startupDelayMs[MAX_SEQ_BLOCKS];
     static char  shutdownSeq[MAX_SEQ_BLOCKS][24];
     static int   shutdownSeqLen;
+    static int   shutdownDelayMs[MAX_SEQ_BLOCKS];
     static char  abSeq[MAX_SEQ_BLOCKS][24];     // AB ignition sequence
     static int   abSeqLen;
+    static int   abDelayMs[MAX_SEQ_BLOCKS];
     static char  abShutSeq[MAX_SEQ_BLOCKS][24]; // AB shutdown sequence
     static int   abShutSeqLen;
+    static int   abShutDelayMs[MAX_SEQ_BLOCKS];
 
     // ── Singleton accessor ────────────────────────────────────
     // All members are static; instance() lets callers use the
@@ -367,11 +383,13 @@ public:
 
     // ── API ───────────────────────────────────────────────────
     static void load();                      // call at boot after LittleFS.begin()
-    static bool save();                      // write current values → hardware.json
+    static bool save();                      // write current values → ecu_config.json hardware section
     static void applyDefaults();             // restore defaults (mirrors hardware_profile.h)
 
     // Serialize to / from JSON
-    static size_t toJson(char* buf, size_t len);
+    static size_t toJson(char* buf, size_t len, bool redactPassword = false);
+    static bool   validateJson(const char* json, size_t len);
+    static bool   validateJson(const JsonDocument& doc);
     static bool   fromJson(const char* json, size_t len);
 
 private:

@@ -2,7 +2,7 @@
 
 **Universal turbine engine ECU firmware for ESP32.**
 
-OpenTurbine is an open-source engine control unit for small jet turbines. It runs on a standard ESP32 (or ESP32-S3) development board and provides a complete control loop — startup sequencing, oil pressure regulation, dynamic idle hold, safety shutdowns, afterburner management, and a Wi-Fi web interface — with zero code changes between different engine builds. All hardware differences are declared in a single header file and tuned at runtime via the web UI.
+OpenTurbine is an open-source engine control unit for small jet turbines. It runs on a standard ESP32 (or ESP32-S3) development board and provides a complete control loop — startup sequencing, oil pressure regulation, dynamic idle hold, safety shutdowns, afterburner management, and a Wi-Fi web interface — with zero code changes between different engine builds. A compile-time profile provides safe factory defaults; the complete per-engine hardware and settings file is then tuned at runtime via the web UI.
 
 ---
 
@@ -39,16 +39,16 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 - **NTCSensor** — NTC thermistor via Steinhart-Hart B-parameter equation, configurable divider
 - **AnalogPolySensor** — cubic polynomial (oil pressure), linear, and threshold (flame detection) variants
 - **RCInput** — interrupt-driven RC PWM decoder for idle and throttle inputs (same GPIO as ADC, no pin change)
-- **MockSensor** — scripted ramp values for DEV_MODE bench testing
+- **MockSensor** — development stub for scripted sensor values
 
 ### Actuators (HAL)
 - **ServoActuator** — 50 Hz servo PWM 1000–2000 µs (throttle ESC, starter ESC, prop pitch)
 - **LEDCActuator** — high-frequency ESP32 LEDC PWM (oil pump, fuel pump 2, AB pump), invertible
 - **RelayActuator** — digital relay/MOSFET driver, active-high or active-low
-- **MockActuator** — logs all calls for DEV_MODE bench testing
+- **MockActuator** — development stub that logs actuator calls
 
 ### Connectivity
-- **Wi-Fi captive portal** — connecting to the ECU AP opens the dashboard automatically
+- **Wi-Fi captive portal** — connecting to the ECU AP serves the dashboard for common captive-portal probes; direct `192.168.4.1` or `ot.local` remains the reliable path on Windows/Chrome
 - **mDNS** — accessible as `http://ot.local` on any mDNS-capable client
 - **MAVLink v1 TX** — HEARTBEAT, NAMED_VALUE_FLOAT telemetry, STATUSTEXT fault alerts over UART
 - **Cluster serial** — JetEcu-compatible serial protocol v2 with schema-first boot sequence
@@ -60,7 +60,7 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 
 ### Developer / diagnostic
 - **Sequence validator** — at boot, cross-checks each block against fitted hardware; flags errors (block START) and warnings, displayed in web UI
-- **Dev mode / bench mode** — mock sensors, live config changes, safety bypasses, timer-based sequence completion; never compiled into release unless flag is set
+- **Dev mode / bench mode** — explicit operator-gated diagnostics for bench testing, including safety bypasses and timer-based sequence completion; never use with fuel or a live engine unless you fully understand the risk
 - **Buzzer patterns** — passive piezo tones for mode transitions and fault
 - **Status LED** — mode-driven blink pattern (1–4 blinks + rapid fault flash)
 - **Peak value tracking** — session maxima for N1, N2, TOT, TIT, oil temp, fuel pressure, battery
@@ -137,7 +137,7 @@ cd OpenTurbine
 Open `hardware_profile.h` and set the compile-time profile ID and any pin defaults. All hardware settings can be changed at runtime via the web UI — `hardware_profile.h` is only the starting point:
 
 ```cpp
-#define OT_PROFILE_ID   "my_turbine_v1"   // must match runtime config
+#define OT_PROFILE_ID   "my_turbine_v1"   // default ID used when creating a new engine file
 #define OT_PROFILE_DESC "My turbine, rev 1"
 
 // Pin defaults (all overridable at runtime via Hardware web page)
@@ -165,7 +165,7 @@ If the board is already in boot mode (IO0 low), the `--before=no_reset` flag in 
 ### 5. Connect and calibrate
 
 1. Power on the ESP32
-2. Connect to the Wi-Fi AP — **SSID = your `profile_id`** (default: `OpenTurbine`)
+2. Connect to the Wi-Fi AP — **SSID = the engine file's `hardware.profile_id`** (`OT_PROFILE_ID` is used for a newly created file)
 3. Open **`http://192.168.4.1`** or **`http://ot.local`** in a browser
 4. Go to **Calibration** and follow the guided wizards for throttle, oil pressure sensor, and flame threshold
 5. Go to **Config** and set RPM limits, temperature limits, oil targets, and timing for your engine
@@ -173,14 +173,14 @@ If the board is already in boot mode (IO0 low), the `--before=no_reset` flag in 
 7. Go to **Sequence** to review and customise the startup / shutdown block order
 8. Download `ecu_config.json` from Tools as a backup
 
-> **Profile ID check:** The `profile_id` in `hardware_profile.h` must match the `profile_id` in the runtime config. A mismatch blocks all engine operations and shows a banner with fix instructions. Visit the Hardware page and update the field, or upload a corrected config JSON.
+> **Engine file identity:** `ecu_config.json` is the complete engine file. Its `hardware.profile_id` and `settings.profile_id` must match each other; a crossed file blocks engine operations. `OT_PROFILE_ID` supplies the default when a new file is created.
 
 ---
 
 ## Web interface
 
 ### Dashboard
-Live N1 RPM, N2 RPM, TOT, TIT, oil pressure, battery voltage, mode, and sensor health. Start (with confirmation dialog) and Stop buttons. Color-coded gauge bars showing proximity to safety limits. Sparkline trends. Startup sequence progress bar. Fault description card with plain-language "what to do" guidance. Peak values, run count, and hour meter. WebSocket-driven updates at ~200 ms.
+Live N1 RPM, N2 RPM, TOT, TIT, oil pressure, battery voltage, mode, and sensor health. Start (with confirmation dialog) and Stop buttons. Color-coded gauge bars showing proximity to safety limits. Sparkline trends. Startup sequence progress bar. Fault description card with plain-language "what to do" guidance. Peak values, run count, and hour meter. WebSocket-driven updates at the configured live interval, with dashboard/calibration defaults around 3 Hz.
 
 ### Calibration
 Pre-flight checklist. Guided step-by-step wizards:
@@ -225,7 +225,7 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 | `throttle` | Slew ramp rates (up/down), idle % range, expo curve, limp mode cap |
 | `dynamic_idle` | Target RPM, ramp rates, deadband, P/I gains, N1 vs N2 source |
 | `governor` | N2 target RPM, P-gain, pitch slew limit, pitch range (turboprop) |
-| `safety` | Check interval, per-fault enable flags, flameout hold time, EGT rise-rate limit |
+| `safety` | Check interval, per-fault enable flags, flameout source/hold time, EGT rise-rate limit |
 | `relight` | Enable/disable auto-relight, minimum N1 RPM, relight timeout |
 | `ab` | Trigger source, throttle threshold, arm-switch requirement, fuel offset, pump min/max %, torch TOT limit |
 | `rules` | Up to 8 automation rules (sensor, op, threshold, actuator, on_value, off_value) |
@@ -247,7 +247,7 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 ## Architecture
 
 ```
-hardware_profile.h              ← compile-time topology (pins, profile ID)
+hardware_profile.h              ← factory defaults (pins, profile ID)
     │
     ▼
 src/
@@ -324,7 +324,7 @@ pio run -e esp32s3dev -t uploadfs
 
 | Flag | Effect |
 |---|---|
-| `OT_DEV_MODE` | Enables mock sensors/actuators, live config changes during run, safety bypasses, bench mode toggle. **Never include in a production build.** |
+| `OT_DEV_MODE` | Boots with runtime Dev Mode already enabled. This exposes bench-mode and safety-bypass diagnostics without requiring the UI toggle first. **Never include in a production build.** |
 
 ---
 

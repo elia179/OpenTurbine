@@ -40,11 +40,11 @@
       <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Dismiss">×</button>
     </div>
     <ol class="gs-steps">
-      <li><a href="/hardware.html">⚙ Set up hardware</a></li>
-      <li><a href="/calibration.html">🔧 Calibrate sensors</a></li>
-      <li><a href="/config.html">📋 Review safety limits</a></li>
-      <li><a href="/tools.html">🔨 Run a dry test</a></li>
-      <li><span class="gs-step-text">▶ Start engine</span></li>
+      <li><a href="/hardware.html">Set up hardware</a></li>
+      <li><a href="/calibration.html">Calibrate sensors</a></li>
+      <li><a href="/config.html">Review safety limits</a></li>
+      <li><a href="/tools.html">Run a dry test</a></li>
+      <li><span class="gs-step-text">Start engine</span></li>
     </ol>
   </div>
 
@@ -62,20 +62,20 @@
     ⚠ BENCH MODE ACTIVE — Sequence runs on timers only, no sensor verification, safety bypassed.
     <a href="/tools.html" style="color:#f64;text-decoration:underline;font-weight:400;margin-left:.5rem">Disable in Tools →</a>
   </div>
-  <!-- Config version mismatch banner (new firmware fields got default values) -->
+  <!-- Config schema mismatch banner -->
   <div id="config-version-banner" style="display:none;background:rgba(255,196,0,0.07);border:1px solid rgba(255,196,0,0.4);border-radius:7px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--yellow);line-height:1.6">
-    <strong>⚠ Config version mismatch</strong> — your saved config is from an older firmware version.
-    New settings are using built-in defaults which may not match your engine.<br>
+    <strong>⚠ Config schema mismatch</strong> — this engine file was written for a different firmware settings schema.
+    Missing or unsupported settings may use built-in defaults and may not match your engine.<br>
     <b>Recommended:</b> Go to <a href="/calibration.html" style="color:var(--yellow);text-decoration:underline">Calibration</a> and re-run sensor calibration, then verify all settings on the <a href="/config.html" style="color:var(--yellow);text-decoration:underline">Config</a> page before starting the engine.
   </div>
 
   <!-- Profile ID mismatch banner -->
   <div id="profile-mismatch-banner">
     <strong>⚠ Profile ID Mismatch — Engine operations locked</strong>
-    The config file on this ECU was saved for a different hardware profile.
-    This means settings may not match your hardware and it's not safe to start the engine.<br>
-    <b>How to fix:</b> Go to <a href="/hardware.html" style="color:var(--yellow)">Hardware</a> and update the <em>Profile ID / WiFi SSID</em> field to match the name your board was built for, then save and reboot.
-    Or download your current config, edit the profile_id value, and re-upload it.
+    The hardware and settings sections in <code>ecu_config.json</code> identify different engines.
+    The ECU will not run with mixed engine data.<br>
+    <b>How to fix:</b> restore one complete engine file from <a href="/tools.html" style="color:var(--yellow)">Tools</a>,
+    or save the Hardware page to synchronize its Profile ID into settings.
   </div>
   <div id="profile-error" class="error-banner" style="display:none">Profile ID mismatch — engine operations locked</div>
 
@@ -122,9 +122,30 @@
       style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
   </div>
 
-  <!-- Big sensors: N1 + TOT -->
-  <section class="grid-2">
-    <div class="card big" id="n1-card" title="Gas generator spool speed. N1 is the primary thrust control variable — the ECU drives throttle to maintain target N1 during running.">
+  <section class="telemetry-group" id="temperature-group" style="display:none">
+    <div class="telemetry-group-title">Temperatures</div>
+    <div class="grid-3" id="temperature-cards"></div>
+  </section>
+  <section class="telemetry-group" id="speed-group" style="display:none">
+    <div class="telemetry-group-title">Shaft Speed</div>
+    <div class="grid-2" id="speed-cards"></div>
+  </section>
+  <section class="telemetry-group" id="pressure-section" style="display:none">
+    <div class="telemetry-group-title">Pressures</div>
+    <div class="grid-3" id="pressure-cards"></div>
+  </section>
+  <section class="telemetry-group" id="combustion-group" style="display:none">
+    <div class="telemetry-group-title">Fuel And Combustion</div>
+    <div class="grid-3" id="combustion-cards"></div>
+  </section>
+  <section class="telemetry-group" id="ext-sensors-section" style="display:none">
+    <div class="telemetry-group-title">Electrical And Load</div>
+    <div class="grid-3" id="electrical-cards"></div>
+  </section>
+
+  <!-- Card definitions are moved into the grouped panels by app.js. -->
+  <section class="grid-2 legacy-card-bin">
+    <div class="card big" id="n1-card" style="display:none" title="Gas generator spool speed. N1 is the primary thrust control variable — the ECU drives throttle to maintain target N1 during running.">
       <div class="label"><span id="lbl-n1">N1 RPM</span> <span id="n1-health" class="dot"></span></div>
       <div class="value" id="n1">—</div>
       <div class="peak-val">max <span id="max-n1">—</span></div>
@@ -133,7 +154,7 @@
       <span id="n1-abs-label" class="gauge-abs-label">— / — RPM</span>
       <span id="n1-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
     </div>
-    <div class="card big" id="tot-card" title="Turbine Outlet Temperature — exhaust gas temperature measured downstream of the turbine wheel. Primary thermal limit; ECU cuts fuel if this exceeds the configured TOT limit.">
+    <div class="card big" id="tot-card" style="display:none" title="Turbine Outlet Temperature — exhaust gas temperature measured downstream of the turbine wheel. Primary thermal limit; ECU cuts fuel if this exceeds the configured TOT limit.">
       <div class="label"><span id="lbl-tot">TOT</span> <span data-unit="temp">°C</span> <span id="tot-health" class="dot"></span></div>
       <div class="value" id="tot">—</div>
       <div class="peak-val">max <span id="max-tot">—</span> · rate <span id="tot-rise-rate-val">—</span></div>
@@ -145,13 +166,13 @@
   </section>
 
   <!-- N2 + Oil + Flame row -->
-  <section class="grid-3">
-    <div class="card" id="n2-card" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
+  <section class="grid-3 legacy-card-bin">
+    <div class="card" id="n2-card" style="display:none" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
       <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
       <div class="value small" id="n2">—</div>
       <div class="peak-val">max <span id="max-n2">—</span></div>
     </div>
-    <div class="card" id="oil-card" title="Bearing oil pressure. 'demand' is the ECU target pressure; output pump speed is adjusted to maintain it. Low oil pressure during RUNNING triggers an immediate fault shutdown.">
+    <div class="card" id="oil-card" style="display:none" title="Bearing oil pressure. 'demand' is the ECU target pressure; output pump speed is adjusted to maintain it. Low oil pressure during RUNNING triggers an immediate fault shutdown.">
       <div class="label"><span id="lbl-oil">Oil Press</span> (<span data-unit="press">bar</span>) <span id="oil-health" class="dot"></span></div>
       <div class="value small" id="oil">—</div>
       <div class="oil-sub">demand: <span id="oil-demand-val">—</span> <span data-unit="press">bar</span></div>
@@ -160,7 +181,7 @@
       <span id="oil-abs-label" class="gauge-abs-label">— / — bar</span>
       <span id="oil-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
     </div>
-    <div class="card" id="flame-card" title="Combustion flame sensor (optical or ionisation). Bar shows raw ADC reading vs the detection threshold. Green dot = flame confirmed. Used during startup to verify ignition and during running to detect flameout.">
+    <div class="card" id="flame-card" style="display:none" title="Combustion flame sensor (optical or ionisation). Bar shows raw ADC reading vs the detection threshold. Green dot = flame confirmed. Used during startup to verify ignition and during running to detect flameout.">
       <div class="label">Flame <span id="flame-dot" class="dot"></span></div>
       <div class="flame-bar-wrap">
         <div class="flame-bar-track">
@@ -178,13 +199,13 @@
   </section>
 
   <!-- P1 / P2 pressure sensors (hidden until enabled in Config → Display) -->
-  <section id="pressure-section" class="grid-2" style="display:none">
-    <div class="card">
+  <section id="legacy-pressure-cards" class="grid-2 legacy-card-bin" style="display:none">
+    <div class="card" id="p1-card" style="display:none">
       <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span></div>
       <div class="value small" id="p1">—</div>
       <div class="peak-val">max <span id="max-p1">—</span></div>
     </div>
-    <div class="card">
+    <div class="card" id="p2-card" style="display:none">
       <div class="label"><span id="lbl-p2">P2</span> <span data-unit="press">bar</span></div>
       <div class="value small" id="p2">—</div>
       <div class="peak-val">max <span id="max-p2">—</span></div>
@@ -192,7 +213,7 @@
   </section>
 
   <!-- Extended sensors: Oil Temp / Battery Voltage / Torque + Power (shown only when fitted) -->
-  <section id="ext-sensors-section" class="grid-3" style="display:none">
+  <section id="legacy-ext-cards" class="grid-3 legacy-card-bin" style="display:none">
     <div class="card" id="oil-temp-card" style="display:none">
       <div class="label"><span id="lbl-oil-temp">Oil Temp</span> <span data-unit="temp">°C</span> <span id="oil-temp-health" class="dot"></span></div>
       <div class="value small" id="oil-temp">—</div>
@@ -236,7 +257,7 @@
     <div class="card" id="fuel-flow-card" style="display:none">
       <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span></div>
       <div class="value small" id="fuel-flow-val">—</div>
-      <div class="peak-val">units/s</div>
+      <div class="peak-val">units/min</div>
     </div>
     <div class="card" id="tit-card" style="display:none">
       <div class="label"><span id="lbl-tit">TIT</span> <span data-unit="temp">°C</span> <span id="tit-health" class="dot"></span></div>
@@ -291,7 +312,7 @@
           </div>
         </div>
         <div id="adv-fp2" style="display:none">
-          Fuel pump 2 <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span>%
+          Auxiliary fuel pump 2 <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span>%
           <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
             <div class="gauge-bar" id="fp2-gauge-bar" style="width:0%"></div>
           </div>
@@ -340,18 +361,22 @@
 
   <!-- Telemetry cards -->
   <section class="grid-2 telemetry">
-    <div class="card small" title="ECU calculated fuel valve demand (0–100%). 'input' is the raw throttle signal; 'floor' is the idle minimum the ECU enforces to keep the engine lit.">
-      <div class="label">Throttle Demand</div>
+    <div class="card small" id="throttle-output-card" title="Actual commanded throttle or fuel-ESC output. During startup the Fuel Pump Idle sequence range is separate from the running throttle floor.">
+      <div class="label">Main Fuel / Throttle Output</div>
       <div class="value small" id="throttle-demand">—</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
-      <div class="oil-sub" id="throttle-input-row" style="display:none">input: <span id="throttle-input-pct">—</span>%</div>
-      <div class="oil-sub">floor: <span id="throttle-idle-floor">—</span>%
-        <span id="throttle-di-wrap" style="display:none"> · DI: <span id="throttle-di-rpm">—</span> rpm</span>
+      <div class="oil-sub" id="throttle-input-row" style="display:none">throttle input: <span id="throttle-input-pct">—</span>%</div>
+      <div class="oil-sub" id="throttle-feedback-inhibit-note" style="display:none;color:var(--yellow)">Throttle increase limited: fitted RPM/TOT feedback is unhealthy. Fix the sensor/calibration before live running; Bench Mode is only for dry actuator tests.</div>
+      <div class="oil-sub" id="throttle-floor-row">running floor: <span id="throttle-idle-floor">—</span>%
+        <span id="throttle-di-wrap" style="display:none"> · Dynamic Idle target <span id="throttle-di-rpm">—</span> rpm</span>
       </div>
+      <div class="oil-sub" id="throttle-startup-range-row" style="display:none">startup FuelPumpIdle range: <span id="throttle-startup-range">—</span>%</div>
+      <div class="oil-sub" id="throttle-effective-note" style="display:none">base demand: <span id="throttle-base-demand">—</span>% + AB offset</div>
     </div>
-    <div class="card small" title="Actual oil pump PWM output. 'demand' is the ECU calculated target; output may differ during failsafe or standby feed cycles.">
+    <div class="card small" id="oil-output-card" title="Actual oil-pump PWM output. Controller Minimum Duty is a closed-loop floor, not a maximum; sequence steps such as Oil Pump On may command 100%.">
       <div class="label">Oil Pump Output %</div>
       <div class="value small" id="oil-pct">—</div>
+      <div class="oil-sub" id="oil-startup-setting-note" style="display:none">startup OilPumpOn setting: <span id="oil-startup-setting">—</span>% (Sequence)</div>
       <div class="oil-sub" id="oil-failsafe-note" style="display:none;color:var(--red)">⚠ sensor failsafe</div>
       <div class="oil-sub" id="standby-oil-feed-note" style="display:none;color:var(--accent)" title="Pre-lubrication: oil pump primes the bearings during standby. Triggered automatically before startup or on a timed schedule.">● standby feed active</div>
     </div>
@@ -393,17 +418,12 @@
   <div style="border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;background:var(--surface)">
     <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin-bottom:.5rem">ECU Config — Export / Import</div>
     <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
-      <a href="/api/ecu_config" download="ecu_config.json"
-         style="font-size:.82rem;padding:.35rem .9rem;border:1px solid var(--border);border-radius:5px;color:var(--text);text-decoration:none;background:var(--bg)">
-        Download ecu_config.json
+      <a href="/tools.html"
+         style="font-size:.82rem;padding:.35rem .9rem;border:1px solid var(--accent);border-radius:5px;color:var(--accent);text-decoration:none;background:var(--bg)">
+        Open Tools Backup / Restore
       </a>
-      <label style="font-size:.82rem;padding:.35rem .9rem;border:1px solid var(--accent);border-radius:5px;color:var(--accent);cursor:pointer;background:var(--bg)">
-        Upload ecu_config.json
-        <input type="file" accept=".json" style="display:none" onchange="uploadEcuConfig(this)">
-      </label>
-      <span id="ecu-upload-status" style="font-size:.78rem;color:var(--dim)"></span>
     </div>
-    <div style="font-size:.68rem;color:var(--dim);margin-top:.4rem">Contains all settings: hardware pinout, config parameters and sequences in one file. Logs are stored separately.</div>
+    <div style="font-size:.68rem;color:var(--dim);margin-top:.4rem">Full import/export is centralized on Tools to avoid restoring only part of the ECU configuration. Logs are stored separately.</div>
   </div>
 </div>
 
@@ -429,7 +449,7 @@ function confirmStart() {
   fetch('/api/hardware').then(r => r.json()).then(hw => {
     const seq = hw.startup_seq || [];
     if (seq.length === 0) {
-      alert('⚠ Startup sequence is empty.\n\nGo to the Sequence page and add blocks (at minimum: OilPrime → StarterSpin → FlameConfirm) before starting.');
+      alert('Startup sequence is empty.\n\nGo to the Sequence page and add blocks (at minimum: OilPumpOn -> TimedDelay -> IgniterOn -> FuelPumpIdle -> TimedDelay -> IgniterOff -> TimedDelay) before starting.');
       return;
     }
     _doStart();
@@ -441,13 +461,13 @@ function _doStart() {
   const btn = document.getElementById('btn-start');
   if (btn) {
     btn._originalText = btn.textContent;
-    btn.textContent = 'Starting\u2026';
+    btn.textContent = 'Starting...';
     btn.disabled = true;
     // Fallback: re-enable after 3 seconds if telemetry hasn't already confirmed the state.
     // Guard against the engine having already entered STARTUP \u2014 in that case the button
     // must stay disabled until the sequence completes or fails.
     btn._startTimeout = setTimeout(function() {
-      if (btn.disabled && btn.textContent === 'Starting\u2026') {
+      if (btn.disabled && btn.textContent === 'Starting...') {
         const mode = (_lastData && _lastData.mode) || '';
         const active = mode === 'RUNNING' || mode === 'STARTUP' || mode === 'SHUTDOWN';
         if (!active) {

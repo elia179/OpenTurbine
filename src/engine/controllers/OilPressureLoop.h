@@ -47,7 +47,11 @@ public:
             return;
         }
 
+        bool recoveredFromFailsafe = ed.oilFailsafeActive;
         _failsafeTimer     = 0;
+        if (recoveredFromFailsafe) {
+            _outputPct = constrain(ed.oilPumpPct, minPct, 100.0f);
+        }
         ed.oilFailsafeActive = false;
 
         float error = ed.oilTargetBar - ed.oilPressure;

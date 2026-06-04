@@ -10,8 +10,8 @@
 //
 //  Lifecycle:
 //    begin()        — called once in setup(); creates /logs/ dir
-//    startSession() — called when mode enters STARTUP; opens new CSV
-//    endSession()   — called when mode returns to STANDBY; closes CSV
+//    startSession() — called when mode enters STARTUP; requests new CSV
+//    endSession()   — called when mode returns to STANDBY; requests close
 //    tick()         — Core 1: queue push only, no file I/O
 //    drainQueue()   — Core 0: writes queued rows to flash
 // ============================================================
@@ -21,7 +21,7 @@ public:
     // currentPath() returns the active session file path (valid after startSession()).
     static const char* currentPath();
 
-    static void begin();         // init (mkdir /logs, create queue); call once in setup()
+    static bool begin();         // init (mkdir /logs, create queue); call once in setup()
     static void startSession();  // open new CSV, write header; call at STARTUP
     static void endSession();    // drain remaining rows, flush + close; call at STANDBY
     static void tick();          // Core 1: snapshot → queue push (no file I/O)
