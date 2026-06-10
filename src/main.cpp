@@ -1312,6 +1312,20 @@ static void handleCommand(const OTPacket& pkt) {
                     Serial.println("[OT] START blocked: stop switch active");
                     break;
                 }
+                // Extra cooldown owns the starter and oil pump. Starting now
+                // would race its cancel path: checkExtraCooldown() zeroes
+                // starterDemand/oilPumpPct AFTER the first startup block's
+                // onEnter() ran — on builds without an oil pressure sensor,
+                // OilPrime's fixed pump duty is wiped and the prime runs to
+                // "Complete" having delivered no oil.
+                if (ed.extraCooldownActive) {
+                    snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: extra cooldown active");
+                    snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                             "Cannot start: Extra Cooldown is running. Stop it on the Tools page "
+                             "or wait for it to finish before starting the engine.");
+                    Serial.println("[OT] START blocked: extra cooldown active");
+                    break;
+                }
                 // Check inhibit_start DI channels
                 {
                     auto& hwi = HardwareConfig::instance();

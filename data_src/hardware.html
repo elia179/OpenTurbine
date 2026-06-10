@@ -50,9 +50,9 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">WiFi AP Password</span>
-          <span class="hw-desc">Optional password for the Wi-Fi access point. A saved password is retained unless you enter a replacement; blank selects an open network.</span>
+          <span class="hw-desc">Password for the Wi-Fi access point. A saved password is retained unless you enter a replacement; blank uses a per-device default password (printed on the serial console at every boot, format ot-xxxxxxxx).</span>
           <div style="display:flex;gap:.35rem;align-items:center">
-            <input type="password" id="f-wifi-password" maxlength="63" placeholder="(open network)"
+            <input type="password" id="f-wifi-password" maxlength="63" placeholder="(per-device default)"
               oninput="set('wifi_password',this.value)" style="flex:1">
             <button type="button" id="btn-wifi-pw-toggle" onclick="toggleWifiPassword()"
               title="Show/hide password"
@@ -2372,7 +2372,7 @@ function populate() {
   v('f-wifi-password', '');
   const wifiPw = document.getElementById('f-wifi-password');
   if (wifiPw) wifiPw.placeholder = cfg.wifi_password === '__KEEP_PASSWORD__'
-    ? '(saved password unchanged)' : '(open network)';
+    ? '(saved password unchanged)' : '(per-device default)';
   updateFeaturesUI();
 
   const c = cfg.controls || {};
