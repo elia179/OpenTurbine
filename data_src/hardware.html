@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=20260607b">
 </head>
 <body>
 <nav>
@@ -21,6 +21,7 @@
 <div class="rebooting-overlay" id="reboot-overlay">
   <div class="spinner"></div>
   <div>Device rebooting — reconnecting…</div>
+  <div id="reboot-wifi-note" style="font-size:.82rem;color:var(--text);max-width:32rem;text-align:center;line-height:1.45"></div>
   <div id="reboot-timer" style="font-size:.85rem;color:var(--dim)"></div>
 </div>
 
@@ -68,8 +69,11 @@
         <div class="hw-field">
           <span class="hw-label">WiFi TX Power</span>
           <span class="hw-desc">Access-point transmit power in dBm. Lower values reduce radio heat/current draw; raise only if you need more range. Default: 8 dBm.</span>
-          <input type="number" id="f-wifi-tx-power" min="2" max="20" step="1"
-            oninput="set('wifi_tx_power_dbm',Math.max(2,Math.min(20,+this.value||8)))">
+          <div style="display:flex;align-items:center;gap:.6rem">
+            <input type="range" id="f-wifi-tx-power" min="2" max="20" step="1"
+              oninput="setWifiTxPower(this.value)" style="flex:1;min-width:130px">
+            <span id="f-wifi-tx-power-val" style="font-size:.74rem;color:var(--dim);min-width:3.5rem;text-align:right">8 dBm</span>
+          </div>
         </div>
       </div>
     </div>
@@ -182,7 +186,7 @@
         <div class="hw-field">
           <span class="hw-label">Pulses / Rev</span>
           <span class="hw-desc">Hall sensor pulses per shaft revolution.</span>
-          <input type="number" id="f-n1-ppr" min="0.01" step="0.001" oninput="setSensor('n1_rpm','ppr',+this.value)">
+          <input type="number" id="f-n1-ppr" min="0.01" step="0.001" oninput="setSensor('n1_rpm','ppr',this.value===''?null:+this.value)">
         </div>
         <div class="hw-field">
           <span class="hw-label">Display label</span>
@@ -206,7 +210,7 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">Pulses / Rev</span>
-          <input type="number" id="f-n2-ppr" min="0.01" step="0.001" oninput="setSensor('n2_rpm','ppr',+this.value)">
+          <input type="number" id="f-n2-ppr" min="0.01" step="0.001" oninput="setSensor('n2_rpm','ppr',this.value===''?null:+this.value)">
         </div>
         <div class="hw-field">
           <span class="hw-label">Display label</span>
@@ -1264,18 +1268,19 @@
       <div class="hw-item-card" id="grp-ab-trigger">
         <div style="font-size:.8rem;font-weight:700;margin-bottom:.6rem">AB Trigger &amp; Arming</div>
         <span class="hw-desc" style="display:block;margin-bottom:.6rem">
-          Select what requests afterburner here. Edit what happens during ignition and shutdown on
+          Trigger selects what asks for afterburner. Arm is an optional separate permission switch; it does not fire AB by itself. Edit what happens during ignition and shutdown on
           <a href="/sequence.html" style="color:var(--blue)">Sequence - Afterburner</a>.
         </span>
 
         <div class="hw-field" style="margin-bottom:.6rem">
           <span class="hw-label">Trigger Source</span>
           <select id="f-ab-trig-src" onchange="setAbTrigSrc(+this.value)">
-            <option value="0">Manual (web UI / AB_FIRE command only)</option>
-            <option value="1">Throttle position threshold</option>
-            <option value="2">Dedicated toggle switch</option>
-            <option value="3">Analog / RC input</option>
+            <option value="0">Manual command only</option>
+            <option value="1">Main throttle threshold</option>
+            <option value="2">Dedicated on/off switch</option>
+            <option value="3">Dedicated analog / servo input</option>
           </select>
+          <span class="hw-desc" id="ab-trigger-help">Manual mode only fires from the web UI or a command.</span>
         </div>
 
         <!-- Switch pin (source=2) -->
@@ -1297,11 +1302,12 @@
         <div id="grp-ab-inp" class="hw-grid" style="margin-bottom:.5rem">
           <div class="hw-field">
             <span class="hw-label">Input GPIO pin</span>
+            <span class="hw-desc">Required only when trigger source is dedicated analog / servo input, or when Config uses dedicated AB input for pump command.</span>
             <select id="f-ab-inp-pin" onchange="setAbTrig('input_pin',+this.value)"></select>
           </div>
           <div class="hw-field">
             <span class="hw-label">Signal Type</span>
-            <span class="hw-desc">This channel can command AB pump flow or request AB light-up.</span>
+            <span class="hw-desc">Analog uses ADC counts. Servo PWM uses the pulse range below and displays threshold as percent.</span>
             <select id="f-ab-inp-type" onchange="setAbInputType(this.value === 'pwm')">
               <option value="adc">Analog ADC</option>
               <option value="pwm">Servo PWM signal</option>
@@ -1316,9 +1322,9 @@
             <input type="number" id="f-ab-inp-max-us" min="500" max="2500" step="10" oninput="setAbTrig('input_max_us',+this.value)">
           </div>
           <div class="hw-field">
-            <span class="hw-label">Advanced trigger threshold (raw 0-4095)</span>
-            <span class="hw-desc">Adjust the normal firing point as a percentage on Sequence - Afterburner. This raw value remains available for exact adjustment.</span>
-            <input type="number" id="f-ab-inp-thr" min="0" max="4095" oninput="setAbTrig('input_threshold',+this.value)">
+            <span class="hw-label" id="lbl-ab-inp-thr">Trigger threshold (ADC count)</span>
+            <span class="hw-desc" id="desc-ab-inp-thr">Raw ADC threshold, 0-4095.</span>
+            <input type="number" id="f-ab-inp-thr" min="0" max="4095" oninput="setAbInputThresholdDisplay(+this.value)">
           </div>
         </div>
 
@@ -1704,12 +1710,26 @@
     <div class="hw-item-card">
       <div class="hw-toggle" style="margin-bottom:.5rem">
         <input type="checkbox" id="en-cluster" onchange="setNested('cluster_serial','enabled',this.checked);updateGroupEnabled('grp-cluster',this.checked)">
-        <b>Cluster Serial Output</b>
+        <b>OT Cluster Protocol</b>
       </div>
+      <span class="hw-desc" style="display:block;margin-bottom:.6rem">
+        TX only streams telemetry to a display. Add RX for two-way handshake, subscriptions and cluster commands.
+      </span>
       <div class="hw-grid" id="grp-cluster">
         <div class="hw-field">
           <span class="hw-label">TX pin (GPIO)</span>
           <select id="f-cl-tx" onchange="setNested('cluster_serial','tx_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">RX pin (GPIO, optional)</span>
+          <span class="hw-desc">Leave unassigned for one-way streaming. Set RX when the cluster should request fields or send commands.</span>
+          <select id="f-cl-rx" onchange="setNested('cluster_serial','rx_pin',+this.value)"></select>
+        </div>
+        <div class="hw-field">
+          <span class="hw-label">Protocol</span>
+          <select id="f-cl-protocol" onchange="setNested('cluster_serial','protocol',+this.value)">
+            <option value="1">OT Cluster v1</option>
+          </select>
         </div>
         <div class="hw-field">
           <span class="hw-label">Baud rate</span>
@@ -1719,6 +1739,9 @@
             <option value="38400">38400</option>
             <option value="57600">57600</option>
             <option value="115200">115200</option>
+            <option value="230400">230400</option>
+            <option value="460800">460800</option>
+            <option value="921600">921600</option>
           </select>
         </div>
         <div class="hw-field">
@@ -2050,7 +2073,7 @@ function collectUsedPins() {
     if (item.has_current) add(item.current_pin);
   }
   const cl = cfg.cluster_serial || {};
-  if (cl.enabled) add(cl.tx_pin);
+  if (cl.enabled) { add(cl.tx_pin); add(cl.rx_pin); }
   const mv = cfg.mavlink || {};
   if (mv.enabled) add(mv.tx_pin);
   // AB trigger / arming / flame pins
@@ -2096,8 +2119,8 @@ function refreshAllPins() {
   refreshPinSel('f-tit-mosi',       'out', (s.tit||{}).mosi);
   refreshPinSel('f-oilpress-pin',   'adc', (s.oil_press||{}).pin);
   refreshPinSel('f-flame-pin',      'adc', (s.flame||{}).pin);
-  refreshPinSel('f-thinput-pin',    'in',  (s.throttle_input||{}).pin);
-  refreshPinSel('f-idiinput-pin',   'in',  (s.idle_input||{}).pin);
+  refreshPinSel('f-thinput-pin',    (s.throttle_input||{}).rc_pwm ? 'in' : 'adc', (s.throttle_input||{}).pin);
+  refreshPinSel('f-idiinput-pin',   (s.idle_input||{}).rc_pwm ? 'in' : 'adc', (s.idle_input||{}).pin);
   const ffType = (s.fuel_flow||{}).type || 0;
   v('f-fuelflow-type', ffType);
   v('f-fuelflow-ppl',  (s.fuel_flow||{}).pulses_per_litre || 100);
@@ -2119,6 +2142,7 @@ function refreshAllPins() {
   refreshPinSel('f-fan-pin',        'out', (a.cool_fan||{}).pin);
   refreshPinSel('f-led-pin',        'out', (a.status_led||{}).pin);
   refreshPinSel('f-cl-tx',          'out', cl.tx_pin);
+  refreshPinSel('f-cl-rx',          'in',  cl.rx_pin);
   refreshPinSel('f-ab-sw-pin',      'in',  abt.switch_pin);
   refreshPinSel('f-ab-inp-pin',     abt.input_rc_pwm ? 'in' : 'adc', abt.input_pin);
   refreshPinSel('f-ab-arm-pin',     'in',  abt.arm_pin);
@@ -2283,8 +2307,10 @@ function setDiModeBit(idx, bit, checked) {
 //  STATE
 // ═══════════════════════════════════════════════════
 let cfg = {};
+let settingsCfg = {};
 let engineMode = 'STANDBY';
 let _profileIdInvalid = false;
+let _loadedProfileId = 'OpenTurbine';
 
 let ws;
 function connectWs() {
@@ -2319,6 +2345,13 @@ async function loadHardware() {
   try {
     const r = await fetch('/api/hardware');
     cfg = await r.json();
+    try {
+      const full = await (await fetch('/api/ecu_config', {cache:'no-store'})).json();
+      settingsCfg = full.settings || {};
+    } catch (_) {
+      settingsCfg = {};
+    }
+    _loadedProfileId = (cfg.profile_id || 'OpenTurbine').trim() || 'OpenTurbine';
     GPIO_DB = cfg.platform === 'esp32s3' ? GPIO_DB_ESP32S3 : GPIO_DB_ESP32;
     populate();
     _snapshotFields();   // baseline — any field that diverges from this gets an orange border
@@ -2334,6 +2367,8 @@ function populate() {
   v('f-profile-id',  cfg.profile_id   || '');
   v('f-profile-desc',cfg.profile_desc || '');
   v('f-wifi-tx-power', cfg.wifi_tx_power_dbm ?? 8);
+  const wifiTxLabel = document.getElementById('f-wifi-tx-power-val');
+  if (wifiTxLabel) wifiTxLabel.textContent = (cfg.wifi_tx_power_dbm ?? 8) + ' dBm';
   v('f-wifi-password', '');
   const wifiPw = document.getElementById('f-wifi-password');
   if (wifiPw) wifiPw.placeholder = cfg.wifi_password === '__KEEP_PASSWORD__'
@@ -2521,7 +2556,6 @@ function populate() {
   document.getElementById('f-ab-inp-type').value = abt.input_rc_pwm ? 'pwm' : 'adc';
   v('f-ab-inp-min-us', abt.input_min_us ?? 1000);
   v('f-ab-inp-max-us', abt.input_max_us ?? 2000);
-  v('f-ab-inp-thr', abt.input_threshold ?? 2048);
   updateAbTrigUI(abTrigSrc);
   updateAbArmUI(abt.requires_arm || false);
 
@@ -2554,6 +2588,8 @@ function populate() {
   const cl = cfg.cluster_serial || {};
   chk('en-cluster', cl.enabled || false);
   updateGroupEnabled('grp-cluster', cl.enabled || false);
+  const clProtocol = document.getElementById('f-cl-protocol');
+  if (clProtocol) clProtocol.value = (cl.protocol || 1).toString();
   const clBaud = document.getElementById('f-cl-baud');
   if (clBaud) {
     const bv = (cl.baud || 115200).toString();
@@ -2715,6 +2751,12 @@ function checkPinWarning(gpio) {
 }
 
 function set(key, val) { cfg[key] = val; dirty(); }
+function setWifiTxPower(raw) {
+  const val = Math.max(2, Math.min(20, Number(raw) || 8));
+  set('wifi_tx_power_dbm', val);
+  const label = document.getElementById('f-wifi-tx-power-val');
+  if (label) label.textContent = val + ' dBm';
+}
 function toggleWifiPassword() {
   const inp = document.getElementById('f-wifi-password');
   const btn = document.getElementById('btn-wifi-pw-toggle');
@@ -2772,11 +2814,143 @@ function setSensor(sensor, key, val) {
     if (!checkPinWarning(val)) { refreshAllPins(); return; }
   }
   cfg.sensors[sensor][key] = val;
-  if (['pin','clk','cs','miso','mosi'].includes(key)) refreshAllPins();
+  if (['pin','clk','cs','miso','mosi'].includes(key) ||
+      (key === 'rc_pwm' && (sensor === 'throttle_input' || sensor === 'idle_input'))) {
+    refreshAllPins();
+  }
   dirty();
 }
+
+const SENSOR_RULE_ENUM = {
+  oil_temp:0, tot:1, n1_rpm:2, oil_press:3, tit:4, batt_voltage:5, n2_rpm:6,
+  fuel_press:11, fuel_flow:12, p1:13, p2:14, torque:15, flame:16,
+  throttle_input:17, idle_input:18
+};
+const ACT_RULE_ENUM = {
+  cool_fan:0, bleed_valve:1, fuel_pump2:2, oil_scavenge_pump:3,
+  throttle:4, starter:5, starter_en:6, oil_pump:7, fuel_sol:8,
+  igniter:9, igniter2:10, ab_sol:11, ab_pump:12, airstarter_sol:15,
+  glow_plug:16, prop_pitch:17
+};
+const SEQ_ACTION_KEYS = [
+  'startup_enter_actions','startup_exit_actions','shutdown_enter_actions','shutdown_exit_actions',
+  'ab_enter_actions','ab_exit_actions','ab_shut_enter_actions','ab_shut_exit_actions'
+];
+const SENSOR_DEPENDENCIES = {
+  n1_rpm: { name:'N1 RPM sensor', safety:['overspeed','surge'], logs:['n1'], rules:[2],
+            functions:['N1 overspeed guard','Surge guard','N1 session logging','rules using N1 RPM'] },
+  n2_rpm: { name:'N2 RPM sensor', logs:['n2'], rules:[6],
+            functions:['N2 session logging','N2 governor/dynamic idle if selected','rules using N2 RPM'] },
+  tot: { name:'TOT sensor', safety:['overtemp','hot_start'], logs:['tot'], rules:[1],
+         functions:['TOT overtemp guard','Hot-start guard','TOT session logging','rules using TOT'] },
+  tit: { name:'TIT sensor', safety:['tit_overtemp'], logs:['tit'], rules:[4],
+         functions:['TIT overtemp guard','TIT session logging','rules using TIT'] },
+  oil_press: { name:'Oil pressure sensor', safety:['low_oil','oil_zero'], controllers:['oil_loop'], logs:['oil'], rules:[3],
+               functions:['Low oil pressure guard','Zero oil pressure guard','Oil pressure loop','Oil pressure logging','rules using oil pressure'] },
+  oil_temp: { name:'Oil temperature sensor', safety:['oil_temp_high'], logs:[], rules:[0],
+              functions:['Oil temperature high guard','rules using oil temperature'] },
+  fuel_press: { name:'Fuel pressure sensor', safety:['fuel_press_low'], logs:['fuel_press'], rules:[11],
+                functions:['Fuel pressure low guard','Fuel pressure logging','rules using fuel pressure'] },
+  fuel_flow: { name:'Fuel flow sensor', logs:['fuel_flow'], rules:[12], functions:['Fuel flow logging','rules using fuel flow'] },
+  batt_voltage: { name:'Battery voltage sensor', safety:['batt_low'], logs:['batt'], rules:[5],
+                  functions:['Battery low guard','Battery voltage logging','rules using battery voltage'] },
+  p1: { name:'P1 sensor', logs:['p1'], rules:[13], functions:['P1 logging','rules using P1'] },
+  p2: { name:'P2 sensor', logs:['p2'], rules:[14], functions:['P2 logging','rules using P2'] },
+  torque: { name:'Torque sensor', rules:[15], functions:['rules using torque'] },
+  flame: { name:'Flame sensor', rules:[16], functions:['FlameConfirm / flameout source if selected','rules using flame'] },
+  throttle_input: { name:'Throttle input', rules:[17], functions:['rules using throttle input'] },
+  idle_input: { name:'Idle input', rules:[18], functions:['idle input mapping','rules using idle input'] },
+};
+const ACT_DEPENDENCIES = {
+  oil_scavenge_pump: { name:'Oil scavenge pump', rules:[3], logs:[], blocks:['OilScavengeOn','OilScavengeOff'],
+                       functions:['Scavenge sequence blocks','sequencer side-actions using scavenge pump','rules driving scavenge pump'] },
+  oil_pump: { name:'Oil pump', controllers:['oil_loop'], logs:['oil_pct'], rules:[7], blocks:['OilPumpOn','OilPumpOff','OilPrime'],
+              functions:['Oil pressure loop','Oil pump logging','oil-pump sequence side-actions','rules driving oil pump'] },
+  starter: { name:'Starter', rules:[5], blocks:['StarterSpin','StarterOff'], functions:['Starter sequence blocks','starter side-actions','rules driving starter'] },
+  throttle: { name:'Throttle / fuel ESC', controllers:['dynamic_idle','governor'], logs:['throttle'], rules:[4],
+              blocks:['FuelPumpIdle','ModifiedIdle','Spool','ThrottleSet'], functions:['Throttle sequence blocks','dynamic idle/governor output','throttle logging','rules driving throttle'] },
+  fuel_pump2: { name:'Aux fuel pump 2', logs:['fp2'], rules:[2], blocks:['FuelPumpRamp','FuelPump2Set','FuelPump2On','FuelPump2Off'],
+                functions:['Aux fuel pump 2 sequence blocks','FP2 logging','rules driving FP2'] },
+  glow_plug: { name:'Glow plug', logs:['glow'], rules:[16], blocks:['GlowPreheat'], functions:['GlowPreheat block','glow logging','rules driving glow plug'] },
+  prop_pitch: { name:'Prop pitch', controllers:['governor'], logs:['prop'], rules:[17], functions:['Governor prop-pitch output','prop pitch logging','rules driving prop pitch'] },
+  cool_fan: { name:'Cooling fan', rules:[0], blocks:['CoolFanOn','CoolFanOff'], functions:['Cooling fan sequence blocks','rules driving cooling fan'] },
+  bleed_valve: { name:'Bleed valve', rules:[1], blocks:['BleedOpen','BleedClose'], functions:['Bleed valve sequence blocks','rules driving bleed valve'] },
+  fuel_sol: { name:'Fuel solenoid', rules:[8], blocks:['FuelOpen','FuelSolClose','FuelPulse'], functions:['Fuel solenoid sequence blocks','rules driving fuel solenoid'] },
+  igniter: { name:'Igniter 1', rules:[9], blocks:['IgniterOn','IgniterOff','PreIgnSpark','PreHeat'], functions:['Ignition sequence blocks','rules driving igniter'] },
+  igniter2: { name:'Igniter 2', rules:[10], blocks:['ABIgnOn','ABIgnOff'], functions:['Igniter 2 / AB ignition blocks','rules driving igniter 2'] },
+  ab_sol: { name:'AB solenoid', rules:[11], blocks:['ABSolOpen','ABSolClose'], functions:['AB solenoid sequence blocks','rules driving AB solenoid'] },
+  ab_pump: { name:'AB pump', logs:['ab'], rules:[12], blocks:['ABPumpOn','ABPumpOff'], functions:['AB pump sequence blocks','AB logging','rules driving AB pump'] },
+  airstarter_sol: { name:'Airstarter solenoid', rules:[15], blocks:['AirstarterOn','AirstarterOff'], functions:['Airstarter sequence blocks','rules driving airstarter'] },
+  starter_en: { name:'Starter enable relay', rules:[6], blocks:['StarterEnOn','StarterEnOff'], functions:['Starter enable sequence blocks','rules driving starter enable'] },
+};
+
+function dependencyWarning(kind, key) {
+  const dep = kind === 'sensor' ? SENSOR_DEPENDENCIES[key] : ACT_DEPENDENCIES[key];
+  if (!dep) return true;
+  const impacted = new Set(dep.functions || []);
+  const s = settingsCfg || {};
+  (dep.safety || []).forEach(k => { if (cfg.safety?.[k]) impacted.add('Safety: ' + k.replaceAll('_',' ')); });
+  (dep.controllers || []).forEach(k => { if (cfg.controllers?.[k]) impacted.add('Controller: ' + k.replaceAll('_',' ')); });
+  (dep.logs || []).forEach(k => { if (s.session_log?.[k]) impacted.add('Session log: ' + k.replaceAll('_',' ')); });
+  if (dep.rules?.length && Array.isArray(s.rules) && s.rules.some(r => dep.rules.includes(Number(kind === 'sensor' ? r.sensor : r.actuator)))) {
+    impacted.add('Control rules using this ' + kind);
+  }
+  if (kind === 'actuator') {
+    const actVal = ACT_RULE_ENUM[key];
+    if (SEQ_ACTION_KEYS.some(k => (cfg[k] || []).some(slot => (slot || []).some(a => Number(a.act) === actVal)))) {
+      impacted.add('Sequencer simultaneous actions using this actuator');
+    }
+    if ((dep.blocks || []).some(b => ['startup_seq','shutdown_seq','ab_seq','ab_shut_seq'].some(k => (cfg[k] || []).includes(b)))) {
+      impacted.add('Sequencer blocks for this actuator');
+    }
+  }
+  if (!impacted.size) return true;
+  return confirm('Removing ' + dep.name + ' will also remove/disable:\n\n- ' +
+    [...impacted].join('\n- ') + '\n\nContinue?');
+}
+
+function cleanupRemovedSensor(sensor) {
+  const dep = SENSOR_DEPENDENCIES[sensor];
+  if (!dep) return;
+  if (cfg.safety) (dep.safety || []).forEach(k => cfg.safety[k] = false);
+  if (cfg.controllers) (dep.controllers || []).forEach(k => cfg.controllers[k] = false);
+  updateSafetyPrerequisites(false);
+  updateHardwarePrerequisites(false);
+}
+
+function cleanupRemovedActuator(act) {
+  const dep = ACT_DEPENDENCIES[act];
+  if (!dep) return;
+  if (cfg.controllers) (dep.controllers || []).forEach(k => cfg.controllers[k] = false);
+  const actVal = ACT_RULE_ENUM[act];
+  if (actVal !== undefined) {
+    SEQ_ACTION_KEYS.forEach(k => {
+      if (!Array.isArray(cfg[k])) return;
+      cfg[k] = cfg[k].map(slot => Array.isArray(slot) ? slot.filter(a => Number(a.act) !== actVal) : []);
+    });
+  }
+  (dep.blocks || []).forEach(block => {
+    ['startup_seq','shutdown_seq','ab_seq','ab_shut_seq'].forEach((seqKey, idx) => {
+      if (!Array.isArray(cfg[seqKey])) return;
+      const delayKey = ['startup_delay_ms','shutdown_delay_ms','ab_delay_ms','ab_shut_delay_ms'][idx];
+      for (let i = cfg[seqKey].length - 1; i >= 0; i--) {
+        if (cfg[seqKey][i] !== block) continue;
+        cfg[seqKey].splice(i, 1);
+        if (Array.isArray(cfg[delayKey])) cfg[delayKey].splice(i, 1);
+        SEQ_ACTION_KEYS.slice(idx * 2, idx * 2 + 2).forEach(k => { if (Array.isArray(cfg[k])) cfg[k].splice(i, 1); });
+      }
+    });
+  });
+  updateHardwarePrerequisites(false);
+}
+
 function setSensorEnabled(sensor, grpId, val) {
+  if (!val && cfg.sensors?.[sensor]?.enabled && !dependencyWarning('sensor', sensor)) {
+    chk('en-' + grpId, true);
+    return;
+  }
   setSensor(sensor, 'enabled', val);
+  if (!val) cleanupRemovedSensor(sensor);
   if (val && ['tot','tit','oil_temp'].includes(sensor)) {
     adoptExistingSpiBus(sensor);
     refreshAllPins();
@@ -2796,7 +2970,12 @@ function setAct(act, key, val) {
   dirty();
 }
 function setActEnabled(act, grpId, val) {
+  if (!val && cfg.actuators?.[act]?.enabled && !dependencyWarning('actuator', act)) {
+    chk('en-' + grpId, true);
+    return;
+  }
   setAct(act, 'enabled', val);
+  if (!val) cleanupRemovedActuator(act);
   updateGroupEnabled('grp-' + grpId, val);
   updateHardwarePrerequisites(true);
 }
@@ -3138,6 +3317,7 @@ const PIN_SELECT_LABELS = {
   'f-glow-pin':       'Glow Plug',
   'f-led-pin':        'Status LED',
   'f-cl-tx':          'Cluster Serial TX',
+  'f-cl-rx':          'Cluster Serial RX',
   'f-mav-tx':         'MAVLink TX',
   'f-ab-sw-pin':      'AB Switch',
   'f-ab-inp-pin':     'AB Input',
@@ -3294,27 +3474,72 @@ function updateFuelFlowTypeUI() {
   refreshPinSel('f-fuelflow-pin', type === 1 ? 'any' : 'adc', curPin);
 }
 
-function setAbTrigSrc(v) { setAbTrig('source', v); updateAbTrigUI(v); }
+function setAbTrigSrc(v) {
+  const abt = ensureAbTrig();
+  abt.source = v;
+  if (v === 0) abt.requires_arm = false;
+  updateAbTrigUI(v);
+  updateAbArmUI(!!abt.requires_arm);
+  refreshAllPins();
+  dirty();
+}
 function setAbInputType(rcPwm) {
   setAbTrigBool('input_rc_pwm', rcPwm);
   updateAbInputTypeUI(rcPwm);
   refreshPinSel('f-ab-inp-pin', rcPwm ? 'in' : 'adc', (cfg.ab_trigger || {}).input_pin);
   refreshAllPins();
 }
+function abThresholdRaw() {
+  const abt = cfg.ab_trigger || {};
+  return Math.max(0, Math.min(4095, Math.round(abt.input_threshold ?? 2048)));
+}
+function abThresholdToDisplay(raw, rcPwm) {
+  return rcPwm ? Math.round(raw * 100 / 4095) : raw;
+}
+function setAbInputThresholdDisplay(val) {
+  const abt = ensureAbTrig();
+  const rcPwm = !!abt.input_rc_pwm;
+  abt.input_threshold = rcPwm
+    ? Math.max(0, Math.min(4095, Math.round(Math.max(0, Math.min(100, val)) * 4095 / 100)))
+    : Math.max(0, Math.min(4095, Math.round(val)));
+  dirty();
+}
 function updateAbInputTypeUI(rcPwm) {
   ['grp-ab-inp-min-us', 'grp-ab-inp-max-us'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = rcPwm ? '' : 'none';
   });
+  const lbl = document.getElementById('lbl-ab-inp-thr');
+  const desc = document.getElementById('desc-ab-inp-thr');
+  const inp = document.getElementById('f-ab-inp-thr');
+  if (lbl) lbl.textContent = rcPwm ? 'Trigger threshold (%)' : 'Trigger threshold (ADC count)';
+  if (desc) desc.textContent = rcPwm
+    ? 'Percent of the configured PWM pulse range. Stored internally as normalized 0-4095.'
+    : 'Raw ADC threshold, 0-4095.';
+  if (inp) {
+    inp.min = 0;
+    inp.max = rcPwm ? 100 : 4095;
+    inp.step = rcPwm ? 1 : 1;
+    inp.value = abThresholdToDisplay(abThresholdRaw(), rcPwm);
+  }
 }
 function updateAbTrigUI(src) {
   const grpSw  = document.getElementById('grp-ab-sw');
   const grpInp = document.getElementById('grp-ab-inp');
   const grpArm = document.getElementById('grp-ab-arm');
+  const help = document.getElementById('ab-trigger-help');
   if (grpSw)  grpSw.style.display  = (src === 2) ? '' : 'none';
   if (grpInp) grpInp.style.display = '';
   updateAbInputTypeUI(!!(cfg.ab_trigger || {}).input_rc_pwm);
   if (grpArm) grpArm.style.display = (src >= 1)  ? '' : 'none';
+  if (help) {
+    help.textContent = [
+      'Manual mode only fires from the web UI or a command.',
+      'Afterburner requests when main throttle passes the configured AB threshold.',
+      'Afterburner requests while the dedicated switch is active.',
+      'Afterburner requests when the dedicated analog or servo input passes its threshold.'
+    ][src] || '';
+  }
 }
 function updateAbArmUI(checked) {
   const pins = document.getElementById('grp-ab-arm-pins');
@@ -3595,7 +3820,10 @@ function _checkGpioConflicts() {
   }
 
   // Serial outputs
-  if (cfg.cluster_serial?.enabled) add(cfg.cluster_serial.tx_pin, 'Cluster Serial TX');
+  if (cfg.cluster_serial?.enabled) {
+    add(cfg.cluster_serial.tx_pin, 'Cluster Serial TX');
+    add(cfg.cluster_serial.rx_pin, 'Cluster Serial RX');
+  }
   if (cfg.mavlink?.enabled) add(cfg.mavlink.tx_pin, 'MAVLink TX');
 
   (cfg.di_channels || []).forEach((ch, index) => add(ch.pin, 'DI-' + (index + 1)));
@@ -3631,15 +3859,18 @@ function _releaseInactivePinConflicts() {
     if (!item?.enabled) release(item, ['pin', 'current_pin']);
     else if (!item.has_current) release(item, ['current_pin']);
   }
-  if (!cfg.cluster_serial?.enabled) release(cfg.cluster_serial, ['tx_pin']);
+  if (!cfg.cluster_serial?.enabled) release(cfg.cluster_serial, ['tx_pin', 'rx_pin']);
   if (!cfg.mavlink?.enabled) release(cfg.mavlink, ['tx_pin']);
   if (!cfg.has_afterburner) {
     release(cfg.actuators?.ab_sol, ['pin']);
     release(cfg.actuators?.ab_pump, ['pin']);
     release(cfg.ab_trigger, ['switch_pin', 'input_pin', 'arm_pin']);
     release(cfg.ab_flame, ['pin']);
-  } else if (!cfg.ab_flame?.enabled) {
-    release(cfg.ab_flame, ['pin']);
+  } else {
+    const abt = cfg.ab_trigger || {};
+    if (abt.source !== 2) release(abt, ['switch_pin']);
+    if (abt.source === 0 || !abt.requires_arm) release(abt, ['arm_pin']);
+    if (!cfg.ab_flame?.enabled) release(cfg.ab_flame, ['pin']);
   }
   if (changed) {
     refreshAllPins();
@@ -3669,7 +3900,7 @@ function saveHardware() {
     throttle:'Main Fuel Pump / Throttle ESC', starter:'Starter', oil_pump:'Oil Pump',
     oil_scavenge_pump:'Oil Scavenge Pump', fuel_sol:'Fuel Solenoid', igniter:'Igniter',
     igniter2:'Igniter 2', starter_en:'Starter Enable', ab_sol:'AB Solenoid',
-    ab_pump:'AB Pump', cool_fan:'Cooling Fan', fuel_pump2:'Auxiliary Fuel Pump 2',
+    ab_pump:'AB Pump', airstarter_sol:'Airstarter Solenoid', cool_fan:'Cooling Fan', fuel_pump2:'Auxiliary Fuel Pump 2',
     bleed_valve:'Bleed Valve', prop_pitch:'Prop Pitch', glow_plug:'Glow Plug',
     status_led:'Status LED'
   })) {
@@ -3700,6 +3931,13 @@ function saveHardware() {
       requirePin(tq, 'dt_pin', 'Torque HX711 DT');
       requirePin(tq, 'clk_pin', 'Torque HX711 CLK');
     } else requirePin(tq, 'pin', 'Torque Sensor');
+  }
+  if (cfg.cluster_serial?.enabled) requirePin(cfg.cluster_serial, 'tx_pin', 'Cluster Serial TX');
+  if (cfg.has_afterburner) {
+    const abt = cfg.ab_trigger || {};
+    if ((abt.source ?? 0) === 2) requirePin(abt, 'switch_pin', 'AB trigger switch');
+    if ((abt.source ?? 0) === 3) requirePin(abt, 'input_pin', 'AB analog / servo input');
+    if ((abt.source ?? 0) !== 0 && abt.requires_arm) requirePin(abt, 'arm_pin', 'AB arm switch');
   }
   if (missing.length) {
     alert('Please set pin for ' + missing.join(', '));
@@ -3756,6 +3994,8 @@ async function _doSave() {
   document.getElementById('save-recap-modal').style.display = 'none';
   document.getElementById('save-msg').textContent = 'Saving…';
   document.getElementById('btn-save').disabled = true;
+  const nextProfileId = (cfg.profile_id || 'OpenTurbine').trim() || 'OpenTurbine';
+  const profileChanged = nextProfileId !== (_loadedProfileId || 'OpenTurbine');
   try {
     const r = await fetch('/api/hardware', {
       method: 'POST',
@@ -3766,7 +4006,7 @@ async function _doSave() {
     if (j.ok) {
       clearDirty();
       document.getElementById('save-msg').textContent = 'Saved — rebooting…';
-      showRebootOverlay();
+      showRebootOverlay(profileChanged ? nextProfileId : '');
     } else {
       document.getElementById('save-msg').textContent = 'Save failed: ' + (j.error || 'unknown');
       updateSaveButton();
@@ -3777,16 +4017,28 @@ async function _doSave() {
   }
 }
 
-function showRebootOverlay() {
+function showRebootOverlay(nextWifiName = '') {
   const ov = document.getElementById('reboot-overlay');
   ov.style.display = 'flex';
   let secs = 12;
   const t = document.getElementById('reboot-timer');
+  const note = document.getElementById('reboot-wifi-note');
+  const apUrl = 'http://192.168.4.1' + location.pathname;
+  if (note) {
+    note.innerHTML = nextWifiName
+      ? 'Wi-Fi name changed. Connect to <strong>' + escapeHtmlText(nextWifiName) + '</strong>, then open <a href="' + apUrl + '" style="color:var(--accent)">192.168.4.1</a>.'
+      : 'Keep this page open while the ECU restarts. If the browser does not reconnect, open <a href="' + apUrl + '" style="color:var(--accent)">192.168.4.1</a>.';
+  }
   const iv = setInterval(() => {
     secs--;
     t.textContent = secs > 0 ? 'Reconnecting in ~' + secs + 's…' : 'Reconnecting…';
     if (secs <= 0) {
       clearInterval(iv);
+      if (nextWifiName) {
+        t.textContent = 'Connect to Wi-Fi "' + nextWifiName + '" if needed. Redirecting to 192.168.4.1...';
+        setTimeout(() => { location.href = apUrl; }, 500);
+        return;
+      }
       const poll = setInterval(async () => {
         try { const r = await fetch('/api/status',{cache:'no-store'}); if(r.ok){clearInterval(poll);location.reload();} } catch(_) {}
       }, 1000);

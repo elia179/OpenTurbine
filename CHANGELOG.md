@@ -141,7 +141,7 @@ First public release. Complete, running firmware.
 - JSON config (20+ sections, 80+ parameters), profile ID safety check
 - FlightRecorder: persistent ring-buffer event log on LittleFS
 - SessionLogger: per-run CSV stream with configurable channel mask
-- ClusterSerial: JetEcu-compatible serial telemetry protocol
+- ClusterSerial: OTC framed external display/device telemetry protocol
 - Web interface: Dashboard, Calibration, Config, Sequence, Log, Tools
 - ESP32 classic, 4 MB flash, dual OTA partition, hardware watchdog
 - Core 1: ECU control loop; Core 0: Wi-Fi + WebServer + WebSocket

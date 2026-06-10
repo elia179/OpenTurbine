@@ -39,6 +39,15 @@ public:
         _faultCb = faultCb;
     }
 
+    static bool actuatorUsable(uint8_t act) {
+        return _actuatorUsable(act);
+    }
+
+    static void applyActuatorDemand(uint8_t act, float dem) {
+        if (!_actuatorUsable(act)) return;
+        _applyActuator(act, constrain(dem, 0.0f, 1.0f), EngineData::instance());
+    }
+
     // Called once per control tick (Core 1, ~10 ms cycle)
     static void evaluate() {
         auto& ed = EngineData::instance();

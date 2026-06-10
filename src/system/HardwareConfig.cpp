@@ -6,6 +6,8 @@
 #include <cstring>
 
 namespace {
+constexpr const char* FACTORY_CONFIG_PATH = "/factory_config.json";
+
 #if defined(OT_PLATFORM_ESP32S3)
 constexpr int DEFAULT_STATUS_LED_PIN = -1;
 #else
@@ -47,65 +49,248 @@ bool enabled(JsonVariantConst object) {
     return !object["enabled"].isNull() && object["enabled"].as<bool>();
 }
 
+void clearSeqSideActions(
+    HardwareConfig::SeqSideAction actions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
+    memset(actions, 0, sizeof(HardwareConfig::SeqSideAction) *
+                       HardwareConfig::MAX_SEQ_BLOCKS *
+                       HardwareConfig::MAX_SEQ_SIDE_ACTIONS);
+}
+
+void writeSeqSideActions(
+    JsonDocument& doc, const char* key, int seqLen,
+    HardwareConfig::SeqSideAction actions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
+    JsonArray outer = doc[key].to<JsonArray>();
+    for (int i = 0; i < seqLen; i++) {
+        JsonArray slot = outer.add<JsonArray>();
+        for (int j = 0; j < HardwareConfig::MAX_SEQ_SIDE_ACTIONS; j++) {
+            const auto& a = actions[i][j];
+            if (!a.enabled) continue;
+            JsonObject item = slot.add<JsonObject>();
+            item["act"] = a.actuator;
+            item["value"] = a.value;
+        }
+    }
+}
+
+void readSeqSideActions(
+    const JsonDocument& doc, const char* key, int seqLen,
+    HardwareConfig::SeqSideAction actions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
+    clearSeqSideActions(actions);
+    if (!doc[key].is<JsonArrayConst>()) return;
+    JsonArrayConst outer = doc[key];
+    for (int i = 0; i < seqLen && i < (int)outer.size() && i < HardwareConfig::MAX_SEQ_BLOCKS; i++) {
+        if (!outer[i].is<JsonArrayConst>()) continue;
+        JsonArrayConst slot = outer[i];
+        int out = 0;
+        for (JsonObjectConst item : slot) {
+            if (out >= HardwareConfig::MAX_SEQ_SIDE_ACTIONS) break;
+            int act = item["act"] | -1;
+            if (act < 0 || act > 17) continue;
+            actions[i][out].enabled = true;
+            actions[i][out].actuator = (uint8_t)act;
+            actions[i][out].value = constrain(item["value"] | 0.0f, 0.0f, 1.0f);
+            out++;
+        }
+    }
+}
+
+bool seqActionActuatorAvailable(uint8_t act) {
+    switch (act) {
+        case 0:  return HardwareConfig::hasCoolFan;
+        case 1:  return HardwareConfig::hasBleedValve;
+        case 2:  return HardwareConfig::hasFuelPump2;
+        case 3:  return HardwareConfig::hasOilScavengePump;
+        case 4:  return HardwareConfig::hasThrottle;
+        case 5:  return HardwareConfig::hasStarter;
+        case 6:  return HardwareConfig::hasStarterEn;
+        case 7:  return HardwareConfig::hasOilPump;
+        case 8:  return HardwareConfig::hasFuelSol;
+        case 9:  return HardwareConfig::hasIgniter;
+        case 10: return HardwareConfig::hasIgniter2;
+        case 11: return HardwareConfig::hasAfterburner && HardwareConfig::hasAbSol;
+        case 12: return HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump;
+        case 15: return HardwareConfig::hasAirstarterSol;
+        case 16: return HardwareConfig::hasGlowPlug;
+        case 17: return HardwareConfig::hasPropPitch;
+        default: return false;
+    }
+}
+
+void sanitizeSeqSideActions(
+    HardwareConfig::SeqSideAction actions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
+    for (int i = 0; i < HardwareConfig::MAX_SEQ_BLOCKS; i++) {
+        int out = 0;
+        for (int j = 0; j < HardwareConfig::MAX_SEQ_SIDE_ACTIONS; j++) {
+            auto a = actions[i][j];
+            if (!a.enabled || !seqActionActuatorAvailable(a.actuator)) continue;
+            a.value = constrain(a.value, 0.0f, 1.0f);
+            actions[i][out++] = a;
+        }
+        for (; out < HardwareConfig::MAX_SEQ_SIDE_ACTIONS; out++) {
+            actions[i][out] = HardwareConfig::SeqSideAction{};
+        }
+    }
+}
+
+bool sequenceBlockAvailable(const char* name) {
+    if (!name || !name[0]) return false;
+    if (strcmp(name, "OilPrime") == 0 || strcmp(name, "OilPumpOn") == 0 || strcmp(name, "OilPumpOff") == 0)
+        return HardwareConfig::hasOilPump;
+    if (strcmp(name, "StarterSpin") == 0 || strcmp(name, "StarterOff") == 0)
+        return HardwareConfig::hasStarter;
+    if (strcmp(name, "FuelPumpIdle") == 0 || strcmp(name, "ModifiedIdle") == 0 ||
+        strcmp(name, "Spool") == 0 || strcmp(name, "ThrottleSet") == 0)
+        return HardwareConfig::hasThrottle;
+    if (strcmp(name, "FuelOpen") == 0 || strcmp(name, "FuelSolClose") == 0 || strcmp(name, "FuelPulse") == 0)
+        return HardwareConfig::hasFuelSol;
+    if (strcmp(name, "PreIgnSpark") == 0 || strcmp(name, "PreHeat") == 0 ||
+        strcmp(name, "IgniterOn") == 0 || strcmp(name, "IgniterOff") == 0)
+        return HardwareConfig::hasIgniter;
+    if (strcmp(name, "FlameConfirm") == 0) return HardwareConfig::hasFlame;
+    if (strcmp(name, "TempConfirm") == 0 || strcmp(name, "WaitTOTCool") == 0) return HardwareConfig::hasTot;
+    if (strcmp(name, "StarterEnOn") == 0 || strcmp(name, "StarterEnOff") == 0) return HardwareConfig::hasStarterEn;
+    if (strcmp(name, "OilScavengeOn") == 0 || strcmp(name, "OilScavengeOff") == 0) return HardwareConfig::hasOilScavengePump;
+    if (strcmp(name, "AirstarterOn") == 0 || strcmp(name, "AirstarterOff") == 0) return HardwareConfig::hasAirstarterSol;
+    if (strcmp(name, "CoolFanOn") == 0 || strcmp(name, "CoolFanOff") == 0) return HardwareConfig::hasCoolFan;
+    if (strcmp(name, "BleedOpen") == 0 || strcmp(name, "BleedClose") == 0) return HardwareConfig::hasBleedValve;
+    if (strcmp(name, "GlowPreheat") == 0) return HardwareConfig::hasGlowPlug;
+    if (strcmp(name, "FuelPumpRamp") == 0 || strcmp(name, "FuelPump2Set") == 0 ||
+        strcmp(name, "FuelPump2On") == 0 || strcmp(name, "FuelPump2Off") == 0) return HardwareConfig::hasFuelPump2;
+    if (strcmp(name, "GovernorHold") == 0)
+        return HardwareConfig::hasGovernor && HardwareConfig::hasN2Rpm &&
+               (HardwareConfig::hasThrottle || HardwareConfig::hasPropPitch);
+    if (strncmp(name, "AB", 2) == 0 || strcmp(name, "ABSolOpen") == 0 || strcmp(name, "ABSolClose") == 0)
+        return HardwareConfig::hasAfterburner;
+    return true;
+}
+
+void sanitizeSequenceBlocks(
+    char seq[HardwareConfig::MAX_SEQ_BLOCKS][24], int& len, int delays[HardwareConfig::MAX_SEQ_BLOCKS],
+    HardwareConfig::SeqSideAction enterActions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS],
+    HardwareConfig::SeqSideAction exitActions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
+    int out = 0;
+    for (int i = 0; i < len; i++) {
+        if (!sequenceBlockAvailable(seq[i])) continue;
+        if (out != i) {
+            strncpy(seq[out], seq[i], sizeof(seq[out]) - 1);
+            seq[out][sizeof(seq[out]) - 1] = '\0';
+            delays[out] = delays[i];
+            memcpy(enterActions[out], enterActions[i], sizeof(enterActions[out]));
+            memcpy(exitActions[out], exitActions[i], sizeof(exitActions[out]));
+        }
+        out++;
+    }
+    for (int i = out; i < HardwareConfig::MAX_SEQ_BLOCKS; i++) {
+        seq[i][0] = '\0';
+        delays[i] = 0;
+        memset(enterActions[i], 0, sizeof(enterActions[i]));
+        memset(exitActions[i], 0, sizeof(exitActions[i]));
+    }
+    len = out;
+}
+
+bool intRange(JsonVariantConst object, const char* field, long minValue, long maxValue) {
+    if (object[field].isNull()) return true;
+    if (!object[field].is<int>() && !object[field].is<long>() &&
+        !object[field].is<unsigned int>() && !object[field].is<unsigned long>()) return false;
+    long value = object[field].as<long>();
+    return value >= minValue && value <= maxValue;
+}
+
+bool requiredPinAllowed(JsonVariantConst object, const char* field, bool (*allowed)(int)) {
+    const int pin = jsonPin(object, field);
+    return pin >= 0 && allowed(pin);
+}
+
+bool optionalPinAllowed(JsonVariantConst object, const char* field, bool (*allowed)(int)) {
+    const int pin = jsonPin(object, field);
+    return pin < 0 || allowed(pin);
+}
+
+bool copyLittleFsFile(const char* from, const char* to) {
+    File src = LittleFS.open(from, "r");
+    if (!src) return false;
+    File dst = LittleFS.open(to, "w");
+    if (!dst) {
+        src.close();
+        return false;
+    }
+    uint8_t buf[256];
+    bool ok = true;
+    while (src.available()) {
+        size_t n = src.read(buf, sizeof(buf));
+        if (dst.write(buf, n) != n) {
+            ok = false;
+            break;
+        }
+    }
+    src.close();
+    dst.close();
+    if (!ok) LittleFS.remove(to);
+    return ok;
+}
+
 bool validatePlatformPins(const JsonDocument& doc) {
     const bool hasAfterburner = doc["has_afterburner"] | false;
     const bool hasTwoShaft = doc["has_two_shaft"] | false;
     JsonVariantConst controls = doc["controls"];
     const int stopPin = jsonPin(controls, "stop_pin");
     const int startPin = jsonPin(controls, "start_pin");
-    if (!gpioAllowed(stopPin) || !gpioAllowed(startPin) ||
+    if (stopPin < 0 || startPin < 0 ||
+        !gpioAllowed(stopPin) || !gpioAllowed(startPin) ||
         (stopPin >= 0 && stopPin == startPin)) return false;
 
     JsonVariantConst sensors = doc["sensors"];
-    if (enabled(sensors["n1_rpm"]) && !gpioAllowed(jsonPin(sensors["n1_rpm"], "pin"))) return false;
+    if (enabled(sensors["n1_rpm"]) &&
+        !requiredPinAllowed(sensors["n1_rpm"], "pin", gpioAllowed)) return false;
     if (hasTwoShaft && enabled(sensors["n2_rpm"]) &&
-        !gpioAllowed(jsonPin(sensors["n2_rpm"], "pin"))) return false;
+        !requiredPinAllowed(sensors["n2_rpm"], "pin", gpioAllowed)) return false;
 
     const char* analogSensors[] = { "oil_press", "flame", "fuel_press", "p1", "p2", "batt_voltage" };
     for (const char* key : analogSensors)
-        if (enabled(sensors[key]) && !adcGpioAllowed(jsonPin(sensors[key], "pin"))) return false;
+        if (enabled(sensors[key]) && !requiredPinAllowed(sensors[key], "pin", adcGpioAllowed)) return false;
 
     JsonVariantConst fuelFlow = sensors["fuel_flow"];
     if (enabled(fuelFlow) &&
-        !((fuelFlow["type"] | 0) ? gpioAllowed(jsonPin(fuelFlow, "pin"))
-                                 : adcGpioAllowed(jsonPin(fuelFlow, "pin")))) return false;
+        !((fuelFlow["type"] | 0) ? requiredPinAllowed(fuelFlow, "pin", gpioAllowed)
+                                 : requiredPinAllowed(fuelFlow, "pin", adcGpioAllowed))) return false;
 
     const char* inputSensors[] = { "throttle_input", "idle_input" };
     for (const char* key : inputSensors) {
         JsonVariantConst item = sensors[key];
         if (enabled(item) &&
-            !((item["rc_pwm"] | false) ? gpioAllowed(jsonPin(item, "pin"))
-                                       : adcGpioAllowed(jsonPin(item, "pin")))) return false;
+            !((item["rc_pwm"] | false) ? requiredPinAllowed(item, "pin", gpioAllowed)
+                                       : requiredPinAllowed(item, "pin", adcGpioAllowed))) return false;
     }
 
     const char* spiSensors[] = { "tot", "tit" };
     for (const char* key : spiSensors) {
         JsonVariantConst item = sensors[key];
         if (enabled(item) &&
-            (!outputGpioAllowed(jsonPin(item, "clk")) ||
-             !outputGpioAllowed(jsonPin(item, "cs")) ||
-             !gpioAllowed(jsonPin(item, "miso")) ||
-             !outputGpioAllowed(jsonPin(item, "mosi")))) return false;
+            (!requiredPinAllowed(item, "clk", outputGpioAllowed) ||
+             !requiredPinAllowed(item, "cs", outputGpioAllowed) ||
+             !requiredPinAllowed(item, "miso", gpioAllowed) ||
+             !optionalPinAllowed(item, "mosi", outputGpioAllowed))) return false;
     }
 
     JsonVariantConst oilTemp = sensors["oil_temp"];
     if (enabled(oilTemp)) {
         const char* chip = oilTemp["chip"] | "ntc";
-        if (strcmp(chip, "ntc") == 0 && !adcGpioAllowed(jsonPin(oilTemp, "pin"))) return false;
-        if (strcmp(chip, "ds18b20") == 0 && !gpioAllowed(jsonPin(oilTemp, "pin"))) return false;
+        if (strcmp(chip, "ntc") == 0 && !requiredPinAllowed(oilTemp, "pin", adcGpioAllowed)) return false;
+        if (strcmp(chip, "ds18b20") == 0 && !requiredPinAllowed(oilTemp, "pin", gpioAllowed)) return false;
         if (strcmp(chip, "ntc") != 0 && strcmp(chip, "ds18b20") != 0 &&
-            (!outputGpioAllowed(jsonPin(oilTemp, "clk")) ||
-             !outputGpioAllowed(jsonPin(oilTemp, "cs")) ||
-             !gpioAllowed(jsonPin(oilTemp, "miso")) ||
-             !outputGpioAllowed(jsonPin(oilTemp, "mosi")))) return false;
+            (!requiredPinAllowed(oilTemp, "clk", outputGpioAllowed) ||
+             !requiredPinAllowed(oilTemp, "cs", outputGpioAllowed) ||
+             !requiredPinAllowed(oilTemp, "miso", gpioAllowed) ||
+             !optionalPinAllowed(oilTemp, "mosi", outputGpioAllowed))) return false;
     }
 
     JsonVariantConst torque = sensors["torque"];
     if (enabled(torque)) {
         if (torque["hx711"] | false) {
-            if (!gpioAllowed(jsonPin(torque, "dt_pin")) ||
-                !outputGpioAllowed(jsonPin(torque, "clk_pin"))) return false;
-        } else if (!adcGpioAllowed(jsonPin(torque, "pin"))) return false;
+            if (!requiredPinAllowed(torque, "dt_pin", gpioAllowed) ||
+                !requiredPinAllowed(torque, "clk_pin", outputGpioAllowed)) return false;
+        } else if (!requiredPinAllowed(torque, "pin", adcGpioAllowed)) return false;
     }
 
     JsonVariantConst actuators = doc["actuators"];
@@ -121,7 +306,7 @@ bool validatePlatformPins(const JsonDocument& doc) {
             (strcmp(key, "ab_sol") == 0 || strcmp(key, "ab_pump") == 0)) continue;
         if (enabled(item)) {
             const int pin = jsonPin(item, "pin");
-            if (!outputGpioAllowed(pin) ||
+            if (pin < 0 || !outputGpioAllowed(pin) ||
                 (pin >= 0 && (pin == stopPin || pin == startPin))) return false;
         }
     }
@@ -130,33 +315,130 @@ bool validatePlatformPins(const JsonDocument& doc) {
     for (const char* key : currentSensorOwners) {
         JsonVariantConst item = actuators[key];
         if (enabled(item) && (item["has_current"] | false) &&
-            !adcGpioAllowed(jsonPin(item, "current_pin"))) return false;
+            !requiredPinAllowed(item, "current_pin", adcGpioAllowed)) return false;
     }
 
     JsonVariantConst cluster = doc["cluster_serial"];
     JsonVariantConst mavlink = doc["mavlink"];
     JsonVariantConst buzzer = doc["buzzer"];
-    if (enabled(cluster) && !outputGpioAllowed(jsonPin(cluster, "tx_pin"))) return false;
-    if (enabled(mavlink) && !outputGpioAllowed(jsonPin(mavlink, "tx_pin"))) return false;
-    if (enabled(buzzer) && !outputGpioAllowed(jsonPin(buzzer, "pin"))) return false;
+    if (enabled(cluster) &&
+        (!requiredPinAllowed(cluster, "tx_pin", outputGpioAllowed) ||
+         !optionalPinAllowed(cluster, "rx_pin", gpioAllowed) ||
+         (jsonPin(cluster, "tx_pin") >= 0 && jsonPin(cluster, "tx_pin") == jsonPin(cluster, "rx_pin")))) return false;
+    if (!intRange(cluster, "protocol", 1, 1) ||
+        !intRange(cluster, "baud", 9600, 921600) ||
+        !intRange(cluster, "interval_ms", 10, 5000)) return false;
+    if (enabled(mavlink) && !requiredPinAllowed(mavlink, "tx_pin", outputGpioAllowed)) return false;
+    if (enabled(buzzer) && !requiredPinAllowed(buzzer, "pin", outputGpioAllowed)) return false;
 
     if (hasAfterburner) {
         JsonVariantConst abTrigger = doc["ab_trigger"];
         const int abSource = abTrigger["source"] | 0;
-        if (abSource == 2 && !gpioAllowed(jsonPin(abTrigger, "switch_pin"))) return false;
-        if (!abTrigger["input_pin"].isNull()) {
-            const int inputPin = jsonPin(abTrigger, "input_pin");
+        if (abSource < 0 || abSource > 3) return false;
+        if (abSource == 2 && !requiredPinAllowed(abTrigger, "switch_pin", gpioAllowed)) return false;
+        const int inputPin = jsonPin(abTrigger, "input_pin");
+        if (abSource == 3 && inputPin < 0) return false;
+        if (inputPin >= 0) {
             if (!((abTrigger["input_rc_pwm"] | false) ? gpioAllowed(inputPin)
                                                        : adcGpioAllowed(inputPin))) return false;
         }
+        if (!intRange(abTrigger, "input_threshold", 0, 4095) ||
+            !intRange(abTrigger, "input_min_us", 500, 2500) ||
+            !intRange(abTrigger, "input_max_us", 500, 2500)) return false;
         if (abSource != 0 && (abTrigger["requires_arm"] | false) &&
-            !gpioAllowed(jsonPin(abTrigger, "arm_pin"))) return false;
+            !requiredPinAllowed(abTrigger, "arm_pin", gpioAllowed)) return false;
         JsonVariantConst abFlame = doc["ab_flame"];
-        if (enabled(abFlame) && !adcGpioAllowed(jsonPin(abFlame, "pin"))) return false;
+        if (enabled(abFlame) && !requiredPinAllowed(abFlame, "pin", adcGpioAllowed)) return false;
     }
 
+    for (JsonVariantConst ch : doc["di_channels"].as<JsonArrayConst>()) {
+        const char* role = ch["role"] | "none";
+        if ((role && strcmp(role, "none") != 0) && jsonPin(ch, "pin") < 0) return false;
+        if (!optionalPinAllowed(ch, "pin", gpioAllowed)) return false;
+    }
+
+    struct PinUse {
+        int pin;
+        uint8_t shareGroup;
+    };
+    PinUse used[96] = {};
+    size_t usedCount = 0;
+    auto addPin = [&](int pin, uint8_t shareGroup = 0) -> bool {
+        if (pin < 0) return true;
+        for (size_t i = 0; i < usedCount; i++) {
+            if (used[i].pin != pin) continue;
+            // SPI CLK/MISO/MOSI may be shared by SPI temperature sensors on one bus.
+            if (shareGroup != 0 && used[i].shareGroup == shareGroup) return true;
+            return false;
+        }
+        if (usedCount >= sizeof(used) / sizeof(used[0])) return false;
+        used[usedCount++] = { pin, shareGroup };
+        return true;
+    };
+
+    if (!addPin(stopPin) || !addPin(startPin)) return false;
+
+    if (enabled(sensors["n1_rpm"]) && !addPin(jsonPin(sensors["n1_rpm"], "pin"))) return false;
+    if (hasTwoShaft && enabled(sensors["n2_rpm"]) && !addPin(jsonPin(sensors["n2_rpm"], "pin"))) return false;
+    for (const char* key : analogSensors)
+        if (enabled(sensors[key]) && !addPin(jsonPin(sensors[key], "pin"))) return false;
+    if (enabled(fuelFlow) && !addPin(jsonPin(fuelFlow, "pin"))) return false;
+    for (const char* key : inputSensors)
+        if (enabled(sensors[key]) && !addPin(jsonPin(sensors[key], "pin"))) return false;
+
+    for (const char* key : spiSensors) {
+        JsonVariantConst item = sensors[key];
+        if (!enabled(item)) continue;
+        if (!addPin(jsonPin(item, "clk"), 1) ||
+            !addPin(jsonPin(item, "miso"), 2) ||
+            !addPin(jsonPin(item, "mosi"), 3) ||
+            !addPin(jsonPin(item, "cs"))) return false;
+    }
+    if (enabled(oilTemp)) {
+        const char* chip = oilTemp["chip"] | "ntc";
+        if (strcmp(chip, "ntc") == 0 || strcmp(chip, "ds18b20") == 0) {
+            if (!addPin(jsonPin(oilTemp, "pin"))) return false;
+        } else if (!addPin(jsonPin(oilTemp, "clk"), 1) ||
+                   !addPin(jsonPin(oilTemp, "miso"), 2) ||
+                   !addPin(jsonPin(oilTemp, "mosi"), 3) ||
+                   !addPin(jsonPin(oilTemp, "cs"))) return false;
+    }
+    if (enabled(torque)) {
+        if (torque["hx711"] | false) {
+            if (!addPin(jsonPin(torque, "dt_pin")) ||
+                !addPin(jsonPin(torque, "clk_pin"))) return false;
+        } else if (!addPin(jsonPin(torque, "pin"))) return false;
+    }
+
+    for (const char* key : actuatorNames) {
+        JsonVariantConst item = actuators[key];
+        if (!hasAfterburner &&
+            (strcmp(key, "ab_sol") == 0 || strcmp(key, "ab_pump") == 0)) continue;
+        if (enabled(item) && !addPin(jsonPin(item, "pin"))) return false;
+    }
+    for (const char* key : currentSensorOwners) {
+        JsonVariantConst item = actuators[key];
+        if (enabled(item) && (item["has_current"] | false) &&
+            !addPin(jsonPin(item, "current_pin"))) return false;
+    }
+    if (enabled(cluster) &&
+        (!addPin(jsonPin(cluster, "tx_pin")) ||
+         !addPin(jsonPin(cluster, "rx_pin")))) return false;
+    if (enabled(mavlink) && !addPin(jsonPin(mavlink, "tx_pin"))) return false;
+    if (enabled(buzzer) && !addPin(jsonPin(buzzer, "pin"))) return false;
+
+    if (hasAfterburner) {
+        JsonVariantConst abTrigger = doc["ab_trigger"];
+        const int abSource = abTrigger["source"] | 0;
+        if (abSource == 2 && !addPin(jsonPin(abTrigger, "switch_pin"))) return false;
+        if (jsonPin(abTrigger, "input_pin") >= 0 && !addPin(jsonPin(abTrigger, "input_pin"))) return false;
+        if (abSource != 0 && (abTrigger["requires_arm"] | false) &&
+            !addPin(jsonPin(abTrigger, "arm_pin"))) return false;
+        JsonVariantConst abFlame = doc["ab_flame"];
+        if (enabled(abFlame) && !addPin(jsonPin(abFlame, "pin"))) return false;
+    }
     for (JsonVariantConst ch : doc["di_channels"].as<JsonArrayConst>())
-        if (!gpioAllowed(jsonPin(ch, "pin"))) return false;
+        if (!addPin(jsonPin(ch, "pin"))) return false;
 
     return true;
 }
@@ -435,8 +717,10 @@ int   HardwareConfig::statusLedPin     = DEFAULT_STATUS_LED_PIN;
 
 // Cluster serial
 int   HardwareConfig::clusterTxPin     = 17;
+int   HardwareConfig::clusterRxPin     = -1;
 int   HardwareConfig::clusterBaud      = 115200;
 int   HardwareConfig::clusterIntervalMs= 50;
+int   HardwareConfig::clusterProtocol  = 1;
 
 // Controller feature flags
 bool  HardwareConfig::hasOilLoop       = false;
@@ -482,19 +766,27 @@ char  HardwareConfig::startupSeq[MAX_SEQ_BLOCKS][24] = {
 };
 int   HardwareConfig::startupSeqLen    = 7;
 int   HardwareConfig::startupDelayMs[MAX_SEQ_BLOCKS] = {0, 15000, 0, 0, 10000, 0, 5000};
+HardwareConfig::SeqSideAction HardwareConfig::startupEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
+HardwareConfig::SeqSideAction HardwareConfig::startupExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 
 char  HardwareConfig::shutdownSeq[MAX_SEQ_BLOCKS][24] = {
     "ImmediateCut", "TimedDelay", "OilPumpOff"
 };
 int   HardwareConfig::shutdownSeqLen   = 3;
 int   HardwareConfig::shutdownDelayMs[MAX_SEQ_BLOCKS] = {0, 15000, 0};
+HardwareConfig::SeqSideAction HardwareConfig::shutdownEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
+HardwareConfig::SeqSideAction HardwareConfig::shutdownExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 
 char  HardwareConfig::abSeq[MAX_SEQ_BLOCKS][24]    = {};
 int   HardwareConfig::abSeqLen                     = 0;
 int   HardwareConfig::abDelayMs[MAX_SEQ_BLOCKS]    = {};
+HardwareConfig::SeqSideAction HardwareConfig::abEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
+HardwareConfig::SeqSideAction HardwareConfig::abExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 char  HardwareConfig::abShutSeq[MAX_SEQ_BLOCKS][24]= {};
 int   HardwareConfig::abShutSeqLen                 = 0;
 int   HardwareConfig::abShutDelayMs[MAX_SEQ_BLOCKS]= {};
+HardwareConfig::SeqSideAction HardwareConfig::abShutEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
+HardwareConfig::SeqSideAction HardwareConfig::abShutExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 
 // ── Load ──────────────────────────────────────────────────────
 static void inhibitStartForHardwareConfigFailure(const char* reason) {
@@ -550,8 +842,16 @@ void HardwareConfig::load() {
         }
     }
 
+    if (!LittleFS.exists(PATH) && LittleFS.exists(FACTORY_CONFIG_PATH)) {
+        if (copyLittleFsFile(FACTORY_CONFIG_PATH, PATH)) {
+            Serial.println("[HWCfg] Restored ecu_config.json from factory_config.json");
+        } else {
+            Serial.println("[HWCfg] Failed to restore factory_config.json");
+        }
+    }
+
     if (!LittleFS.exists(PATH)) {
-        Serial.println("[HWCfg] No ecu_config.json — using compiled defaults, generating file");
+        Serial.println("[HWCfg] No ecu_config.json - using compiled defaults, generating file");
         if (!save()) {
             inhibitStartForHardwareConfigFailure(
                 "Cannot start: hardware configuration storage is unavailable.");
@@ -819,8 +1119,10 @@ void HardwareConfig::applyDefaults() {
     statusLedPin = DEFAULT_STATUS_LED_PIN;
 
     clusterTxPin    = 17;
+    clusterRxPin    = -1;
     clusterBaud     = 115200;
     clusterIntervalMs = 50;
+    clusterProtocol = 1;
 
     hasOilLoop      = false;
     hasThrottleSlew = true;
@@ -848,6 +1150,8 @@ void HardwareConfig::applyDefaults() {
     startupDelayMs[1] = 15000;
     startupDelayMs[4] = 10000;
     startupDelayMs[6] = 5000;
+    clearSeqSideActions(startupEnterActions);
+    clearSeqSideActions(startupExitActions);
     for (int i = 0; i < startupSeqLen; i++)
         strncpy(startupSeq[i], defStart[i], sizeof(startupSeq[i]) - 1);
 
@@ -855,6 +1159,8 @@ void HardwareConfig::applyDefaults() {
     shutdownSeqLen = 3;
     memset(shutdownDelayMs, 0, sizeof(shutdownDelayMs));
     shutdownDelayMs[1] = 15000;
+    clearSeqSideActions(shutdownEnterActions);
+    clearSeqSideActions(shutdownExitActions);
     for (int i = 0; i < shutdownSeqLen; i++)
         strncpy(shutdownSeq[i], defStop[i], sizeof(shutdownSeq[i]) - 1);
 
@@ -865,6 +1171,8 @@ void HardwareConfig::applyDefaults() {
     abSeqLen = 6;
     memset(abSeq, 0, sizeof(abSeq));
     memset(abDelayMs, 0, sizeof(abDelayMs));
+    clearSeqSideActions(abEnterActions);
+    clearSeqSideActions(abExitActions);
     for (int i = 0; i < abSeqLen; i++)
         strncpy(abSeq[i], defAbIgn[i], sizeof(abSeq[i]) - 1);
 
@@ -873,6 +1181,8 @@ void HardwareConfig::applyDefaults() {
     abShutSeqLen = 2;
     memset(abShutSeq, 0, sizeof(abShutSeq));
     memset(abShutDelayMs, 0, sizeof(abShutDelayMs));
+    clearSeqSideActions(abShutEnterActions);
+    clearSeqSideActions(abShutExitActions);
     for (int i = 0; i < abShutSeqLen; i++)
         strncpy(abShutSeq[i], defAbShut[i], sizeof(abShutSeq[i]) - 1);
 }
@@ -901,6 +1211,15 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     if (!id[0]) return false;
     const char* password = doc["wifi_password"] | "";
     if (strcmp(password, WIFI_PASSWORD_RETAINED) != 0 && password[0] && strlen(password) < 8) return false;
+    auto sensors = doc["sensors"];
+    auto n1 = sensors["n1_rpm"];
+    if (n1["enabled"].as<bool>()) {
+        if (n1["ppr"].isNull() || n1["ppr"].as<float>() <= 0.0f) return false;
+    }
+    auto n2 = sensors["n2_rpm"];
+    if (doc["has_two_shaft"].as<bool>() && n2["enabled"].as<bool>()) {
+        if (n2["ppr"].isNull() || n2["ppr"].as<float>() <= 0.0f) return false;
+    }
     if (!validatePlatformPins(doc)) return false;
     return true;
 }
@@ -1116,7 +1435,9 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto clus = doc["cluster_serial"].to<JsonObject>();
     clus["enabled"] = hasClusterSerial; clus["tx_pin"] = clusterTxPin;
+    clus["rx_pin"] = clusterRxPin;
     clus["baud"] = clusterBaud; clus["interval_ms"] = clusterIntervalMs;
+    clus["protocol"] = clusterProtocol;
 
     auto buz = doc["buzzer"].to<JsonObject>();
     buz["enabled"] = hasBuzzer; buz["pin"] = buzzerPin;
@@ -1137,7 +1458,6 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     saf["low_oil"]    = safetyLowOil;
     saf["oil_zero"]   = safetyOilZero;
     saf["flameout"]   = safetyFlameout;
-    saf["low_fuel"]       = safetyLowFuel;
     saf["hot_start"]      = safetyHotStart;
     saf["tit_overtemp"]   = safetyTitOvertemp;
     saf["oil_temp_high"]  = safetyOilTempHigh;
@@ -1149,11 +1469,15 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < startupSeqLen; i++) ss.add(startupSeq[i]);
     auto ssd = doc["startup_delay_ms"].to<JsonArray>();
     for (int i = 0; i < startupSeqLen; i++) ssd.add(startupDelayMs[i]);
+    writeSeqSideActions(doc, "startup_enter_actions", startupSeqLen, startupEnterActions);
+    writeSeqSideActions(doc, "startup_exit_actions", startupSeqLen, startupExitActions);
 
     auto ds = doc["shutdown_seq"].to<JsonArray>();
     for (int i = 0; i < shutdownSeqLen; i++) ds.add(shutdownSeq[i]);
     auto dsd = doc["shutdown_delay_ms"].to<JsonArray>();
     for (int i = 0; i < shutdownSeqLen; i++) dsd.add(shutdownDelayMs[i]);
+    writeSeqSideActions(doc, "shutdown_enter_actions", shutdownSeqLen, shutdownEnterActions);
+    writeSeqSideActions(doc, "shutdown_exit_actions", shutdownSeqLen, shutdownExitActions);
 
     auto abt = doc["ab_trigger"].to<JsonObject>();
     abt["source"]           = abTriggerSource;
@@ -1177,11 +1501,15 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < abSeqLen; i++) as.add(abSeq[i]);
     auto asd = doc["ab_delay_ms"].to<JsonArray>();
     for (int i = 0; i < abSeqLen; i++) asd.add(abDelayMs[i]);
+    writeSeqSideActions(doc, "ab_enter_actions", abSeqLen, abEnterActions);
+    writeSeqSideActions(doc, "ab_exit_actions", abSeqLen, abExitActions);
 
     auto ass = doc["ab_shut_seq"].to<JsonArray>();
     for (int i = 0; i < abShutSeqLen; i++) ass.add(abShutSeq[i]);
     auto assd = doc["ab_shut_delay_ms"].to<JsonArray>();
     for (int i = 0; i < abShutSeqLen; i++) assd.add(abShutDelayMs[i]);
+    writeSeqSideActions(doc, "ab_shut_enter_actions", abShutSeqLen, abShutEnterActions);
+    writeSeqSideActions(doc, "ab_shut_exit_actions", abShutSeqLen, abShutExitActions);
 
     auto lbl = doc["labels"].to<JsonObject>();
     lbl["tot"]        = labelTot;
@@ -1507,8 +1835,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     auto clus = doc["cluster_serial"];
     if (!clus["enabled"].isNull()) hasClusterSerial = clus["enabled"].as<bool>();
     clusterTxPin     = clus["tx_pin"]     | clusterTxPin;
+    clusterRxPin     = clus["rx_pin"]     | clusterRxPin;
     clusterBaud      = clus["baud"]       | clusterBaud;
     clusterIntervalMs= clus["interval_ms"]| clusterIntervalMs;
+    clusterProtocol  = clus["protocol"]   | clusterProtocol;
 
     auto buz = doc["buzzer"];
     if (!buz["enabled"].isNull()) hasBuzzer = buz["enabled"].as<bool>();
@@ -1544,14 +1874,14 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!saf["low_oil"].isNull())   safetyLowOil    = saf["low_oil"].as<bool>();
     if (!saf["oil_zero"].isNull())  safetyOilZero   = saf["oil_zero"].as<bool>();
     if (!saf["flameout"].isNull())   safetyFlameout  = saf["flameout"].as<bool>();
-    if (!saf["low_fuel"].isNull())       safetyLowFuel       = saf["low_fuel"].as<bool>();
     if (!saf["hot_start"].isNull())      safetyHotStart      = saf["hot_start"].as<bool>();
     if (!saf["tit_overtemp"].isNull())   safetyTitOvertemp   = saf["tit_overtemp"].as<bool>();
     if (!saf["oil_temp_high"].isNull())  safetyOilTempHigh   = saf["oil_temp_high"].as<bool>();
     if (!saf["fuel_press_low"].isNull()) safetyFuelPressLow  = saf["fuel_press_low"].as<bool>();
     if (!saf["batt_low"].isNull())       safetyBattLow       = saf["batt_low"].as<bool>();
     if (!saf["surge"].isNull())          safetySurge         = saf["surge"].as<bool>();
-    // This legacy switch has no flow threshold/runtime evaluator.
+    // Unsupported legacy switch: fuel-flow remains available for telemetry,
+    // calibration, logging, and Control Rules, but not as a built-in safety.
     safetyLowFuel = false;
     if (!hasN1Rpm) {
         safetyOverspeed = false;
@@ -1585,6 +1915,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         for (int i = 0; i < startupSeqLen && i < (int)d.size(); i++)
             startupDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
+    readSeqSideActions(doc, "startup_enter_actions", startupSeqLen, startupEnterActions);
+    readSeqSideActions(doc, "startup_exit_actions", startupSeqLen, startupExitActions);
 
     if (doc["shutdown_seq"].is<JsonArrayConst>()) {
         JsonArrayConst ds = doc["shutdown_seq"];
@@ -1600,6 +1932,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         for (int i = 0; i < shutdownSeqLen && i < (int)d.size(); i++)
             shutdownDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
+    readSeqSideActions(doc, "shutdown_enter_actions", shutdownSeqLen, shutdownEnterActions);
+    readSeqSideActions(doc, "shutdown_exit_actions", shutdownSeqLen, shutdownExitActions);
 
     auto abt = doc["ab_trigger"];
     abTriggerSource    = abt["source"]          | abTriggerSource;
@@ -1633,6 +1967,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         for (int i = 0; i < abSeqLen && i < (int)d.size(); i++)
             abDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
+    readSeqSideActions(doc, "ab_enter_actions", abSeqLen, abEnterActions);
+    readSeqSideActions(doc, "ab_exit_actions", abSeqLen, abExitActions);
 
     if (doc["ab_shut_seq"].is<JsonArrayConst>()) {
         JsonArrayConst ass = doc["ab_shut_seq"];
@@ -1648,6 +1984,16 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         for (int i = 0; i < abShutSeqLen && i < (int)d.size(); i++)
             abShutDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
+    readSeqSideActions(doc, "ab_shut_enter_actions", abShutSeqLen, abShutEnterActions);
+    readSeqSideActions(doc, "ab_shut_exit_actions", abShutSeqLen, abShutExitActions);
+    sanitizeSeqSideActions(startupEnterActions);
+    sanitizeSeqSideActions(startupExitActions);
+    sanitizeSeqSideActions(shutdownEnterActions);
+    sanitizeSeqSideActions(shutdownExitActions);
+    sanitizeSeqSideActions(abEnterActions);
+    sanitizeSeqSideActions(abExitActions);
+    sanitizeSeqSideActions(abShutEnterActions);
+    sanitizeSeqSideActions(abShutExitActions);
 
     auto migrateNamedDelays = [](char (*seq)[24], int* delays, int len) {
         for (int i = 0; i < len; i++) {
@@ -1666,6 +2012,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     migrateNamedDelays(shutdownSeq, shutdownDelayMs, shutdownSeqLen);
     migrateNamedDelays(abSeq, abDelayMs, abSeqLen);
     migrateNamedDelays(abShutSeq, abShutDelayMs, abShutSeqLen);
+    sanitizeSequenceBlocks(startupSeq, startupSeqLen, startupDelayMs, startupEnterActions, startupExitActions);
+    sanitizeSequenceBlocks(shutdownSeq, shutdownSeqLen, shutdownDelayMs, shutdownEnterActions, shutdownExitActions);
+    sanitizeSequenceBlocks(abSeq, abSeqLen, abDelayMs, abEnterActions, abExitActions);
+    sanitizeSequenceBlocks(abShutSeq, abShutSeqLen, abShutDelayMs, abShutEnterActions, abShutExitActions);
 
     if (doc["labels"].is<JsonObjectConst>()) {
         auto lbld = doc["labels"].as<JsonObjectConst>();
@@ -1712,6 +2062,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (igniter2RestMs < 1) igniter2RestMs = 1;
     if (mavlinkIntervalMs < 20) mavlinkIntervalMs = 100;
     if (clusterIntervalMs < 10) clusterIntervalMs = 50;
+    if (clusterProtocol != 1) clusterProtocol = 1;
+    abTriggerSource = constrain(abTriggerSource, 0, 3);
+    abInputThreshold = constrain(abInputThreshold, 0, 4095);
+    if (abTriggerSource == 0) abRequiresArmSwitch = false;
     if (starterEnDelayMs < 0) starterEnDelayMs = 0;
     if (fuelFlowType < 0 || fuelFlowType > 1) fuelFlowType = 0;
     if (fuelFlowPulsesPerLitre <= 0.0f) fuelFlowPulsesPerLitre = 100.0f;

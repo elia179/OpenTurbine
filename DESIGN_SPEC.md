@@ -328,7 +328,7 @@ public:
 | `MockSensor` | scripted values | any (DEV_MODE) |
 
 Health reporting per sensor type:
-- RPM: uses RpmHealth fault bitmask (SATURATED, JUMP, ZERO_STUCK, ZERO_GLITCH) from JetEcu
+- RPM: uses RpmHealth fault bitmask (SATURATED, JUMP, ZERO_STUCK, ZERO_GLITCH)
 - Analog: ADC rail detection (reading pinned to 0 or 4095)
 - Thermocouple: chip fault flags (open circuit, short to VCC, short to GND on MAX31855)
 
@@ -874,12 +874,12 @@ framework = arduino
 board_build.filesystem = littlefs
 
 lib_deps =
-    madhephaestus/ESP32Servo
     adafruit/MAX6675 library
-    adafruit/Adafruit MAX31855 library
     bblanchon/ArduinoJson
-    me-no-dev/ESPAsyncWebServer
-    me-no-dev/AsyncTCP
+    ESP32Async/ESPAsyncWebServer
+    ESP32Async/AsyncTCP
+    paulstoffregen/OneWire
+    milesburton/DallasTemperature
 
 build_flags =
     -std=gnu++17
@@ -905,9 +905,9 @@ monitor_speed = 115200
 
 ---
 
-## 19. What Carries Over from JetEcu
+## 19. Proven Control Patterns
 
-The following logic is proven and should be ported, not rewritten:
+The following logic is core OpenTurbine behavior and should be preserved when refactoring:
 - RPM health tracking (RpmHealth struct, fault bitmask, trustworthy check)
 - Oil pressure P-controller gains and failsafe logic
 - Dynamic idle asymmetric ramp controller
@@ -915,8 +915,8 @@ The following logic is proven and should be ported, not rewritten:
 - Flame sensor calibration algorithm (95th percentile + margin)
 - ADC rolling average buffer
 - Debounced switch logic
-- Oil cubic polynomial calibration (NVS storage, CRC check)
-- LittleFS/NVS patterns
+- Oil cubic polynomial calibration stored with the engine configuration
+- LittleFS persistence patterns
 
 ---
 
@@ -1041,14 +1041,14 @@ g_actAbSol.begin();
 ```cpp
 enum class OTCommand {
     // ... existing commands ...
-    AB_ON,
-    AB_OFF,
+    AB_FIRE,
+    AB_STOP,
 };
 ```
 
 **Handle in `main.cpp` command drain loop:**
 ```cpp
-case OTCommand::AB_ON:
+case OTCommand::AB_FIRE:
     if (ed.mode == SysMode::RUNNING) {
         #ifdef OT_HAS_AB_SOL
         g_actAbSol.set(1.0f);
@@ -1056,7 +1056,7 @@ case OTCommand::AB_ON:
         #endif
     }
     break;
-case OTCommand::AB_OFF:
+case OTCommand::AB_STOP:
     #ifdef OT_HAS_AB_SOL
     g_actAbSol.off();
     ed.afterburnerActive = false;
@@ -1067,7 +1067,7 @@ case OTCommand::AB_OFF:
 **Safety:** always call `g_actAbSol.off()` in `ImmediateCut::onEnter()` and from the
 FAULT handler — the same place starter and fuel solenoid are cut.
 
-**Web UI button:** send `{"cmd":"AB_ON"}` or `{"cmd":"AB_OFF"}` to `POST /api/command`,
+**Web UI button:** send `{"cmd":"AB_FIRE"}` or `{"cmd":"AB_STOP"}` to `POST /api/command`,
 add a toggle button to `tools.html` (or dashboard) visible only in RUNNING mode.
 
 ---

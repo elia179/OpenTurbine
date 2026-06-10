@@ -2,6 +2,8 @@
 #include "IBlock.h"
 #include "../EngineData.h"
 #include "../../system/FlightRecorder.h"
+#include "../../system/HardwareConfig.h"
+#include "../../system/RulesEngine.h"
 #include <stddef.h>
 #include <stdio.h>   // snprintf
 
@@ -31,7 +33,9 @@ public:
         _fault = fault;
     }
 
-    void startSequence(IBlock** blocks, size_t count) {
+    void startSequence(IBlock** blocks, size_t count,
+                       const HardwareConfig::SeqSideAction (*enterActions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS] = nullptr,
+                       const HardwareConfig::SeqSideAction (*exitActions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS] = nullptr) {
         // If a sequence is already running, exit the current block cleanly so its
         // onExit() cleanup runs (e.g. ABIgnite restores pre-torch throttle).
         // Without this, interrupting mid-sequence (e.g. fault during AB ignition)
@@ -42,6 +46,8 @@ public:
         _blocks  = blocks;
         _count   = count;
         _idx     = 0;
+        _enterActions = enterActions;
+        _exitActions  = exitActions;
         _running = count > 0;
         auto& ed = EngineData::instance();
         ed.seqBlockTotal = (uint8_t)count;
@@ -57,6 +63,8 @@ public:
         _blocks  = nullptr;
         _count   = 0;
         _idx     = 0;
+        _enterActions = nullptr;
+        _exitActions  = nullptr;
         auto& ed = EngineData::instance();
         ed.currentBlock[0] = '\0';
         ed.seqBlockTotal   = 0;
@@ -75,6 +83,7 @@ public:
             case BlockResult::Complete:
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "ok");
                 _blocks[_idx]->onExit();
+                _applyActions(_exitActions, _idx);
                 _idx++;
                 if (_idx >= _count) {
                     _running = false;
@@ -90,6 +99,7 @@ public:
                 if (EngineData::instance().benchMode) {
                     FlightRecorder::logBlockExit(_blocks[_idx]->name(), "bench_mode_skip");
                     _blocks[_idx]->onExit();
+                    _applyActions(_exitActions, _idx);
                     _idx++;
                     if (_idx >= _count) { _running = false; if (_done) _done(); }
                     else { _enter(_idx); }
@@ -106,6 +116,7 @@ public:
                 if (EngineData::instance().benchMode) {
                     FlightRecorder::logBlockExit(_blocks[_idx]->name(), "bench_mode_skip");
                     _blocks[_idx]->onExit();
+                    _applyActions(_exitActions, _idx);
                     _idx++;
                     if (_idx >= _count) { _running = false; if (_done) _done(); }
                     else { _enter(_idx); }
@@ -130,6 +141,8 @@ private:
     IBlock**  _blocks  = nullptr;
     size_t    _count   = 0;
     size_t    _idx     = 0;
+    const HardwareConfig::SeqSideAction (*_enterActions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS] = nullptr;
+    const HardwareConfig::SeqSideAction (*_exitActions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS] = nullptr;
     bool      _running = false;
     DoneFn    _done    = nullptr;
     AbortFn   _abort   = nullptr;
@@ -146,5 +159,15 @@ private:
         ed.seqBlockIdx = (uint8_t)i;
         FlightRecorder::logBlockEnter(bname);
         _blocks[i]->onEnter();
+        _applyActions(_enterActions, i);
+    }
+
+    void _applyActions(const HardwareConfig::SeqSideAction (*actions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS], size_t i) {
+        if (!actions || i >= HardwareConfig::MAX_SEQ_BLOCKS) return;
+        for (int j = 0; j < HardwareConfig::MAX_SEQ_SIDE_ACTIONS; j++) {
+            const auto& a = actions[i][j];
+            if (!a.enabled) continue;
+            RulesEngine::applyActuatorDemand(a.actuator, a.value);
+        }
     }
 };

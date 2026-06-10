@@ -285,8 +285,10 @@ public:
 
     // ── Cluster serial ────────────────────────────────────────
     static int   clusterTxPin;
+    static int   clusterRxPin;
     static int   clusterBaud;
     static int   clusterIntervalMs;
+    static int   clusterProtocol;
 
     // ── Controller feature flags ──────────────────────────────
     static bool hasOilLoop;
@@ -359,18 +361,32 @@ public:
 
     // ── Startup / shutdown / afterburner sequences ────────────
     static constexpr int MAX_SEQ_BLOCKS = 16;
+    static constexpr int MAX_SEQ_SIDE_ACTIONS = 4;
+    struct SeqSideAction {
+        bool    enabled = false;
+        uint8_t actuator = 0;
+        float   value = 0.0f;  // 0.0-1.0 demand; relays use >=0.5 as ON
+    };
     static char  startupSeq[MAX_SEQ_BLOCKS][24];
     static int   startupSeqLen;
     static int   startupDelayMs[MAX_SEQ_BLOCKS];
+    static SeqSideAction startupEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
+    static SeqSideAction startupExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static char  shutdownSeq[MAX_SEQ_BLOCKS][24];
     static int   shutdownSeqLen;
     static int   shutdownDelayMs[MAX_SEQ_BLOCKS];
+    static SeqSideAction shutdownEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
+    static SeqSideAction shutdownExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static char  abSeq[MAX_SEQ_BLOCKS][24];     // AB ignition sequence
     static int   abSeqLen;
     static int   abDelayMs[MAX_SEQ_BLOCKS];
+    static SeqSideAction abEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
+    static SeqSideAction abExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static char  abShutSeq[MAX_SEQ_BLOCKS][24]; // AB shutdown sequence
     static int   abShutSeqLen;
     static int   abShutDelayMs[MAX_SEQ_BLOCKS];
+    static SeqSideAction abShutEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
+    static SeqSideAction abShutExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
 
     // ── Singleton accessor ────────────────────────────────────
     // All members are static; instance() lets callers use the

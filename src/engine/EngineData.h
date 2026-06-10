@@ -73,7 +73,7 @@ struct EngineData {
     volatile float    fuelPump2Demand = 0;      // 0.0–1.0  independent variable fuel pump
     volatile float    oilTargetBar     = 0;      // bar target → P-controller
     volatile float    starterDemand   = 0;      // 0.0–1.0
-    volatile float    abPumpDemand    = 0;      // 0.0–1.0  AB pump / legacy fuel pump 2
+    volatile float    abPumpDemand    = 0;      // 0.0–1.0  afterburner pump
     volatile float    propPitchDemand = 0;      // 0.0–1.0  propeller pitch servo (turboprop)
     volatile bool     fuelSolOpen     = false;
     volatile bool     igniterOn       = false;

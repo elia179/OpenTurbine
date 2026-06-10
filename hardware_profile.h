@@ -280,12 +280,14 @@
 // #define OT_HAS_STATUS_LED
 // #define OT_STATUS_LED_PIN  2
 
-// ── Instrument cluster serial output (GPX750-compatible) ─────
-// Outputs JetEcu cluster protocol on a dedicated UART TX pin.
+// ── External cluster / device serial link ───────────────────
+// OpenTurbine Cluster (OTC) binary telemetry on a dedicated UART TX pin.
+// Optional RX is configured at runtime in the Hardware page.
+// Runtime transmission is also controlled by Config > Cluster > Enable.
 // Configure TX pin to a free GPIO (avoid GPIO1/3 = USB serial).
-// Baud: 115200 (must match cluster firmware). Interval: data packet rate.
+// Baud: 115200 default. Interval: telemetry packet rate.
 // #define OT_HAS_CLUSTER_SERIAL
-// #define OT_CLUSTER_TX_PIN        17     // free GPIO, UART2 TX
+// #define OT_CLUSTER_TX_PIN        17
 // #define OT_CLUSTER_BAUD          115200
 // #define OT_CLUSTER_INTERVAL_MS   50     // sensor data packet rate (ms)
 

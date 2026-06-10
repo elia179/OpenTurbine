@@ -73,6 +73,8 @@ static const BlockEntry _blockRegistry[] = {
     {"GlowPreheat",    &g_blkGlowPreheat},
     {"FuelPumpRamp",   &g_blkFuelPumpRamp},
     {"FuelPump2Set",   &g_blkFuelPump2Set},
+    {"FuelPump2On",    &g_blkFuelPump2On},
+    {"FuelPump2Off",   &g_blkFuelPump2Off},
     {"GovernorHold",   &g_blkGovernorHold},
     // Afterburner blocks
     {"ABSolOpen",      &g_blkABSolOpen},
@@ -279,7 +281,8 @@ static void validateSequences() {
             if (!hw.hasBleedValve)
                 addIssue(nm, "No bleed valve configured — block will complete with no effect", false);
         }
-        else if (strcmp(nm, "FuelPump2Set") == 0 || strcmp(nm, "FuelPumpRamp") == 0) {
+        else if (strcmp(nm, "FuelPump2Set") == 0 || strcmp(nm, "FuelPumpRamp") == 0 ||
+                 strcmp(nm, "FuelPump2On") == 0 || strcmp(nm, "FuelPump2Off") == 0) {
             if (!hw.hasFuelPump2)
                 addIssue(nm, "No secondary fuel pump configured — block will complete with no effect", false);
         }
@@ -819,7 +822,9 @@ static void enterABIgniting() {
         };
         g_abSequencer.startSequence(_defAbBlocks, 6);
     } else {
-        g_abSequencer.startSequence(_abIgnBlocks, _abIgnCount);
+        g_abSequencer.startSequence(_abIgnBlocks, _abIgnCount,
+                                    HardwareConfig::abEnterActions,
+                                    HardwareConfig::abExitActions);
     }
 }
 
@@ -840,7 +845,9 @@ static void enterABShutdown() {
         static IBlock* _defAbShut[] = { &g_blkABSolClose, &g_blkABPumpOff };
         g_abSequencer.startSequence(_defAbShut, 2);
     } else {
-        g_abSequencer.startSequence(_abShutBlocks, _abShutCount);
+        g_abSequencer.startSequence(_abShutBlocks, _abShutCount,
+                                    HardwareConfig::abShutEnterActions,
+                                    HardwareConfig::abShutExitActions);
     }
 }
 
@@ -1115,7 +1122,9 @@ static void enterShutdown() {
     if (HardwareConfig::hasAfterburner) enterABShutdown();
     strncpy(ed.lastEvent, "Normal shutdown commanded", sizeof(ed.lastEvent) - 1);
     FlightRecorder::logNormalShutdown();
-    g_sequencer.startSequence(_shutdownBlocks, _shutdownCount);
+    g_sequencer.startSequence(_shutdownBlocks, _shutdownCount,
+                              HardwareConfig::shutdownEnterActions,
+                              HardwareConfig::shutdownExitActions);
     Serial.println("[OT] SHUTDOWN");
 }
 
@@ -1132,7 +1141,9 @@ static void enterFaultShutdown() {
     if (HardwareConfig::hasAfterburner) enterABShutdown();
     snprintf(ed.lastEvent, sizeof(ed.lastEvent), "FAULT: %s", fault);
     _buzzerPattern = 1;  // rapid fault beep
-    g_sequencer.startSequence(_shutdownBlocks, _shutdownCount);
+    g_sequencer.startSequence(_shutdownBlocks, _shutdownCount,
+                              HardwareConfig::shutdownEnterActions,
+                              HardwareConfig::shutdownExitActions);
     Serial.printf("[OT] FAULT SHUTDOWN: %s\n", fault);
     if (HardwareConfig::hasClusterSerial) {
         // Send fault-specific cluster status code (more descriptive than generic ShuttingDown)
@@ -1256,7 +1267,9 @@ static void enterAbortStandby() {
         // to keep bearings oiled through spindown and cool the turbine before standby.
         ed.mode = SysMode::SHUTDOWN;
         FlightRecorder::logFaultShutdown("STARTUP_ABORT");
-        g_sequencer.startSequence(_shutdownBlocks, _shutdownCount);
+        g_sequencer.startSequence(_shutdownBlocks, _shutdownCount,
+                                  HardwareConfig::shutdownEnterActions,
+                                  HardwareConfig::shutdownExitActions);
         Serial.printf("[OT] Startup abort (fuel was open) → SHUTDOWN for safe spindown\n");
     } else {
         // Aborted before any ignition attempt — safe to go directly to STANDBY.
@@ -1292,6 +1305,13 @@ static void handleCommand(const OTPacket& pkt) {
     switch (pkt.cmd) {
         case OTCommand::START:
             if (ed.mode == SysMode::STANDBY && Config::profileMatch && !ed.configLocked) {
+                if (ed.stopSwitchActive) {
+                    snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: stop switch active");
+                    snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                             "Cannot start: STOP switch is active. Release STOP before pressing START.");
+                    Serial.println("[OT] START blocked: stop switch active");
+                    break;
+                }
                 // Check inhibit_start DI channels
                 {
                     auto& hwi = HardwareConfig::instance();
@@ -1326,7 +1346,9 @@ static void handleCommand(const OTPacket& pkt) {
                 Hardware::applyConfig();  // re-apply config before each start
                 FlightRecorder::logStartAttempt();
                 SessionLogger::startSession();  // request a new session CSV on the web task
-                g_sequencer.startSequence(_startupBlocks, _startupCount);
+                g_sequencer.startSequence(_startupBlocks, _startupCount,
+                                          HardwareConfig::startupEnterActions,
+                                          HardwareConfig::startupExitActions);
                 Serial.println("[OT] START commanded");
             }
             break;
@@ -1356,6 +1378,9 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::TOGGLE_DEV_MODE:
+            // Intentional: beta builds keep a standby-only operator-gated dev path
+            // for bench validation without reflashing. Bench/safety bypass controls
+            // remain unavailable until this is explicitly enabled in STANDBY.
             if (ed.mode == SysMode::STANDBY) {
                 ed.devMode = !ed.devMode;
                 if (!ed.devMode) {

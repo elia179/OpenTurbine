@@ -337,6 +337,7 @@ public:
     // ── API ───────────────────────────────────────────────────
     static void load();
     static bool save();          // write-to-tmp + rename; returns false on LittleFS error
+    static void sanitizeForHardware(); // clear settings that reference unequipped hardware
     static void requestSave();   // Core 1: mark save needed, zero file I/O
     static bool flushPendingSave(); // Core 0: perform deferred save; returns true if it ran
     static void requestRuntimeStatsSave(); // Core 1: persist hour meter through NVS

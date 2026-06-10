@@ -13,12 +13,22 @@
 //    GET  /api/data      → live EngineData JSON snapshot
 //    GET  /api/config    → current settings section from ecu_config.json
 //    POST /api/config    → replace settings section in ecu_config.json
+//    PATCH /api/config   → merge settings patch into ecu_config.json
+//    GET  /api/hardware  → current hardware section from ecu_config.json
+//    POST /api/hardware  → replace hardware section, validate, reboot
+//    PATCH /api/hardware → calibration-only hardware patch
+//    GET  /api/ecu_config  → download full hardware+settings engine file
+//    POST /api/ecu_config → restore full hardware+settings engine file, reboot
 //    GET  /api/log       → full flight recorder log
+//    GET  /api/session/list, /api/session/log, /api/session/all
 //    POST /api/command   → queue OTCommand
 //    POST /api/start     → queue START
 //    POST /api/stop      → queue STOP (high priority)
+//    POST /api/factory_reset
+//    POST /update        → OTA firmware upload
+//    POST /api/web_assets → gzipped web UI asset upload
 //    GET  /api/status    → mode + health summary
-//    WS   /ws            → live telemetry push at 500 ms
+//    WS   /ws            → live telemetry, client-pulled snapshots
 // ============================================================
 
 class WebServer {

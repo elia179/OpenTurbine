@@ -155,6 +155,22 @@ public:
 
 // ── Governor stabilisation hold ───────────────────────────────
 
+class FuelPump2On : public IBlock {
+public:
+    const char* name() override { return "FuelPump2On"; }
+    void onEnter() override { EngineData::instance().fuelPump2Demand = 1.0f; }
+    BlockResult tick() override { return BlockResult::Complete; }
+    void onExit() override {}
+};
+
+class FuelPump2Off : public IBlock {
+public:
+    const char* name() override { return "FuelPump2Off"; }
+    void onEnter() override { EngineData::instance().fuelPump2Demand = 0.0f; }
+    BlockResult tick() override { return BlockResult::Complete; }
+    void onExit() override {}
+};
+
 class GovernorHold : public IBlock {
 public:
     unsigned long timeoutMs = 10000;  // max wait for N2 to stabilise

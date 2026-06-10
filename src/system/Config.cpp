@@ -4,6 +4,7 @@
 #include <LittleFS.h>
 #include <Preferences.h>
 #include <Arduino.h>
+#include <math.h>
 
 // ── Static member definitions ─────────────────────────────────
 float Config::rpmLimit              = 100000;
@@ -172,7 +173,7 @@ float    Config::n1WarnRpm          = 90000.0f;   // default = rpmLimit * 0.9
 float    Config::n2WarnRpm          = 22000.0f;
 float    Config::totWarnC           = 0.0f;       // 0 = auto (totLimit - totSafeMargin)
 float    Config::oilWarnBar         = 0.0f;       // 0 = auto (oilRunningMin)
-bool     Config::clusterEnabled     = false;
+bool     Config::clusterEnabled     = true;
 
 bool     Config::pressureSensorsEnabled = false;
 
@@ -254,6 +255,273 @@ static void inhibitStartForProfileMismatch() {
 
 Config::Rule Config::rules[Config::MAX_RULES] = {};
 int          Config::ruleCount                = 0;
+
+namespace {
+bool ruleSensorAvailable(uint8_t s) {
+    switch (s) {
+        case 0:  return HardwareConfig::hasOilTemp;
+        case 1:  return HardwareConfig::hasTot;
+        case 2:  return HardwareConfig::hasN1Rpm;
+        case 3:  return HardwareConfig::hasOilPress;
+        case 4:  return HardwareConfig::hasTit;
+        case 5:  return HardwareConfig::hasBattVoltage;
+        case 6:  return HardwareConfig::hasN2Rpm;
+        case 7:  return HardwareConfig::diCh[0].pin >= 0;
+        case 8:  return HardwareConfig::diCh[1].pin >= 0;
+        case 9:  return HardwareConfig::diCh[2].pin >= 0;
+        case 10: return HardwareConfig::diCh[3].pin >= 0;
+        case 11: return HardwareConfig::hasFuelPress;
+        case 12: return HardwareConfig::hasFuelFlow;
+        case 13: return HardwareConfig::hasP1;
+        case 14: return HardwareConfig::hasP2;
+        case 15: return HardwareConfig::hasTorque;
+        case 16: return HardwareConfig::hasFlame;
+        case 17: return HardwareConfig::hasThrottleInput;
+        case 18: return HardwareConfig::hasIdleInput;
+        case 19: return HardwareConfig::hasAbFlame;
+        case 20: return HardwareConfig::hasGlowCurrentSensor;
+        case 21: return HardwareConfig::hasIgniterCurrentSensor;
+        case 22: return HardwareConfig::hasIgniter2CurrentSensor;
+        case 23: return HardwareConfig::hasOilPumpCurrentSensor;
+        case 24: return HardwareConfig::hasAfterburner && HardwareConfig::abInputPin >= 0;
+        case 25: return HardwareConfig::startPin >= 0;
+        case 26: return HardwareConfig::stopPin >= 0;
+        default: return false;
+    }
+}
+
+bool ruleActuatorAvailable(uint8_t a) {
+    switch (a) {
+        case 0:  return HardwareConfig::hasCoolFan;
+        case 1:  return HardwareConfig::hasBleedValve;
+        case 2:  return HardwareConfig::hasFuelPump2;
+        case 3:  return HardwareConfig::hasOilScavengePump;
+        case 4:  return HardwareConfig::hasThrottle;
+        case 5:  return HardwareConfig::hasStarter;
+        case 6:  return HardwareConfig::hasStarterEn;
+        case 7:  return HardwareConfig::hasOilPump;
+        case 8:  return HardwareConfig::hasFuelSol;
+        case 9:  return HardwareConfig::hasIgniter;
+        case 10: return HardwareConfig::hasIgniter2;
+        case 11: return HardwareConfig::hasAfterburner && HardwareConfig::hasAbSol;
+        case 12: return HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump;
+        case 13:
+        case 14: return true;
+        case 15: return HardwareConfig::hasAirstarterSol;
+        case 16: return HardwareConfig::hasGlowPlug;
+        case 17: return HardwareConfig::hasPropPitch;
+        default: return false;
+    }
+}
+} // namespace
+
+namespace {
+
+bool present(JsonVariantConst v) { return !v.isNull(); }
+
+bool validNumber(JsonVariantConst v, float minValue, float maxValue) {
+    if (!present(v)) return true;
+    if (!v.is<float>() && !v.is<double>() && !v.is<int>() && !v.is<long>() && !v.is<unsigned long>()) return false;
+    float value = v.as<float>();
+    return isfinite(value) && value >= minValue && value <= maxValue;
+}
+
+bool validInt(JsonVariantConst v, long minValue, long maxValue) {
+    if (!present(v)) return true;
+    if (!v.is<int>() && !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
+    long value = v.as<long>();
+    return value >= minValue && value <= maxValue;
+}
+
+bool validBool(JsonVariantConst v) { return !present(v) || v.is<bool>(); }
+
+bool validRawPair(JsonVariantConst obj, const char* minKey, const char* maxKey) {
+    if (!validInt(obj[minKey], 0, 4095) || !validInt(obj[maxKey], 0, 4095)) return false;
+    if (present(obj[minKey]) && present(obj[maxKey]) && obj[maxKey].as<int>() <= obj[minKey].as<int>()) return false;
+    return true;
+}
+
+bool validMsFields(JsonVariantConst obj, const char* const* keys, int count, long maxValue = 3600000) {
+    for (int i = 0; i < count; i++)
+        if (!validInt(obj[keys[i]], 0, maxValue)) return false;
+    return true;
+}
+
+bool validateSettingsDoc(const JsonDocument& doc) {
+    const char* id = doc["profile_id"] | "";
+    if (!id[0] || strlen(id) >= sizeof(Config::profileId)) return false;
+
+    const char* requiredSections[] = { "engine", "oil", "sequence", "throttle", "safety", "calibration" };
+    for (const char* section : requiredSections)
+        if (!doc[section].is<JsonObjectConst>()) return false;
+
+    JsonVariantConst eng = doc["engine"];
+    if (!validNumber(eng["rpm_limit"], 1000.0f, 500000.0f) ||
+        !validNumber(eng["min_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(eng["tot_limit"], 1.0f, 1400.0f) ||
+        !validNumber(eng["tot_cooldown_target"], 0.0f, 1400.0f) ||
+        !validNumber(eng["tot_safe_margin"], 0.0f, 1400.0f)) return false;
+    if (present(eng["rpm_limit"]) && present(eng["min_rpm"]) && eng["min_rpm"].as<float>() >= eng["rpm_limit"].as<float>()) return false;
+    if (present(eng["tot_limit"]) && present(eng["tot_cooldown_target"]) && eng["tot_cooldown_target"].as<float>() >= eng["tot_limit"].as<float>()) return false;
+
+    JsonVariantConst oil = doc["oil"];
+    if (!validNumber(oil["startup_pressure"], 0.0f, 20.0f) ||
+        !validNumber(oil["startup_pct"], 0.0f, 100.0f) ||
+        !validNumber(oil["startup_min_bar"], 0.0f, 20.0f) ||
+        !validNumber(oil["running_min"], 0.0f, 20.0f) ||
+        !validNumber(oil["map_min"], 0.0f, 20.0f) ||
+        !validNumber(oil["map_max"], 0.0f, 20.0f) ||
+        !validBool(oil["use_throttle_map"]) ||
+        !validNumber(oil["adjust_scale"], 0.0f, 20.0f) ||
+        !validNumber(oil["min_pct"], 0.0f, 100.0f) ||
+        !validInt(oil["failsafe_delay_ms"], 0, 60000) ||
+        !validNumber(oil["failsafe_pct"], 0.0f, 100.0f)) return false;
+    if (present(oil["map_min"]) && present(oil["map_max"]) && oil["map_max"].as<float>() < oil["map_min"].as<float>()) return false;
+
+    JsonVariantConst su = doc["sequence"]["startup"];
+    JsonVariantConst sd = doc["sequence"]["shutdown"];
+    if (!su.is<JsonObjectConst>() || !sd.is<JsonObjectConst>()) return false;
+    const char* startupMs[] = {
+        "oil_arm_timeout_ms", "pre_ign_spark_ms", "flame_timeout_ms", "rpm_timeout_ms",
+        "safety_hold_ms", "starter_timeout_ms", "temp_confirm_timeout", "wait_for_input_timeout",
+        "timed_delay_ms", "fuel_pulse_ms", "fuel_off_ms", "wait_tot_timeout", "preheat_ms",
+        "fp2_ramp_ms", "gov_hold_timeout_ms"
+    };
+    if (!validMsFields(su, startupMs, sizeof(startupMs) / sizeof(startupMs[0])) ||
+        !validInt(su["flame_check_interval_ms"], 1, 3600000) ||
+        !validInt(su["flame_required_count"], 1, 1000) ||
+        !validInt(su["wait_for_input_ch"], 0, 3) ||
+        !validBool(su["wait_for_input_state"])) return false;
+    if (!validNumber(su["pre_ign_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(su["rpm_target"], 0.0f, 500000.0f) ||
+        !validNumber(su["final_check_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(su["starter_demand"], 0.0f, 100.0f) ||
+        !validNumber(su["temp_confirm_target"], 0.0f, 1400.0f) ||
+        !validNumber(su["wait_tot_target"], 0.0f, 1400.0f) ||
+        !validNumber(su["throttle_set_pct"], 0.0f, 100.0f) ||
+        !validNumber(su["oil_pump_on_pct"], 0.0f, 100.0f) ||
+        !validNumber(su["modified_idle_multiplier"], 0.0f, 10.0f) ||
+        !validNumber(su["hot_start_tot_threshold"], 0.0f, 1400.0f) ||
+        !validNumber(su["fp2_start_pct"], 0.0f, 100.0f) ||
+        !validNumber(su["fp2_end_pct"], 0.0f, 100.0f) ||
+        !validNumber(su["fp2_demand_pct"], 0.0f, 100.0f)) return false;
+    if (!validBool(su["flame_turn_off_igniter"]) ||
+        !validBool(su["safety_turn_off_starter"]) ||
+        !validBool(su["safety_turn_off_starter_en"]) ||
+        !validBool(su["safety_turn_off_igniter"]) ||
+        !validBool(su["spool_cut_starter_on_exit"]) ||
+        !validBool(su["spool_cut_starter_en_on_exit"]) ||
+        !validBool(su["oil_prime_use_scavenge"])) return false;
+
+    const char* shutdownMs[] = { "rpm_drop_timeout_ms", "cooldown_timeout_ms", "final_stop_timeout_ms", "oil_scavenge_ms" };
+    if (!validMsFields(sd, shutdownMs, sizeof(shutdownMs) / sizeof(shutdownMs[0])) ||
+        !validNumber(sd["rpm_drop_threshold"], 0.0f, 500000.0f) ||
+        !validNumber(sd["rpm_zero_threshold"], 0.0f, 500000.0f) ||
+        !validNumber(sd["cooldown_starter_pct"], 0.0f, 100.0f) ||
+        !validNumber(sd["cooldown_oil_pct"], 0.0f, 100.0f) ||
+        !validNumber(sd["cooldown_oil_pressure_bar"], 0.0f, 20.0f) ||
+        !validBool(sd["cooldown_use_scavenge"]) ||
+        !validBool(sd["cooldown_use_starter"]) ||
+        !validBool(sd["cooldown_use_oil"])) return false;
+
+    JsonVariantConst th = doc["throttle"];
+    if (!validNumber(th["ramp_up_ms"], 0.0f, 3600000.0f) ||
+        !validNumber(th["ramp_down_ms"], 0.0f, 3600000.0f) ||
+        !validNumber(th["idle_min_pct"], 0.0f, 100.0f) ||
+        !validNumber(th["idle_max_pct"], 0.0f, 100.0f) ||
+        !validNumber(th["expo"], 0.0f, 1.0f)) return false;
+    if (present(th["idle_min_pct"]) && present(th["idle_max_pct"]) && th["idle_max_pct"].as<float>() < th["idle_min_pct"].as<float>()) return false;
+
+    JsonVariantConst sf = doc["safety"];
+    if (!validInt(sf["check_interval_ms"], 10, 60000) ||
+        !validNumber(sf["flameout_shutdown_ms"], 100.0f, 60000.0f) ||
+        !validInt(sf["flameout_source"], 0, 3) ||
+        !validNumber(sf["flameout_n1_min_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(sf["flameout_tot_drop_c"], 0.0f, 1400.0f) ||
+        !validNumber(sf["tot_rise_rate_limit_deg_s"], 0.0f, 1000.0f) ||
+        !validNumber(sf["tit_limit_c"], 0.0f, 1400.0f) ||
+        !validNumber(sf["oil_temp_limit_c"], 0.0f, 300.0f) ||
+        !validNumber(sf["fuel_press_min_bar"], 0.0f, 100.0f) ||
+        !validNumber(sf["batt_volt_min_v"], 0.0f, 80.0f) ||
+        !validNumber(sf["surge_detect_rpm_variance"], 0.0f, 500000.0f)) return false;
+
+    JsonVariantConst cal = doc["calibration"];
+    if (!validInt(cal["throttle_min_raw"], 0, 4095) ||
+        !validInt(cal["throttle_max_raw"], 0, 4095) ||
+        !validInt(cal["idle_min_raw"], 0, 4095) ||
+        !validInt(cal["idle_max_raw"], 0, 4095) ||
+        !validInt(cal["flame_threshold"], 0, 4095) ||
+        !validRawPair(cal, "p1_raw_min", "p1_raw_max") ||
+        !validRawPair(cal, "p2_raw_min", "p2_raw_max") ||
+        !validRawPair(cal, "fuel_press_raw_min", "fuel_press_raw_max") ||
+        !validRawPair(cal, "fuel_flow_raw_min", "fuel_flow_raw_max") ||
+        !validNumber(cal["p1_val_max"], 0.001f, 1000.0f) ||
+        !validNumber(cal["p2_val_max"], 0.001f, 1000.0f) ||
+        !validNumber(cal["fuel_press_val_max"], 0.001f, 1000.0f) ||
+        !validNumber(cal["fuel_flow_val_max"], 0.001f, 1000.0f)) return false;
+    if (present(cal["throttle_min_raw"]) && present(cal["throttle_max_raw"]) && cal["throttle_min_raw"].as<int>() == cal["throttle_max_raw"].as<int>()) return false;
+    if (present(cal["idle_min_raw"]) && present(cal["idle_max_raw"]) && cal["idle_min_raw"].as<int>() == cal["idle_max_raw"].as<int>()) return false;
+
+    JsonVariantConst di = doc["dynamic_idle"];
+    if (present(di) && (!di.is<JsonObjectConst>() ||
+        !validNumber(di["target_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(di["ramp_up_ms"], 0.0f, 3600000.0f) ||
+        !validNumber(di["ramp_down_ms"], 0.0f, 3600000.0f) ||
+        !validNumber(di["deadband_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(di["rpm_limit"], 0.0f, 500000.0f) ||
+        !validNumber(di["min_multiplier"], 0.0f, 1.0f) ||
+        !validBool(di["use_n2"]) ||
+        !validNumber(di["i_gain"], 0.0f, 2.0f) ||
+        !validNumber(di["i_max"], 0.0f, 0.5f))) return false;
+
+    JsonVariantConst ab = doc["afterburner"];
+    if (present(ab)) {
+        if (!ab.is<JsonObjectConst>() ||
+            !validNumber(ab["min_n1"], 0.0f, 500000.0f) ||
+            !validNumber(ab["max_n1"], 0.0f, 500000.0f) ||
+            !validNumber(ab["max_tot_for_light"], 0.0f, 1400.0f) ||
+            !validNumber(ab["throttle_threshold"], 0.0f, 1.0f) ||
+            !validBool(ab["use_torch"]) ||
+            !validBool(ab["use_igniter"]) ||
+            !validNumber(ab["torch_spike_pct"], 0.0f, 100.0f) ||
+            !validInt(ab["torch_duration_ms"], 0, 3600000) ||
+            !validNumber(ab["torch_tot_limit"], 0.0f, 1400.0f) ||
+            !validInt(ab["flame_mode"], 0, 2) ||
+            !validNumber(ab["tot_rise_deg_c"], 0.0f, 1400.0f) ||
+            !validInt(ab["tot_rise_window_ms"], 0, 3600000) ||
+            !validInt(ab["assume_ignited_ms"], 0, 3600000) ||
+            !validInt(ab["flame_timeout_ms"], 0, 3600000) ||
+            !validNumber(ab["pump_min_pct"], 0.0f, 100.0f) ||
+            !validNumber(ab["pump_max_pct"], 0.0f, 100.0f) ||
+            !validInt(ab["pump_control_mode"], 0, 2) ||
+            !validBool(ab["pump_follow_throttle"]) ||
+            !validNumber(ab["main_fuel_offset_pct"], -20.0f, 50.0f) ||
+            !validInt(ab["stabilize_ms"], 0, 3600000) ||
+            !validNumber(ab["stabilize_max_tot"], 0.0f, 1400.0f)) return false;
+        if (present(ab["pump_min_pct"]) && present(ab["pump_max_pct"]) && ab["pump_max_pct"].as<float>() < ab["pump_min_pct"].as<float>()) return false;
+    }
+
+    JsonVariantConst sl = doc["session_log"];
+    if (present(sl) && (!sl.is<JsonObjectConst>() || !validInt(sl["interval_ms"], 100, 60000))) return false;
+
+    JsonVariantConst rules = doc["rules"];
+    if (present(rules)) {
+        if (!rules.is<JsonArrayConst>() || rules.size() > Config::MAX_RULES) return false;
+        for (JsonObjectConst rule : rules.as<JsonArrayConst>()) {
+            if (!validBool(rule["enabled"]) ||
+                !validInt(rule["sensor"], 0, 24) ||
+                !validInt(rule["op"], 0, 4) ||
+                !validNumber(rule["threshold"], -1000000.0f, 1000000.0f) ||
+                !validInt(rule["actuator"], 0, 20) ||
+                !validNumber(rule["on_value"], -100.0f, 100.0f) ||
+                !validNumber(rule["off_value"], -100.0f, 100.0f)) return false;
+        }
+    }
+
+    return true;
+}
+
+}
 
 // ── Load ──────────────────────────────────────────────────────
 void Config::load() {
@@ -416,6 +684,36 @@ void Config::releaseStorageWrite() {
     if (s_configWriteMutex) xSemaphoreGive(s_configWriteMutex);
 }
 
+void Config::sanitizeForHardware() {
+    if (!HardwareConfig::hasN1Rpm) sessionLogMask &= ~SLOG_N1;
+    if (!HardwareConfig::hasTwoShaft || !HardwareConfig::hasN2Rpm) sessionLogMask &= ~SLOG_N2;
+    if (!HardwareConfig::hasTot) sessionLogMask &= ~SLOG_TOT;
+    if (!HardwareConfig::hasOilPress) sessionLogMask &= ~SLOG_OIL;
+    if (!HardwareConfig::hasP1) sessionLogMask &= ~SLOG_P1;
+    if (!HardwareConfig::hasP2) sessionLogMask &= ~SLOG_P2;
+    if (!HardwareConfig::hasThrottle) sessionLogMask &= ~SLOG_THR;
+    if (!HardwareConfig::hasTit) sessionLogMask &= ~SLOG_TIT;
+    if (!HardwareConfig::hasBattVoltage) sessionLogMask &= ~SLOG_BATT;
+    if (!HardwareConfig::hasFuelPress) sessionLogMask &= ~SLOG_FUEL_PRESS;
+    if (!HardwareConfig::hasFuelFlow) sessionLogMask &= ~SLOG_FUEL_FLOW;
+    if (!HardwareConfig::hasGlowPlug) sessionLogMask &= ~SLOG_GLOW;
+    if (!HardwareConfig::hasFuelPump2) sessionLogMask &= ~SLOG_FP2;
+    if (!HardwareConfig::hasAfterburner) sessionLogMask &= ~SLOG_AB;
+    if (!HardwareConfig::hasPropPitch) sessionLogMask &= ~SLOG_PROP;
+    if (!HardwareConfig::hasOilPump) sessionLogMask &= ~SLOG_OIL_PCT;
+
+    int out = 0;
+    for (int i = 0; i < ruleCount; i++) {
+        Rule r = rules[i];
+        if (!ruleSensorAvailable(r.sensor) || !ruleActuatorAvailable(r.actuator)) continue;
+        r.onValue = constrain(r.onValue, -1.0f, 1.0f);
+        r.offValue = constrain(r.offValue, -1.0f, 1.0f);
+        rules[out++] = r;
+    }
+    for (int i = out; i < MAX_RULES; i++) rules[i] = {};
+    ruleCount = out;
+}
+
 class ConfigStorageWriteRelease {
 public:
     ~ConfigStorageWriteRelease() { Config::releaseStorageWrite(); }
@@ -566,8 +864,7 @@ bool Config::validateJson(const char* json, size_t len) {
 }
 
 bool Config::validateJson(const JsonDocument& doc) {
-    const char* id = doc["profile_id"] | "";
-    return id[0] != '\0';
+    return validateSettingsDoc(doc);
 }
 
 bool Config::fromJson(const char* json, size_t len) {
@@ -670,7 +967,7 @@ void Config::_applyDefaults() {
     abMainFuelOffsetPct = 0.0f; abStabilizeMs = 1000; abStabilizeMaxTot = 0.0f;
     rpmJumpThreshold = 0.40f; rpmZeroStuckTicks = 5;
     n1WarnRpm = 90000.0f; n2WarnRpm = 22000.0f; totWarnC = 0.0f; oilWarnBar = 0.0f;
-    clusterEnabled = false; pressureSensorsEnabled = false;
+    clusterEnabled = true; pressureSensorsEnabled = false;
     rcMinUs = 1000; rcMaxUs = 2000; rcFailsafeMs = 500;
     governorTargetRpm = 0.0f; governorBandRpm = 500.0f;
     governorKp = 0.001f; governorPitchKp = 0.0005f; governorPitchRampSec = 10.0f;
@@ -1148,9 +1445,11 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (propPitchIdleDeg < 0.0f) propPitchIdleDeg = 0.0f;
     if (propPitchMaxDeg < propPitchIdleDeg) propPitchMaxDeg = propPitchIdleDeg;
     if (governorPitchRampSec <= 0.0f) governorPitchRampSec = 1.0f;
+    sanitizeForHardware();
 }
 
 void Config::_toDoc(JsonDocument& doc) {
+    sanitizeForHardware();
     doc["profile_id"]     = HardwareConfig::profileId[0] ? HardwareConfig::profileId : OT_PROFILE_ID;
     doc["config_version"] = CONFIG_VERSION;
 

@@ -244,6 +244,8 @@
     FuelPumpRamp g_blkFuelPumpRamp;                                               \
     GovernorHold g_blkGovernorHold;                                               \
     FuelPump2Set g_blkFuelPump2Set;                                               \
+    FuelPump2On  g_blkFuelPump2On;                                                \
+    FuelPump2Off g_blkFuelPump2Off;                                               \
     /* ── AB sequence blocks ─────────────────────────────────────────────────── */ \
     ABCheckReady  g_blkABCheckReady;                                              \
     ABIgnite      g_blkABIgnite;                                                  \
@@ -384,6 +386,8 @@ extern BleedClose    g_blkBleedClose;
 extern FuelPumpRamp  g_blkFuelPumpRamp;
 extern GovernorHold  g_blkGovernorHold;
 extern FuelPump2Set  g_blkFuelPump2Set;
+extern FuelPump2On   g_blkFuelPump2On;
+extern FuelPump2Off  g_blkFuelPump2Off;
 extern ABCheckReady  g_blkABCheckReady;
 extern ABIgnite      g_blkABIgnite;
 extern ABFlameConfirm g_blkABFlameConfirm;

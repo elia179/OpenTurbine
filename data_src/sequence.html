@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Sequence</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=20260607b">
 <style>
 #seq-validation-banner { margin-bottom: .6rem; }
 .seq-val-error, .seq-val-warn {
@@ -301,13 +301,13 @@ const BLOCKS = {
     params:[
       // ── With oil pressure sensor ──────────────────────────────────────────
       {key:'startup_oil_demand', label:'Oil pressure target', unit:'bar', type:'float', min:0, max:10, step:0.1, def:2.5,
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
+        visibleIf: hw => !!hw.sensors?.oil_press?.enabled && actuatorHasProportionalOutput('oil_pump'),
         configKey:'startup_oil_demand'},
       {key:'oil_arm_min_bar',    label:'Arm threshold',       unit:'bar', type:'float', min:0, max:10, step:0.1, def:1.5,
         visibleIf: hw => !!hw.sensors?.oil_press?.enabled, configKey:'oil_arm_min_bar'},
       // ── Without oil pressure sensor ───────────────────────────────────────
       {key:'startup_oil_pct',    label:'Pump duty %',         unit:'%',  type:'float', min:0, max:100, step:5, def:80,
-        visibleIf: hw => !hw.sensors?.oil_press?.enabled,
+        visibleIf: hw => !hw.sensors?.oil_press?.enabled && actuatorHasProportionalOutput('oil_pump'),
         configKey:'startup_oil_pct',
         desc:'Pump runs at this fixed duty since no pressure sensor is fitted. Run timeout (below) determines how long the block holds.'},
       // ── Common ────────────────────────────────────────────────────────────
@@ -330,9 +330,10 @@ const BLOCKS = {
         msg: '⚠ No N1 RPM sensor — block cannot verify target RPM. It will run for the full timeout, then FAULT SHUTDOWN. Enable bench mode for timer-only testing.' },
     ],
     params:[
-      {key:'starter_demand',      label:'Starter demand',unit:'%',   type:'float', min:0,   max:100,   step:1,   def:60,    configKey:'starter_demand'},
+      {key:'starter_demand',      label:'Starter demand',unit:'%',   type:'float', min:0,   max:100,   step:1,   def:60,    configKey:'starter_demand',
+        visibleIf: hw => actuatorHasProportionalOutput('starter')},
       {key:'ramp_pct_per_s',     label:'Ramp rate',     unit:'%/s', type:'float', min:0,   max:200,   step:5,   def:30,    configKey:'ramp_pct_per_s',
-        visibleIf: hw => hw.actuators?.starter?.type !== 2},
+        visibleIf: hw => actuatorHasProportionalOutput('starter')},
       {key:'pre_ign_rpm',        label:'Target N1',     unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000,  configKey:'pre_ign_rpm',
         visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
         desc:'Starter runs until N1 exceeds this RPM. Without N1 sensor this condition cannot be checked — the block will run for the full timeout.'},
@@ -403,7 +404,7 @@ const BLOCKS = {
   },
   FuelPumpIdle: {
     label:'Fuel Pump → Idle Input', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.throttle?.enabled,
+    visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Sets the throttle/fuel ESC demand from the idle input (pot or RC channel). Maps raw input (0–4095) linearly to the Min%–Max% range. If no idle channel is fitted, uses Min% as a fixed idle — set Min% = Max% for a precise hardcoded idle without a physical channel. Completes immediately.',
     params:[
@@ -413,7 +414,7 @@ const BLOCKS = {
   },
   ModifiedIdle: {
     label:'Modified Idle', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.throttle?.enabled,
+    visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Sets throttle demand = idle input mapped through throttle idle range (Config → Throttle) × multiplier. Use multiplier > 1.0 for a slightly higher idle on first spool. Completes immediately. throttleDemand is reset to 0 when the engine enters RUNNING. Outputs: throttleDemand set to scaled value.',
     params:[
@@ -430,7 +431,8 @@ const BLOCKS = {
         msg: '⚠ No N1 RPM sensor — Spool cannot verify target RPM has been reached. Block will run until timeout → FAULT SHUTDOWN.' },
     ],
     params:[
-      {key:'idle_min_pct',              label:'Idle throttle',              unit:'%',  type:'float', min:0,    max:50,     step:0.5,  def:8,     configKey:'idle_min_pct'},
+      {key:'idle_min_pct',              label:'Idle throttle',              unit:'%',  type:'float', min:0,    max:50,     step:0.5,  def:8,     configKey:'idle_min_pct',
+        visibleIf: hw => actuatorHasProportionalOutput('throttle')},
       {key:'rpm_target',                label:'Target N1',                  unit:'rpm',type:'float', min:1000, max:200000, step:500,  def:32000, configKey:'rpm_target'},
       {key:'rpm_timeout_ms',            label:'Timeout',                    unit:'ms', type:'int',   min:1000, max:120000, step:1000, def:12000, configKey:'rpm_timeout_ms'},
       {key:'oil_running_min',           label:'Running oil min',            unit:'bar',type:'float', min:0,    max:10,     step:0.1,  def:2.8,   configKey:'oil_running_min',
@@ -535,6 +537,7 @@ const BLOCKS = {
     desc:'Start oil pump at the specified direct output demand. This sequence setting is independent of the closed-loop oil controller minimum duty.',
     params:[
       {key:'oil_pump_on_pct', label:'Startup oil pump demand', unit:'%', type:'float', min:0, max:100, step:5, def:100, configKey:'oil_pump_on_pct',
+        visibleIf: hw => actuatorHasProportionalOutput('oil_pump'),
         desc:'Direct PWM output for this sequence step; it is not limited by Config > Oil System > Controller Minimum Duty.'},
     ]
   },
@@ -602,7 +605,7 @@ const BLOCKS = {
       {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
         visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
       {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct',
-        visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
+        visibleIf: hw => actuatorHasProportionalOutput('starter')},
       {key:'cooldown_starter_en_relay', label:'Starter enable relay asserted automatically', type:'bool', def:true,
         visibleIf: hw => (!!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en)
                       && !!(hw.actuators?.starter?.enabled || hw.has_starter),
@@ -610,9 +613,9 @@ const BLOCKS = {
       {key:'cooldown_use_oil_pump',     label:'Run oil pump',                       type:'bool',                                  def:true,   configKey:'cooldown_use_oil',
         visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump)},
       {key:'cooldown_oil_pct',          label:'Oil pump %',              unit:'%',  type:'float',min:0,    max:100,    step:5,     def:30,     configKey:'cooldown_oil_pct',
-        visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump) && !hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => actuatorHasProportionalOutput('oil_pump') && !hw.sensors?.oil_press?.enabled},
       {key:'cooldown_oil_pressure_bar', label:'Oil pressure target',     unit:'bar',type:'float',min:0.5,  max:10,     step:0.1,   def:2.0,    configKey:'cooldown_oil_pressure_bar',
-        visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump) && !!hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => actuatorHasProportionalOutput('oil_pump') && !!hw.sensors?.oil_press?.enabled},
       {key:'cooldown_use_scavenge',     label:'Run scavenge pump',                  type:'bool',                                  def:false,  configKey:'cooldown_use_scavenge',
         visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
     ]
@@ -659,7 +662,7 @@ const BLOCKS = {
   },
   ThrottleSet: {
     label:'Throttle Set', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.throttle?.enabled,
+    visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Immediately sets throttleDemand to a fixed percentage and completes. Use for a precise idle hold, warm-up step, or test point. If the throttle slew controller is active it will ramp to this setpoint.',
     params:[
@@ -806,8 +809,10 @@ const BLOCKS = {
     desc:'Ramps glow plug power linearly from 0 to maxPct over preheatMs, then holds at holdPct. If a glow current sensor is fitted and "Wait until hot" is checked, the block keeps holding at holdPct until the current drops below the ready threshold (plug is thermally saturated) instead of completing immediately after the ramp. The plug stays at holdPct when this block exits.',
     params:[
       {key:'glow_preheat_ms',      label:'Preheat duration',  unit:'ms', type:'int',   min:500,  max:60000, step:500, def:10000, configKey:'glow_preheat_ms'},
-      {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:10,   max:100,   step:5,   def:80,    configKey:'glow_preheat_max_pct'},
-      {key:'glow_hold_pct',        label:'Hold duty',         unit:'%',  type:'float', min:0,    max:100,   step:5,   def:30,    configKey:'glow_hold_pct'},
+      {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:10,   max:100,   step:5,   def:80,    configKey:'glow_preheat_max_pct',
+       visibleIf: hw => actuatorHasProportionalOutput('glow_plug')},
+      {key:'glow_hold_pct',        label:'Hold duty',         unit:'%',  type:'float', min:0,    max:100,   step:5,   def:30,    configKey:'glow_hold_pct',
+       visibleIf: hw => actuatorHasProportionalOutput('glow_plug')},
       {key:'glow_wait_until_hot',  label:'Wait until hot (requires current sensor)', type:'bool', def:false, configKey:'glow_wait_until_hot',
        visibleIf: hw => !!(hw.actuators?.glow_plug?.enabled && hw.actuators?.glow_plug?.has_current)},
     ],
@@ -822,7 +827,7 @@ const BLOCKS = {
       {key:'fp2_end_pct',        label:'End %',                       unit:'%',  type:'float', min:0,  max:100,   step:1,   def:80,   configKey:'fp2_end_pct'},
       {key:'fp2_ramp_ms',        label:'Ramp duration',               unit:'ms', type:'int',   min:100,max:60000, step:100, def:3000, configKey:'fp2_ramp_ms'},
     ],
-    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled,
+    visibleIf: hw => actuatorHasProportionalOutput('fuel_pump2'),
   },
   FuelPump2Set: {
     label:'Aux Fuel Pump 2 Set', type:'action', badgeClass:'badge-action',
@@ -831,7 +836,21 @@ const BLOCKS = {
     params:[
       {key:'fp2_demand_pct',     label:'Demand %',                    unit:'%',  type:'float', min:0, max:100, step:1, def:0, configKey:'fp2_demand_pct'},
     ],
-    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled,
+    visibleIf: hw => actuatorHasProportionalOutput('fuel_pump2'),
+  },
+  FuelPump2On: {
+    label:'Aux Fuel Pump 2 On', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Switches relay-type fuel pump 2 on. This card is shown only when fuel pump 2 is configured as an on/off output.',
+    params:[],
+    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled && actuatorIsRelay('fuel_pump2'),
+  },
+  FuelPump2Off: {
+    label:'Aux Fuel Pump 2 Off', type:'action', badgeClass:'badge-action',
+    condition: null, timeout_action: null,
+    desc:'Switches relay-type fuel pump 2 off.',
+    params:[],
+    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled && actuatorIsRelay('fuel_pump2'),
   },
   GovernorHold: {
     label:'Governor Hold', type:'while', badgeClass:'badge-while',
@@ -960,7 +979,7 @@ const STARTUP_BLOCKS     = [
   'OilPumpOn','OilPumpOff','OilScavengeOn','OilScavengeOff',
   'AirstarterOn','AirstarterOff','CoolFanOn','CoolFanOff',
   // Advanced hardware
-  'BleedOpen','BleedClose','GlowPreheat','FuelPumpRamp','FuelPump2Set','GovernorHold',
+  'BleedOpen','BleedClose','GlowPreheat','FuelPumpRamp','FuelPump2Set','FuelPump2On','FuelPump2Off','GovernorHold',
 ];
 const SHUTDOWN_BLOCKS    = [
   // Core sequence
@@ -973,7 +992,7 @@ const SHUTDOWN_BLOCKS    = [
   'OilPumpOff','OilPumpOn','OilScavengeOn','OilScavengeOff',
   'CoolFanOn','CoolFanOff','AirstarterOn','AirstarterOff',
   // Advanced hardware
-  'BleedOpen','BleedClose','FuelPump2Set',
+  'BleedOpen','BleedClose','FuelPump2Set','FuelPump2On','FuelPump2Off',
 ];
 // AB ignition sequence blocks (ab_seq)
 const AFTERBURNER_BLOCKS = [
@@ -1135,6 +1154,14 @@ const BLOCK_INFO = {
     desc: 'Sets fuel pump 2 demand to a fixed value immediately.',
     links: []
   },
+  FuelPump2On: {
+    desc: 'Switches relay-type fuel pump 2 on.',
+    links: []
+  },
+  FuelPump2Off: {
+    desc: 'Switches relay-type fuel pump 2 off.',
+    links: []
+  },
 };
 
 // ── Block info panel ───────────────────────────────────────────────────────
@@ -1179,6 +1206,64 @@ let paramVals = {}; // shared block settings plus per-slot TimedDelay edits
 let activeTab = 'startup';
 let engineMode = 'STANDBY';
 let ws;
+let lastIdleRaw = null;
+
+function actuatorEnabled(key) {
+  return !!hwCfg.actuators?.[key]?.enabled;
+}
+function actuatorIsRelay(key) {
+  const act = hwCfg.actuators?.[key];
+  return !!act && act.type === 2;
+}
+function actuatorHasProportionalOutput(key) {
+  return actuatorEnabled(key) && !actuatorIsRelay(key);
+}
+function demandText(key, pct, label = 'on') {
+  return actuatorIsRelay(key) ? label : `${pct}%`;
+}
+
+const SEQ_ACTION_KEYS = {
+  startup:     { enter:'startup_enter_actions',  exit:'startup_exit_actions' },
+  shutdown:    { enter:'shutdown_enter_actions', exit:'shutdown_exit_actions' },
+  afterburner: { enter:'ab_enter_actions',       exit:'ab_exit_actions' },
+  'ab-shut':   { enter:'ab_shut_enter_actions',  exit:'ab_shut_exit_actions' },
+};
+const ACT_ENUM = {
+  cool_fan:0, bleed_valve:1, fuel_pump2:2, oil_scavenge_pump:3,
+  throttle:4, starter:5, starter_en:6, oil_pump:7,
+  fuel_sol:8, igniter:9, igniter2:10, ab_sol:11, ab_pump:12,
+  airstarter_sol:15, glow_plug:16, prop_pitch:17,
+};
+const ACT_KEY_BY_ENUM = Object.fromEntries(Object.entries(ACT_ENUM).map(([k,v]) => [v,k]));
+function actionKey(tab, phase) {
+  return SEQ_ACTION_KEYS[tab]?.[phase];
+}
+function ensureActionSlots(tab) {
+  const seq = hwCfg[seqKey(tab)] || [];
+  for (const phase of ['enter','exit']) {
+    const key = actionKey(tab, phase);
+    if (!key) continue;
+    if (!Array.isArray(hwCfg[key])) hwCfg[key] = [];
+    while (hwCfg[key].length < seq.length) hwCfg[key].push([]);
+    if (hwCfg[key].length > seq.length) hwCfg[key].length = seq.length;
+    for (let i = 0; i < seq.length; i++) {
+      if (!Array.isArray(hwCfg[key][i])) hwCfg[key][i] = [];
+      hwCfg[key][i] = hwCfg[key][i].filter(a => actionAllowed(a.act)).slice(0, 4);
+    }
+  }
+}
+function actionAllowed(actVal) {
+  const key = ACT_KEY_BY_ENUM[Number(actVal)];
+  return !!key && getEnabledActuators().some(a => a.key === key);
+}
+function actionDisplayValue(act, value) {
+  const meta = getEnabledActuators().find(a => a.key === ACT_KEY_BY_ENUM[Number(act)]);
+  return meta?.mode === 'pct' ? Math.round((Number(value) || 0) * 100) : ((Number(value) || 0) >= 0.5 ? 1 : 0);
+}
+function actionStoredValue(act, raw) {
+  const meta = getEnabledActuators().find(a => a.key === ACT_KEY_BY_ENUM[Number(act)]);
+  return meta?.mode === 'pct' ? Math.max(0, Math.min(1, (Number(raw) || 0) / 100)) : (Number(raw) ? 1 : 0);
+}
 
 // ── Tab switching ──────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -1299,6 +1384,7 @@ function render(tab, idleRaw) {
   const key = seqKey(tab);
   const seq  = hwCfg[key] || [];
   ensureDelaySlots(tab);
+  ensureActionSlots(tab);
   const list = document.getElementById('list-' + tab);
   list.innerHTML = '';
   seq.forEach((bname, idx) => {
@@ -1312,29 +1398,102 @@ function render(tab, idleRaw) {
 
 function renderWithLiveIdle(tab) {
   fetch('/api/data').then(r => r.json()).then(d => {
-    render(tab, d.idle_input_raw ?? null);
-  }).catch(() => render(tab, null));
+    lastIdleRaw = d.idle_input_raw ?? lastIdleRaw;
+    if (d.mode !== undefined) updateEngineMode(d.mode);
+    if (d.seq_issues !== undefined) _applySeqValidation(d);
+    render(tab, lastIdleRaw);
+  }).catch(() => render(tab, lastIdleRaw));
+}
+
+function renderFast(tab) {
+  render(tab, lastIdleRaw);
+  setSaveStatus('Sequence edited - save to apply');
 }
 
 // ── Final state summary card ───────────────────────────────────────────────
+function applySideActionsToState(tab, idx, phase, state) {
+  const key = actionKey(tab, phase);
+  const rows = hwCfg[key]?.[idx] || [];
+  for (const a of rows) {
+    const actKey = ACT_KEY_BY_ENUM[Number(a.act)];
+    if (!actKey) continue;
+    const on = Number(a.value) >= 0.5;
+    const pct = `${Math.round((Number(a.value) || 0) * 100)}%`;
+    switch (actKey) {
+      case 'throttle': state.throttle = pct; break;
+      case 'starter': state.starter = actuatorIsRelay('starter') ? (on ? 'on' : 'off') : pct; break;
+      case 'starter_en': state.starterEn = on ? 'on' : 'off'; break;
+      case 'oil_pump': state.oilPump = actuatorIsRelay('oil_pump') ? (on ? 'on' : 'off') : pct; break;
+      case 'fuel_sol': state.fuelSol = on ? 'open' : 'closed'; break;
+      case 'igniter': state.igniter = on ? 'on' : 'off'; break;
+      case 'igniter2': state.igniter2 = on ? 'on' : 'off'; break;
+      case 'oil_scavenge_pump': state.oilScav = on ? 'on' : 'off'; break;
+      case 'airstarter_sol': state.airstarter = on ? 'open' : 'closed'; break;
+      case 'cool_fan': state.coolFan = on ? 'on' : 'off'; break;
+      case 'bleed_valve': state.bleed = on ? 'open' : 'closed'; break;
+      case 'glow_plug': state.glow = actuatorIsRelay('glow_plug') ? (on ? 'on' : 'off') : pct; break;
+      case 'fuel_pump2': state.fuelPump2 = actuatorIsRelay('fuel_pump2') ? (on ? 'on' : 'off') : pct; break;
+      case 'ab_sol': state.abSol = on ? 'open' : 'closed'; break;
+      case 'ab_pump': state.abPump = actuatorIsRelay('ab_pump') ? (on ? 'on' : 'off') : pct; break;
+      case 'prop_pitch': state.propPitch = actuatorIsRelay('prop_pitch') ? (on ? 'on' : 'off') : pct; break;
+    }
+  }
+}
+
 function buildFinalStateCard(tab, seq, idleRaw) {
   if (!seq || seq.length === 0) return null;
+  const acts = hwCfg.actuators || {};
+  const hasAct = key => !!acts[key]?.enabled;
 
   const state = {
     throttle:  '0%',
     fuelSol:   'closed',
     igniter:   'off',
+    igniter2:  'off',
     starter:   'off',
     starterEn: 'off',
     oilPump:   'off',
+    oilScav:   'off',
+    airstarter:'closed',
+    coolFan:   'off',
+    bleed:     'closed',
+    glow:      'off',
+    fuelPump2: 'off',
+    abSol:     'closed',
+    abPump:    'off',
+    propPitch: '0%',
   };
 
   if (tab === 'startup') {
-    for (const bname of seq) {
-      if (bname === 'OilPrime')     state.oilPump   = 'on — pressure ctrl';
+    for (let i = 0; i < seq.length; i++) {
+      const bname = seq[i];
+      if (bname === 'OilPrime')     state.oilPump   = actuatorIsRelay('oil_pump') ? 'on' : 'on — pressure ctrl';
       if (bname === 'StarterSpin')  { state.starter = 'on'; state.starterEn = 'on'; }
       if (bname === 'PreIgnSpark')  state.igniter   = 'on';
       if (bname === 'FuelOpen')     state.fuelSol   = 'open';
+      if (bname === 'FuelPulse')    state.fuelSol   = 'closed';
+      if (bname === 'IgniterOn')    state.igniter   = 'on';
+      if (bname === 'IgniterOff')   state.igniter   = 'off';
+      if (bname === 'FuelSolClose') state.fuelSol   = 'closed';
+      if (bname === 'StarterEnOn')  state.starterEn = 'on';
+      if (bname === 'StarterEnOff') state.starterEn = 'off';
+      if (bname === 'StarterOff')   state.starter   = 'off';
+      if (bname === 'OilPumpOn')    state.oilPump   = demandText('oil_pump', paramVals['OilPumpOn.oil_pump_on_pct'] ?? 100);
+      if (bname === 'OilPumpOff')   state.oilPump   = 'off';
+      if (bname === 'OilScavengeOn')  state.oilScav = 'on';
+      if (bname === 'OilScavengeOff') state.oilScav = 'off';
+      if (bname === 'AirstarterOn')  state.airstarter = 'open';
+      if (bname === 'AirstarterOff') state.airstarter = 'closed';
+      if (bname === 'CoolFanOn')     state.coolFan = 'on';
+      if (bname === 'CoolFanOff')    state.coolFan = 'off';
+      if (bname === 'BleedOpen')     state.bleed = 'open';
+      if (bname === 'BleedClose')    state.bleed = 'closed';
+      if (bname === 'GlowPreheat')   state.glow = actuatorIsRelay('glow_plug') ? 'on during preheat' : `${paramVals['GlowPreheat.glow_hold_pct'] ?? 30}% hold`;
+      if (bname === 'FuelPumpRamp')  state.fuelPump2 = demandText('fuel_pump2', paramVals['FuelPumpRamp.fp2_end_pct'] ?? 80);
+      if (bname === 'FuelPump2Set')  state.fuelPump2 = demandText('fuel_pump2', paramVals['FuelPump2Set.fp2_demand_pct'] ?? 0);
+      if (bname === 'FuelPump2On')   state.fuelPump2 = 'on';
+      if (bname === 'FuelPump2Off')  state.fuelPump2 = 'off';
+      applySideActionsToState(tab, i, 'enter', state);
       if (bname === 'FuelPumpIdle') {
         const mn = paramVals['FuelPumpIdle.fp_idle_min_pct'] ?? 8;
         const mx = paramVals['FuelPumpIdle.fp_idle_max_pct'] ?? 18;
@@ -1361,6 +1520,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
         if (paramVals['SafetyHold.safety_turn_off_starter_en'] ?? false) state.starterEn = 'off';
         if (paramVals['SafetyHold.safety_turn_off_igniter']    ?? false) state.igniter   = 'off';
       }
+      applySideActionsToState(tab, i, 'exit', state);
     }
     // After startup completes (RUNNING), throttle tracks idle input
     if (seq.includes('SafetyHold')) {
@@ -1382,25 +1542,41 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     state.throttle  = '0%';
     state.fuelSol   = 'closed';
     state.igniter   = 'off';
+    state.igniter2  = 'off';
     state.starter   = 'off';
     state.starterEn = 'off';
     state.oilPump   = 'off';
+    state.oilScav   = 'off';
+    state.airstarter= 'closed';
+    state.coolFan   = 'off';
+    state.bleed     = 'closed';
+    state.glow      = 'off';
+    state.fuelPump2 = 'off';
+    state.abSol     = 'closed';
+    state.abPump    = 'off';
+    state.propPitch = '0%';
   } else if (tab === 'afterburner') {
     // After Light Up completes → AB Running
     const ab = cfg?.afterburner ?? {};
     const minP = ab.pump_min_pct ?? 80;
     const maxP = ab.pump_max_pct ?? 100;
     const pumpMode = ab.pump_control_mode ?? ((ab.pump_follow_throttle ?? false) ? 1 : 0);
-    const pumpStr = pumpMode === 2 ? `${minP}-${maxP}%  (dedicated AB input)`
+    const pumpStr = actuatorIsRelay('ab_pump') ? 'on'
+                  : pumpMode === 2 ? `${minP}-${maxP}%  (dedicated AB input)`
                   : pumpMode === 1 ? `${minP}-${maxP}%  (follows throttle)`
                   : `${maxP}%  (fixed)`;
     const offStr  = (ab.main_fuel_offset_pct ?? 0) !== 0 ? `+${ab.main_fuel_offset_pct}%` : 'none';
+    const abState = {...state, abSol:'open', abPump:pumpStr, igniter2:'off'};
+    for (let i = 0; i < seq.length; i++) {
+      applySideActionsToState(tab, i, 'enter', abState);
+      applySideActionsToState(tab, i, 'exit', abState);
+    }
     const abRows = [
-      { label:'AB Solenoid',        val:'open' },
-      { label:'AB Fuel Pump',       val: pumpStr },
-      { label:'AB Igniter',         val:'off  (fired during sequence)' },
+      hasAct('ab_sol') ? { label:'AB Solenoid', val:abState.abSol } : null,
+      hasAct('ab_pump') ? { label:'AB Fuel Pump', val: abState.abPump } : null,
+      hasAct('igniter2') ? { label:'AB Igniter', val:abState.igniter2 === 'off' ? 'off  (fired during sequence)' : abState.igniter2 } : null,
       { label:'Main Fuel Offset',   val: offStr },
-    ];
+    ].filter(Boolean);
     const rowsHtml2 = abRows.map(r =>
       `<div class="fs-row"><span class="fs-label">${r.label}</span><span class="fs-val">${r.val}</span></div>`
     ).join('');
@@ -1411,12 +1587,17 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     return card2;
   } else if (tab === 'ab-shut') {
     // After Light Off completes → AB Off
+    const abState = {...state, abSol:'closed', abPump:'off', igniter2:'off'};
+    for (let i = 0; i < seq.length; i++) {
+      applySideActionsToState(tab, i, 'enter', abState);
+      applySideActionsToState(tab, i, 'exit', abState);
+    }
     const abOffRows = [
-      { label:'AB Solenoid',  val:'closed' },
-      { label:'AB Fuel Pump', val:'off' },
-      { label:'AB Igniter',   val:'off' },
+      hasAct('ab_sol') ? { label:'AB Solenoid',  val:abState.abSol } : null,
+      hasAct('ab_pump') ? { label:'AB Fuel Pump', val:abState.abPump } : null,
+      hasAct('igniter2') ? { label:'AB Igniter',   val:abState.igniter2 } : null,
       { label:'Main engine',  val:'continues running normally' },
-    ];
+    ].filter(Boolean);
     const rowsHtml3 = abOffRows.map(r =>
       `<div class="fs-row"><span class="fs-label">${r.label}</span><span class="fs-val">${r.val}</span></div>`
     ).join('');
@@ -1428,13 +1609,24 @@ function buildFinalStateCard(tab, seq, idleRaw) {
   }
 
   const rows = [
-    { label:'Throttle / Fuel ESC', val: state.throttle },
-    { label:'Fuel Solenoid',       val: state.fuelSol },
-    { label:'Igniter',             val: state.igniter },
-    { label:'Starter',             val: state.starter },
-    { label:'Starter Enable',      val: state.starterEn },
-    { label:'Oil Pump',            val: state.oilPump },
-  ];
+    hasAct('throttle') ? { label:'Throttle / Fuel ESC', val: state.throttle } : null,
+    hasAct('fuel_sol') ? { label:'Fuel Solenoid',       val: state.fuelSol } : null,
+    hasAct('igniter') ? { label:'Igniter',              val: state.igniter } : null,
+    hasAct('igniter2') && !hwCfg.has_afterburner ? { label:'Igniter 2', val: state.igniter2 } : null,
+    hasAct('starter') ? { label:'Starter',              val: state.starter } : null,
+    hasAct('starter_en') ? { label:'Starter Enable',    val: state.starterEn } : null,
+    hasAct('oil_pump') ? { label:'Oil Pump',            val: state.oilPump } : null,
+    hasAct('oil_scavenge_pump') ? { label:'Scavenge Pump', val: state.oilScav } : null,
+    hasAct('airstarter_sol') ? { label:'Airstarter Solenoid', val: state.airstarter } : null,
+    hasAct('cool_fan') ? { label:'Cooling Fan',         val: state.coolFan } : null,
+    hasAct('bleed_valve') ? { label:'Bleed Valve',      val: state.bleed } : null,
+    hasAct('glow_plug') ? { label:'Glow Plug',          val: state.glow } : null,
+    hasAct('fuel_pump2') ? { label:'Aux Fuel Pump 2',   val: state.fuelPump2 } : null,
+    hasAct('prop_pitch') ? { label:'Prop Pitch',         val: state.propPitch } : null,
+    hwCfg.has_afterburner && hasAct('ab_sol') ? { label:'AB Solenoid', val: state.abSol } : null,
+    hwCfg.has_afterburner && hasAct('ab_pump') ? { label:'AB Fuel Pump', val: state.abPump } : null,
+  ].filter(Boolean);
+  if (!rows.length) return null;
 
   const rowsHtml = rows.map(r =>
     `<div class="fs-row"><span class="fs-label">${r.label}</span><span class="fs-val">${r.val}</span></div>`
@@ -1594,6 +1786,86 @@ function buildCard(bname, idx, tab, total) {
   return card;
 }
 
+function buildSideActionsHtml(tab, idx) {
+  ensureActionSlots(tab);
+  const acts = getEnabledActuators();
+  if (!acts.length) return '';
+  const esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const phaseHtml = (phase, title) => {
+    const key = actionKey(tab, phase);
+    const rows = (hwCfg[key]?.[idx] || []).filter(a => actionAllowed(a.act));
+    const rowHtml = rows.map((a, ai) => {
+      const selectedKey = ACT_KEY_BY_ENUM[Number(a.act)];
+      const selectedMeta = acts.find(x => x.key === selectedKey) || acts[0];
+      const opts = acts.map(meta => `<option value="${ACT_ENUM[meta.key]}" ${ACT_ENUM[meta.key]===Number(a.act)?'selected':''}>${esc(meta.label)}</option>`).join('');
+      const val = actionDisplayValue(a.act, a.value);
+      const valCtrl = selectedMeta.mode === 'pct'
+        ? `<input class="param-input" type="number" min="0" max="100" step="1" value="${val}" oninput="updateSideAction('${tab}',${idx},'${phase}',${ai},null,this.value)">`
+        : `<select class="param-input" onchange="updateSideAction('${tab}',${idx},'${phase}',${ai},null,this.value)">
+             <option value="1" ${val ? 'selected' : ''}>ON</option>
+             <option value="0" ${!val ? 'selected' : ''}>OFF</option>
+           </select>`;
+      return `<div class="param-field">
+        <span class="param-label">Also set</span>
+        <select class="param-input" onchange="updateSideAction('${tab}',${idx},'${phase}',${ai},this.value,null)">${opts}</select>
+        <span class="param-label">Demand</span>
+        ${valCtrl}
+        <button class="blk-btn del" type="button" onclick="removeSideAction('${tab}',${idx},'${phase}',${ai})">Remove</button>
+      </div>`;
+    }).join('');
+    const canAdd = rows.length < 4;
+    return `<div style="margin-top:.55rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.25rem">
+        <span class="param-label">${title}</span>
+        <button class="blk-btn" type="button" onclick="addSideAction('${tab}',${idx},'${phase}')" ${canAdd?'':'disabled'}>+ Action</button>
+      </div>
+      ${rowHtml || `<div style="font-size:.68rem;color:var(--dim)">No simultaneous output actions.</div>`}
+    </div>`;
+  };
+  return `<div class="side-actions">
+    ${phaseHtml('enter', 'At block start')}
+    ${phaseHtml('exit', 'After block completes')}
+  </div>`;
+}
+
+function addSideAction(tab, idx, phase) {
+  ensureActionSlots(tab);
+  const acts = getEnabledActuators();
+  if (!acts.length) return;
+  const key = actionKey(tab, phase);
+  const rows = hwCfg[key][idx];
+  if (rows.length >= 4) return;
+  const first = acts[0];
+  rows.push({ act: ACT_ENUM[first.key], value: first.mode === 'pct' ? 0.5 : 1 });
+  renderFast(tab);
+}
+
+function removeSideAction(tab, idx, phase, actionIdx) {
+  ensureActionSlots(tab);
+  const key = actionKey(tab, phase);
+  hwCfg[key]?.[idx]?.splice(actionIdx, 1);
+  renderFast(tab);
+}
+
+function updateSideAction(tab, idx, phase, actionIdx, newAct, newValue) {
+  ensureActionSlots(tab);
+  const key = actionKey(tab, phase);
+  const row = hwCfg[key]?.[idx]?.[actionIdx];
+  if (!row) return;
+  let needsRender = false;
+  if (newAct !== null && newAct !== undefined) {
+    row.act = Number(newAct);
+    row.value = actionStoredValue(row.act, actionDisplayValue(row.act, row.value));
+    needsRender = true;
+  }
+  if (newValue !== null && newValue !== undefined) {
+    row.value = actionStoredValue(row.act, newValue);
+  }
+  if (needsRender) renderFast(tab);
+  else setSaveStatus('Sequence edited - save to apply');
+}
+
 // Flatten relevant hw/config values for condition labels
 function flattenHw() {
   const su = cfg?.sequence?.startup ?? {};
@@ -1640,8 +1912,9 @@ function _buildHwWarningHtml(def) {
 function buildParamsHtml(bname, idx, tab) {
   const def = BLOCKS[bname] || customBlocks[bname];
   const warningHtml = _buildHwWarningHtml(def);
+  const sideHtml = buildSideActionsHtml(tab, idx);
   if (!def || def.params.length === 0) {
-    return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em></div>`;
+    return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em>${sideHtml}</div>`;
   }
   const inputs = def.params.map(p => {
     // visibleIf — skip this param if hw condition is false
@@ -1690,7 +1963,7 @@ function buildParamsHtml(bname, idx, tab) {
   }).join('');
   return `<div class="block-params">
     <div class="block-desc">${def.desc}</div>
-    ${warningHtml}<div class="param-grid">${inputs}</div>
+    ${warningHtml}<div class="param-grid">${inputs}</div>${sideHtml}
   </div>`;
 }
 
@@ -1707,7 +1980,7 @@ function onParamChange(bname, pkey, configKey, rawVal, tab, idx) {
   if (bname === 'TimedDelay' && pkey === 'timed_delay_ms' && tab !== undefined) {
     ensureDelaySlots(tab);
     hwCfg[delaySeqKey(tab)][idx] = val;
-    renderWithLiveIdle(tab);
+    renderFast(tab);
     return;
   }
   const vk  = bname + '.' + pkey;
@@ -1775,16 +2048,27 @@ function moveBlock(tab, idx, dir) {
   if (ni < 0 || ni >= seq.length) return;
   [seq[idx], seq[ni]] = [seq[ni], seq[idx]];
   ensureDelaySlots(tab);
+  ensureActionSlots(tab);
   const delays = hwCfg[delaySeqKey(tab)];
   [delays[idx], delays[ni]] = [delays[ni], delays[idx]];
-  renderWithLiveIdle(tab);
+  for (const phase of ['enter','exit']) {
+    const ak = actionKey(tab, phase);
+    if (!ak || !hwCfg[ak]) continue;
+    [hwCfg[ak][idx], hwCfg[ak][ni]] = [hwCfg[ak][ni], hwCfg[ak][idx]];
+  }
+  renderFast(tab);
 }
 
 function removeBlock(tab, idx) {
   ensureDelaySlots(tab);
+  ensureActionSlots(tab);
   hwCfg[seqKey(tab)].splice(idx, 1);
   hwCfg[delaySeqKey(tab)].splice(idx, 1);
-  renderWithLiveIdle(tab);
+  for (const phase of ['enter','exit']) {
+    const ak = actionKey(tab, phase);
+    if (ak && hwCfg[ak]) hwCfg[ak].splice(idx, 1);
+  }
+  renderFast(tab);
 }
 
 function addBlock(tab) {
@@ -1795,9 +2079,10 @@ function addBlock(tab) {
   if (!hwCfg[key]) hwCfg[key] = [];
   hwCfg[key].push(bname);
   ensureDelaySlots(tab);
+  ensureActionSlots(tab);
   hwCfg[delaySeqKey(tab)][hwCfg[key].length - 1] =
     bname === 'TimedDelay' ? (cfg?.sequence?.startup?.timed_delay_ms || 1000) : 0;
-  renderWithLiveIdle(tab);
+  renderFast(tab);
 }
 
 const _typeLabel = {while:'WHILE', action:'ACTION', wait:'WAIT', check:'CHECK'};
@@ -1836,7 +2121,9 @@ function updateBlockPreview(tab) {
   if (!bname || !def) { prev.innerHTML = ''; return; }
   const typeMap = {while:'WHILE — waits for condition', action:'ACTION — instant, completes in one tick', wait:'WAIT — fixed timer', check:'CHECK — verify then fault or complete'};
   const typeStr = typeMap[def.type] ?? def.type.toUpperCase();
-  prev.innerHTML = `<strong style="color:var(--text)">${typeStr}</strong> &nbsp;·&nbsp; ${def.desc ?? ''}`;
+  const esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  prev.innerHTML = `<strong style="color:var(--text)">${esc(typeStr)}</strong> &nbsp;·&nbsp; ${esc(def.desc ?? '')}`;
 }
 
 // ── Custom block dialog ────────────────────────────────────────────────────
@@ -1874,19 +2161,25 @@ function getEnabledActuators() {
   const hasAB = hwCfg.has_afterburner || false;
   const list = [];
   const isOnOff = act => !act || act.type === 2;
+  const demandLabel = (act, pctLabel, relayLabel) => isOnOff(act) ? relayLabel : pctLabel;
   // Always-present outputs (if hardware enabled)
-  if (a.throttle?.enabled)       list.push({key:'throttle',       label:'Throttle %',                   mode: isOnOff(a.throttle)    ? 'relay':'pct'});
-  if (a.starter?.enabled)        list.push({key:'starter',        label:'Starter Demand %',             mode: isOnOff(a.starter)     ? 'relay':'pct'});
+  if (a.throttle?.enabled)       list.push({key:'throttle',       label:demandLabel(a.throttle, 'Throttle %', 'Throttle Relay'), mode: isOnOff(a.throttle) ? 'relay':'pct'});
+  if (a.starter?.enabled)        list.push({key:'starter',        label:demandLabel(a.starter, 'Starter Demand %', 'Starter Relay'), mode: isOnOff(a.starter) ? 'relay':'pct'});
   if (a.starter_en?.enabled)     list.push({key:'starter_en',     label:'Starter Enable Relay',         mode:'relay'});
-  if (a.oil_pump?.enabled)       list.push({key:'oil_pump',       label:'Oil Pump %',                   mode: isOnOff(a.oil_pump)    ? 'relay':'pct'});
+  if (a.oil_pump?.enabled)       list.push({key:'oil_pump',       label:demandLabel(a.oil_pump, 'Oil Pump %', 'Oil Pump Relay'), mode: isOnOff(a.oil_pump) ? 'relay':'pct'});
   if (a.fuel_sol?.enabled)       list.push({key:'fuel_sol',       label:'Fuel Solenoid',                mode:'relay'});
   if (a.igniter?.enabled)        list.push({key:'igniter',        label:'Igniter 1',                    mode:'relay'});
   if (a.igniter2?.enabled)       list.push({key:'igniter2',       label: hasAB ? 'AB Igniter (Ign.2)' : 'Igniter 2', mode:'relay'});
   if (a.airstarter_sol?.enabled) list.push({key:'airstarter_sol', label:'Airstarter Solenoid',          mode:'relay'});
-  if (a.cool_fan?.enabled)       list.push({key:'cool_fan',       label:'Cooling Fan %',                mode: isOnOff(a.cool_fan)    ? 'relay':'pct'});
-  // AB / optional outputs
+  if (a.cool_fan?.enabled)       list.push({key:'cool_fan',       label:demandLabel(a.cool_fan, 'Cooling Fan %', 'Cooling Fan Relay'), mode: isOnOff(a.cool_fan) ? 'relay':'pct'});
+  if (a.oil_scavenge_pump?.enabled) list.push({key:'oil_scavenge_pump', label:'Oil Scavenge Pump',      mode:'relay'});
+  if (a.bleed_valve?.enabled)    list.push({key:'bleed_valve',    label:'Bleed Valve',                  mode:'relay'});
+  if (a.glow_plug?.enabled)      list.push({key:'glow_plug',      label:demandLabel(a.glow_plug, 'Glow Plug %', 'Glow Plug Relay'), mode: isOnOff(a.glow_plug) ? 'relay':'pct'});
+  if (a.fuel_pump2?.enabled)     list.push({key:'fuel_pump2',     label:demandLabel(a.fuel_pump2, 'Aux Fuel Pump 2 %', 'Aux Fuel Pump 2 Relay'), mode: isOnOff(a.fuel_pump2) ? 'relay':'pct'});
+  if (a.prop_pitch?.enabled)     list.push({key:'prop_pitch',     label:demandLabel(a.prop_pitch, 'Prop Pitch %', 'Prop Pitch Relay'), mode: isOnOff(a.prop_pitch) ? 'relay':'pct'});
+  // AB outputs
   if (hasAB && a.ab_sol?.enabled)list.push({key:'ab_sol',         label:'AB Fuel Solenoid',          mode:'relay'});
-  if (hasAB && a.ab_pump?.enabled)list.push({key:'ab_pump',       label:'AB Fuel Pump %',             mode: isOnOff(a.ab_pump) ? 'relay':'pct'});
+  if (hasAB && a.ab_pump?.enabled)list.push({key:'ab_pump',       label:demandLabel(a.ab_pump, 'AB Fuel Pump %', 'AB Fuel Pump Relay'), mode: isOnOff(a.ab_pump) ? 'relay':'pct'});
   return list;
 }
 
@@ -2367,11 +2660,13 @@ function collectRules() {
 function markRulesEdited() { collectRules(); setSaveStatus('Control rules edited - save to apply'); }
 
 async function saveAll() {
+  await refreshEngineStatus();
   if (engineMode !== 'STANDBY') {
     setSaveStatus('⚠ Engine must be in STANDBY to save');
     return;
   }
   collectRules();
+  ['startup','shutdown','afterburner','ab-shut'].forEach(ensureActionSlots);
   // Validate that the startup sequence is not empty
   const startupBlocks = hwCfg['startup_seq'] || [];
   if (startupBlocks.length === 0) {
@@ -2435,23 +2730,42 @@ function setSaveStatus(msg) {
 }
 
 // ── WebSocket for engine mode ──────────────────────────────────────────────
+function updateEngineMode(mode) {
+  engineMode = mode;
+  const btn = document.getElementById('save-btn');
+  const active = (engineMode === 'STANDBY');
+  if (btn) btn.disabled = !active;
+  if (!active) {
+    setSaveStatus(`⚠ Engine is ${engineMode} - stop engine to save`);
+  } else {
+    const status = document.getElementById('save-status');
+    if (status && /Engine is .*stop engine/.test(status.textContent)) {
+      setSaveStatus('Ready - edit parameters then save');
+    }
+  }
+}
+
+async function refreshEngineStatus() {
+  try {
+    const r = await fetch('/api/status', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.mode !== undefined) updateEngineMode(d.mode);
+  } catch (_) {}
+}
+
 function startWS() {
   ws = new WebSocket('ws://' + location.host + '/ws');
   ws.onmessage = e => {
     try {
       const d = JSON.parse(e.data);
-      if (d.mode !== undefined) {
-        engineMode = d.mode;
-        const btn = document.getElementById('save-btn');
-        const active = (engineMode === 'STANDBY');
-        btn.disabled = !active;
-        if (!active) setSaveStatus(`⚠ Engine is ${engineMode} — stop engine to save`);
-      }
+      if (d.mode !== undefined) updateEngineMode(d.mode);
       if (d.seq_issues !== undefined) _applySeqValidation(d);
     } catch(_){}
   };
   ws.onclose = () => setTimeout(startWS, 3000);
 }
+setInterval(refreshEngineStatus, 1500);
 
 // ── Sequence validation banner ─────────────────────────────────────────────
 function _applySeqValidation(d) {

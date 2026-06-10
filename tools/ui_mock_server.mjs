@@ -71,11 +71,11 @@ function makeHardware() {
       glow_plug: { enabled: true, pin: 17, freq_hz: 5000, res_bits: 10, current_pin: 36, current_mv_a: 100, current_zero_v: 0, current_ready_a: 2, has_current: true },
       status_led: { enabled: true, pin: 2 }
     },
-    cluster_serial: { enabled: true, tx_pin: 1, baud: 115200, interval_ms: 100 },
+    cluster_serial: { enabled: true, tx_pin: 1, rx_pin: -1, baud: 115200, interval_ms: 100, protocol: 1 },
     buzzer: { enabled: true, pin: 4 },
     mavlink: { enabled: true, tx_pin: 3, baud: 57600, interval_ms: 100 },
     controllers: { oil_loop: true, throttle_slew: true, dynamic_idle: true, governor: true },
-    safety: { overspeed: true, overtemp: true, low_oil: true, oil_zero: true, flameout: true, low_fuel: false, hot_start: true, tit_overtemp: true, oil_temp_high: true, fuel_press_low: true, batt_low: true, surge: true },
+    safety: { overspeed: true, overtemp: true, low_oil: true, oil_zero: true, flameout: true, hot_start: true, tit_overtemp: true, oil_temp_high: true, fuel_press_low: true, batt_low: true, surge: true },
     startup_seq: ['OilPumpOn', 'TimedDelay', 'IgniterOn', 'FuelPumpIdle', 'TimedDelay', 'IgniterOff', 'TimedDelay'],
     startup_delay_ms: [0, 15000, 0, 0, 10000, 0, 5000],
     shutdown_seq: ['ImmediateCut', 'TimedDelay', 'OilPumpOff'],

@@ -52,6 +52,8 @@ nav {
   align-items: center;
   gap: 0;
   padding: 0 1.25rem;
+  box-sizing: border-box;
+  width: 100%;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   height: 48px;
@@ -810,11 +812,14 @@ textarea.field-changed {
     padding: 0 0.5rem;
     height: 44px;
     overflow-x: auto;
+    max-width: 100%;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;       /* Firefox */
   }
   nav::-webkit-scrollbar { display: none; }  /* Chrome/Safari */
-  nav a { padding: 0 0.55rem; font-size: 0.68rem; height: 44px; line-height: 44px; }
+  nav a { flex: 0 0 auto; padding: 0 0.55rem; font-size: 0.68rem; height: 44px; line-height: 44px; }
+  .conn-dot { margin-left: 0.55rem; }
+  .conn-label { display: none; }
 
   /* START / STOP full-width on mobile for maximum target size */
   #btn-start, #btn-stop { min-height: 56px; font-size: 1rem; width: 100%; }
@@ -1059,8 +1064,9 @@ select option.pin-adc2   { color: #c07030; }
 .slog-chk input[type=checkbox] { accent-color: var(--accent); }
 
 /* ── Sequence page ───────────────────────────────────────────── */
-.seq-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.seq-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; max-width: 100%; overflow-x: auto; scrollbar-width: thin; }
 .seq-tab {
+  flex: 0 0 auto;
   padding: 0.45rem 1.2rem;
   border-radius: var(--r-sm);
   border: 1px solid var(--border);
@@ -1216,10 +1222,10 @@ select option.pin-adc2   { color: #c07030; }
 .reboot-overlay p  { color: var(--dim); font-size: 0.85rem; margin: 0; text-align: center; }
 .spin { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
 
-/* ── Live sensor value badge (config page) ───────────────────── */
+/* Live sensor value badge (config page) */
 .live-val { font-size: .72rem; color: var(--accent); margin-left: .5rem; opacity: .85; }
 
-/* ── DI channel state badges (dashboard) ───────────────────���── */
+/* DI channel state badges (dashboard) */
 .di-badge {
   padding: .15rem .55rem;
   border-radius: 3px;

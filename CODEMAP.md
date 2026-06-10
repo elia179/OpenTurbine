@@ -47,7 +47,7 @@ src/
     FlightRecorder.{h,cpp}                   — persistent NDJSON ring (2200 records, 20 % evict)
     SessionLogger.{h,cpp}                    — per-run CSV with deferred Core 0 writes
     RulesEngine.h                            — up to 8 sensor→actuator threshold rules
-    ClusterSerial.{h,cpp}                    — TX-only JetEcu cluster protocol v2 (UART2)
+    ClusterSerial.{h,cpp}                    — OTC framed external display/device protocol (UART1)
     MAVLinkOutput.h                          — TX-only MAVLink v1 HEARTBEAT / NAMED_VALUE_FLOAT / STATUSTEXT
     web/WebServer.{h,cpp}                    — 1172 lines: HTTP+WS+OTA+captive portal
   platform/esp32/
@@ -159,9 +159,12 @@ block name arrays (`startupSeq`, `shutdownSeq`, `abSeq`, `abShutSeq`), DI channe
 configs (role, debounce, faultMsg, faultCode, activeModes), profile_id, baud, sensor
 SPI/CS pins, throttle/oil ADC channel.
 
-No bounds checking on load. Invalid pin numbers (e.g. >48 on S3, ADC2 pin while WiFi
-is up) accepted as-is and silently fail at driver init. `save()` uses same temp+rename
-pattern. No CRC. `applyDefaults()` resets to `hardware_profile.h` compile-time values.
+`validateJson()` checks platform GPIO legality, ADC1-only analog pins, output-capable
+pins, active duplicate GPIO assignments, and cluster protocol ranges before web saves
+or full engine-file restores commit. SPI temperature sensors may intentionally share
+CLK/MISO/MOSI; CS pins and all other active GPIOs must be unique. `save()` uses the
+same temp+rename pattern. No CRC. `applyDefaults()` resets to `hardware_profile.h`
+compile-time values.
 
 ---
 
@@ -272,7 +275,7 @@ but most config lives in LittleFS JSON, not NVS.
 | OTA upload | `WebServer.cpp:817-859` (`/update`) | STANDBY-only gate; `Update.write()` streamed; no size limit declared |
 | WiFi credentials | `WebServer.cpp` AP setup | AP password is optional; SSID = profile_id (broadcasts profile name) |
 | LittleFS config files | `Config::load`, `HardwareConfig::load` | JSON; no CRC; corrupt → parse error → defaults |
-| Cluster serial RX | none | TX-only |
+| Cluster serial RX | `ClusterSerial::_pollRx()` | Optional wired OTC commands when `cluster_serial.rx_pin` is fitted |
 | MAVLink RX | none | TX-only |
 | GPIO digital inputs | DI channels (`main.cpp:545-642`), start/stop switches | Debounce, configurable activeH/pullup; role dispatch into FAULT/ESTOP path |
 | RC PWM | `hal/RCInput.h` ISRs | Pulse-width range and freshness checked in tick |

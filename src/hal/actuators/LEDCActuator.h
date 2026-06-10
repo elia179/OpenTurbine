@@ -35,7 +35,10 @@ public:
     void setInverted(bool inv) { _inverted = inv; }
 
     void begin() override {
-        ledcAttach(_pin, _freqHz, _resBits);
+        bool ok = ledcAttach(_pin, _freqHz, _resBits);
+        Serial.printf("[%s] LEDC attach pin=%d freq=%luHz bits=%u %s\n",
+                      _name, _pin, (unsigned long)_freqHz, (unsigned)_resBits,
+                      ok ? "OK" : "FAILED");
         ledcWrite(_pin, _inverted ? _maxDuty : 0);  // off on boot
     }
 
@@ -43,6 +46,11 @@ public:
         value = constrain(value, 0.0f, 1.0f);
         if (_inverted) value = 1.0f - value;
         uint32_t duty = (uint32_t)(value * _maxDuty);
+        if ((duty == 0) != (_lastDuty == 0) || duty == _maxDuty || _lastDuty == _maxDuty) {
+            Serial.printf("[%s] LEDC duty pin=%d duty=%lu/%lu\n",
+                          _name, _pin, (unsigned long)duty, (unsigned long)_maxDuty);
+        }
+        _lastDuty = duty;
         ledcWrite(_pin, duty);
     }
 
@@ -65,5 +73,6 @@ private:
     uint8_t     _resBits;
     const char* _name;
     uint32_t    _maxDuty;
+    uint32_t    _lastDuty = 0;
     bool        _inverted = false;
 };

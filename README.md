@@ -51,8 +51,10 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 - **Wi-Fi captive portal** — connecting to the ECU AP serves the dashboard for common captive-portal probes; direct `192.168.4.1` or `ot.local` remains the reliable path on Windows/Chrome
 - **mDNS** — accessible as `http://ot.local` on any mDNS-capable client
 - **MAVLink v1 TX** — HEARTBEAT, NAMED_VALUE_FLOAT telemetry, STATUSTEXT fault alerts over UART
-- **Cluster serial** — JetEcu-compatible serial protocol v2 with schema-first boot sequence
+- **Cluster serial** — OpenTurbine Cluster (OTC) binary protocol with schema discovery, CRC-framed telemetry, status/events, and optional wired RX commands
 - **OTA firmware upgrade** — dual-partition, browser-based, reboots into new image automatically
+
+OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/OTC_CLUSTER_PROTOCOL.md).
 
 ### Data logging
 - **FlightRecorder** — mutex-protected persistent ring-buffer event log (BOOT, START_ATTEMPT, block transitions, RUNNING_ENTRY, FAULT, ABORT, RELIGHT_ATTEMPT, SNAP sensor snapshots)
@@ -111,7 +113,7 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 | Buzzer | Passive piezo for mode/fault tones |
 | Status LED | Any GPIO |
 | MAVLink UART | Any UART TX pin |
-| Cluster serial | JetEcu display protocol |
+| Cluster serial | OTC external display/device protocol; TX telemetry plus optional RX commands. Fit the port in Hardware and control runtime streaming in Config > Cluster |
 | RC PWM inputs | Servo signal for throttle and/or idle |
 
 > **ADC note:** Analog sensors must be on ADC1 pins (GPIO 32–39 on classic ESP32; GPIO 1–10 on ESP32-S3). ADC2 is unavailable while Wi-Fi is active.
@@ -235,7 +237,7 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 | `tools` | Diagnostic test durations (fuel prime, oil prime, igniter, starter…) |
 | `telemetry` | WebSocket push rate, flight recorder snapshot interval |
 | `cluster` | Warning thresholds sent to external cluster display |
-| `mavlink` | MAVLink heartbeat rate, telemetry field list |
+| `mavlink` | MAVLink TX pin, baud rate, telemetry interval |
 | `display` | Dashboard visible sensor panels |
 | `rc_input` | RC PWM min/max µs, failsafe timeout |
 | `misc` | Cooldown skip hold time, igniter-on-start, manual relight settings |
@@ -286,7 +288,7 @@ src/
 │   ├── SessionLogger.h/.cpp    ← per-run CSV stream (Core 0 write path via queue)
 │   ├── RulesEngine.h           ← threshold → actuator automation rules
 │   ├── MAVLinkOutput.h         ← MAVLink v1 TX (hand-crafted CRC-16/MCRF4XX)
-│   ├── ClusterSerial.h/.cpp    ← JetEcu serial telemetry protocol v2
+│   ├── ClusterSerial.h/.cpp    ← OTC external display/device protocol
 │   ├── CommandQueue.h/.cpp     ← FreeRTOS queue, Core 0 → Core 1 commands
 │   ├── Watchdog.h              ← ESP32 TWDT, 5 s timeout
 │   └── web/                    ← ESPAsyncWebServer, WebSocket push, REST API

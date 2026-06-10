@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Calibration</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=20260607b">
 </head>
 <body>
 <nav>
@@ -319,7 +319,7 @@
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar-oiltemp" style="width:0%"></div></div>
     <div class="bar-range"><span>0 °C</span><span>150 °C</span></div>
-    <div class="wizard">
+    <div class="wizard" id="oiltemp-ntc-wizard">
       <div class="wizard-title">NTC Thermistor Calibration</div>
       <div class="wizard-steps">
         Enter your NTC thermistor datasheet values. These are physical constants of the thermistor — check your datasheet or measure with a multimeter.<br>
@@ -343,6 +343,12 @@
         <button onclick="saveNtcCal()">Save</button>
       </div>
       <div id="ntc-status" style="font-size:.75rem;color:var(--dim)"></div>
+    </div>
+    <div class="wizard" id="oiltemp-fixed-note" style="display:none">
+      <div class="wizard-title">Oil Temperature Calibration</div>
+      <div class="wizard-steps">
+        This sensor type uses its factory/digital conversion. No field calibration is needed here.
+      </div>
     </div>
   </div>
 
@@ -577,7 +583,7 @@
 
 </main>
 
-<script src="/app.js"></script>
+<script src="/app.js?v=20260607b"></script>
 <script>
 let live = {};
 let oilPts = [];
@@ -591,6 +597,23 @@ let throttleInputType = 'adc';
 let idleInputType     = 'adc';
 
 let fpRawZero = null, fpRawRef = null;
+
+function refreshOilTempCalMode(sensor) {
+  const chip = sensor?.chip || 'ntc';
+  const ntc = chip === 'ntc';
+  const wiz = document.getElementById('oiltemp-ntc-wizard');
+  const note = document.getElementById('oiltemp-fixed-note');
+  if (wiz) wiz.style.display = ntc ? '' : 'none';
+  if (note) note.style.display = ntc ? 'none' : '';
+  if (ntc) {
+    const beta = sensor?.ntc_beta;
+    const r0 = sensor?.ntc_r0;
+    const rf = sensor?.ntc_r_fixed;
+    if (beta !== undefined) document.getElementById('ntc-beta').value = beta;
+    if (r0 !== undefined) document.getElementById('ntc-r0').value = r0;
+    if (rf !== undefined) document.getElementById('ntc-rfixed').value = rf;
+  }
+}
 
 Promise.all([
   fetch('/api/config').then(r=>r.json()),
@@ -620,12 +643,11 @@ Promise.all([
   const _p2zEl = document.getElementById('cal-p2-zero');
   if (_p1zEl) _p1zEl.textContent = p1z !== undefined ? p1z.toFixed(3) + ' bar' : '—';
   if (_p2zEl) _p2zEl.textContent = p2z !== undefined ? p2z.toFixed(3) + ' bar' : '—';
-  // Show/hide P1/P2 rows based on pressure_sensors_enabled
-  const pEn = !!(c.display?.pressure_sensors);
-  ['p1-cal-row','p2-cal-row'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = pEn ? '' : 'none';
-  });
+  // Show/hide P1/P2 calibration from hardware fitment, not dashboard display preference.
+  const p1RowInit = document.getElementById('p1-cal-row');
+  const p2RowInit = document.getElementById('p2-cal-row');
+  if (p1RowInit) p1RowInit.style.display = c.hardware?.sensors?.p1?.enabled ? '' : 'none';
+  if (p2RowInit) p2RowInit.style.display = c.hardware?.sensors?.p2?.enabled ? '' : 'none';
 
   const thr = c.calibration?.flame_threshold;
   document.getElementById('cal-flame-thr').textContent = thr ?? '—';
@@ -659,6 +681,11 @@ Promise.all([
   const throttleCalRow = document.getElementById('throttle-cal-row');
   if (throttleCalRow) throttleCalRow.style.display =
     (c.hardware?.sensors?.throttle_input?.enabled !== false) ? '' : 'none';
+
+  const oilTempRow = document.getElementById('oiltemp-cal-row');
+  if (oilTempRow) oilTempRow.style.display =
+    c.hardware?.sensors?.oil_temp?.enabled ? '' : 'none';
+  refreshOilTempCalMode(c.hardware?.sensors?.oil_temp);
   // Idle input — hidden when idle input is not fitted
   const idleCalRow = document.getElementById('idle-cal-row');
   if (idleCalRow) idleCalRow.style.display =
@@ -719,7 +746,8 @@ function updateFlameThrMark(thr) {
 const _base = window.applyData;
 window.applyData = function(d) {
   _base(d);
-  live = d;
+  live = Object.assign(live || {}, d);
+  d = live;
 
   // Update labels when input type is first received
   if (d.throttle_input_type !== undefined || d.idle_input_type !== undefined) {
@@ -740,8 +768,8 @@ window.applyData = function(d) {
   // P1 / P2 — show/hide + raw ADC
   const p1Row = document.getElementById('p1-cal-row');
   const p2Row = document.getElementById('p2-cal-row');
-  if (p1Row) p1Row.style.display = d.has_p1 ? '' : 'none';
-  if (p2Row) p2Row.style.display = d.has_p2 ? '' : 'none';
+  if (p1Row && d.has_p1 !== undefined) p1Row.style.display = d.has_p1 ? '' : 'none';
+  if (p2Row && d.has_p2 !== undefined) p2Row.style.display = d.has_p2 ? '' : 'none';
   if (d.has_p1) {
     setText('cal-p1-raw', d.p1_raw ?? '—');
     if (d.p1 !== undefined) {
@@ -808,9 +836,9 @@ window.applyData = function(d) {
   const oiltRow   = document.getElementById('oiltemp-cal-row');
   const bvRow     = document.getElementById('battvolt-cal-row');
   const torqRow   = document.getElementById('torque-cal-row');
-  if (oiltRow)  oiltRow.style.display  = d.has_oil_temp     ? '' : 'none';
-  if (bvRow)    bvRow.style.display    = d.has_batt_voltage  ? '' : 'none';
-  if (torqRow)  torqRow.style.display  = d.has_torque        ? '' : 'none';
+  if (oiltRow && d.has_oil_temp !== undefined) oiltRow.style.display = d.has_oil_temp ? '' : 'none';
+  if (bvRow && d.has_batt_voltage !== undefined) bvRow.style.display = d.has_batt_voltage ? '' : 'none';
+  if (torqRow && d.has_torque !== undefined) torqRow.style.display = d.has_torque ? '' : 'none';
 
   // ── Oil pressure / flame rows — gated on has_* flags ─────────
   if (d.has_oil_press !== undefined) {

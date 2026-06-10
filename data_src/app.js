@@ -126,9 +126,12 @@ function startPullTimer() {
   if (_pullTimer && _pullPeriodMs === period) return;
   if (_pullTimer) clearInterval(_pullTimer);
   _pullPeriodMs = period;
-  _pullTimer = setInterval(() => {
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
-  }, period);
+  requestTelemetryNow();
+  _pullTimer = setInterval(requestTelemetryNow, period);
+}
+
+function requestTelemetryNow() {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
 }
 
 function connect() {
@@ -1027,10 +1030,22 @@ function formatUptime(s) {
 
 // ── REST helpers ──────────────────────────────────────────────
 function sendCmd(url) {
-  fetch(url, { method: 'POST' })
-    .then(r => r.json())
-    .then(d => { if (!d.ok) console.warn('Command failed', d); })
-    .catch(e => console.error('Network error', e));
+  return fetch(url, { method: 'POST' })
+    .then(async r => {
+      let d = {};
+      try { d = await r.json(); } catch {}
+      if (!r.ok || !d.ok) {
+        const msg = d.error || ('HTTP ' + r.status);
+        console.warn('Command failed', d);
+        alert(msg);
+      }
+      return d;
+    })
+    .catch(e => {
+      console.error('Network error', e);
+      alert('Network error: ' + e.message);
+      return { ok:false, error:e.message };
+    });
 }
 
 function sendAbCmd(cmd) {
@@ -1054,6 +1069,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (node.nodeType === 1) applyContextTooltips(node);
     }));
   }).observe(document.body, { childList: true, subtree: true });
+});
+window.addEventListener('focus', requestTelemetryNow);
+window.addEventListener('pageshow', requestTelemetryNow);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) requestTelemetryNow();
 });
 connect();
 fetch('/api/data')

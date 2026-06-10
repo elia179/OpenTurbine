@@ -62,6 +62,7 @@ static unsigned long _wsPingMs          = 0;   // last ping timestamp
 // the async_tcp task (would cause priority-inversion against webTask writes).
 static uint32_t      s_fsTotal = 0;
 static uint32_t      s_fsUsed  = 0;
+static constexpr const char* FACTORY_CONFIG_PATH = "/factory_config.json";
 
 // Shared buffers. Body handlers hold g_webRxOwner across all chunks so concurrent
 // uploads cannot corrupt one another while RAM use remains bounded.
@@ -74,6 +75,21 @@ static bool   g_webRxOverflow = false;
 static char   g_webTxBuf[8192];   // response serialisation + PATCH merge work buffer
 static AsyncWebServerRequest* g_webRxOwner = nullptr;
 static unsigned long g_webRxClaimMs = 0;
+
+static void _mergeJsonObject(JsonObject dst, JsonObjectConst patch) {
+    for (JsonPairConst kv : patch) {
+        JsonVariantConst src = kv.value();
+        if (src.is<JsonObjectConst>()) {
+            JsonVariant nestedVariant = dst[kv.key()];
+            JsonObject nested = nestedVariant.is<JsonObject>()
+                ? nestedVariant.as<JsonObject>()
+                : nestedVariant.to<JsonObject>();
+            _mergeJsonObject(nested, src.as<JsonObjectConst>());
+        } else {
+            dst[kv.key()] = src;
+        }
+    }
+}
 
 static bool _claimWebRx(AsyncWebServerRequest* req, size_t index) {
     if (index == 0) {
@@ -221,6 +237,29 @@ static bool _writeUnifiedConfigAtomically(const JsonDocument& fullDoc) {
     return true;
 }
 
+static bool _copyLittleFsFile(const char* from, const char* to) {
+    File src = LittleFS.open(from, "r");
+    if (!src) return false;
+    File dst = LittleFS.open(to, "w");
+    if (!dst) {
+        src.close();
+        return false;
+    }
+    uint8_t buf[256];
+    bool ok = true;
+    while (src.available()) {
+        size_t n = src.read(buf, sizeof(buf));
+        if (dst.write(buf, n) != n) {
+            ok = false;
+            break;
+        }
+    }
+    src.close();
+    dst.close();
+    if (!ok) LittleFS.remove(to);
+    return ok;
+}
+
 class WebRxRelease {
 public:
     explicit WebRxRelease(AsyncWebServerRequest* req) : _req(req) {}
@@ -238,6 +277,7 @@ static void _sendGzipAsset(AsyncWebServerRequest* req, const char* path,
     AsyncWebServerResponse* resp = req->beginResponse(LittleFS, path, contentType);
     resp->addHeader("Content-Encoding", "gzip");
     resp->addHeader("Cache-Control", cacheControl);
+    resp->addHeader("Connection", "close");
     req->send(resp);
 }
 
@@ -320,8 +360,21 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["torque_raw"]            = ed.torqueRaw;
     doc["p1"]                    = (float)(int)(std::max(0.0f, ed.p1 - Config::p1ZeroBar) * 100) / 100.0f;
     doc["p2"]                    = (float)(int)(std::max(0.0f, ed.p2 - Config::p2ZeroBar) * 100) / 100.0f;
+    doc["p1_raw"]                = g_sensorP1.rawCounts();
+    doc["p2_raw"]                = g_sensorP2.rawCounts();
+    doc["max_p1"]                = (float)(int)(std::max(0.0f, ed.maxP1 - Config::p1ZeroBar) * 100) / 100.0f;
+    doc["max_p2"]                = (float)(int)(std::max(0.0f, ed.maxP2 - Config::p2ZeroBar) * 100) / 100.0f;
     doc["fuel_pressure"]         = (float)(int)(ed.fuelPressure * 100) / 100.0f;
+    doc["fuel_press_raw"]        = ed.fuelPressRaw;
     doc["fuel_flow"]             = (float)(int)(ed.fuelFlow * 100) / 100.0f;
+    doc["fuel_flow_type"]        = HardwareConfig::fuelFlowType;
+    doc["fuel_flow_raw"]         = (HardwareConfig::fuelFlowType == 0)
+                                  ? g_sensorFuelFlow.rawCounts() : 0;
+    doc["batt_voltage_raw"]      = g_sensorBattVolt.rawCounts();
+    doc["glow_current_raw"]      = g_sensorGlowCurrent.rawCounts();
+    doc["igniter_current_raw"]   = g_sensorIgniterCurrent.rawCounts();
+    doc["igniter2_current_raw"]  = g_sensorIgniter2Current.rawCounts();
+    doc["oil_pump_current_raw"]  = g_sensorOilPumpCurrent.rawCounts();
     // ── Throttle / idle demand ─────────────────────────────────────────────
     doc["throttle_input_raw"]    = ed.throttleInputRaw;
     {
@@ -427,7 +480,6 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["turbo_power_w"]         = (int)ed.turboPower;
     doc["torque_healthy"]        = ed.torqueHealthy;
     doc["fuel_press"]            = (float)(int)(ed.fuelPressure * 100) / 100.0f;
-    doc["fuel_press_raw"]        = ed.fuelPressRaw;
     doc["fuel_press_healthy"]    = ed.fuelPressHealthy;
     doc["max_fuel_press"]        = (float)(int)(ed.maxFuelPressure * 100) / 100.0f;
     doc["glow_plug_pct"]         = (int)(ed.glowPlugDemand * 100.0f);
@@ -500,8 +552,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["flash_total_kb"]        = (int)s_fsTotal;
         doc["flash_used_kb"]         = (int)s_fsUsed;
         doc["flash_free_kb"]         = (int)(s_fsTotal - s_fsUsed);
-        doc["max_p1"]                = (float)(int)(ed.maxP1 * 100) / 100.0f;
-        doc["max_p2"]                = (float)(int)(ed.maxP2 * 100) / 100.0f;
+        doc["max_p1"]                = (float)(int)(std::max(0.0f, ed.maxP1 - Config::p1ZeroBar) * 100) / 100.0f;
+        doc["max_p2"]                = (float)(int)(std::max(0.0f, ed.maxP2 - Config::p2ZeroBar) * 100) / 100.0f;
         // Safety limits (for color gauge thresholds)
         doc["rpm_limit"]             = (int)Config::rpmLimit;
         doc["tot_limit"]             = Config::totLimit;
@@ -541,17 +593,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_starter_assist"]    = HardwareConfig::starterAssistEnabled
                                        && (HardwareConfig::starterType != 2);
         // Calibration / raw ADC (used by calibration page via /api/data REST)
-        doc["p1_raw"]                = g_sensorP1.rawCounts();
-        doc["p2_raw"]                = g_sensorP2.rawCounts();
-        doc["batt_voltage_raw"]      = g_sensorBattVolt.rawCounts();
-        doc["glow_current_raw"]      = g_sensorGlowCurrent.rawCounts();
-        doc["igniter_current_raw"]   = g_sensorIgniterCurrent.rawCounts();
-        doc["igniter2_current_raw"]  = g_sensorIgniter2Current.rawCounts();
-        doc["oil_pump_current_raw"]  = g_sensorOilPumpCurrent.rawCounts();
         doc["igniter_coil"]          = HardwareConfig::igniterCoil;
-        doc["fuel_flow_type"]        = HardwareConfig::fuelFlowType;
-        doc["fuel_flow_raw"]         = (HardwareConfig::fuelFlowType == 0)
-                                       ? g_sensorFuelFlow.rawCounts() : 0;
         // ── Channel labels ────────────────────────────────────────────────
         auto tlbl = doc["labels"].to<JsonObject>();
         tlbl["tot"]        = HardwareConfig::labelTot;
@@ -610,6 +652,14 @@ void WebServer::_setupRoutes() {
         if (host == "ot.local")                 return false;
         return true;
     };
+    auto redirectCaptiveToIp = [isCaptive](AsyncWebServerRequest* req) -> bool {
+        if (!isCaptive(req)) return false;
+        String target = "http://";
+        target += WiFi.softAPIP().toString();
+        target += req->url();
+        req->redirect(target);
+        return true;
+    };
 
     // ── Captive portal landing ─────────────────────────────────
     // Serve the portal body directly for OS probes. Windows may follow a redirect
@@ -631,33 +681,41 @@ void WebServer::_setupRoutes() {
     // page navigation, which would exhaust the lwIP TCP PCB pool alongside the
     // persistent SSE connection and cause "IP not responding" errors.
     _server.on("/app.js", HTTP_GET, [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/app.js.gz", "application/javascript", "max-age=3600");
+        _sendGzipAsset(req, "/app.js.gz", "application/javascript", "no-cache");
     });
     _server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/style.css.gz", "text/css", "max-age=3600");
+        _sendGzipAsset(req, "/style.css.gz", "text/css", "no-cache");
     });
-    _server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/index.html.gz", "text/html", "no-cache");
     });
-    _server.on("/index.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/index.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/index.html.gz", "text/html", "no-cache");
     });
-    _server.on("/hardware.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/hardware.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/hardware.html.gz", "text/html", "no-cache");
     });
-    _server.on("/calibration.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/calibration.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/calibration.html.gz", "text/html", "no-cache");
     });
-    _server.on("/config.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/config.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/config.html.gz", "text/html", "no-cache");
     });
-    _server.on("/sequence.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/sequence.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/sequence.html.gz", "text/html", "no-cache");
     });
-    _server.on("/log.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/log.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/log.html.gz", "text/html", "no-cache");
     });
-    _server.on("/tools.html", HTTP_GET, [](AsyncWebServerRequest* req) {
+    _server.on("/tools.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
+        if (redirectCaptiveToIp(req)) return;
         _sendGzipAsset(req, "/tools.html.gz", "text/html", "no-cache");
     });
     _server.on("/ecu_config.json", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -756,20 +814,10 @@ void WebServer::_setupRoutes() {
                 return;
             }
             // Load current config into a document, merge patch on top, re-apply.
-            // Use the same 2-level deep merge as PATCH /api/hardware so that sending
-            // e.g. {"calibration":{"p1_gain":1.05}} does not wipe the other calibration
-            // fields — it only updates the keys that are present in the patch.
+            // Recursive merge keeps sibling fields inside nested sections.
             JsonDocument current;
             Config::toJson(current);
-            for (JsonPair kv : patch.as<JsonObject>()) {
-                JsonVariant dst = current[kv.key()];
-                if (dst.is<JsonObject>() && kv.value().is<JsonObject>()) {
-                    for (JsonPair inner : kv.value().as<JsonObject>())
-                        dst[inner.key()] = inner.value();
-                } else {
-                    current[kv.key()] = kv.value();
-                }
-            }
+            _mergeJsonObject(current.as<JsonObject>(), patch.as<JsonObjectConst>());
             bool ok = Config::fromJson(current);
             CommandQueue::push({ OTCommand::APPLY_CONFIG });
             FlightRecorder::logConfigChange("config.patch", 0, 0);
@@ -897,6 +945,15 @@ void WebServer::_setupRoutes() {
             req->send(423, "application/json", "{\"ok\":false,\"error\":\"Maintenance upload in progress\"}");
             return;
         }
+        auto& ed = EngineData::instance();
+        if (ed.stopSwitchActive) {
+            snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: stop switch active");
+            snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                     "Cannot start: STOP switch is active. Release STOP before pressing START.");
+            req->send(409, "application/json",
+                      "{\"ok\":false,\"error\":\"STOP switch is active. Release STOP before pressing START.\"}");
+            return;
+        }
         if (CommandQueue::push({ OTCommand::START })) {
             req->send(200, "application/json", "{\"ok\":true}");
         } else {
@@ -1008,7 +1065,7 @@ void WebServer::_setupRoutes() {
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    // POST /api/factory_reset — erase all config + hardware files, reboot to defaults
+    // POST /api/factory_reset - restore shipped factory config, erase logs, reboot.
     _server.on("/api/factory_reset", HTTP_POST, [](AsyncWebServerRequest* req) {
         if (EngineData::instance().mode != SysMode::STANDBY) {
             req->send(423, "application/json",
@@ -1017,6 +1074,13 @@ void WebServer::_setupRoutes() {
         }
         LittleFS.remove(Config::PATH);
         LittleFS.remove(HardwareConfig::PATH);
+        if (LittleFS.exists(FACTORY_CONFIG_PATH)) {
+            if (!_copyLittleFsFile(FACTORY_CONFIG_PATH, Config::PATH)) {
+                req->send(500, "application/json",
+                    "{\"error\":\"Failed to restore factory_config.json\"}");
+                return;
+            }
+        }
         LittleFS.remove(FlightRecorder::PATH);
         Config::clearRuntimeStats();
         File dir = LittleFS.open("/logs");
@@ -1036,7 +1100,7 @@ void WebServer::_setupRoutes() {
             }
             dir.close();
         }
-        Serial.println("[WebServer] Factory reset — config erased, rebooting");
+        Serial.println("[WebServer] Factory reset - restored factory config, erased logs, rebooting");
         req->send(200, "application/json", "{\"ok\":true}");
         _hwRebootPending     = true;
         _hwRebootScheduledMs = millis();
@@ -1329,6 +1393,13 @@ void WebServer::_setupRoutes() {
                     "{\"ok\":false,\"error\":\"Failed to write ecu_config.json hardware section\"}");
                 return;
             }
+            Config::sanitizeForHardware();
+            if (!Config::save()) {
+                HardwareConfig::fromJson(g_webTxBuf, previousLen);
+                req->send(500, "application/json",
+                    "{\"ok\":false,\"error\":\"Failed to synchronize settings after hardware dependency cleanup\"}");
+                return;
+            }
             Serial.printf("[WebServer] POST /api/hardware: saved (%u bytes) — reboot in 1s\n",
                           (unsigned)g_webRxLen);
             _hwRebootPending     = true;
@@ -1433,15 +1504,7 @@ void WebServer::_setupRoutes() {
             }
             JsonDocument previous;
             previous.set(current);
-            for (JsonPair kv : patch.as<JsonObject>()) {
-                JsonVariant dst = current[kv.key()];
-                if (dst.is<JsonObject>() && kv.value().is<JsonObject>()) {
-                    for (JsonPair inner : kv.value().as<JsonObject>())
-                        dst[inner.key()] = inner.value();
-                } else {
-                    current[kv.key()] = kv.value();
-                }
-            }
+            _mergeJsonObject(current.as<JsonObject>(), patch.as<JsonObjectConst>());
             size_t merged = serializeJson(current, g_webTxBuf, sizeof(g_webTxBuf));
             if (merged >= sizeof(g_webTxBuf)) {
                 // Buffer was too small — output is truncated; reject rather than corrupt config
@@ -1552,6 +1615,38 @@ void WebServer::_setupRoutes() {
                 return;
             }
 
+            size_t previousHwLen = HardwareConfig::toJson(g_webTxBuf, sizeof(g_webTxBuf));
+            JsonDocument previousSettings;
+            Config::toJson(previousSettings);
+            size_t stagedHwLen = serializeJson(hwDoc, g_webRxBuf, sizeof(g_webRxBuf));
+            if (previousHwLen >= sizeof(g_webTxBuf) ||
+                stagedHwLen >= sizeof(g_webRxBuf) ||
+                !HardwareConfig::fromJson(g_webRxBuf, stagedHwLen) ||
+                !Config::fromJson(settingsDoc)) {
+                if (previousHwLen < sizeof(g_webTxBuf)) HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
+                Config::fromJson(previousSettings);
+                req->send(400, "application/json", "{\"error\":\"config dependency cleanup rejected uploaded sections\"}");
+                _finishConfigRestore();
+                return;
+            }
+            Config::sanitizeForHardware();
+            JsonDocument sanitizedHw;
+            JsonDocument sanitizedSettings;
+            size_t sanitizedHwLen = HardwareConfig::toJson(g_webRxBuf, sizeof(g_webRxBuf), false);
+            if (sanitizedHwLen >= sizeof(g_webRxBuf) ||
+                deserializeJson(sanitizedHw, g_webRxBuf, sanitizedHwLen) != DeserializationError::Ok) {
+                HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
+                Config::fromJson(previousSettings);
+                req->send(500, "application/json", "{\"error\":\"sanitized hardware section too large\"}");
+                _finishConfigRestore();
+                return;
+            }
+            Config::toJson(sanitizedSettings);
+            fullDoc[HardwareConfig::SECTION].set(sanitizedHw);
+            fullDoc[Config::SECTION].set(sanitizedSettings);
+            HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
+            Config::fromJson(previousSettings);
+
             // Store one complete engine file only after both sections validate.
             // Runtime values are loaded from this committed file after reboot.
             if (!_writeUnifiedConfigAtomically(fullDoc)) {
@@ -1570,7 +1665,10 @@ void WebServer::_setupRoutes() {
     // 404
     _server.onNotFound([isCaptive](AsyncWebServerRequest* req) {
         if (isCaptive(req)) {
-            req->redirect("http://ot.local/");
+            String target = "http://";
+            target += WiFi.softAPIP().toString();
+            target += "/";
+            req->redirect(target);
             return;
         }
         req->send(404);

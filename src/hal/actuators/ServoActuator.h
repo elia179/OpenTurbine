@@ -1,15 +1,15 @@
 #pragma once
 #include "IActuator.h"
-#include <ESP32Servo.h>
+#include <Arduino.h>
 
-// Servo / ESC actuator — maps 0.0–1.0 to 1000–2000 µs PWM.
-// Uses ESP32Servo library (LEDC-backed, not timer conflicts).
+// Servo / ESC actuator: maps 0.0-1.0 to configured microsecond pulses.
+// Uses Arduino-ESP32 3.x LEDC directly to generate standard 50 Hz servo PWM.
 class ServoActuator : public IActuator {
 public:
     ServoActuator(int pin, int minUs, int maxUs, const char* actuatorName)
         : _pin(pin), _minUs(minUs), _maxUs(maxUs), _name(actuatorName) {}
 
-    // Runtime-pin overload — update params then initialise.
+    // Runtime-pin overload: update params then initialise.
     void begin(int pin, int minUs, int maxUs) {
         _pin   = pin;
         _minUs = minUs;
@@ -19,25 +19,32 @@ public:
 
     void begin() override {
         if (_minUs > _maxUs) { int tmp = _minUs; _minUs = _maxUs; _maxUs = tmp; }
-        _servo.setPeriodHertz(50);   // 50 Hz standard servo/ESC frame rate
-        _servo.attach(_pin, _minUs, _maxUs);
-        _servo.writeMicroseconds(_minUs); // safe low on boot
+        ledcAttach(_pin, PWM_FREQ_HZ, PWM_RES_BITS);
+        writePulse(_minUs); // safe low on boot
     }
 
     void set(float value) override {
         value = constrain(value, 0.0f, 1.0f);
-        int us = _minUs + (int)(value * (_maxUs - _minUs));
-        _servo.writeMicroseconds(us);
+        writePulse(_minUs + (int)(value * (_maxUs - _minUs)));
     }
 
     void off() override {
-        _servo.writeMicroseconds(_minUs);
+        writePulse(_minUs);
     }
 
     const char* name() override { return _name; }
 
 private:
-    Servo       _servo;
+    static constexpr uint32_t PWM_FREQ_HZ = 50;
+    static constexpr uint8_t  PWM_RES_BITS = 16;
+    static constexpr uint32_t PWM_MAX_DUTY = (1UL << PWM_RES_BITS) - 1UL;
+
+    void writePulse(int us) {
+        us = constrain(us, _minUs, _maxUs);
+        uint32_t duty = ((uint64_t)us * PWM_FREQ_HZ * PWM_MAX_DUTY) / 1000000ULL;
+        ledcWrite(_pin, duty);
+    }
+
     int         _pin;
     int         _minUs;
     int         _maxUs;
