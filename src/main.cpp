@@ -380,6 +380,17 @@ static void validateSequences() {
                     addIssue(nm, "TOT-rise confirmation is selected but no TOT sensor is configured", false);
             }
         }
+        // ABStabilize is the block that normally promotes Igniting → Running.
+        // Without it, abSequenceDone() forces Running at sequence end with no
+        // stabilization hold or TOT check — warn so the omission is deliberate.
+        if (_abIgnCount > 0) {
+            bool hasStabilize = false;
+            for (int i = 0; i < _abIgnCount; i++) {
+                if (strcmp(_abIgnBlocks[i]->name(), "ABStabilize") == 0) { hasStabilize = true; break; }
+            }
+            if (!hasStabilize)
+                addIssue("ABStabilize", "AB ignition sequence has no ABStabilize block — AB is marked Running as soon as the sequence completes, with no stabilization hold or TOT check", false);
+        }
     }
 
     // ── Config sanity checks (not tied to a specific block) ──────
@@ -863,7 +874,14 @@ static void abSequenceDone() {
         _abInShutSeq      = false;
         Serial.println("[AB] Shutdown complete — AB Off");
     }
-    // If ignition seq done: abMode was set to Running by ABStabilize.onExit()
+    // Ignition seq done: abMode is normally set to Running by ABStabilize.onExit().
+    // A custom ignition sequence without ABStabilize would otherwise stay in
+    // Igniting forever — checkABTrigger() ignores trigger release in that state,
+    // so AB solenoid/pump would be latched on until engine STOP.
+    else if (ed.abMode == ABMode::Igniting) {
+        ed.abMode = ABMode::Running;
+        Serial.println("[AB] Ignition sequence ended without ABStabilize — forcing AB RUNNING so trigger release can shut it down");
+    }
 }
 
 static void abSequenceAbort() {
@@ -1310,6 +1328,20 @@ static void handleCommand(const OTPacket& pkt) {
                     snprintf(ed.faultDescription, sizeof(ed.faultDescription),
                              "Cannot start: STOP switch is active. Release STOP before pressing START.");
                     Serial.println("[OT] START blocked: stop switch active");
+                    break;
+                }
+                // Extra cooldown owns the starter and oil pump. Starting now
+                // would race its cancel path: checkExtraCooldown() zeroes
+                // starterDemand/oilPumpPct AFTER the first startup block's
+                // onEnter() ran — on builds without an oil pressure sensor,
+                // OilPrime's fixed pump duty is wiped and the prime runs to
+                // "Complete" having delivered no oil.
+                if (ed.extraCooldownActive) {
+                    snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: extra cooldown active");
+                    snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                             "Cannot start: Extra Cooldown is running. Stop it on the Tools page "
+                             "or wait for it to finish before starting the engine.");
+                    Serial.println("[OT] START blocked: extra cooldown active");
                     break;
                 }
                 // Check inhibit_start DI channels

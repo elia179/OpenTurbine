@@ -1007,6 +1007,25 @@ function fpClearCal() {
   setText('fuelpress-bar-max', '10 bar');
 }
 
+// ── Engine-mode guard for actuator-driving wizard steps ──────
+// The firmware only honors SET_OIL_PCT and IGN_TEST in STANDBY. Without
+// this guard the wizard would sample against a pump/igniter that never
+// moved and silently save a wrong calibration.
+function calStandbyGuard(action) {
+  const mode = live.mode;
+  if (mode === undefined) {
+    alert('No live engine data yet — wait for the connection before starting ' + action + '.');
+    return false;
+  }
+  if (mode !== 'STANDBY') {
+    alert('Engine mode is ' + mode + '.\n\n' + action.charAt(0).toUpperCase() + action.slice(1) +
+          ' requires STANDBY — the ECU ignores calibration actuator commands in any other mode, ' +
+          'so the captured values would be wrong.');
+    return false;
+  }
+  return true;
+}
+
 // ── Oil calibration wizard ────────────────────────────────────
 let oilCalActive = false;
 let oilFit = { a:0, b:0, c:0, d:0, x0:0, x1:4095 };
@@ -1021,6 +1040,7 @@ function oilGoStep(n) {
 }
 
 function oilCalStart() {
+  if (!calStandbyGuard('the oil pump calibration')) return;
   const pct = parseInt(document.getElementById('oil-pump-pct').value) || 40;
   const statusEl = document.getElementById('oil-zero-status');
   const startBtn = document.getElementById('btn-oil-start');
@@ -1063,6 +1083,7 @@ function oilCalStart() {
 }
 
 function oilSetPump() {
+  if (!calStandbyGuard('changing the oil pump duty')) return;
   const pct = parseInt(document.getElementById('oil-pump-pct2').value) || 0;
   fetch('/api/command', { method:'POST',
     body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: pct }),
@@ -1214,6 +1235,13 @@ const _flameBtns = () => ['btn-flame-noise','btn-flame-save','btn-flame-clear']
 async function captureFlameNoise() {
   const statusEl = document.getElementById('flame-status');
   const fireIgn  = document.getElementById('flame-noise-ign')?.checked;
+  if (fireIgn) {
+    // Firing a spark source needs both the STANDBY gate and an explicit ack.
+    if (!calStandbyGuard('the igniter noise capture')) return;
+    if (!confirm('This will FIRE THE IGNITER for the noise capture.\n\n' +
+                 'Confirm the engine area is clear and there are no fuel vapors present.\n\n' +
+                 'Fire igniter now?')) return;
+  }
   const btns     = _flameBtns();
   btns.forEach(b => b.disabled = true);
 

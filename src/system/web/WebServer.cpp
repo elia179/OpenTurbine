@@ -301,11 +301,24 @@ static bool _sendTelemetryFrame(AsyncWebSocketClient* client, const char* buf, s
 
 
 // ── WiFi AP setup ─────────────────────────────────────────────
+static char _defaultApPwd[16] = {};   // per-device fallback, derived from eFuse MAC
+
 static void _startWiFi() {
     WiFi.mode(WIFI_AP);
     const char* ssid = HardwareConfig::profileId[0] ? HardwareConfig::profileId : "OpenTurbine";
-    const char* pwd  = HardwareConfig::wifiPassword[0] ? HardwareConfig::wifiPassword : nullptr;
-    WiFi.softAP(ssid, pwd);  // SSID = hardware profile_id; password optional
+    // No configured password no longer selects an OPEN network: every API
+    // endpoint is unauthenticated, so an open AP means anyone in RF range can
+    // start the engine or flash firmware. Fall back to a per-device default
+    // derived from the eFuse MAC — stable across boots and printed on the
+    // serial console below so the owner can always recover it.
+    const char* pwd = HardwareConfig::wifiPassword;
+    if (!pwd[0]) {
+        uint64_t chipId = ESP.getEfuseMac();
+        snprintf(_defaultApPwd, sizeof(_defaultApPwd), "ot-%08lx",
+                 (unsigned long)(chipId & 0xFFFFFFFFu));
+        pwd = _defaultApPwd;
+    }
+    WiFi.softAP(ssid, pwd);  // SSID = hardware profile_id
     int8_t txPowerQdbm = (int8_t)constrain(HardwareConfig::wifiTxPowerDbm, 2, 20) * 4;
     esp_wifi_set_max_tx_power(txPowerQdbm);
     // Minimize WiFi power-save latency.  WIFI_PS_NONE keeps the ESP32 radio
@@ -320,9 +333,14 @@ static void _startWiFi() {
         esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
     }
     IPAddress apIP = WiFi.softAPIP();
-    Serial.printf("[WiFi] AP: %s  IP: %s  %s  TX=%d dBm\n", ssid, apIP.toString().c_str(),
-                  pwd ? "(password protected)" : "(open network)",
-                  (int)HardwareConfig::wifiTxPowerDbm);
+    if (HardwareConfig::wifiPassword[0]) {
+        Serial.printf("[WiFi] AP: %s  IP: %s  (custom password)  TX=%d dBm\n",
+                      ssid, apIP.toString().c_str(), (int)HardwareConfig::wifiTxPowerDbm);
+    } else {
+        Serial.printf("[WiFi] AP: %s  IP: %s  default password: %s  TX=%d dBm\n",
+                      ssid, apIP.toString().c_str(), _defaultApPwd,
+                      (int)HardwareConfig::wifiTxPowerDbm);
+    }
 
     // Captive portal DNS — answers all DNS queries with our IP so phones
     // open the dashboard automatically when joining the AP.

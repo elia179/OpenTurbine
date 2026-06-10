@@ -46,7 +46,11 @@ public:
         value = constrain(value, 0.0f, 1.0f);
         if (_inverted) value = 1.0f - value;
         uint32_t duty = (uint32_t)(value * _maxDuty);
-        if ((duty == 0) != (_lastDuty == 0) || duty == _maxDuty || _lastDuty == _maxDuty) {
+        // Log only on transitions into/out of 0% and 100% duty. set() is called
+        // every loop tick, so a level-based condition here would print
+        // continuously while an output sits at full duty (e.g. oil prime) —
+        // Serial blocks once its TX buffer fills, adding jitter to the control loop.
+        if ((duty == 0) != (_lastDuty == 0) || (duty == _maxDuty) != (_lastDuty == _maxDuty)) {
             Serial.printf("[%s] LEDC duty pin=%d duty=%lu/%lu\n",
                           _name, _pin, (unsigned long)duty, (unsigned long)_maxDuty);
         }

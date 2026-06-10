@@ -518,8 +518,16 @@ function applyData(d) {
   }
   if (d.oil_running_min && d.oil !== undefined) {
     if (d.mode === 'RUNNING') {
-      const pctForColor = d.oil < d.oil_running_min ? 0 : 80;
-      setGaugeBar('oil-gauge-bar', pctForColor);
+      // Oil is inverted vs the other gauges: LOW pressure is the fault state.
+      // Width tracks pressure (minimum = 50% width, floor 8% so a red sliver
+      // is always visible); color is forced — red below the running minimum,
+      // amber within 15% above it, green otherwise. Previously a below-min
+      // reading rendered as an EMPTY neutral bar, which read as "fine".
+      const ratio = d.oil / d.oil_running_min;
+      const width = Math.min(100, Math.max(8, ratio * 50));
+      const cls = d.oil < d.oil_running_min ? 'danger'
+                : d.oil < d.oil_running_min * 1.15 ? 'warn' : 'ok';
+      setGaugeBar('oil-gauge-bar', width, cls);
       const warn = document.getElementById('oil-approach-warn');
       if (warn) {
         const low = d.oil < d.oil_running_min * 1.15;
@@ -1009,11 +1017,17 @@ function setHwActive(id, active) {
   else        el.classList.remove('hw-active');
 }
 
-function setGaugeBar(id, pct) {
+function setGaugeBar(id, pct, forceClass) {
   const bar = document.getElementById(id);
   if (!bar) return;
   const clamped = Math.min(100, Math.max(0, pct));
   bar.style.width = clamped + '%';
+  // forceClass decouples color from width for gauges whose danger direction
+  // is inverted (oil: LOW pressure is the dangerous state, not high).
+  if (forceClass !== undefined) {
+    bar.className = forceClass === 'ok' ? 'gauge-bar' : 'gauge-bar ' + forceClass;
+    return;
+  }
   if (pct >= 95) { bar.className = 'gauge-bar danger'; }
   else if (pct >= 80) { bar.className = 'gauge-bar warn'; }
   else { bar.className = 'gauge-bar'; }
