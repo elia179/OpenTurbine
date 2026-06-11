@@ -77,8 +77,9 @@
 #define OT_START_PIN   13    // active-low, internal pull-up
 
 // ── Sensors ──────────────────────────────────────────────────
-// N1 shaft RPM via PCNT pulse counter (hardware, not interrupt)
-#define OT_HAS_N1_RPM
+// N1 shaft RPM via PCNT pulse counter (hardware, not interrupt).
+// Optional for the standard timer/TOT based setup; enable when RPM feedback is fitted.
+// #define OT_HAS_N1_RPM
 #define OT_N1_RPM_PIN    14    // hall sensor signal
 #define OT_N1_RPM_PPR    1.0f  // pulses per revolution
 
@@ -233,14 +234,14 @@
 // All require matching hardware above to be defined.
 #define OT_HAS_OIL_LOOP           // P-controller: OIL_PRESS → OIL_PUMP
 #define OT_HAS_THROTTLE_SLEW      // Rate-limiter on throttle output
-#define OT_HAS_DYNAMIC_IDLE       // Closed-loop idle RPM hold
+// #define OT_HAS_DYNAMIC_IDLE    // Closed-loop idle RPM hold; requires N1 or N2 RPM feedback
 
 // Use N2 as idle control source instead of N1 (requires OT_HAS_N2_RPM):
 // #define OT_DYNAMIC_IDLE_USE_N2
 
 // ── Safety sources ───────────────────────────────────────────
 // Each requires the corresponding sensor to be defined above.
-#define OT_SAFETY_OVERSPEED       // N1 > RPM_LIMIT → immediate shutdown
+// #define OT_SAFETY_OVERSPEED    // N1 > RPM_LIMIT -> immediate shutdown; requires N1 RPM feedback
 #define OT_SAFETY_OVERTEMP        // TOT > TOT_LIMIT → shutdown
 #define OT_SAFETY_LOW_OIL         // oil < min bar → shutdown
 #define OT_SAFETY_OIL_ZERO        // oil near-zero during RUNNING → catastrophic loss fault

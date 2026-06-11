@@ -89,8 +89,8 @@
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
   { title: 'Engine Limits', id: 'engine-limits', fields: [
-    { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum RPM — engine shuts down if N1 exceeds this. Set to your engine manufacturer\'s maximum. Typical range: 80,000–180,000 RPM.',                       step:1000, min:0,    basic:true },
-    { key:'min_rpm',            path:['engine','min_rpm'],            label:'Min RPM (RPM)',           desc:'Minimum RPM in RUNNING — below this triggers underspeed fault. Should be set just below your engine\'s idle RPM. Typical: 25,000–50,000 RPM.',            step:1000, min:0,    basic:true },
+    { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum N1 RPM when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical range: 80,000–180,000 RPM.',                       step:1000, min:0,    basic:true },
+    { key:'min_rpm',            path:['engine','min_rpm'],            label:'Min RPM (RPM)',           desc:'Minimum N1 RPM in RUNNING when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical: 25,000–50,000 RPM.',            step:1000, min:0,    basic:true },
     { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', desc:'Maximum exhaust gas temperature — engine shuts down if TOT exceeds this. Set to your engine\'s maximum rated TOT. Typical range: 650–900 °C / 1200–1650 °F.',             step:10,   min:0,    basic:true },
     { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'TOT Soft Margin',    unitType:'temp_delta', desc:'Soft warning threshold = TOT Limit minus this value. Used for cluster display warnings. Typical: 30–50 °C / 55–90 °F below the hard limit.',                         step:5,    min:0 },
     { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown Target',    unitType:'temp', desc:'Engine must cool to this temperature before the final stop sequence completes. Prevents hot shutdown. Typical: 100–200 °C / 212–390 °F.',                              step:10,   min:0 },
@@ -125,7 +125,7 @@ const SCHEMA = [
     { key:'di_db', path:['dynamic_idle','deadband_rpm'],  label:'Deadband RPM',     desc:'No correction within this RPM band',   step:100,  min:0 },
     { key:'di_rl', path:['dynamic_idle','rpm_limit'],     label:'Disengage RPM',    desc:'Controller disengages above this RPM', step:1000, min:0 },
     { key:'di_mm', path:['dynamic_idle','min_multiplier'],label:'Min Multiplier',   desc:'Floor = idle_min_pct × multiplier',    step:0.05, min:0, max:1 },
-    { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Use N2 Speed',     desc:'Use N2 shaft RPM as the idle controller feedback source. All other monitoring (overspeed, safety limits) still uses N1.', type:'checkbox' },
+    { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Use N2 Speed',     desc:'Use N2 shaft RPM as the idle controller feedback source. N1-only protections only run when an N1 sensor is fitted.', type:'checkbox' },
     { key:'di_ig', path:['dynamic_idle','i_gain'],       label:'I-Gain',           desc:'Integral gain (0 = off). Eliminates steady-state RPM error caused by load changes (e.g. oil pump startup). Start small: 0.05–0.15. Only active when Dynamic Idle is enabled.', step:0.01, min:0, max:2 },
     { key:'di_im', path:['dynamic_idle','i_max'],        label:'I-Max Authority',  desc:'Maximum integral authority (fraction of throttle range). Limits wind-up so the integrator alone cannot over-speed the engine. 0.10 = ±10% throttle range.', step:0.01, min:0, max:0.5 },
   ]},
@@ -138,9 +138,9 @@ const SCHEMA = [
     { key:'sf_rr', path:['safety','tot_rise_rate_limit_deg_s'], label:'Max EGT Rise Rate (°C/s)', desc:'Shuts down if the exhaust temperature rises faster than this in a single second. Protects against hot starts or runaway rich fuel. 0 = disabled. Typical safe value: 50–100 °C/s. (Always entered in °C/s regardless of display unit.)', step:5, min:0 },
     { key:'sf_hs', path:['sequence','startup','hot_start_tot_threshold'], label:'Hot-Start TOT Threshold', unitType:'temp', desc:'Startup is aborted if the exhaust temp is above this when you press START. Prevents starting into a hot turbine section. 0 = disabled. Typical: 100–200 °C / 212–390 °F.', step:10, min:0, basic:true },
   ]},
-  { title: 'Auto-Relight', id:'relight-section', sectionNote:'After a flameout during RUNNING, the ECU can fire the igniter briefly to attempt a hot re-start without stopping. This only works if N1 stays above the minimum RPM and the engine can still self-ignite. Disable if false-relight attempts would be hazardous on your installation.', fields: [
-    { key:'rl_en', path:['relight','enabled'],      label:'Auto-Relight Enabled',  desc:'When ON: if the flame goes out while running, the igniter fires again automatically. The engine will attempt to relight before shutting down. Recommended ON for most setups.', type:'checkbox', basic:true },
-    { key:'rl_cs', path:['relight','confirm_source'], label:'Relight Confirm Source', type:'select', options:[{v:0,l:'Auto match flameout source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 recovered'},{v:3,l:'TOT recovered'}], desc:'Which fitted signal confirms that relight succeeded and lets the igniter turn off.' },
+  { title: 'Auto-Relight', id:'relight-section', sectionNote:'After a flameout during RUNNING, the ECU can fire the igniter briefly to attempt a hot restart without stopping. N1 RPM feedback is required for automatic relight attempts so the ECU can prove the engine is still windmilling; flame, N1, or TOT can then be used to confirm the relight succeeded. Disable if false-relight attempts would be hazardous on your installation.', fields: [
+    { key:'rl_en', path:['relight','enabled'],      label:'Auto-Relight Enabled',  desc:'When ON: if combustion is lost while RUNNING and N1 remains above the relight minimum, the igniter fires again automatically before the ECU commits to shutdown.', type:'checkbox', basic:true },
+    { key:'rl_cs', path:['relight','confirm_source'], label:'Relight Confirm Source', type:'select', options:[{v:0,l:'Auto match flameout source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 recovered'},{v:3,l:'TOT recovered'}], desc:'Which fitted signal confirms that relight succeeded and lets the igniter turn off. This does not remove the N1 windmill requirement for starting the relight attempt.' },
     { key:'rl_cr', path:['relight','confirm_rpm'],         label:'N1 Recovery RPM', desc:'For N1 relight confirmation: igniter stays on until N1 recovers to this RPM. 0 uses Min RPM + 5%.', step:1000, min:0 },
     { key:'rl_tr', path:['relight','tot_rise_c'],          label:'TOT Recovery Rise (C)', desc:'For TOT relight confirmation: igniter stays on until TOT rises this much above the temperature at relight start.', step:5, min:0 },
     { key:'rl_mr', path:['relight','min_rpm'],            label:'Min N1 for Relight (RPM)', desc:'Abort relight if N1 falls below this RPM — the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000–40,000 RPM.', step:1000, min:0 },
@@ -691,11 +691,13 @@ function validateBeforeSave(cfg) {
   const idleTarget = gv(cfg, 'dynamic_idle', 'target_rpm');
   const idleMin    = gv(cfg, 'throttle', 'idle_min_pct');
   const idleMax    = gv(cfg, 'throttle', 'idle_max_pct');
+  const hasN1       = !!((hwCfg.sensors || {}).n1_rpm?.enabled || hwCfg.has_n1_rpm);
+  const hasAnyIdleRpm = !!(hasN1 || (hwCfg.has_two_shaft && ((hwCfg.sensors || {}).n2_rpm?.enabled || hwCfg.has_n2_rpm)));
 
-  if (rpmLimit !== undefined && minRpm !== undefined && minRpm >= rpmLimit)
+  if (hasN1 && rpmLimit !== undefined && minRpm !== undefined && minRpm >= rpmLimit)
     errors.push('Min RPM (' + minRpm + ') must be below RPM Limit (' + rpmLimit + ').');
 
-  if (idleTarget !== undefined && minRpm !== undefined && idleTarget < minRpm)
+  if (hasAnyIdleRpm && idleTarget !== undefined && minRpm !== undefined && idleTarget < minRpm)
     warns.push('Idle target RPM (' + idleTarget + ') is below Min RPM (' + minRpm + '). Engine may fault at idle.');
 
   if (idleMin !== undefined && idleMax !== undefined && idleMin > idleMax)
@@ -1260,6 +1262,8 @@ function applyHwConditions() {
   showField('di_n2', hasN2);
   if (!hasN2) showField('cl_n2', false); // applyClusterVisibility guards show, we guard N2
   ghostField('cl_en', hasClusterSerial, 'Cluster serial output is not fitted/enabled in Hardware.');
+  ['rpm_limit','min_rpm','cl_n1'].forEach(k =>
+    ghostField(k, hasN1, 'N1 RPM sensor is not configured in Hardware. Standard timer/TOT setup does not use this value.'));
 
   ghostSelectOption('sf_fs', 1, hasFlame, 'Flame sensor is not configured in Hardware.');
   ghostSelectOption('sf_fs', 2, hasN1, 'N1 RPM sensor is not configured in Hardware.');

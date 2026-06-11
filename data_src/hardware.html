@@ -694,9 +694,6 @@
     <div style="font-size:.63rem;color:var(--dim);margin-bottom:.55rem;line-height:1.4">
       Wire an ACS712/ACS758 (or similar Hall-effect sensor) in series with the output. These output ~1.65 V at 0 A and shift by their rated mV/A sensitivity. Use an ADC1-capable GPIO only.
     </div>
-
-    <!-- Glow plug current sensor is now configured inline inside the Glow Plug card (Actuators section) -->
-    <!-- Igniter current sensor is configured inline inside Igniter 1 (Car Coil mode) -->
   </div>
 
   <!-- ── Actuators ─────────────────────────────────────── -->
@@ -1667,6 +1664,21 @@
         </div>
       </div>
     </div>
+
+    <!-- Buzzer -->
+    <div class="hw-item-card">
+      <div class="hw-toggle" style="margin-bottom:.5rem">
+        <input type="checkbox" id="en-buzzer" onchange="setBuzzerEnabled(this.checked)">
+        <b>Buzzer</b>
+      </div>
+      <div class="hw-grid" id="grp-buzzer">
+        <div class="hw-field">
+          <span class="hw-label">GPIO pin</span>
+          <span class="hw-desc">Passive piezo for startup, running, shutdown, and fault tones.</span>
+          <select id="f-buzzer-pin" onchange="setNested('buzzer','pin',+this.value);refreshAllPins()"></select>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ── Controllers ───────────────────────────────────── -->
@@ -2134,6 +2146,7 @@ function refreshAllPins() {
   refreshPinSel('f-airs-pin',       'out', (a.airstarter_sol||{}).pin);
   refreshPinSel('f-fan-pin',        'out', (a.cool_fan||{}).pin);
   refreshPinSel('f-led-pin',        'out', (a.status_led||{}).pin);
+  refreshPinSel('f-buzzer-pin',     'out', (cfg.buzzer||{}).pin);
   refreshPinSel('f-cl-tx',          'out', cl.tx_pin);
   refreshPinSel('f-cl-rx',          'in',  cl.rx_pin);
   refreshPinSel('f-ab-sw-pin',      'in',  abt.switch_pin);
@@ -2577,6 +2590,9 @@ function populate() {
   const statusLedEnabled = (a.status_led?.enabled !== false);
   chk('en-statusled', statusLedEnabled);
   updateGroupEnabled('grp-statusled', statusLedEnabled);
+  const buz = cfg.buzzer || {};
+  chk('en-buzzer', !!buz.enabled);
+  updateGroupEnabled('grp-buzzer', !!buz.enabled);
 
   const cl = cfg.cluster_serial || {};
   chk('en-cluster', cl.enabled || false);
@@ -2971,6 +2987,13 @@ function setActEnabled(act, grpId, val) {
   updateGroupEnabled('grp-' + grpId, val);
   updateHardwarePrerequisites(true);
 }
+function setBuzzerEnabled(val) {
+  if (!cfg.buzzer) cfg.buzzer = {};
+  cfg.buzzer.enabled = val;
+  if (!val) cfg.buzzer.pin = -1;
+  updateGroupEnabled('grp-buzzer', val);
+  dirty(); refreshAllPins(); updateSaveButtonState();
+}
 function setSafety(key, val, cardId) {
   setNested('safety', key, val);
   setSafetyUI(key, val, cardId);
@@ -3307,6 +3330,7 @@ const PIN_SELECT_LABELS = {
   'f-pp-pin':         'Prop Pitch',
   'f-glow-pin':       'Glow Plug',
   'f-led-pin':        'Status LED',
+  'f-buzzer-pin':     'Buzzer',
   'f-cl-tx':          'Cluster Serial TX',
   'f-cl-rx':          'Cluster Serial RX',
   'f-mav-tx':         'MAVLink TX',
@@ -3816,6 +3840,7 @@ function _checkGpioConflicts() {
     add(cfg.cluster_serial.rx_pin, 'Cluster Serial RX');
   }
   if (cfg.mavlink?.enabled) add(cfg.mavlink.tx_pin, 'MAVLink TX');
+  if (cfg.buzzer?.enabled) add(cfg.buzzer.pin, 'Buzzer');
 
   (cfg.di_channels || []).forEach((ch, index) => add(ch.pin, 'DI-' + (index + 1)));
 
@@ -3852,6 +3877,7 @@ function _releaseInactivePinConflicts() {
   }
   if (!cfg.cluster_serial?.enabled) release(cfg.cluster_serial, ['tx_pin', 'rx_pin']);
   if (!cfg.mavlink?.enabled) release(cfg.mavlink, ['tx_pin']);
+  if (!cfg.buzzer?.enabled) release(cfg.buzzer, ['pin']);
   if (!cfg.has_afterburner) {
     release(cfg.actuators?.ab_sol, ['pin']);
     release(cfg.actuators?.ab_pump, ['pin']);
@@ -3924,6 +3950,7 @@ function saveHardware() {
     } else requirePin(tq, 'pin', 'Torque Sensor');
   }
   if (cfg.cluster_serial?.enabled) requirePin(cfg.cluster_serial, 'tx_pin', 'Cluster Serial TX');
+  if (cfg.buzzer?.enabled) requirePin(cfg.buzzer, 'pin', 'Buzzer');
   if (cfg.has_afterburner) {
     const abt = cfg.ab_trigger || {};
     if ((abt.source ?? 0) === 2) requirePin(abt, 'switch_pin', 'AB trigger switch');

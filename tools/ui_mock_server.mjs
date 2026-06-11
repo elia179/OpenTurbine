@@ -72,7 +72,7 @@ function makeHardware() {
       status_led: { enabled: true, pin: 2 }
     },
     cluster_serial: { enabled: true, tx_pin: 1, rx_pin: -1, baud: 115200, interval_ms: 100, protocol: 1 },
-    buzzer: { enabled: true, pin: 4 },
+    buzzer: { enabled: false, pin: -1 },
     mavlink: { enabled: true, tx_pin: 3, baud: 57600, interval_ms: 100 },
     controllers: { oil_loop: true, throttle_slew: true, dynamic_idle: true, governor: true },
     safety: { overspeed: true, overtemp: true, low_oil: true, oil_zero: true, flameout: true, hot_start: true, tit_overtemp: true, oil_temp_high: true, fuel_press_low: true, batt_low: true, surge: true },

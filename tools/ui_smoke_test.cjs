@@ -266,6 +266,7 @@ function installedBrowser() {
     assert.equal(await page.evaluate(() => cfg.afterburner.min_n1), 50000);
     results.push('sequence editor keeps independent timed delays and edits AB input/gate thresholds in friendly units');
     await page.goto(`${base}/hardware.html`);
+    await page.waitForFunction(() => document.querySelector('#f-ab-inp-type')?.value === 'pwm');
     assert.equal(await page.locator('#f-ab-inp-type').inputValue(), 'pwm');
     results.push('hardware editor preserves dedicated AB servo-PWM command input type');
     await page.evaluate(() => {

@@ -6,6 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- Restored Hardware page controls for the passive buzzer so fitted buzzer pins can be assigned, validated, and included in GPIO conflict checks.
+- Replaced stale flashing instructions that referenced a missing helper script with the actual PlatformIO firmware and filesystem upload commands.
+- Aligned the factory profile and setup guide with the standard N1-free, timer/TOT based setup; N1-dependent dynamic idle, overspeed, surge, and auto-relight remain optional features.
+
+### Documentation
+- Added an alpha-readiness review plan covering supported setups, dependency gates, critical user flows, and required verification.
+- Updated the README hardware/setup guide to reflect the unified `ecu_config.json` engine file, runtime hardware configuration, OTA web assets, and current ESP32-S3 target.
+
+---
+
 ## [1.1.0] — 2026-05-24
 
 Major feature release. Significant expansion of hardware support, safety system, and afterburner capability.

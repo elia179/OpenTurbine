@@ -176,12 +176,14 @@ function enumNames(source, marker) {
           platform: 'esp32s3',
           cluster_serial: { enabled: true, tx_pin: 1, rx_pin: 46, protocol: 1 },
           mavlink: { enabled: true, tx_pin: 4 },
+          buzzer: { enabled: true, pin: 6 },
           actuators: { status_led: { enabled: true, pin: 5 } }
         },
         checks: async () => {
           assert.equal(await page.locator('#f-cl-rx option[value="46"]').count(), 1);
           assert.equal(await page.locator('#f-mav-tx option[value="46"]').count(), 0);
           assert.equal(await page.locator('#f-led-pin option[value="46"]').count(), 0);
+          assert.equal(await page.locator('#f-buzzer-pin option[value="46"]').count(), 0);
         }
       }
     ];
