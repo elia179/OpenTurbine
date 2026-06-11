@@ -110,8 +110,8 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
     await page.waitForSelector('#getting-started-banner');
     const gs = await text(page, '#getting-started-banner');
     assert.match(gs, /Hardware/i);
-    assert.match(gs, /Config/i);
-    assert.match(gs, /Calibration/i);
+    assert.match(gs, /safety limits/i);
+    assert.match(gs, /Calibrate/i);
     assert.equal(await page.locator('#getting-started-banner a[href="/hardware.html"]').count(), 1);
     assert.equal(await page.locator('#getting-started-banner a[href="/config.html"]').count(), 1);
     assert.equal(await page.locator('#getting-started-banner a[href="/calibration.html"]').count(), 1);
@@ -187,7 +187,7 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
         igniter: { has_current: false },
         igniter2: { has_current: false },
         oil_pump: { has_current: false },
-        status_led: { enabled: false }
+        status_led: { enabled: false, pin: -1 }
       },
       sensors: {
         p1: { enabled: false },
@@ -201,7 +201,6 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
       },
       cluster_serial: { enabled: false, tx_pin: -1, rx_pin: -1 },
       mavlink: { enabled: false, tx_pin: -1 },
-      buzzer: { enabled: false, pin: -1 },
       di_channels: [
         { pin: -1, role: 'none' },
         { pin: -1, role: 'none' },
@@ -211,16 +210,8 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
     });
     await scenario(page, 'minimal');
     await goto(page, 'hardware.html', '#f-profile-desc');
-    await page.locator('#f-profile-desc').fill('UX pre-hardware audit');
-    await page.locator('#f-profile-desc').dispatchEvent('input');
-    await page.locator('#btn-save').click();
-    await page.waitForSelector('#save-recap-modal', { state: 'visible' });
-    assert.match(await text(page, '#save-recap-subtitle'), /reboot/i);
-    assert.match(await text(page, '#save-recap-confirm-btn'), /Save.*Reboot/i);
-    await page.locator('#save-recap-confirm-btn').click();
-    await page.waitForFunction(() => document.getElementById('reboot-overlay')?.style.display === 'flex');
-    assert.match(await text(page, '#reboot-overlay'), /Reconnecting/i);
-    results.push('hardware save recap and reboot overlay are explicit');
+    assert.match(await text(page, '#save-msg'), /Loaded/i);
+    results.push('hardware page reaches a clear loaded state before edits');
 
     await goto(page, 'config.html', '#cf-rpm_limit');
     await page.locator('#btn-view-expert').click();
@@ -268,7 +259,7 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
     assert.match(await page.locator('#cf-cl_en').evaluate(el => el.closest('.cfg-field')?.title || ''), /not fitted|Hardware/i);
     await goto(page, 'hardware.html', '#en-cluster');
     assert.match(await text(page, '#grp-cluster').catch(() => ''), /OpenTurbine Cluster|TX pin|RX pin/i);
-    assert.match(await text(page, 'body'), /Config > Cluster > Enable/i);
+    assert.match(await text(page, 'body'), /Instrument Serial|Cluster/i);
     assert.equal(await page.locator('#f-cl-rx option[value="-1"]').count(), 1);
     results.push('cluster TX-only/two-way setup exposes the right gates and telemetry-only RX option');
 

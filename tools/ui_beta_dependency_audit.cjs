@@ -231,7 +231,7 @@ async function optionDisabled(page, selector, value) {
     assert.equal(await page.locator('#f-oilpress-pin option[value="1"]').count(), 1);
     assert.equal(await page.locator('#f-cl-rx option[value="-1"]').count(), 1);
     assert.equal(await page.locator('#f-cl-rx option[value="22"]').count(), 0);
-    assert.equal(await page.locator('#f-cl-proto').inputValue(), '1');
+    assert.equal(await page.locator('#f-cl-protocol').inputValue(), '1');
     results.push('hardware GPIO choices switch by ESP32 target and cluster RX keeps the telemetry-only -1 option');
 
     await reset(page);
@@ -289,6 +289,19 @@ async function optionDisabled(page, selector, value) {
     results.push('config temperature and pressure toggles preserve canonical meaning and displayed precision');
 
     await reset(page);
+    await patchHardware(page, {
+      sensors: {
+        oil_press: { enabled: false },
+        flame: { enabled: false },
+        p1: { enabled: false },
+        p2: { enabled: false },
+        oil_temp: { enabled: false },
+        torque: { enabled: false },
+        fuel_press: { enabled: false },
+        throttle_input: { enabled: false },
+        idle_input: { enabled: false }
+      }
+    });
     await patchData(page, {
       has_oil_press: false, has_flame: false, has_p1: false, has_p2: false, has_oil_temp: false,
       has_batt_voltage: false, has_torque: false, has_fuel_press: false, has_fuel_flow: false,
@@ -309,6 +322,12 @@ async function optionDisabled(page, selector, value) {
       has_fuel_flow: true, fuel_flow_type: 0, has_glow_current: true, has_igniter_current: true,
       has_igniter2_current: true, has_oil_pump_current: true, throttle_input_type: 'servo',
       throttle_input_us: 1500, idle_input_type: 'adc', idle_input_raw: 1234
+    });
+    await patchHardware(page, {
+      sensors: {
+        throttle_input: { enabled: true, rc_pwm: true },
+        idle_input: { enabled: true, rc_pwm: false }
+      }
     });
     await page.waitForTimeout(150);
     assert.equal(await shown(page, '#fuelflow-cal-row'), true);

@@ -234,7 +234,7 @@ async function goto(page, route, waitSelector) {
     await goto(page, 'hardware.html', '#f-thr-pin');
     assert.equal(await page.locator('#f-thr-pin option[value="22"]').count(), 0);
     assert.equal(await page.locator('#f-oilpress-pin option[value="1"]').count(), 1);
-    assert.equal(await page.locator('#f-cl-proto').inputValue(), '1');
+    assert.equal(await page.locator('#f-cl-protocol').inputValue(), '1');
     assert.equal(await page.locator('#f-cl-tx option[value="22"]').count(), 0);
     assert.equal(await page.locator('#f-cl-rx option[value="22"]').count(), 0);
     assert.equal(await page.locator('#f-cl-rx option[value="-1"]').count(), 1);

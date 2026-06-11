@@ -267,6 +267,7 @@ function renderTools() {
   </div>`;
   document.getElementById('tool-area').insertAdjacentHTML('afterbegin', devToggleHtml);
   if (window.applyContextTooltips) window.applyContextTooltips(document.getElementById('tool-area'));
+  if (liveData) applyData(liveData);
 }
 
 // ── Run a standard tool ───────────────────────────────────────

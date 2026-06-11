@@ -452,6 +452,7 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
 /* ── Form inputs (config, calibration, hardware) ────────────── */
 input[type=number],
 input[type=text],
+input[type=password],
 select {
   font-family: var(--font-mono);
   font-size: 0.83rem;
@@ -461,14 +462,23 @@ select {
   border-radius: var(--r-sm);
   color: var(--text);
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   transition: border-color 0.12s;
 }
 input[type=number]:focus,
 input[type=text]:focus,
+input[type=password]:focus,
 select:focus             { outline: none; border-color: var(--accent); }
 input[type=number]:disabled,
 input[type=text]:disabled,
+input[type=password]:disabled,
 select:disabled          { opacity: 0.35; }
+select {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 input[type=checkbox] { width: 1rem; height: 1rem; accent-color: var(--accent); cursor: pointer; }
 input[type=checkbox]:disabled { opacity: 0.35; cursor: default; }
 input[type=range] { accent-color: var(--accent); cursor: pointer; }
@@ -870,7 +880,7 @@ textarea.field-changed {
 .hw-sub:first-child { border-top: none; padding-top: 0; margin-top: 0; }
 
 .hw-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.65rem; align-items: start; }
-.hw-field { display: flex; flex-direction: column; gap: 0.2rem; }
+.hw-field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .hw-label { font-size: 0.67rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
 .hw-desc  { font-size: 0.72rem; color: #7878a8; line-height: 1.4; min-height: 1.5rem; font-family: var(--font-ui); }
 .hw-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; }

@@ -48,8 +48,8 @@ async function hasOption(page, selector, value) {
     await reset(page);
     await patchHardware(page, { platform: 'esp32' });
     await gotoHardware(page);
-    assert.equal(await hasOption(page, '#f-buzzer-pin', 34), 0, 'ESP32 output selector must reject input-only GPIO34');
-    assert.equal(await hasOption(page, '#f-buzzer-pin', 6), 0, 'ESP32 output selector must reject flash GPIO6');
+    assert.equal(await hasOption(page, '#f-led-pin', 34), 0, 'ESP32 output selector must reject input-only GPIO34');
+    assert.equal(await hasOption(page, '#f-led-pin', 6), 0, 'ESP32 output selector must reject flash GPIO6');
     assert.equal(await hasOption(page, '#f-oilpress-pin', 34), 1, 'ESP32 ADC selector must allow ADC1 GPIO34');
     assert.equal(await hasOption(page, '#f-oilpress-pin', 25), 0, 'ESP32 ADC selector must reject non-ADC1 GPIO25');
     results.push('ESP32 pin selectors match firmware GPIO, output and ADC limits');
@@ -57,8 +57,8 @@ async function hasOption(page, selector, value) {
     await reset(page);
     await patchHardware(page, { platform: 'esp32s3' });
     await gotoHardware(page);
-    assert.equal(await hasOption(page, '#f-buzzer-pin', 46), 0, 'ESP32-S3 output selector must reject input-only GPIO46');
-    assert.equal(await hasOption(page, '#f-buzzer-pin', 22), 0, 'ESP32-S3 output selector must reject absent/flash GPIO22');
+    assert.equal(await hasOption(page, '#f-led-pin', 46), 0, 'ESP32-S3 output selector must reject input-only GPIO46');
+    assert.equal(await hasOption(page, '#f-led-pin', 22), 0, 'ESP32-S3 output selector must reject absent/flash GPIO22');
     assert.equal(await hasOption(page, '#f-cl-rx', 46), 1, 'ESP32-S3 input selector may allow input-only GPIO46');
     assert.equal(await hasOption(page, '#f-oilpress-pin', 10), 1, 'ESP32-S3 ADC selector must allow ADC1 GPIO10');
     assert.equal(await hasOption(page, '#f-oilpress-pin', 11), 0, 'ESP32-S3 ADC selector must reject non-ADC1 GPIO11');
@@ -74,11 +74,11 @@ async function hasOption(page, selector, value) {
       }
       cfg.has_afterburner = false;
       cfg.di_channels = [];
-      cfg.buzzer = { enabled: true, pin: 4 };
+      cfg.actuators.status_led = { enabled: true, pin: 4 };
       cfg.mavlink = { enabled: true, tx_pin: 4, baud: 115200, interval_ms: 200 };
       cfg.cluster_serial = { enabled: true, protocol: 1, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };
-      const buzzerMav = _checkGpioConflicts().some(c =>
-        c.pin === 4 && c.names.includes('Buzzer') && c.names.includes('MAVLink TX'));
+      const statusLedMav = _checkGpioConflicts().some(c =>
+        c.pin === 4 && c.names.includes('Status LED') && c.names.includes('MAVLink TX'));
 
       cfg.mavlink.enabled = false;
       cfg.sensors.tot = { enabled: true, chip: 'max31856', clk: 40, cs: 37, miso: 41, mosi: 42 };
@@ -92,19 +92,19 @@ async function hasOption(page, selector, value) {
 
       cfg.sensors.tit.cs = 16;
       cfg.cluster_serial.tx_pin = 4;
-      cfg.buzzer.enabled = false;
+      cfg.actuators.status_led.enabled = false;
       const released = _releaseInactivePinConflicts();
-      const buzzerReleased = cfg.buzzer.pin === -1 && released;
+      const statusLedReleased = cfg.actuators.status_led.pin === -1 && released;
 
-      return { buzzerMav, sharedSpiBusOk, sharedCsBlocked, buzzerReleased };
+      return { statusLedMav, sharedSpiBusOk, sharedCsBlocked, statusLedReleased };
     });
     assert.deepEqual(conflictMatrix, {
-      buzzerMav: true,
+      statusLedMav: true,
       sharedSpiBusOk: true,
       sharedCsBlocked: true,
-      buzzerReleased: true
+      statusLedReleased: true
     });
-    results.push('hardware conflict logic covers buzzer, serial pins, SPI bus sharing and hidden inactive pins');
+    results.push('hardware conflict logic covers status LED, serial pins, SPI bus sharing and hidden inactive pins');
 
     const txOnlyCluster = await page.evaluate(() => {
       cfg.cluster_serial = { enabled: true, protocol: 1, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };

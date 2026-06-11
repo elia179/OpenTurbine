@@ -50,9 +50,9 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">WiFi AP Password</span>
-          <span class="hw-desc">Password for the Wi-Fi access point. A saved password is retained unless you enter a replacement; blank uses a per-device default password (printed on the serial console at every boot, format ot-xxxxxxxx).</span>
+          <span class="hw-desc">Optional password for the Wi-Fi access point. A saved password is retained unless you enter a replacement; blank selects an open network.</span>
           <div style="display:flex;gap:.35rem;align-items:center">
-            <input type="password" id="f-wifi-password" maxlength="63" placeholder="(per-device default)"
+            <input type="password" id="f-wifi-password" maxlength="63" placeholder="(open network)"
               oninput="set('wifi_password',this.value)" style="flex:1">
             <button type="button" id="btn-wifi-pw-toggle" onclick="toggleWifiPassword()"
               title="Show/hide password"
@@ -1830,13 +1830,6 @@
         </div>
         <span style="font-size:.63rem;color:var(--dim)">Configured flameout source is lost for &gt; flameout delay → fault shutdown. Relight can prevent this.</span>
       </div>
-      <div class="safety-card" id="sc-lowfuel" style="display:none">
-        <div class="hw-toggle">
-          <input type="checkbox" id="f-saf-lowfuel" onchange="setSafety('low_fuel',this.checked,'sc-lowfuel')">
-          <b>Low Fuel</b>
-        </div>
-        <span style="font-size:.63rem;color:var(--dim)">Fuel flow sensor reads low → fault shutdown. Requires fuel flow sensor.</span>
-      </div>
       <div class="safety-card" id="sc-hotstart">
         <div class="hw-toggle">
           <input type="checkbox" id="f-saf-hotstart" onchange="setSafety('hot_start',this.checked,'sc-hotstart')">
@@ -2372,7 +2365,7 @@ function populate() {
   v('f-wifi-password', '');
   const wifiPw = document.getElementById('f-wifi-password');
   if (wifiPw) wifiPw.placeholder = cfg.wifi_password === '__KEEP_PASSWORD__'
-    ? '(saved password unchanged)' : '(per-device default)';
+    ? '(saved password unchanged)' : '(open network)';
   updateFeaturesUI();
 
   const c = cfg.controls || {};
@@ -2609,7 +2602,6 @@ function populate() {
   setSafetyUI('low_oil',      sf.low_oil      !== false, 'sc-lowoil');
   setSafetyUI('oil_zero',     sf.oil_zero     !== false, 'sc-oilzero');
   setSafetyUI('flameout',     sf.flameout     !== false, 'sc-flameout');
-  setSafetyUI('low_fuel',     sf.low_fuel     || false,  'sc-lowfuel');
   setSafetyUI('hot_start',    sf.hot_start    || false,  'sc-hotstart');
   setSafetyUI('tit_overtemp', sf.tit_overtemp || false,  'sc-titovertemp');
   setSafetyUI('oil_temp_high',sf.oil_temp_high|| false,  'sc-oiltemphi');
@@ -2986,7 +2978,7 @@ function setSafety(key, val, cardId) {
 function setSafetyUI(key, val, cardId) {
   const map = {
     overspeed:'f-saf-overspeed', overtemp:'f-saf-overtemp', low_oil:'f-saf-lowoil',
-    oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout', low_fuel:'f-saf-lowfuel',
+    oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout',
     hot_start:'f-saf-hotstart', tit_overtemp:'f-saf-titovertemp', oil_temp_high:'f-saf-oiltemphi',
     fuel_press_low:'f-saf-fuelpresslo', batt_low:'f-saf-battlo', surge:'f-saf-surge',
   };
@@ -3002,7 +2994,6 @@ function updateSafetyPrerequisites(markDirty) {
     low_oil: ['oil_press', 'sc-lowoil', 'Oil pressure sensor required'],
     oil_zero: ['oil_press', 'sc-oilzero', 'Oil pressure sensor required'],
     flameout: ['combustion_source', 'sc-flameout', 'Flameout safety requires a flame sensor, N1 RPM, or TOT sensor'],
-    low_fuel: [null, 'sc-lowfuel', 'Low fuel-flow safety is not implemented; use a Control Rule with the fuel-flow sensor instead.'],
     hot_start: ['tot', 'sc-hotstart', 'TOT sensor required'],
     tit_overtemp: ['tit', 'sc-titovertemp', 'TIT sensor required'],
     oil_temp_high: ['oil_temp', 'sc-oiltemphi', 'Oil temperature sensor required'],
@@ -3012,7 +3003,7 @@ function updateSafetyPrerequisites(markDirty) {
   };
   const inputs = {
     overspeed:'f-saf-overspeed', overtemp:'f-saf-overtemp', low_oil:'f-saf-lowoil',
-    oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout', low_fuel:'f-saf-lowfuel',
+    oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout',
     hot_start:'f-saf-hotstart', tit_overtemp:'f-saf-titovertemp',
     oil_temp_high:'f-saf-oiltemphi', fuel_press_low:'f-saf-fuelpresslo',
     batt_low:'f-saf-battlo', surge:'f-saf-surge',
