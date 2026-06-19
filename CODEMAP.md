@@ -226,12 +226,12 @@ or 20 ms (engine active) sleeps.
 
 ---
 
-## 6. Subsystem inventory for subagent dispatch
+## 6. Subsystem ownership map
 
 The classical piston-ECU roster (crank/cam, ignition advance, injector PW) does not
-apply. Adapted roster for OpenTurbine:
+apply. OpenTurbine is easier to reason about through these ownership areas:
 
-| Subagent | Code in scope |
+| Area | Code in scope |
 |---|---|
 | **sequencer-state** | `engine/sequencer/SequenceEngine.h`, `IBlock.h`, all 30+ blocks under `engine/sequencer/blocks/`, AB state machine in `main.cpp:651-843`, mode transitions `main.cpp:924-1097` |
 | **sensor-input** | `hal/sensors/*` (PCNTRpmSensor, MAX6675/31855/31856, NTC, DS18B20, AnalogPoly, AnalogLinear, AnalogThreshold), `hal/RCInput.h`, sensor-read path in `Hardware::updateSensors` |
@@ -284,25 +284,6 @@ but most config lives in LittleFS JSON, not NVS.
 | SPI thermocouple chips | MAX6675/31855/31856 drivers | Open-circuit / fault flags consumed into `*Healthy` |
 
 ---
-
-## 9. Pause for confirmation
-
-Recon is complete. Proposed subagent dispatch order (each writes
-`.audit/<subsystem>/bugs.md`, then I aggregate into BUGS.md and FIXES.md):
-
-1. **sequencer-state**  (largest surface, safety-critical state)
-2. **limits-protection**  (SafetyMonitor + relight + DI fault path)
-3. **actuator-output**  (Hardware.h updateActuators, igniter dwell, AB fuel offset)
-4. **controllers**  (ThrottleSlew, DynamicIdle, OilLoop, Governor — sensor-loss behaviour)
-5. **sensor-input**  (PCNT/SPI/ADC drivers + plausibility)
-6. **rtos-architecture**  (cross-core, ISR, queue, watchdog)
-7. **calibration-storage**  (Config/HardwareConfig load/save/migration)
-8. **wireless-web**  (HTTP/WS/OTA/captive-portal parsers)
-9. **comms-protocols**  (ClusterSerial, MAVLink, CommandQueue)
-10. **boot-init**  (setup ordering, GPIO defaults)
-11. **persistence-logging**  (FlightRecorder, SessionLogger)
-
-Each subagent gets the bug taxonomy, finding template, and a scoped path list.
 
 Keep this map current when moving major ownership boundaries or adding new
 subsystems.

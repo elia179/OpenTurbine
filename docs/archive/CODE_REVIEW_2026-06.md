@@ -3,11 +3,11 @@
 > **Archived audit snapshot:** this file records a review of commit `93ec5a2`
 > and firmware 1.1.0 from 2026-06-10. It is kept for traceability, not as the
 > current beta status or user guidance. Use `README.md`,
-> `docs/BETA_USER_GUIDE.md`, `docs/BETA_READINESS_PLAN.md`, and `CHANGELOG.md`
+> `docs/BETA_USER_GUIDE.md`, `docs/internal/BETA_READINESS_PLAN.md`, and `CHANGELOG.md`
 > for current release-facing information.
 
 **Date:** 2026-06-10 · **Commit reviewed:** `93ec5a2` (main) · **Firmware version:** 1.1.0
-**Scope:** full firmware source (`src/`, `hardware_profile.h`, build config), web UI (`data_src/`), docs, prior `.audit/` findings, build verification.
+**Scope:** full firmware source (`src/`, `hardware_profile.h`, build config), web UI (`data_src/`), docs, prior `docs/archive/audit-2026-06/` findings, build verification.
 
 ---
 
@@ -46,7 +46,7 @@ Also notable: **flash is at 90.6% of the 1.5 MB OTA slot.** A few more features 
 | `esp32s3dev` build | Not run (separate toolchain download; recommend CI for both) |
 | `data/*.gz` vs `data_src/` | 7 HTML pages byte-identical; **app.js and style.css differ** (CRLF/LF only — see F5) |
 | Docs vs code | Archived 1.1.0-era assessment. Current README, CODEMAP, DESIGN_SPEC, beta docs, and changelog have been updated since this review. |
-| Prior `.audit/` findings | All 137 verified individually — see §5 |
+| Prior `docs/archive/audit-2026-06/` findings | All 137 verified individually — see §5 |
 
 Note: your local PlatformIO venv had a corrupted `charset-normalizer` package that broke `pio` entirely mid-review; I repaired it (removed the broken package remnants, reinstalled). If `pio` misbehaves again, `pip install --force-reinstall platformio` inside `%USERPROFILE%\.platformio\penv` is the fix.
 
@@ -136,7 +136,7 @@ Full verification was done finding-by-finding. **Tally: 76 fixed, 18 partially f
 
 Also worth knowing: `SysMode::FAULT` is **never assigned anywhere** — the FAULT-mode branches in `main.cpp:1731` and Types.h are dead code. Either wire it up (e.g. profile mismatch currently uses `profileMatch` flags instead) or delete the mode.
 
-The remaining ~28 still-present items are hygiene-level (stale comments, dead `_crc16`, missing teardown paths, type nits) — list in `.audit/*/bugs.md` cross-referenced by the verification.
+The remaining ~28 still-present items are hygiene-level (stale comments, dead `_crc16`, missing teardown paths, type nits) — list in `docs/archive/audit-2026-06/*/bugs.md` cross-referenced by the verification.
 
 ---
 
