@@ -42,8 +42,8 @@
 // the two chips.
 //
 // ESP32-S3 IMPORTANT: GPIO 19 and 20 are USB D−/D+ — never use them.
-// The default SPI MISO moves to GPIO 37 on S3. GPIO38 is kept free for
-// the ESP32-S3 DevKitC-1 v1.1 RGB status LED.
+// The default SPI MISO moves to GPIO 37 on S3. GPIO48 is kept free for
+// the YD-ESP32-S3 / YD-ESP32-23 onboard NeoPixel/RGB status LED.
 //
 #ifdef OT_PLATFORM_ESP32S3
   //  ADC1-capable: GPIO 1–10.  GPIO 4 left free (oil pump PWM default).
@@ -280,6 +280,8 @@
 // Blink pattern: STANDBY=1, STARTUP=2, RUNNING=3, SHUTDOWN=4, FAULT=rapid
 // Built-in LED is usually GPIO 2 on ESP32 dev boards.
 // YD-ESP32-S3 / YD-ESP32-23 has an addressable RGB LED on GPIO48.
+// In the Hardware page, choose Status LED type = NeoPixel RGB data LED
+// for that onboard LED, or Plain GPIO on/off for a normal external LED.
 // Some boards require the solder jumper marked RGB to be bridged.
 // #define OT_HAS_STATUS_LED
 // #define OT_STATUS_LED_PIN  2

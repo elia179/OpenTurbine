@@ -90,8 +90,8 @@ hardware combinations, dependency gates, and release-facing documentation.
 - `docs/OTC_CLUSTER_PROTOCOL.md`: cluster serial behavior and current command
   set.
 - `CHANGELOG.md`: user-visible changes since the last release.
-- `DESIGN_SPEC.md`: historical design note only; do not use as the primary
-  setup guide.
+- `DESIGN_SPEC.md`: architecture and behavior reference; keep current with
+  firmware, but use README and web UI text as the primary setup guide.
 - In-page help text and tooltips in `data_src/*.html`.
 
 ### 5. Verification

@@ -16,6 +16,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Flight log run summaries now preserve TIT peaks and the Log page reads the real firmware event field names (`n1Rpm`, `totDegC`, `titDegC`, `oilBar`, `maxTot`, `maxTit`).
 - Dashboard EGT approach warnings now follow the selected engine-safety EGT source instead of always treating TOT as primary.
 - Extra Cooldown UI/docs now describe the actual Sequencer CooldownSpin actuator settings instead of fixed starter-plus-oil behavior.
+- Documentation now calls out ESP32-S3 GPIO48 NeoPixel status LED mode separately from plain GPIO status LEDs, and platform notes no longer refer to old GPIO38/S3 auto-detect assumptions.
 
 ### Documentation
 - Added a beta-readiness review plan covering supported setups, dependency gates, critical user flows, and required verification.

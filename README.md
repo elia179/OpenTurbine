@@ -64,7 +64,7 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 - **Sequence validator** — at boot, cross-checks each block against fitted hardware; flags errors (block START) and warnings, displayed in web UI
 - **Dev mode / bench mode** — explicit operator-gated diagnostics for bench testing, including safety bypasses and timer-based sequence completion; never use with fuel or a live engine unless you fully understand the risk
 - **Buzzer patterns** — passive piezo tones for mode transitions and fault
-- **Status LED** — mode-driven blink pattern (1–4 blinks + rapid fault flash)
+- **Status LED** — mode-driven blink pattern (1–4 blinks + rapid fault flash). Classic ESP32 uses plain GPIO on/off; ESP32-S3 can use the YD onboard NeoPixel/RGB LED on GPIO48 or a normal external GPIO LED.
 - **Peak value tracking** — session maxima for N1, N2, TOT, TIT, oil temp, fuel pressure, battery
 - **Run counter and engine-time accumulator** — persisted across power cycles
 
@@ -120,7 +120,7 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 | DI channels (×4) | Configurable roles: fault, estop, ab_arm, ab_fire, inhibit_start, limp_mode |
 | Start switch | Hardware start button |
 | Buzzer | Passive piezo for mode/fault tones |
-| Status LED | Any GPIO |
+| Status LED | Classic ESP32: any output GPIO. ESP32-S3/YD board: GPIO48 NeoPixel by default, or select plain GPIO on/off for an external LED |
 | MAVLink UART | Any UART TX pin |
 | Cluster serial | OTC external display/device protocol; TX telemetry plus optional RX commands. Fit the port in Hardware and control runtime streaming in Config > Cluster |
 | RC PWM inputs | Servo signal for throttle and/or idle |
@@ -156,7 +156,7 @@ Open `hardware_profile.h` and set the compile-time profile ID and any pin defaul
 #define OT_START_PIN   13
 ```
 
-For **ESP32-S3** use the `esp32s3dev` environment — the profile auto-detects the correct ADC pin range.
+For **ESP32-S3** use the `esp32s3dev` environment. The PlatformIO environment defines the target explicitly, and the profile selects the correct ADC pin range.
 
 ### 4. Flash the filesystem and firmware
 
@@ -317,7 +317,7 @@ src/
 | Environment | Target | Notes |
 |---|---|---|
 | `esp32dev` | Classic ESP32 (240 MHz, 4 MB) | ADC1: GPIO 32–39 |
-| `esp32s3dev` | ESP32-S3 DevKitC N8 target (240 MHz, 8 MB) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB |
+| `esp32s3dev` | ESP32-S3 DevKitC N8 target (240 MHz, 8 MB) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB; YD onboard RGB status LED uses GPIO48 NeoPixel mode by default |
 
 ```bash
 pio run -e esp32dev   -t upload      # firmware

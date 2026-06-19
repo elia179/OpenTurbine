@@ -5,10 +5,10 @@ License: MIT
 
 ---
 
-> **Status:** historical design notes. The current firmware now stores the
-> complete per-engine hardware and settings in `ecu_config.json`, edited through
-> the web UI. Use `README.md`, `hardware_profile.h`, and the web UI text as the
-> release-facing guidance.
+> **Status:** architecture notes. The current firmware stores complete
+> per-engine hardware and settings in `ecu_config.json`, edited through the web
+> UI. Keep this file aligned with `README.md`, `hardware_profile.h`, and the
+> web UI text.
 
 ---
 
@@ -22,7 +22,7 @@ Non-engineers can configure and operate it; engineers can extend it without touc
 ### Hard rules
 - The ECU control loop is never blocked by web, logging, or communication activity
 - Safety-critical logic (sequencer structure, fault responses) lives in code, not config
-- Hardware assumptions live only in `hardware_profile.h` — nowhere else
+- Factory profile identity and fallback pin defaults live in `hardware_profile.h`; normal engine setup is stored in `ecu_config.json` through the web UI
 - Every sensor reports health alongside its value — consumers always know if data is trustworthy
 - Config changes during STARTUP / RUNNING / SHUTDOWN are locked unless DEV_MODE is enabled
 
@@ -33,7 +33,7 @@ Non-engineers can configure and operate it; engineers can extend it without touc
 ```
 OpenTurbine/
 ├── platformio.ini
-├── hardware_profile.h          ← THE file non-engineers touch
+├── hardware_profile.h          ← compile-time factory defaults / profile identity
 ├── partitions.csv              ← dual OTA slots + LittleFS
 ├── README.md
 ├── DESIGN_SPEC.md
@@ -121,7 +121,7 @@ Structure is enforced by compile-time checks — missing mandatory items cause c
 
 ```cpp
 // ── Profile identity ──────────────────────────────────────────
-#define OT_PROFILE_ID     "my_engine_v1"   // must match config.json profile_id
+#define OT_PROFILE_ID     "my_engine_v1"   // must match ecu_config.json profile_id
 #define OT_PROFILE_DESC   "My turbine build, rev 1"
 
 // ── Platform ──────────────────────────────────────────────────
@@ -455,7 +455,7 @@ The actuator layer converts demands to physical signals.
 ### OilPressureLoop
 P-controller. Source: `OIL_PRESS` sensor. Output: `oilDemand` → `OIL_PUMP` actuator.
 Failsafe: if sensor faults after OIL_FAILSAFE_DELAY_MS, switches to fixed open-loop duty.
-All gains and thresholds come from config JSON.
+All gains and thresholds come from ecu_config.json.
 
 ### ThrottleSlew
 Rate-limits changes to throttle output. Separate up/down ramp rates from config.
@@ -465,7 +465,7 @@ Safety pullback: reduces output if N1 > RPM_LIMIT*0.95 or TOT approaching limit.
 Reads RPM source (N1 or N2, declared in hardware_profile.h).
 Adjusts idle floor to hold TGT_RPM. Asymmetric ramp rates (up slower than down).
 Deadband prevents micro-corrections. Disengages above DYNAMIC_IDLE_RPM_LIMIT.
-All parameters from config JSON.
+All parameters from ecu_config.json.
 
 ---
 
@@ -473,15 +473,15 @@ All parameters from config JSON.
 
 ### Profile ID check (boot sequence)
 ```
-1. Load config.json from LittleFS
+1. Load ecu_config.json from LittleFS
 2. Read profile_id field
 3. Compare to OT_PROFILE_ID from hardware_profile.h
 4. MATCH     → proceed normally
 5. MISMATCH  → halt, web UI shows error, no engine operations permitted
-6. NO FILE   → generate default config.json from compiled-in defaults, proceed
+6. NO FILE   → generate default ecu_config.json from compiled-in defaults, proceed
 ```
 
-### config.json structure
+### ecu_config.json structure
 ```json
 {
   "profile_id": "my_engine_v1",
@@ -696,8 +696,8 @@ Phone/laptop connects directly, no router needed.
 ```
 GET   /              → serve index.html from LittleFS
 GET   /api/data      → current EngineData snapshot (JSON)
-GET   /api/config    → current config.json
-POST  /api/config    → upload new config.json (locked during engine operation)
+GET   /api/config    → current ecu_config.json
+POST  /api/config    → upload new ecu_config.json (locked during engine operation)
 PATCH /api/config    → partial update / calibration wizard field save
 GET   /api/log       → full flight recorder log (JSON)
 GET   /api/log/csv   → log as CSV download
@@ -761,12 +761,12 @@ For each configured analog input:
 - All wizards show exactly what to do, no BT command typing
 
 **Config (`/config`)**
-- All config.json fields as editable inputs, grouped by section
+- All ecu_config.json fields as editable inputs, grouped by section
 - Fields show current value and default value
 - Config locked during engine operation — fields shown greyed with lock icon
 - Save to device button
-- Download config.json button
-- Upload config.json button (file picker)
+- Download ecu_config.json button
+- Upload ecu_config.json button (file picker)
 - Profile ID shown prominently — mismatch shown as error banner
 
 **Log (`/log`)**
