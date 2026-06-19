@@ -5,53 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Calibration</title>
-<link rel="stylesheet" href="/style.css?v=20260607b">
+<link rel="stylesheet" href="/style.css?v=20260619a">
 </head>
 <body>
 <nav>
-  <a href="/hardware.html">Hardware</a>
-  <a href="/calibration.html" class="active">Calibration</a>
-  <a href="/config.html">Config</a>
-  <a href="/sequence.html">Sequence</a>
-  <a href="/">Dashboard</a>
-  <a href="/log.html">Log</a>
-  <a href="/tools.html">Tools</a>
+  <a href="/" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
+  <a href="/hardware.html" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
+  <a href="/config.html" title="Tune limits, controllers, logging, telemetry, and hardware-dependent settings.">Config</a>
+  <a href="/calibration.html" class="active" title="Calibrate fitted analog, servo, pressure, temperature, current, and flow inputs.">Calibration</a>
+  <a href="/sequence.html" title="Edit startup, shutdown, afterburner sequences, block timings, and control rules.">Sequence</a>
+  <a href="/log.html" title="View fault/event history and per-run CSV session logs.">Log</a>
+  <a href="/tools.html" title="Run standby-only actuator tests, backups, restore, OTA, factory reset, and dev tools.">Tools</a>
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-  <!-- Pre-flight checklist (collapsible) -->
-  <div class="card" style="margin-bottom:1.5rem">
-    <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleChecklist()">
-      <div class="label" style="margin:0">Pre-Flight Checklist — complete before first run</div>
-      <button id="checklist-toggle-btn" style="background:none;border:none;color:var(--dim);font-size:1rem;cursor:pointer;padding:.1rem .4rem;line-height:1;transition:transform .2s" title="Expand / collapse checklist">▶</button>
-    </div>
-    <div id="checklist-body" style="display:none;margin-top:.6rem">
-      <p style="font-size:.78rem;color:var(--dim);margin-bottom:.75rem">
-        Check each item below. This list does not affect the ECU — it is a reminder guide only.
-        Tick all items before pressing START for the first time on a new build or after maintenance.
-      </p>
-      <ul class="checklist" id="checklist">
-        <li><input type="checkbox" onchange="checklistTick(this)"> Oil calibration done (zero, min, max pressures set)</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Throttle calibration done (min and max ADC values set)</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Flame threshold calibrated with igniter firing (spark noise included)</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> RPM limits checked if an RPM sensor is fitted</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> TOT limit set correctly for your engine model</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Oil prime test passed — oil flows and pressure is visible</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Igniter test passed — spark confirmed</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Fuel prime test passed — fuel flows from nozzle</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Starter spin test passed — starter spins freely</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> All fuel and oil connections checked for leaks</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Engine area clear of bystanders and flammable material</li>
-        <li><input type="checkbox" onchange="checklistTick(this)"> Fire extinguisher within reach</li>
-      </ul>
-      <div style="margin-top:.75rem;font-size:.78rem;color:var(--dim)" id="checklist-status">0 of 12 items checked</div>
-    </div>
-  </div>
-
   <h2 style="margin-bottom:1.2rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Live Sensor Readings &amp; Calibration</h2>
 
   <!-- Oil pressure -->
-  <div class="sensor-row" id="oil-press-cal-row">
+  <div class="sensor-row" id="oil-press-cal-row" style="display:none">
     <div class="sensor-name"><span id="oil-h-cal" class="dot"></span> Oil Pressure</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-oil-raw">—</div></div>
@@ -125,7 +96,7 @@
   </div>
 
   <!-- Flame -->
-  <div class="sensor-row" id="flame-cal-row">
+  <div class="sensor-row" id="flame-cal-row" style="display:none">
     <div class="sensor-name"><span id="flame-h-cal" class="dot"></span> Flame / Ignition</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-flame-raw">—</div></div>
@@ -167,6 +138,35 @@
                placeholder="0–4095">
         <button onclick="saveFlameThresholdDirect()">Set threshold</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Afterburner flame threshold sensor -->
+  <div class="sensor-row" id="ab-flame-cal-row" style="display:none">
+    <div class="sensor-name"><span id="ab-flame-h-cal" class="dot"></span> Afterburner Flame</div>
+    <div class="sensor-vals">
+      <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-ab-flame-raw">—</div></div>
+      <div class="sv-item"><div class="sv-label">State</div><div class="sv-val" id="cal-ab-flame">—</div></div>
+      <div class="sv-item"><div class="sv-label">Threshold</div><div class="sv-val" id="cal-ab-flame-thr">—</div></div>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-track"><div class="bar-fill" id="bar-ab-flame" style="width:0%"></div></div>
+      <div class="thr-mark" id="ab-flame-thr-mark" style="display:none"></div>
+    </div>
+    <div class="bar-range"><span>0</span><span>4095 ADC</span></div>
+    <div class="wizard">
+      <div class="wizard-title">Afterburner Flame Threshold</div>
+      <div class="wizard-steps">
+        Set the raw ADC threshold used by afterburner flame-confirm mode and AB flame diagnostics.
+        Tune this with the afterburner off first, then confirm that a real AB flame clears the threshold.
+      </div>
+      <div style="margin-top:.5rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+        <span style="font-size:.75rem;color:var(--dim)">Detection threshold:</span>
+        <input type="number" id="ab-flame-thr-direct" min="0" max="4095" step="1" style="width:90px"
+               placeholder="0-4095">
+        <button onclick="saveAbFlameThresholdDirect()">Set threshold</button>
+      </div>
+      <div id="ab-flame-status" style="font-size:.75rem;color:var(--dim);margin-top:.4rem"></div>
     </div>
   </div>
 
@@ -290,7 +290,7 @@
   </div>
 
   <!-- Idle Input -->
-  <div class="sensor-row" id="idle-cal-row">
+  <div class="sensor-row" id="idle-cal-row" style="display:none">
     <div class="sensor-name">Idle Input</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label" id="idle-raw-label">Raw ADC</div><div class="sv-val" id="cal-idle-raw">—</div></div>
@@ -420,7 +420,7 @@
   </div>
 
   <!-- Throttle Input -->
-  <div class="sensor-row" id="throttle-cal-row">
+  <div class="sensor-row" id="throttle-cal-row" style="display:none">
     <div class="sensor-name">Throttle Input</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label" id="th-raw-label">Raw ADC</div><div class="sv-val" id="cal-th-raw">—</div></div>
@@ -583,7 +583,7 @@
 
 </main>
 
-<script src="/app.js?v=20260607b"></script>
+<script src="/app.js?v=20260619a"></script>
 <script>
 let live = {};
 let oilPts = [];
@@ -597,6 +597,53 @@ let throttleInputType = 'adc';
 let idleInputType     = 'adc';
 
 let fpRawZero = null, fpRawRef = null;
+
+function hwSensorEnabled(hw, key, flatKey) {
+  return !!(hw?.sensors?.[key]?.enabled || (flatKey && hw?.[flatKey]));
+}
+function hwActuatorEnabled(hw, key, flatKey) {
+  return !!(hw?.actuators?.[key]?.enabled || (flatKey && hw?.[flatKey]));
+}
+function hwCurrentEnabled(hw, key, flatKey) {
+  return !!(hwActuatorEnabled(hw, key) && (hw?.actuators?.[key]?.has_current || (flatKey && hw?.[flatKey])));
+}
+function hwFuelFlowAnalog(hw) {
+  const fuelFlow = hw?.sensors?.fuel_flow || {};
+  const type = fuelFlow.type ?? hw?.fuel_flow_type;
+  return !!((fuelFlow.enabled || hw?.has_fuel_flow) && Number(type) === 0);
+}
+function hwAbFlameEnabled(hw) {
+  return !!((hw?.has_afterburner ?? hw?.afterburner?.enabled ?? true) && (hw?.ab_flame?.enabled || hw?.has_ab_flame));
+}
+function setRowVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+async function fetchJsonWithTimeout(url, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!r.ok) throw new Error(url + ' returned HTTP ' + r.status);
+    const text = await r.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function fetchJsonWithRetry(url, attempts = 3) {
+  let lastError;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchJsonWithTimeout(url);
+    } catch (e) {
+      lastError = e;
+      await new Promise(resolve => setTimeout(resolve, 200 + i * 300));
+    }
+  }
+  throw lastError;
+}
 
 function refreshOilTempCalMode(sensor) {
   const chip = sensor?.chip || 'ntc';
@@ -615,15 +662,32 @@ function refreshOilTempCalMode(sensor) {
   }
 }
 
-Promise.all([
-  fetch('/api/config').then(r=>r.json()),
-  fetch('/api/hardware').then(r=>r.json())
-]).then(([c, hw]) => {
+(async () => {
+  const c = await fetchJsonWithRetry('/api/config');
+  const hw = await fetchJsonWithRetry('/api/hardware');
+  return [c, hw];
+})().then(([c, hw]) => {
   cfg = c;
   c.hardware = hw;
+  setRowVisible('oil-press-cal-row', hwSensorEnabled(hw, 'oil_press', 'has_oil_press'));
+  setRowVisible('flame-cal-row', hwSensorEnabled(hw, 'flame', 'has_flame'));
+  setRowVisible('p1-cal-row', hwSensorEnabled(hw, 'p1', 'has_p1'));
+  setRowVisible('p2-cal-row', hwSensorEnabled(hw, 'p2', 'has_p2'));
+  setRowVisible('fuelpress-cal-row', hwSensorEnabled(hw, 'fuel_press', 'has_fuel_press'));
+  setRowVisible('oiltemp-cal-row', hwSensorEnabled(hw, 'oil_temp', 'has_oil_temp'));
+  setRowVisible('battvolt-cal-row', hwSensorEnabled(hw, 'batt_voltage', 'has_batt_voltage'));
+  setRowVisible('torque-cal-row', hwSensorEnabled(hw, 'torque', 'has_torque'));
+  setRowVisible('throttle-cal-row', hwSensorEnabled(hw, 'throttle_input', 'has_throttle_input'));
+  setRowVisible('idle-cal-row', hwSensorEnabled(hw, 'idle_input', 'has_idle_input'));
+  setRowVisible('fuelflow-cal-row', hwFuelFlowAnalog(hw));
+  setRowVisible('ab-flame-cal-row', hwAbFlameEnabled(hw));
+  setRowVisible('glow-current-cal-row', hwCurrentEnabled(hw, 'glow_plug', 'has_glow_current'));
+  setRowVisible('igniter-current-cal-row', hwCurrentEnabled(hw, 'igniter', 'has_igniter_current'));
+  setRowVisible('igniter2-current-cal-row', hwCurrentEnabled(hw, 'igniter2', 'has_igniter2_current'));
+  setRowVisible('oilpump-current-cal-row', hwCurrentEnabled(hw, 'oil_pump', 'has_oil_pump_current'));
   // Show fuel press cal row if fitted
   const fpRow = document.getElementById('fuelpress-cal-row');
-  if (fpRow) fpRow.style.display = (c.hardware?.sensors?.fuel_press?.enabled) ? '' : 'none';
+  if (fpRow) fpRow.style.display = hwSensorEnabled(c.hardware, 'fuel_press', 'has_fuel_press') ? '' : 'none';
   // Restore fuel press cal state
   const fpMin = c.calibration?.fuel_press_raw_min ?? 0;
   const fpMax = c.calibration?.fuel_press_raw_max ?? 4095;
@@ -646,13 +710,17 @@ Promise.all([
   // Show/hide P1/P2 calibration from hardware fitment, not dashboard display preference.
   const p1RowInit = document.getElementById('p1-cal-row');
   const p2RowInit = document.getElementById('p2-cal-row');
-  if (p1RowInit) p1RowInit.style.display = c.hardware?.sensors?.p1?.enabled ? '' : 'none';
-  if (p2RowInit) p2RowInit.style.display = c.hardware?.sensors?.p2?.enabled ? '' : 'none';
+  if (p1RowInit) p1RowInit.style.display = hwSensorEnabled(c.hardware, 'p1', 'has_p1') ? '' : 'none';
+  if (p2RowInit) p2RowInit.style.display = hwSensorEnabled(c.hardware, 'p2', 'has_p2') ? '' : 'none';
 
   const thr = c.calibration?.flame_threshold;
   document.getElementById('cal-flame-thr').textContent = thr ?? '—';
   if (thr !== undefined) document.getElementById('flame-thr-direct').value = thr;
   updateFlameThrMark(thr);
+  const abThr = c.hardware?.ab_flame?.threshold ?? c.hardware?.ab_flame_threshold;
+  setText('cal-ab-flame-thr', abThr ?? '—');
+  if (abThr !== undefined) document.getElementById('ab-flame-thr-direct').value = abThr;
+  updateAbFlameThrMark(abThr);
   const mn = c.calibration?.throttle_min_raw, mx = c.calibration?.throttle_max_raw;
   if (mn !== undefined && mx !== undefined) {
     thMin = mn; thMax = mx;
@@ -672,24 +740,24 @@ Promise.all([
   // Oil pressure — hidden when oil press sensor is not fitted
   const oilPressRow = document.getElementById('oil-press-cal-row');
   if (oilPressRow) oilPressRow.style.display =
-    (c.hardware?.sensors?.oil_press?.enabled !== false) ? '' : 'none';
+    hwSensorEnabled(c.hardware, 'oil_press', 'has_oil_press') ? '' : 'none';
   // Flame / ignition — hidden when flame sensor is not fitted
   const flameCalRow = document.getElementById('flame-cal-row');
   if (flameCalRow) flameCalRow.style.display =
-    (c.hardware?.sensors?.flame?.enabled !== false) ? '' : 'none';
+    hwSensorEnabled(c.hardware, 'flame', 'has_flame') ? '' : 'none';
   // Throttle input — hidden when throttle input is not fitted
   const throttleCalRow = document.getElementById('throttle-cal-row');
   if (throttleCalRow) throttleCalRow.style.display =
-    (c.hardware?.sensors?.throttle_input?.enabled !== false) ? '' : 'none';
+    hwSensorEnabled(c.hardware, 'throttle_input', 'has_throttle_input') ? '' : 'none';
 
   const oilTempRow = document.getElementById('oiltemp-cal-row');
   if (oilTempRow) oilTempRow.style.display =
-    c.hardware?.sensors?.oil_temp?.enabled ? '' : 'none';
+    hwSensorEnabled(c.hardware, 'oil_temp', 'has_oil_temp') ? '' : 'none';
   refreshOilTempCalMode(c.hardware?.sensors?.oil_temp);
   // Idle input — hidden when idle input is not fitted
   const idleCalRow = document.getElementById('idle-cal-row');
   if (idleCalRow) idleCalRow.style.display =
-    (c.hardware?.sensors?.idle_input?.enabled !== false) ? '' : 'none';
+    hwSensorEnabled(c.hardware, 'idle_input', 'has_idle_input') ? '' : 'none';
 
   // ── Torque sensor type — switch ADC vs HX711 wizard ──────────────────────────
   const isHX711 = !!(c.hardware?.sensors?.torque?.hx711);
@@ -697,7 +765,22 @@ Promise.all([
   const hxWiz   = document.getElementById('torque-hx711-wizard');
   if (adcWiz) adcWiz.style.display  = isHX711 ? 'none' : '';
   if (hxWiz)  hxWiz.style.display   = isHX711 ? '' : 'none';
-}).catch(()=>{});
+
+  // Prime live calibration values once hardware/config context is ready.
+  // The WebSocket also updates this page, but its first frame can arrive
+  // before the calibration wrapper and input-source labels are initialized.
+  fetchJsonWithTimeout('/api/data', 3000)
+    .then(d => { try { window.applyData(d); } catch (_) {} })
+    .catch(() => {});
+}).catch(e=>{
+  const main = document.querySelector('main');
+  if (main) {
+    const div = document.createElement('div');
+    div.className = 'error-banner';
+    div.textContent = 'Calibration setup failed to load hardware/config: ' + e;
+    main.insertBefore(div, main.children[1] || null);
+  }
+});
 
 loadNtcValues();
 
@@ -741,13 +824,60 @@ function updateFlameThrMark(thr) {
   mark.style.left = Math.max(0, Math.min(100, (thr / 4095) * 100)) + '%';
   mark.style.display = '';
 }
+function updateAbFlameThrMark(thr) {
+  const mark = document.getElementById('ab-flame-thr-mark');
+  if (!mark) return;
+  if (thr == null || isNaN(thr)) { mark.style.display = 'none'; return; }
+  mark.style.left = Math.max(0, Math.min(100, (thr / 4095) * 100)) + '%';
+  mark.style.display = '';
+}
+function fittedFromTelemetryOrHardware(d, key, flatKey) {
+  const telemetryKey = flatKey || ('has_' + key);
+  if (d?.[telemetryKey] !== undefined) return !!d[telemetryKey];
+  return hwSensorEnabled(cfg.hardware || {}, key, telemetryKey);
+}
+function currentFromTelemetryOrHardware(d, key, flatKey) {
+  const telemetryKey = flatKey || ('has_' + key + '_current');
+  if (d?.[telemetryKey] !== undefined) return !!d[telemetryKey];
+  return hwCurrentEnabled(cfg.hardware || {}, key, telemetryKey);
+}
+function fuelFlowAnalogFromTelemetryOrHardware(d) {
+  const hw = cfg.hardware || {};
+  const fuelFlow = hw?.sensors?.fuel_flow || {};
+  const fitted = d?.has_fuel_flow !== undefined
+    ? !!d.has_fuel_flow
+    : hwSensorEnabled(hw, 'fuel_flow', 'has_fuel_flow');
+  const type = d?.fuel_flow_type !== undefined
+    ? d.fuel_flow_type
+    : (fuelFlow.type ?? hw?.fuel_flow_type);
+  return fitted && Number(type) === 0;
+}
+function abFlameFromTelemetryOrHardware(d) {
+  if (d?.has_ab_flame !== undefined) return !!d.has_ab_flame;
+  return hwAbFlameEnabled(cfg.hardware || {});
+}
 
 // Extend the global applyData from app.js
 const _base = window.applyData;
 window.applyData = function(d) {
-  _base(d);
-  live = Object.assign(live || {}, d);
+  const merged = _base(d);
+  if (!merged) return;
+  live = Object.assign(live || {}, merged, d);
   d = live;
+  const hasFuelPress = fittedFromTelemetryOrHardware(d, 'fuel_press', 'has_fuel_press');
+  const hasP1 = fittedFromTelemetryOrHardware(d, 'p1', 'has_p1');
+  const hasP2 = fittedFromTelemetryOrHardware(d, 'p2', 'has_p2');
+  const hasOilTemp = fittedFromTelemetryOrHardware(d, 'oil_temp', 'has_oil_temp');
+  const hasBattVolt = fittedFromTelemetryOrHardware(d, 'batt_voltage', 'has_batt_voltage');
+  const hasTorque = fittedFromTelemetryOrHardware(d, 'torque', 'has_torque');
+  const hasOilPress = fittedFromTelemetryOrHardware(d, 'oil_press', 'has_oil_press');
+  const hasFlame = fittedFromTelemetryOrHardware(d, 'flame', 'has_flame');
+  const hasFuelFlowAnalog = fuelFlowAnalogFromTelemetryOrHardware(d);
+  const hasAbFlame = abFlameFromTelemetryOrHardware(d);
+  const hasGlowCurrent = currentFromTelemetryOrHardware(d, 'glow_plug', 'has_glow_current');
+  const hasIgnCurrent = currentFromTelemetryOrHardware(d, 'igniter', 'has_igniter_current');
+  const hasIgn2Current = currentFromTelemetryOrHardware(d, 'igniter2', 'has_igniter2_current');
+  const hasOilPumpCurrent = currentFromTelemetryOrHardware(d, 'oil_pump', 'has_oil_pump_current');
 
   // Update labels when input type is first received
   if (d.throttle_input_type !== undefined || d.idle_input_type !== undefined) {
@@ -755,7 +885,7 @@ window.applyData = function(d) {
   }
 
   // Fuel pressure
-  if (d.has_fuel_press) {
+  if (hasFuelPress) {
     setText('cal-fuelpress-raw', d.fuel_press_raw ?? '—');
     if (d.fuel_press !== undefined) {
       const fpValMax = cfg.calibration?.fuel_press_val_max ?? 10;
@@ -768,16 +898,16 @@ window.applyData = function(d) {
   // P1 / P2 — show/hide + raw ADC
   const p1Row = document.getElementById('p1-cal-row');
   const p2Row = document.getElementById('p2-cal-row');
-  if (p1Row && d.has_p1 !== undefined) p1Row.style.display = d.has_p1 ? '' : 'none';
-  if (p2Row && d.has_p2 !== undefined) p2Row.style.display = d.has_p2 ? '' : 'none';
-  if (d.has_p1) {
+  if (p1Row) p1Row.style.display = hasP1 ? '' : 'none';
+  if (p2Row) p2Row.style.display = hasP2 ? '' : 'none';
+  if (hasP1) {
     setText('cal-p1-raw', d.p1_raw ?? '—');
     if (d.p1 !== undefined) {
       setText('cal-p1', Number(d.p1).toFixed(3) + ' bar');
       bar('bar-p1', d.p1, 0, cfg.calibration?.p1_val_max ?? 10, true);
     }
   }
-  if (d.has_p2) {
+  if (hasP2) {
     setText('cal-p2-raw', d.p2_raw ?? '—');
     if (d.p2 !== undefined) {
       setText('cal-p2', Number(d.p2).toFixed(3) + ' bar');
@@ -836,19 +966,17 @@ window.applyData = function(d) {
   const oiltRow   = document.getElementById('oiltemp-cal-row');
   const bvRow     = document.getElementById('battvolt-cal-row');
   const torqRow   = document.getElementById('torque-cal-row');
-  if (oiltRow && d.has_oil_temp !== undefined) oiltRow.style.display = d.has_oil_temp ? '' : 'none';
-  if (bvRow && d.has_batt_voltage !== undefined) bvRow.style.display = d.has_batt_voltage ? '' : 'none';
-  if (torqRow && d.has_torque !== undefined) torqRow.style.display = d.has_torque ? '' : 'none';
+  if (oiltRow) oiltRow.style.display = hasOilTemp ? '' : 'none';
+  if (bvRow) bvRow.style.display = hasBattVolt ? '' : 'none';
+  if (torqRow) torqRow.style.display = hasTorque ? '' : 'none';
 
   // ── Oil pressure / flame rows — gated on has_* flags ─────────
-  if (d.has_oil_press !== undefined) {
-    const opRow = document.getElementById('oil-press-cal-row');
-    if (opRow) opRow.style.display = d.has_oil_press ? '' : 'none';
-  }
-  if (d.has_flame !== undefined) {
-    const flRow = document.getElementById('flame-cal-row');
-    if (flRow) flRow.style.display = d.has_flame ? '' : 'none';
-  }
+  const opRow = document.getElementById('oil-press-cal-row');
+  if (opRow) opRow.style.display = hasOilPress ? '' : 'none';
+  const flRow = document.getElementById('flame-cal-row');
+  if (flRow) flRow.style.display = hasFlame ? '' : 'none';
+  const abFlRow = document.getElementById('ab-flame-cal-row');
+  if (abFlRow) abFlRow.style.display = hasAbFlame ? '' : 'none';
 
   // ── Fuel flow / glow current / igniter current rows ──────────
   const ffCalRow       = document.getElementById('fuelflow-cal-row');
@@ -857,41 +985,49 @@ window.applyData = function(d) {
   const ign2CalRow     = document.getElementById('igniter2-current-cal-row');
   const oilpCurCalRow  = document.getElementById('oilpump-current-cal-row');
   // Fuel flow analog calibration only relevant when type=0 (ADC)
-  if (ffCalRow)      ffCalRow.style.display      = (d.has_fuel_flow && d.fuel_flow_type === 0) ? '' : 'none';
-  if (glowCalRow)    glowCalRow.style.display    = d.has_glow_current       ? '' : 'none';
-  if (ignCalRow)     ignCalRow.style.display     = d.has_igniter_current    ? '' : 'none';
-  if (ign2CalRow)    ign2CalRow.style.display    = d.has_igniter2_current   ? '' : 'none';
-  if (oilpCurCalRow) oilpCurCalRow.style.display = d.has_oil_pump_current   ? '' : 'none';
+  if (ffCalRow)      ffCalRow.style.display      = hasFuelFlowAnalog ? '' : 'none';
+  if (glowCalRow)    glowCalRow.style.display    = hasGlowCurrent    ? '' : 'none';
+  if (ignCalRow)     ignCalRow.style.display     = hasIgnCurrent     ? '' : 'none';
+  if (ign2CalRow)    ign2CalRow.style.display    = hasIgn2Current    ? '' : 'none';
+  if (oilpCurCalRow) oilpCurCalRow.style.display = hasOilPumpCurrent ? '' : 'none';
 
-  if (d.has_fuel_flow && d.fuel_flow_type === 0) {
+  if (hasFuelFlowAnalog) {
     setText('cal-ff-raw', d.fuel_flow_raw ?? '—');
     if (d.fuel_flow !== undefined) {
       setText('cal-ff', Number(d.fuel_flow).toFixed(3) + ' L/min');
       bar('bar-ff', d.fuel_flow, 0, 10, true);
     }
   }
-  if (d.has_glow_current) {
+  if (hasAbFlame) {
+    setText('cal-ab-flame-raw', d.ab_flame_raw ?? '—');
+    setText('cal-ab-flame', d.ab_flame_on ? 'FLAME ●' : 'no flame');
+    setText('cal-ab-flame-thr', d.ab_flame_threshold ?? document.getElementById('cal-ab-flame-thr')?.textContent ?? '—');
+    if (d.ab_flame_threshold !== undefined) updateAbFlameThrMark(d.ab_flame_threshold);
+    setDot('ab-flame-h-cal', d.ab_flame_on);
+    bar('bar-ab-flame', d.ab_flame_raw ?? 0, 0, 4095, true);
+  }
+  if (hasGlowCurrent) {
     setText('cal-glow-raw', d.glow_current_raw ?? '—');
     if (d.glow_current_amps !== undefined) {
       setText('cal-glow-a', Number(d.glow_current_amps).toFixed(2) + ' A');
       bar('bar-glow-cur', d.glow_current_amps, 0, 30, true);
     }
   }
-  if (d.has_igniter_current) {
+  if (hasIgnCurrent) {
     setText('cal-ign-raw', d.igniter_current_raw ?? '—');
     if (d.igniter_current_amps !== undefined) {
       setText('cal-ign-a', Number(d.igniter_current_amps).toFixed(2) + ' A');
       bar('bar-ign-cur', d.igniter_current_amps, 0, 30, true);
     }
   }
-  if (d.has_igniter2_current) {
+  if (hasIgn2Current) {
     setText('cal-ign2-raw', d.igniter2_current_raw ?? '—');
     if (d.igniter2_current_amps !== undefined) {
       setText('cal-ign2-a', Number(d.igniter2_current_amps).toFixed(2) + ' A');
       bar('bar-ign2-cur', d.igniter2_current_amps, 0, 30, true);
     }
   }
-  if (d.has_oil_pump_current) {
+  if (hasOilPumpCurrent) {
     setText('cal-oilpumpcur-raw', d.oil_pump_current_raw ?? '—');
     if (d.oil_pump_current_amps !== undefined) {
       setText('cal-oilpumpcur-a', Number(d.oil_pump_current_amps).toFixed(2) + ' A');
@@ -900,16 +1036,16 @@ window.applyData = function(d) {
     }
   }
 
-  if (d.has_oil_temp && d.oil_temp !== undefined) {
+  if (hasOilTemp && d.oil_temp !== undefined) {
     setText('cal-oiltemp', Number(d.oil_temp).toFixed(1) + ' °C');
     bar('bar-oiltemp', d.oil_temp, 0, 150, d.oil_temp_healthy !== false);
   }
-  if (d.has_batt_voltage && d.batt_voltage !== undefined) {
+  if (hasBattVolt && d.batt_voltage !== undefined) {
     setText('cal-battvolt',     Number(d.batt_voltage).toFixed(2) + ' V');
     setText('cal-battvolt-raw', d.batt_voltage_raw ?? '—');
     bar('bar-battvolt', d.batt_voltage, 0, 16, true);
   }
-  if (d.has_torque && d.torque !== undefined) {
+  if (hasTorque && d.torque !== undefined) {
     setText('cal-torque',     Number(d.torque).toFixed(1) + ' Nm');
     setText('cal-torque-raw', d.torque_raw ?? '—');
     bar('bar-torque', d.torque, 0, parseFloat(document.getElementById('torque-fullscale')?.value || '100'), true);
@@ -927,8 +1063,8 @@ window.applyData = function(d) {
     setText('cal-th-raw', us + ' µs');
     // Set bar range labels to µs if not yet set by captured min/max
     if (thMin === null && thMax === null) {
-      document.getElementById('th-lo').textContent = rcMin + ' µs';
-      document.getElementById('th-hi').textContent = rcMax + ' µs';
+      document.getElementById('th-lo').textContent = thRangeMin + ' µs';
+      document.getElementById('th-hi').textContent = thRangeMax + ' µs';
     }
     if (thMin !== null && thMax !== null) {
       const pct = Math.round(((us - thMin) / (thMax - thMin)) * 100);
@@ -1313,6 +1449,18 @@ function saveFlameThresholdDirect() {
   if (cfg.calibration) cfg.calibration.flame_threshold = thr;
   else cfg.calibration = { flame_threshold: thr };
   updateFlameThrMark(thr);
+}
+function saveAbFlameThresholdDirect() {
+  const thr = parseInt(document.getElementById('ab-flame-thr-direct').value);
+  if (isNaN(thr) || thr < 0 || thr > 4095) return;
+  patchHardware({ ab_flame: { threshold: thr } }, () => {
+    setText('cal-ab-flame-thr', thr);
+    if (!cfg.hardware) cfg.hardware = {};
+    if (!cfg.hardware.ab_flame) cfg.hardware.ab_flame = {};
+    cfg.hardware.ab_flame.threshold = thr;
+    updateAbFlameThrMark(thr);
+    setText('ab-flame-status', 'Afterburner flame threshold set to ' + thr);
+  });
 }
 function clearFlame() {
   flameNoise = null;
@@ -1714,23 +1862,6 @@ function curClear(which) {
       statusEl.textContent = 'Reset to defaults (1.65 V zero, 100 mV/A)';
     });
   }
-}
-
-// ── Pre-flight checklist ──────────────────────────────────────
-function toggleChecklist() {
-  const body = document.getElementById('checklist-body');
-  const btn  = document.getElementById('checklist-toggle-btn');
-  if (!body) return;
-  const isHidden = body.style.display === 'none';
-  body.style.display = isHidden ? '' : 'none';
-  if (btn) btn.style.transform = isHidden ? 'rotate(90deg)' : '';
-}
-function checklistTick(cb) {
-  cb.closest('li').classList.toggle('checked', cb.checked);
-  const items = document.querySelectorAll('#checklist input[type=checkbox]');
-  const checked = document.querySelectorAll('#checklist input[type=checkbox]:checked').length;
-  const st = document.getElementById('checklist-status');
-  if (st) st.textContent = checked + ' of ' + items.length + ' items checked';
 }
 </script>
 </body>

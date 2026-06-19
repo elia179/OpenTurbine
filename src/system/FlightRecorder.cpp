@@ -13,6 +13,7 @@ static volatile int  s_activeRawDownloads = 0;
 unsigned long     FlightRecorder::_lastSnapshotMs  = 0;
 float             FlightRecorder::_runMaxN1        = 0.0f;
 float             FlightRecorder::_runMaxTot       = 0.0f;
+float             FlightRecorder::_runMaxTit       = 0.0f;
 float             FlightRecorder::_runMinOil       = 9999.0f;
 uint32_t          FlightRecorder::_runStartSec     = 0;
 
@@ -52,6 +53,7 @@ void FlightRecorder::tick() {
     // Track run peaks (only meaningful during RUNNING, but harmless otherwise)
     if (ed.n1Rpm  > _runMaxN1)                              _runMaxN1 = ed.n1Rpm;
     if (ed.tot    > _runMaxTot)                             _runMaxTot = ed.tot;
+    if (hw.hasTit && ed.tit > _runMaxTit)                    _runMaxTit = ed.tit;
     if (hw.hasOilPress && ed.oilPressure < _runMinOil)      _runMinOil = ed.oilPressure;
 
     // Compact 10-second SNAP: essential sensors only
@@ -126,6 +128,7 @@ void FlightRecorder::logRunningEntry() {
     // Reset run-peak accumulators for the new run
     _runMaxN1    = 0.0f;
     _runMaxTot   = 0.0f;
+    _runMaxTit   = 0.0f;
     _runMinOil   = 9999.0f;
     _runStartSec = _uptimeSec();
 
@@ -163,10 +166,12 @@ void FlightRecorder::logRunSummary() {
     if (_runStartSec == 0) return;
 
     uint32_t runS = _uptimeSec() - _runStartSec;
-    char buf[160];
+    char buf[190];
     int n = snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"RUN_SUMMARY\",\"runS\":%lu,\"maxN1\":%.0f,\"maxTot\":%.0f",
         _uptimeSec(), (unsigned long)runS, _runMaxN1, _runMaxTot);
+    if (HardwareConfig::hasTit)
+        n += snprintf(buf+n, sizeof(buf)-n, ",\"maxTit\":%.0f", _runMaxTit);
     if (_runMinOil < 9000.0f)
         n += snprintf(buf+n, sizeof(buf)-n, ",\"minOil\":%.2f", _runMinOil);
     snprintf(buf+n, sizeof(buf)-n, "}");

@@ -1,6 +1,7 @@
 #pragma once
 #include "../IBlock.h"
 #include "../../EngineData.h"
+#include "../../../system/Config.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -8,7 +9,7 @@
 //
 //  flameMode:
 //    0 = sensor    : wait for ed.abFlameOn (dedicated AB flame sensor)
-//    1 = TOT_rise  : wait for tot to rise >= totRiseDegC within totRiseWindowMs
+//    1 = EGT rise  : wait for selected EGT to rise >= totRiseDegC within totRiseWindowMs
 //    2 = timed     : wait assumeIgnitedMs then assume lit
 //
 //  If flameTimeoutMs elapses without confirmation → Fault.
@@ -17,9 +18,9 @@
 
 class ABFlameConfirm : public IBlock {
 public:
-    int   flameMode        = 2;       // 0=sensor, 1=TOT_rise, 2=timed
-    float totRiseDegC      = 30.0f;   // required TOT rise (mode 1)
-    int   totRiseWindowMs  = 2000;    // window for TOT rise (mode 1)
+    int   flameMode        = 2;       // 0=sensor, 1=EGT rise, 2=timed
+    float totRiseDegC      = 30.0f;   // required EGT rise (mode 1)
+    int   totRiseWindowMs  = 2000;    // window for EGT rise (mode 1)
     int   assumeIgnitedMs  = 1500;    // timed mode delay (mode 2)
     int   flameTimeoutMs   = 3000;    // overall timeout → Fault
 
@@ -27,7 +28,8 @@ public:
 
     void onEnter() override {
         _startMs     = millis();
-        _totBaseline = EngineData::instance().tot;
+        auto& ed = EngineData::instance();
+        _totBaseline = Config::primaryEgtHealthy(ed) ? Config::primaryEgtC(ed) : 0.0f;
         Serial.printf("[AB] FlameConfirm: mode=%d timeout=%d ms\n", flameMode, flameTimeoutMs);
     }
 
@@ -60,16 +62,16 @@ public:
                 }
                 break;
 
-            case 1: // TOT rise
+            case 1: // EGT rise
             {
-                // A TOT-dependent confirmation cannot be trusted without its sensor.
-                if (!ed.totHealthy) {
-                    Serial.println("[AB] FlameConfirm fault: TOT sensor unavailable");
+                // EGT-rise confirmation cannot be trusted without the selected sensor.
+                if (!Config::primaryEgtHealthy(ed)) {
+                    Serial.println("[AB] FlameConfirm fault: EGT sensor unavailable");
                     return BlockResult::Fault;
                 }
-                float rise = ed.tot - _totBaseline;
+                float rise = Config::primaryEgtC(ed) - _totBaseline;
                 if (rise >= totRiseDegC) {
-                    Serial.printf("[AB] FlameConfirm: TOT rose %.1f °C — confirmed\n",
+                    Serial.printf("[AB] FlameConfirm: EGT rose %.1f C - confirmed\n",
                                   (double)rise);
                     return BlockResult::Complete;
                 }

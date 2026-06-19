@@ -240,7 +240,7 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
 
     await reset(page);
     await patchHardware(page, {
-      sensors: { n1_rpm: { enabled: false }, n2_rpm: { enabled: false }, tot: { enabled: false }, oil_press: { enabled: false } },
+      sensors: { n1_rpm: { enabled: false }, n2_rpm: { enabled: false }, tot: { enabled: false }, tit: { enabled: false }, oil_press: { enabled: false } },
       safety: { overspeed: true, overtemp: true, low_oil: true },
       controllers: { oil_loop: true, dynamic_idle: true }
     });
@@ -331,7 +331,10 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
     assert.match(await text(page, '#card-WEB-ASSETS'), /without erasing config or logs/i);
     assert.equal(await visible(page, '#card-TOGGLE_BENCH_MODE'), false);
     await patchData(page, { dev_mode: true });
-    await page.waitForTimeout(250);
+    await page.waitForFunction(() => {
+      const el = document.querySelector('#card-TOGGLE_BENCH_MODE');
+      return !!el && getComputedStyle(el).display !== 'none' && el.getClientRects().length > 0;
+    }, null, { timeout: 3000 });
     assert.equal(await visible(page, '#card-TOGGLE_BENCH_MODE'), true);
     results.push('tools page surfaces schema/version warnings and gates bench mode behind dev mode');
 

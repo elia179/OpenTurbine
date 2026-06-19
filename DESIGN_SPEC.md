@@ -1,6 +1,6 @@
 # OpenTurbine (OT) — Architecture & Design Specification
 
-Version: 1.1
+Version: 1.2
 License: MIT
 
 ---
@@ -485,7 +485,7 @@ All parameters from config JSON.
 ```json
 {
   "profile_id": "my_engine_v1",
-  "config_version": 1,
+  "config_version": 2,
   "engine": {
     "rpm_limit": 100000,
     "min_rpm": 30000,
@@ -517,6 +517,10 @@ All parameters from config JSON.
       "pre_ign_spark_ms": 1500,
       "flame_timeout_ms": 5000,
       "flame_check_interval_ms": 300,
+      "flame_required_count": 3,
+      "temp_confirm_target": 200,
+      "temp_confirm_timeout": 10000,
+      "hot_start_tot_threshold": 0,
       "rpm_target": 32000,
       "rpm_timeout_ms": 12000,
       "safety_hold_ms": 1000,
@@ -531,14 +535,12 @@ All parameters from config JSON.
       "cooldown_use_oil": true
     }
   },
-  "ignition": {
-    "post_dwell_ms": 1000
-  },
   "throttle": {
     "ramp_up_ms": 600,
     "ramp_down_ms": 800,
     "idle_min_pct": 8,
-    "idle_max_pct": 18
+    "idle_max_pct": 18,
+    "expo": 0
   },
   "dynamic_idle": {
     "target_rpm": 44000,
@@ -551,13 +553,28 @@ All parameters from config JSON.
   },
   "safety": {
     "check_interval_ms": 100,
-    "flameout_shutdown_ms": 3000
+    "flameout_shutdown_ms": 3000,
+    "egt_source": 0,
+    "flameout_source": 0,
+    "flameout_n1_min_rpm": 0,
+    "flameout_tot_drop_c": 80,
+    "tot_rise_rate_limit_deg_s": 0,
+    "tit_limit_c": 0,
+    "oil_temp_limit_c": 120,
+    "fuel_press_min_bar": 0,
+    "batt_volt_min_v": 0,
+    "surge_detect_rpm_variance": 0
   },
   "relight": {
     "enabled": false,
-    "min_rpm": 30000
+    "confirm_source": 0,
+    "min_rpm": 30000,
+    "confirm_rpm": 0,
+    "tot_rise_c": 30,
+    "relight_timeout_ms": 10000
   },
   "standby_oil": {
+    "source": 0,
     "rpm_limit": 100,
     "feed_pct": 25
   },

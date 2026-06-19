@@ -9,7 +9,7 @@ enum class ABMode : uint8_t {
     Igniting    = 2,   // ignition sequence running
     Running     = 3,   // AB alight and stable
     ShuttingDown= 4,   // shutdown sequence running
-    Fault       = 5,   // ignition failed or TOT exceeded
+    Fault       = 5,   // ignition failed or safety monitor faulted
 };
 
 // ============================================================
@@ -98,7 +98,7 @@ struct EngineData {
     volatile ABMode   abMode          = ABMode::Off;
     volatile bool     abTriggerActive = false;  // trigger input (throttle/switch/input) is asserted
     volatile bool     abArmSwitchOn   = false;  // arm switch currently asserted
-    volatile bool     abFlameOn       = false;  // AB flame sensor detected (or TOT-rise confirmed)
+    volatile bool     abFlameOn       = false;  // AB flame sensor detected
     volatile bool     abSolOpen       = false;  // AB fuel solenoid (g_actAbSol)
     volatile int      abInputRaw      = 0;      // raw ADC/RC counts for analog/RC AB trigger
     volatile float    abInputNorm     = 0.0f;   // normalized 0.0-1.0 AB command input
@@ -175,7 +175,7 @@ struct EngineData {
 
     // ── Extra cooldown (standby only) ─────────────────────────
     // True while extra cooldown is running.  Cleared by checkExtraCooldown()
-    // when TOT reaches totCooldownTarget or the timeout expires.
+    // when the operator timeout expires.
     volatile bool          extraCooldownActive   = false;
     volatile unsigned long extraCooldownUntilMs  = 0;   // absolute millis() deadline; 0 when inactive
 

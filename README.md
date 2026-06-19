@@ -12,7 +12,7 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 - **Block-based startup/shutdown sequencer** — each stage (oil prime, glow preheat, starter spin, pre-ignition, fuel open, flame confirm, temp confirm, spool, safety hold, cooldown…) is an independent, swappable, runtime-configurable block
 - **Closed-loop oil pressure control** — P-controller with throttle-mapped target (idle → full throttle interpolation), open-loop failsafe on sensor fault, configurable deadband
 - **Dynamic idle hold** — optional RPM-feedback feature with asymmetric ramp, PI integral term, selectable N1 or N2 source
-- **Throttle slew limiting** — configurable up/down ramp rates with safety pullback near RPM/TOT limits
+- **Throttle slew limiting** — configurable up/down ramp rates with safety pullback near RPM/selected-EGT limits
 - **Power turbine governor** — closed-loop N2 RPM control via propeller pitch servo for turboprop builds
 - **Afterburner state machine** — full AB ignition/shutdown sequencer (ABCheckReady → ABIgnite → ABFlameConfirm → ABStabilize) with torch mode, fuel offset, pump-follows-throttle demand, independent igniter
 - **Automation rules engine** — up to 8 user-defined threshold rules (sensor op value → actuator demand) evaluated every loop tick
@@ -22,7 +22,7 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 ### Safety monitor
 - Overspeed, overtemp (TOT and TIT), low oil pressure, oil-near-zero
 - EGT rate-of-rise — triggers before temperature limit is reached
-- Hot start detection — aborts startup if TOT is still too high
+- Hot start detection — aborts startup if the selected EGT source is still too high
 - Flameout detection with configurable hold time; automatic relight is available when N1 windmill feedback is fitted
 - Optional compressor surge detection via N1 RPM variance analysis
 - Fuel pressure low (in RUNNING only)
@@ -78,7 +78,7 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 |---|---|
 | ESP32 or ESP32-S3 dev board | 4 MB flash minimum. Classic 30-/38-pin modules or ESP32-S3 DevKitC |
 | Hardware STOP / fuel-cut path | A physical stop switch or equivalent external cut-off is mandatory for real engine testing. The ECU stop input defaults to GPIO 15 active-low. |
-| EGT / TOT sensor | MAX6675, MAX31855, MAX31856, or DS18B20 |
+| EGT sensor (TOT or TIT) | MAX6675, MAX31855, MAX31856, or DS18B20 |
 | Main fuel pump / throttle output | Servo ESC, LEDC PWM, or on/off output as supported by the Hardware page |
 | Oil pump output | Servo ESC, LEDC PWM, or on/off output |
 | Igniter or external light-off system | Relay, MOSFET, direct inductive coil drive, glow plug, or another verified ignition method |
@@ -92,7 +92,7 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 |---|---|
 | N1 RPM sensor | Optional. Enables overspeed, surge detection, dynamic idle, relight windmill checks, starter/spool verification, and RPM run logs |
 | Oil pressure sensor | Enables closed-loop oil pressure, low-oil shutdown, and oil-prime confirmation |
-| Flame sensor or reliable TOT-rise confirmation | Lets startup verify combustion instead of relying only on timed delays |
+| Flame sensor or reliable selected-EGT rise confirmation | Lets startup verify combustion instead of relying only on timed delays |
 | Fuel pressure sensor | Enables low fuel-pressure shutdown in RUNNING |
 | Battery / bus voltage sensor | Detects undervoltage before actuator outputs become unreliable |
 
@@ -190,7 +190,7 @@ If the board is already in boot mode (IO0 low), the `--before=no_reset` flag in 
 ## Web interface
 
 ### Dashboard
-Live values for fitted sensors such as TOT, TIT, RPM, oil pressure, battery voltage, mode, and sensor health. Start (with confirmation dialog) and Stop buttons. Color-coded gauge bars showing proximity to safety limits. Sparkline trends. Startup sequence progress bar. Fault description card with plain-language "what to do" guidance. Peak values, run count, and hour meter. WebSocket-driven updates at the configured live interval, with dashboard/calibration defaults around 3 Hz.
+Live values for fitted sensors such as TOT, TIT, RPM, oil pressure, battery voltage, mode, and sensor health. Start (with confirmation dialog) and Stop buttons. Color-coded gauge bars showing proximity to safety limits. Sparkline trends. Startup sequence progress bar. Fault description card with plain-language "what to do" guidance. Peak values, run count, and hour meter. Dashboard and calibration update near 3 Hz while connected.
 
 ### Calibration
 Pre-flight checklist. Guided step-by-step wizards:
@@ -208,7 +208,7 @@ Runtime hardware topology editor — GPIO pin assignments, sensor types, actuato
 Runtime sequence editor — define startup, shutdown, AB ignition, and AB shutdown block order by name without recompiling. Sequence validator results shown inline (errors block START; warnings are advisory). Changes take effect at the next START without a reboot.
 
 ### Log
-Per-run summary cards with peak N1, peak TOT, duration, and outcome. Expandable event detail with sensor snapshots. Session Data tab with CSV preview and channel selection. Download as JSON or CSV.
+Per-run summary cards with peak N1, peak TOT/TIT, duration, and outcome. Expandable event detail with sensor snapshots. Session Data tab with CSV preview and channel selection. Download as JSON or CSV.
 
 ### Tools
 Diagnostic actuator tests (STANDBY only, all auto-expire):
@@ -216,7 +216,7 @@ Diagnostic actuator tests (STANDBY only, all auto-expire):
 - Igniter test (×2), glow plug test, starter test, starter enable test
 - Idle throttle test, fuel pump 2 test, AB solenoid test, AB pump test
 - Cooling fan test, airstarter test, bleed valve test, prop pitch test
-- Extra cooldown (runs starter + oil pump for operator-set duration after shutdown)
+- Extra cooldown (manual timed standby cooldown using the Sequencer CooldownSpin actuator settings)
 - Full engine-file backup/restore, factory reset, firmware OTA, and web UI asset upload
 
 ---
@@ -227,7 +227,7 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 
 | Section | What it controls |
 |---|---|
-| `engine` | RPM limit, min RPM, TOT limit, TOT cooldown target, hot-start threshold |
+| `engine` | RPM limit, min RPM, TOT limit, EGT cooldown target, soft warning/pullback margin |
 | `oil` | Startup / running pressure targets, throttle-mapped min/max, P-gain, deadband, failsafe duty |
 | `oil_advanced` | Oil-near-zero fault threshold, overcurrent threshold |
 | `sequence.startup` | Per-block timeouts (oil prime, pre-ignition, flame confirm, spool, safety hold…) |
@@ -235,11 +235,11 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 | `throttle` | Slew ramp rates (up/down), idle % range, expo curve, limp mode cap |
 | `dynamic_idle` | Target RPM, ramp rates, deadband, P/I gains, N1 vs N2 source |
 | `governor` | N2 target RPM, P-gain, pitch slew limit, pitch range (turboprop) |
-| `safety` | Check interval, per-fault enable flags, flameout source/hold time, EGT rise-rate limit |
+| `safety` | Check interval, selected EGT source, TIT limit, flameout source/hold time, EGT rise-rate limit |
 | `relight` | Enable/disable auto-relight, minimum N1 RPM, relight timeout |
 | `afterburner` | Ignition limits, torch settings, flame-confirm mode, pump command source, fuel offset |
 | `rules` | Up to 8 automation rules (sensor, op, threshold, actuator, on_value, off_value) |
-| `standby_oil` | Windmill protection — oil pump duty and N1 activation threshold in STANDBY |
+| `standby_oil` | Windmill protection - selected N1/N2/either shaft threshold plus oil pump duty in STANDBY |
 | `starter_assist` | Duty % and disengage RPM for post-spool starter support |
 | `rpm_health` | Jump fault threshold, zero-stuck tick count |
 | `tools` | Diagnostic test durations (fuel prime, oil prime, igniter, starter…) |

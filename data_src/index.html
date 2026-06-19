@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260607b">
+<link rel="stylesheet" href="/style.css?v=20260619a">
 </head>
-<body>
+<body data-page="dashboard">
 <nav>
-  <a href="/hardware.html">Hardware</a>
-  <a href="/calibration.html">Calibration</a>
-  <a href="/config.html">Config</a>
-  <a href="/sequence.html">Sequence</a>
-  <a href="/" class="active">Dashboard</a>
-  <a href="/log.html">Log</a>
-  <a href="/tools.html">Tools</a>
+  <a href="/" class="active" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
+  <a href="/hardware.html" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
+  <a href="/config.html" title="Tune limits, controllers, logging, telemetry, and hardware-dependent settings.">Config</a>
+  <a href="/calibration.html" title="Calibrate fitted analog, servo, pressure, temperature, current, and flow inputs.">Calibration</a>
+  <a href="/sequence.html" title="Edit startup, shutdown, afterburner sequences, block timings, and control rules.">Sequence</a>
+  <a href="/log.html" title="View fault/event history and per-run CSV session logs.">Log</a>
+  <a href="/tools.html" title="Run standby-only actuator tests, backups, restore, OTA, factory reset, and dev tools.">Tools</a>
   <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 
@@ -70,7 +70,7 @@
   </div>
 
   <!-- Profile ID mismatch banner -->
-  <div id="profile-mismatch-banner">
+  <div id="profile-mismatch-banner" style="display:none">
     <strong>⚠ Profile ID Mismatch — Engine operations locked</strong>
     The hardware and settings sections in <code>ecu_config.json</code> identify different engines.
     The ECU will not run with mixed engine data.<br>
@@ -154,7 +154,7 @@
       <span id="n1-abs-label" class="gauge-abs-label">— / — RPM</span>
       <span id="n1-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
     </div>
-    <div class="card big" id="tot-card" style="display:none" title="Turbine Outlet Temperature — exhaust gas temperature measured downstream of the turbine wheel. Primary thermal limit; ECU cuts fuel if this exceeds the configured TOT limit.">
+    <div class="card big" id="tot-card" style="display:none" title="Turbine Outlet Temperature — exhaust gas temperature measured downstream of the turbine wheel. It is the primary thermal limit only when Engine Temp Source selects TOT; TIT-primary setups use the configured TIT limit instead.">
       <div class="label"><span id="lbl-tot">TOT</span> <span data-unit="temp">°C</span> <span id="tot-health" class="dot"></span></div>
       <div class="value" id="tot">—</div>
       <div class="peak-val">max <span id="max-tot">—</span> · rate <span id="tot-rise-rate-val">—</span></div>
@@ -265,6 +265,7 @@
       <div class="peak-val">max <span id="max-tit">—</span></div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="tit-gauge-bar" style="width:0%"></div></div>
       <span class="gauge-abs-label" id="tit-abs-label">— / — °C</span>
+      <span id="tit-approach-warn" class="gauge-approach-warn" style="display:none">Approaching limit</span>
     </div>
     <div class="card" id="fuel-press-card" style="display:none">
       <div class="label"><span id="lbl-fuel-press">Fuel Press</span> <span data-unit="press">bar</span> <span id="fuel-press-health" class="dot"></span></div>
@@ -366,7 +367,7 @@
       <div class="value small" id="throttle-demand">—</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="throttle-input-row" style="display:none">throttle input: <span id="throttle-input-pct">—</span>%</div>
-      <div class="oil-sub" id="throttle-feedback-inhibit-note" style="display:none;color:var(--yellow)">Throttle increase limited: fitted RPM/TOT feedback is unhealthy. Fix the sensor/calibration before live running; Bench Mode is only for dry actuator tests.</div>
+      <div class="oil-sub" id="throttle-feedback-inhibit-note" style="display:none;color:var(--yellow)">Throttle increase limited: fitted RPM/EGT feedback is unhealthy. Fix the sensor/calibration before live running; Bench Mode is only for dry actuator tests.</div>
       <div class="oil-sub" id="throttle-floor-row">running floor: <span id="throttle-idle-floor">—</span>%
         <span id="throttle-di-wrap" style="display:none"> · Dynamic Idle target <span id="throttle-di-rpm">—</span> rpm</span>
       </div>
@@ -395,12 +396,12 @@
         &nbsp; Total: <span id="hour-run-time">—</span>
       </div>
     </div>
-    <div class="card small" id="relight-card" style="grid-column:1/-1" title="Auto-relight: if combustion is lost while N1 is still above the minimum windmill RPM, the ECU re-ignites automatically. Flame, N1, or TOT can confirm success. Shows armed state and attempt count vs the configured limit.">
+    <div class="card small" id="relight-card" style="grid-column:1/-1" title="Auto-relight: if combustion is lost while N1 is still above the minimum windmill RPM, the ECU re-ignites automatically. Flame, N1, or selected EGT can confirm success. Shows armed state and attempt count vs the configured limit.">
       <div class="label">Relight</div>
       <div class="value small" id="relight-status">—</div>
       <div class="oil-sub" id="manual-relight-note" style="display:none;color:var(--yellow)">Throttle held above idle — relight active</div>
     </div>
-    <div class="card small" id="extra-cooldown-card" style="display:none" title="Post-shutdown oil cooling: pump continues running after engine stop until TOT drops to the configured cooldown target temperature.">
+    <div class="card small" id="extra-cooldown-card" style="display:none" title="Manual timed standby cooldown requested from Tools. It uses the Sequencer CooldownSpin actuator settings and stops when the selected duration expires or the operator stops it.">
       <div class="label">Extra Cooldown</div>
       <div class="value small" style="color:var(--yellow)"><span id="extra-cooldown-remaining">—</span> s</div>
     </div>
@@ -503,30 +504,6 @@ function dismissGettingStarted() {
 }
 </script>
 
-<script>
-function uploadEcuConfig(input) {
-  const file = input.files[0]; if (!file) return;
-  const st = document.getElementById('ecu-upload-status');
-  st.textContent = 'Uploading…';
-  const reader = new FileReader();
-  reader.onload = async e => {
-    try {
-      const res = await fetch('/api/ecu_config', { method:'POST',
-        headers:{'Content-Type':'application/json'}, body: e.target.result });
-      const j = await res.json();
-      if (j.ok) {
-        st.textContent = 'Uploaded — rebooting…';
-        st.style.color = 'var(--accent)';
-      } else {
-        st.textContent = 'Error: ' + (j.error || 'unknown');
-        st.style.color = '#f55';
-      }
-    } catch(err) { st.textContent = 'Upload failed: ' + err; st.style.color = '#f55'; }
-  };
-  reader.readAsText(file);
-}
-</script>
-
-<script src="/app.js?v=20260607b"></script>
+<script src="/app.js?v=20260619a"></script>
 </body>
 </html>

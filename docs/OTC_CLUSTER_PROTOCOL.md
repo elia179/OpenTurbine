@@ -66,7 +66,7 @@ field definitions are missing.
 |---:|---|---|---|
 | 1 | HELLO | ECU to cluster | major, minor, capabilities, interval, baud, profile string |
 | 2 | FIELD_DEF | ECU to cluster | field index, field id, type, unit, decimals, field key string |
-| 3 | LIMITS | ECU to cluster | float32 limits: N1 max, N1 warn, N2 warn, TOT max, TOT warn, oil warn, oil zero |
+| 3 | LIMITS | ECU to cluster | float32 limits: N1 max, N1 warn, N2 warn, selected EGT max, selected EGT warn, oil warn, oil zero |
 | 4 | TELEMETRY | ECU to cluster | timestamp, mode, health flags, status, sequence progress, start index, float32 values |
 | 5 | STATUS | ECU to cluster | status code, severity, label string |
 | 6 | EVENT | ECU to cluster | severity, text string |
@@ -171,3 +171,7 @@ currently fitted/available field and intentionally omits empty hardware to avoid
 traffic full of unused values. A named `SUB,...` request may include unavailable
 fields; those values are returned as IEEE float `NaN`, which is the protocol's
 NIL value.
+
+`TOT_RATE` is a legacy-stable subscription key. In firmware 1.2 and newer its
+value is the selected primary EGT rise rate, so TIT-primary setups can still
+stream the rate under the existing protocol field id/key.

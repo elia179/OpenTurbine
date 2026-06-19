@@ -80,7 +80,9 @@ public:
     // ── Safety ────────────────────────────────────────────────
     static int   safetyCheckIntervalMs;
     static float flameoutShutdownMs;
-    // Flameout source: 0=auto, 1=flame sensor, 2=N1 below threshold, 3=TOT drop.
+    // Primary EGT source: 0=auto, 1=TOT, 2=TIT.
+    static int   egtSource;
+    // Flameout source: 0=auto, 1=flame sensor, 2=N1 below threshold, 3=selected EGT drop.
     static int   flameoutSource;
     static float flameoutN1MinRpm;
     static float flameoutTotDropC;
@@ -94,7 +96,7 @@ public:
     // ── Relight ───────────────────────────────────────────────
     static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
     static float    relightMinRpm;       // min N1 to attempt relight (falls below → fault)
-    static int      relightConfirmSource; // 0=auto, 1=flame, 2=N1 recovered, 3=TOT rise
+    static int      relightConfirmSource; // 0=auto, 1=flame, 2=N1 recovered, 3=selected EGT rise
     static float    relightConfirmRpm;
     static float    relightTotRiseC;
     static int      relightTimeoutMs;    // ms to keep trying after first relight trigger (0 = unlimited)
@@ -126,7 +128,8 @@ public:
     static float oilPressureDeadband;    // bar: suppress output change when |error| < this
 
     // ── Standby oil feed (windmill protection) ────────────────
-    static float standbyOilRpmLimit;     // N1 above this in STANDBY → activate oil feed
+    static int   standbyOilSource;       // 0=N1, 1=N2, 2=either shaft
+    static float standbyOilRpmLimit;     // selected shaft above this in STANDBY → activate oil feed
     static float standbyOilFeedPct;      // oil pump % to run during standby feed
 
     // ── Limp mode ─────────────────────────────────────────────
@@ -181,7 +184,7 @@ public:
     static bool  spoolCutStarterEnOnExit;     // de-assert starter enable relay on spool exit (default true)
 
     // ── Hot start protection ──────────────────────────────────
-    static float hotStartTotThreshold;   // °C; abort startup if TOT above this (0 = disabled)
+    static float hotStartTotThreshold;   // °C; abort startup if selected EGT is above this (0 = disabled)
 
     // ── Post-stop oil scavenge ────────────────────────────────
     static int   finalStopOilScavengeMs; // extra oil pump runtime after N1=0 in FinalStop (0 = off)
@@ -201,9 +204,9 @@ public:
     static int   abTorchDurationMs;    // torch spike duration
     static float abTorchTotLimit;      // cut torch if TOT exceeds this (°C); 0=disabled
     // Flame confirmation
-    static int   abFlameMode;          // 0=sensor, 1=TOT_rise, 2=timed
-    static float abTotRiseDegC;        // TOT rise required for TOT_rise mode
-    static int   abTotRiseWindowMs;    // time window for TOT rise
+    static int   abFlameMode;          // 0=sensor, 1=EGT rise, 2=timed
+    static float abTotRiseDegC;        // selected EGT rise required for EGT-rise mode
+    static int   abTotRiseWindowMs;    // time window for selected EGT rise
     static int   abAssumeIgnitedMs;    // timed mode: wait this long then assume lit
     static int   abFlameTimeoutMs;     // overall timeout to confirm flame before fault
     // Running
@@ -222,12 +225,18 @@ public:
     // ── Cluster display limits ────────────────────────────────
     static float n1WarnRpm;              // N1 warning RPM for cluster gauge yellow zone
     static float n2WarnRpm;              // N2 warning threshold for ClusterSerial
-    static float totWarnC;               // TOT warning threshold for cluster (°C); 0 = use totLimit - totSafeMargin
+    static float totWarnC;               // selected-EGT warning threshold for cluster (°C); 0 = use primary limit - safe margin
     static float oilWarnBar;             // Oil pressure warning threshold for cluster (bar); 0 = use oilRunningMin
     static bool  clusterEnabled;         // Enable cluster serial output at runtime
 
     // ── Display options ───────────────────────────────────────
     static bool  pressureSensorsEnabled; // Show P1/P2 pressure sensors on dashboard
+
+    static int   effectiveEgtSource();           // 0=none, 1=TOT, 2=TIT
+    static bool  primaryEgtHealthy(const EngineData& ed);
+    static float primaryEgtC(const EngineData& ed);
+    static float primaryEgtLimitC();
+    static const char* primaryEgtLabel();
 
     // ── RC PWM input calibration ──────────────────────────────
     // GPIO pin selection is done at compile time in hardware_profile.h

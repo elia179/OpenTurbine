@@ -1,6 +1,7 @@
 #pragma once
 #include "IController.h"
 #include "../EngineData.h"
+#include "../../system/Config.h"
 #include "../../system/HardwareConfig.h"
 #include <Arduino.h>
 
@@ -23,7 +24,7 @@ public:
     float idleMinPct        = 8.0f;
     float idleMaxPct        = 18.0f;
 
-    // Safety pullback thresholds (from config: RPM_LIMIT, TOT_LIMIT)
+    // Safety pullback thresholds (from config: RPM limit and selected EGT limit)
     float rpmSoftLimit      = 95000.0f;  // start pulling back at 95% of limit
     float rpmHardLimit      = 100000.0f;
     float totSoftLimit      = 700.0f;
@@ -49,7 +50,7 @@ public:
         // feedback. In normal operation this interlock must still prevent a
         // fuel increase with missing speed or temperature feedback.
         if (!ed.benchMode && ((HardwareConfig::hasN1Rpm && !ed.n1Healthy) ||
-            (HardwareConfig::hasTot && !ed.totHealthy))) {
+            (Config::effectiveEgtSource() != 0 && !Config::primaryEgtHealthy(ed)))) {
             if (target > _current) target = _current;
         }
 
@@ -61,8 +62,9 @@ public:
             target = constrain(target - over * 0.30f, 0.0f, target);
         }
         // Safety pullback: approach overtemp
-        if (ed.totHealthy && ed.tot > totSoftLimit && totHardLimit > totSoftLimit) {
-            float over = (ed.tot - totSoftLimit) / (totHardLimit - totSoftLimit);
+        if (totHardLimit > 0.0f && Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) > totSoftLimit
+            && totHardLimit > totSoftLimit) {
+            float over = (Config::primaryEgtC(ed) - totSoftLimit) / (totHardLimit - totSoftLimit);
             target = constrain(target - over * 0.20f, 0.0f, target);
         }
 

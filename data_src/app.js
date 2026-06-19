@@ -100,25 +100,48 @@ function drawSparkline(canvasId, data, color) {
 // Architecture: client-pull model.
 //
 // The server pushes telemetry in response to a tiny "p" message sent by the
-// client every 500 ms.  This ensures the push runs inside the async_tcp task
+// client at the page-specific live interval.  This ensures the push runs inside the async_tcp task
 // context (WS_EVT_DATA callback) rather than from webTask — eliminating the
 // cross-task notification lag that caused 5-20 s burst-then-silence behaviour.
 //
-// setInterval at 500 ms is reliable for a visible foreground tab; if the tab
+// setInterval at 333 ms is reliable for a visible foreground tab; if the tab
 // is backgrounded the rate drops to ~1 s which is acceptable for monitoring.
 let ws = null;
 let _lastMsgMs = 0;
 let _lastConnectMs = 0;
 let _pullTimer = null;
 let _pullPeriodMs = 0;
+let _restFallbackTimer = null;
+let _restFallbackInFlight = false;
+let _wsRequestInFlight = false;
+let _wsRequestSentMs = 0;
+let _lastUptimeS = null;
+let _statusHeartbeatTimer = null;
 
-function desiredPullPeriodMs() {
-  const livePage = location.pathname === '/' ||
+function isLiveTelemetryPage() {
+  if (document.body?.dataset?.page === 'dashboard') return true;
+  return location.pathname === '/' ||
     location.pathname === '/index.html' ||
     location.pathname === '/calibration.html';
+}
+function isDashboardPage() {
+  if (document.body?.dataset?.page === 'dashboard') return true;
+  return location.pathname === '/' || location.pathname === '/index.html';
+}
+function usesGlobalTelemetry() {
+  return isLiveTelemetryPage();
+}
+function hasPageLocalTelemetry() {
+  return location.pathname === '/hardware.html' ||
+    location.pathname === '/sequence.html';
+}
+
+function desiredPullPeriodMs() {
+  const livePage = isLiveTelemetryPage();
   if (!livePage) return 2000;
-  const configured = _lastData && Number(_lastData.ws_interval_ms);
-  return Math.max(333, Number.isFinite(configured) ? configured : 333);
+  // Dashboard and Calibration are live-control pages.  Keep them at 3 Hz from
+  // the first load; slower background pages still use the 2 s period above.
+  return 333;
 }
 
 function startPullTimer() {
@@ -131,31 +154,83 @@ function startPullTimer() {
 }
 
 function requestTelemetryNow() {
-  if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
+  if (_wsRequestInFlight && Date.now() - _wsRequestSentMs > 1200) {
+    _wsRequestInFlight = false;
+  }
+  if (ws && ws.readyState === WebSocket.OPEN && !_wsRequestInFlight) {
+    _wsRequestInFlight = true;
+    _wsRequestSentMs = Date.now();
+    ws.send('p');
+  }
+}
+
+async function restTelemetryFallbackNow() {
+  if (!isLiveTelemetryPage() || document.hidden || _restFallbackInFlight) return;
+  if (_lastMsgMs && Date.now() - _lastMsgMs < 2500) return;
+  _restFallbackInFlight = true;
+  try {
+    const r = await fetch('/api/data', { cache: 'no-store' });
+    if (r.ok) {
+      const d = await r.json();
+      _lastMsgMs = Date.now();
+      applyData(d);
+    }
+  } catch (_) {
+  } finally {
+    _restFallbackInFlight = false;
+  }
+}
+
+function startRestFallbackTimer() {
+  if (_restFallbackTimer || !isLiveTelemetryPage()) return;
+  _restFallbackTimer = setInterval(restTelemetryFallbackNow, 1500);
+}
+
+function setConnectionState(ok, text) {
+  const dot = document.getElementById('conn');
+  const lbl = document.getElementById('conn-label');
+  if (dot) dot.className = 'conn-dot ' + (ok ? 'connected' : 'disconnected');
+  if (lbl) {
+    lbl.textContent = text || (ok ? 'Connected' : 'Disconnected');
+    lbl.style.color = ok ? 'var(--green)' : 'var(--yellow)';
+  }
+}
+
+function startStatusHeartbeat() {
+  if (usesGlobalTelemetry() || hasPageLocalTelemetry() || _statusHeartbeatTimer) return;
+  const poll = async () => {
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' });
+      setConnectionState(r.ok, r.ok ? 'Connected' : 'Disconnected');
+    } catch (_) {
+      setConnectionState(false, 'Disconnected');
+    }
+  };
+  poll();
+  _statusHeartbeatTimer = setInterval(poll, 3000);
 }
 
 function connect() {
+  if (!usesGlobalTelemetry()) return;
   if (ws && ws.readyState <= WebSocket.OPEN) return;
   _lastConnectMs = Date.now();
   ws = new WebSocket('ws://' + location.host + '/ws');
 
   ws.onopen = () => {
-    document.getElementById('conn').className = 'conn-dot connected';
-    const lbl = document.getElementById('conn-label');
-    if (lbl) { lbl.textContent = 'Connected'; lbl.style.color = 'var(--green)'; }
+    setConnectionState(true, 'Connected');
     _lastMsgMs = Date.now();
     // Start sending pull requests — server responds with full telemetry each time.
     // Server also sends one frame on WS_EVT_CONNECT so the UI populates immediately.
-    // Dashboard and calibration require responsive live values. Keep them at about 3 Hz;
+    // Dashboard and calibration require responsive live values. Keep them at 1-3 Hz;
     // other pages only need the connection indicator and can poll more slowly.
     startPullTimer();
   };
 
   ws.onclose = () => {
+    _wsRequestInFlight = false;
+    _wsRequestSentMs = 0;
     if (_pullTimer) { clearInterval(_pullTimer); _pullTimer = null; _pullPeriodMs = 0; }
-    document.getElementById('conn').className = 'conn-dot disconnected';
-    const lbl = document.getElementById('conn-label');
-    if (lbl) { lbl.textContent = 'Reconnecting - values retained'; lbl.style.color = 'var(--yellow)'; }
+    setConnectionState(false, 'Reconnecting - values retained');
     const wait = 1000 - (Date.now() - _lastConnectMs);
     if (wait <= 0) {
       connect();
@@ -167,6 +242,8 @@ function connect() {
   ws.onerror = () => { ws.close(); };
 
   ws.onmessage = (ev) => {
+    _wsRequestInFlight = false;
+    _wsRequestSentMs = 0;
     _lastMsgMs = Date.now();
     try { applyData(JSON.parse(ev.data)); } catch(e) {}
   };
@@ -175,12 +252,21 @@ function connect() {
 // ── Apply telemetry frame to DOM ──────────────────────────────
 let _lastData = null;
 function applyData(d) {
+  if (d && d.uptime_s !== undefined && _lastUptimeS !== null) {
+    const nextUptime = Number(d.uptime_s);
+    if (Number.isFinite(nextUptime) && nextUptime < _lastUptimeS && (_lastUptimeS - nextUptime) < 30) {
+      return null;
+    }
+  }
   // Merge into _lastData rather than replace — fast frames only carry live
   // fields; slow fields (has_*, limits, max_oil_temp, etc.) must persist so
   // that applyData(_lastData) called by the unit-toggle buttons still has them.
   if (!_lastData) _lastData = {};
   Object.assign(_lastData, d);
   d = _lastData;
+  if (d.uptime_s !== undefined && Number.isFinite(Number(d.uptime_s))) {
+    _lastUptimeS = Number(d.uptime_s);
+  }
   if (ws && ws.readyState === WebSocket.OPEN) startPullTimer();
   // ── Channel labels ─────────────────────────────────────────
   if (d.labels) {
@@ -229,9 +315,13 @@ function applyData(d) {
   }
   const feedbackInhibit = document.getElementById('throttle-feedback-inhibit-note');
   if (feedbackInhibit) {
+    const primaryEgtUnhealthy =
+      d.egt_source === 1 ? (d.has_tot && d.tot_healthy === false) :
+      d.egt_source === 2 ? (d.has_tit && d.tit_healthy === false) :
+      ((d.has_tot && d.tot_healthy === false) || (d.has_tit && d.tit_healthy === false));
     const sensorBlocksIncrease = !d.bench_mode &&
       (d.mode === 'RUNNING' || d.mode === 'STARTUP') &&
-      ((d.has_tot && d.tot_healthy === false) ||
+      (primaryEgtUnhealthy ||
        (d.has_n1 && d.n1_healthy === false));
     feedbackInhibit.style.display = sensorBlocksIncrease ? '' : 'none';
   }
@@ -503,15 +593,22 @@ function applyData(d) {
     const absLbl = document.getElementById('n1-abs-label');
     if (absLbl) absLbl.textContent = Number(d.n1).toLocaleString() + ' / ' + Number(d.rpm_limit).toLocaleString() + ' RPM';
   }
+  const selectedEgtSource = d.egt_source === 2 ? 'tit'
+    : (d.egt_source === 1 ? 'tot' : (d.has_tot ? 'tot' : (d.has_tit ? 'tit' : null)));
+  const isPrimaryTot = selectedEgtSource === 'tot';
+  const isPrimaryTit = selectedEgtSource === 'tit';
+
   if (d.tot_limit && d.tot !== undefined) {
     const pct = Math.min(100, (d.tot / d.tot_limit) * 100);
     setGaugeBar('tot-gauge-bar', pct);
     const warn = document.getElementById('tot-approach-warn');
     if (warn) {
-      const show = pct >= 85;
+      const limit = Number(d.egt_limit || d.tot_limit);
+      const primaryPct = limit > 0 ? Math.min(100, (Number(d.tot) / limit) * 100) : 0;
+      const show = isPrimaryTot && primaryPct >= 85;
       warn.style.display = show ? '' : 'none';
-      if (show) warn.textContent = '⚠ TOT at ' + pct.toFixed(0) + '% — '
-        + toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(Number(d.tot_limit)).toFixed(0) + ' ' + dispTempUnit();
+      if (show) warn.textContent = 'Warning: ' + lbl('tot') + ' at ' + primaryPct.toFixed(0) + '% - '
+        + toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(limit).toFixed(0) + ' ' + dispTempUnit();
     }
     const absLbl = document.getElementById('tot-abs-label');
     if (absLbl) absLbl.textContent = toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(Number(d.tot_limit)).toFixed(0) + ' ' + dispTempUnit();
@@ -601,8 +698,20 @@ function applyData(d) {
       setDot('tit-health', d.tit_healthy, lbl('tit'));
       if (d.tit_limit && d.tit_limit > 0 && d.tit !== undefined) {
         setGaugeBar('tit-gauge-bar', Math.min(100, (d.tit / d.tit_limit) * 100));
+        const warn = document.getElementById('tit-approach-warn');
+        if (warn) {
+          const limit = Number(d.egt_limit || d.tit_limit);
+          const primaryPct = limit > 0 ? Math.min(100, (Number(d.tit) / limit) * 100) : 0;
+          const show = isPrimaryTit && primaryPct >= 85;
+          warn.style.display = show ? '' : 'none';
+          if (show) warn.textContent = 'Warning: ' + lbl('tit') + ' at ' + primaryPct.toFixed(0) + '% - '
+            + toDispTemp(Number(d.tit)).toFixed(0) + ' / ' + toDispTemp(limit).toFixed(0) + ' ' + dispTempUnit();
+        }
         const absLbl = document.getElementById('tit-abs-label');
         if (absLbl) absLbl.textContent = toDispTemp(Number(d.tit)).toFixed(0) + ' / ' + toDispTemp(Number(d.tit_limit)).toFixed(0) + ' ' + dispTempUnit();
+      } else {
+        const warn = document.getElementById('tit-approach-warn');
+        if (warn) warn.style.display = 'none';
       }
     }
   }
@@ -654,9 +763,11 @@ function applyData(d) {
     if (d.has_torque) {
       setText('torque', d.torque !== undefined ? Number(d.torque).toFixed(1) : '—');
       setDot('torque-health', d.torque_healthy, 'Torque sensor');
-      if (d.turbo_power_w !== undefined) {
+      if (d.has_n2 && d.n2_healthy !== false && d.turbo_power_w !== undefined && d.turbo_power_w !== null) {
         const kw = Number(d.turbo_power_w) / 1000;
         setText('turbo-power', kw.toFixed(2));
+      } else {
+        setText('turbo-power', 'N2 required');
       }
     }
   }
@@ -844,6 +955,7 @@ function applyData(d) {
 
   // ── Post-run summary + sequence timeline tracking ─────────
   _trackRunState(d);
+  return d;
 }
 
 // ── Run state tracking ────────────────────────────────────────
@@ -945,6 +1057,7 @@ function _showRunSummary(d, durationMs) {
     { label: 'Duration', value: durStr },
     (d.has_n1 && d.max_n1 !== undefined) ? { label: 'Peak N1',  value: Number(d.max_n1).toLocaleString() + ' RPM' } : null,
     (d.has_tot && d.max_tot !== undefined) ? { label: 'Peak TOT', value: toDispTemp(Number(d.max_tot)).toFixed(0) + ' ' + dispTempUnit() } : null,
+    (d.has_tit && d.max_tit !== undefined) ? { label: 'Peak TIT', value: toDispTemp(Number(d.max_tit)).toFixed(0) + ' ' + dispTempUnit() } : null,
     (d.has_oil_press && d.oil_min_bar !== undefined && Number(d.oil_min_bar) > 0)
       ? { label: 'Min oil', value: toDispPress(Number(d.oil_min_bar)).toFixed(2) + ' ' + dispPressUnit() } : null,
   ].filter(Boolean);
@@ -1089,17 +1202,29 @@ window.addEventListener('pageshow', requestTelemetryNow);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) requestTelemetryNow();
 });
-connect();
-fetch('/api/data')
-  .then(r => r.json())
-  .then(d => { try { applyData(d); } catch(e) {} })
-  .catch(() => {});
+function startTelemetryBoot() {
+  if (!usesGlobalTelemetry()) {
+    if (!hasPageLocalTelemetry()) startStatusHeartbeat();
+    return;
+  }
+  connect();
+  startRestFallbackTimer();
+  if (isDashboardPage()) {
+    fetch('/api/data', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { try { applyData(d); } catch(e) {} })
+      .catch(() => {});
+  }
+}
+setTimeout(startTelemetryBoot, isDashboardPage() ? 0 : 800);
 
 // Show banner if startup sequence is empty (checked once at page load)
-fetch('/api/hardware')
-  .then(r => r.json())
-  .then(hw => {
-    const banner = document.getElementById('empty-seq-banner');
-    if (banner) banner.style.display = (hw.startup_seq && hw.startup_seq.length > 0) ? 'none' : '';
-  })
-  .catch(() => {});
+const _emptySeqBanner = document.getElementById('empty-seq-banner');
+if (_emptySeqBanner) {
+  fetch('/api/hardware')
+    .then(r => r.json())
+    .then(hw => {
+      _emptySeqBanner.style.display = (hw.startup_seq && hw.startup_seq.length > 0) ? 'none' : '';
+    })
+    .catch(() => {});
+}

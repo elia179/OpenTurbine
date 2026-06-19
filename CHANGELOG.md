@@ -9,12 +9,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Bumped firmware/UI version to 1.2.0 for beta-test builds.
 - Restored Hardware page controls for the passive buzzer so fitted buzzer pins can be assigned, validated, and included in GPIO conflict checks.
 - Replaced stale flashing instructions that referenced a missing helper script with the actual PlatformIO firmware and filesystem upload commands.
-- Aligned the factory profile and setup guide with the standard N1-free, timer/TOT based setup; N1-dependent dynamic idle, overspeed, surge, and auto-relight remain optional features.
+- Aligned the factory profile and setup guide with the standard N1-free setup; primary EGT safety can use TOT or TIT, while N1-dependent dynamic idle, overspeed, surge, and auto-relight remain optional features.
+- Flight log run summaries now preserve TIT peaks and the Log page reads the real firmware event field names (`n1Rpm`, `totDegC`, `titDegC`, `oilBar`, `maxTot`, `maxTit`).
+- Dashboard EGT approach warnings now follow the selected engine-safety EGT source instead of always treating TOT as primary.
+- Extra Cooldown UI/docs now describe the actual Sequencer CooldownSpin actuator settings instead of fixed starter-plus-oil behavior.
 
 ### Documentation
-- Added an alpha-readiness review plan covering supported setups, dependency gates, critical user flows, and required verification.
+- Added a beta-readiness review plan covering supported setups, dependency gates, critical user flows, and required verification.
 - Updated the README hardware/setup guide to reflect the unified `ecu_config.json` engine file, runtime hardware configuration, OTA web assets, and current ESP32-S3 target.
 
 ---

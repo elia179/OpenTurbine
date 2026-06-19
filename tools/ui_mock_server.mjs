@@ -97,7 +97,7 @@ function makeHardware() {
 function makeSettings() {
   return {
     profile_id: 'sim-dev',
-    config_version: 6,
+    config_version: 2,
     engine: { rpm_limit: 95000, min_rpm: 12000, tot_limit: 720, tot_cooldown_target: 110, tot_safe_margin: 40 },
     oil: { startup_pressure: 1.5, startup_pct: 35, startup_min_bar: 0.5, running_min: 1.2, map_min: 1.5, map_max: 3.6, use_throttle_map: true, adjust_scale: 0.1, min_pct: 12, failsafe_delay_ms: 500, failsafe_pct: 70 },
     sequence: {
@@ -115,7 +115,7 @@ function makeSettings() {
     telemetry: { ws_interval_ms: 100, snapshot_interval_ms: 500, log_standby: false },
     starter_assist: { pct: 15, exit_rpm: 22000, ramp_pct_per_s: 5 },
     oil_advanced: { zero_bar: 0.05, deadband_bar: 0.1 },
-    standby_oil: { rpm_limit: 500, feed_pct: 10 },
+    standby_oil: { source: 0, rpm_limit: 500, feed_pct: 10 },
     limp_mode: { max_throttle_pct: 35 },
     misc: { cooldown_skip_hold_ms: 1500, igniter_on_start: true },
     fuel_pump: { idle_min_pct: 10, idle_max_pct: 25 },
@@ -133,20 +133,20 @@ function fullTelemetry() {
   return {
     mode: 'RUNNING', fw_version: 'sim-1.0.0', uptime_s: 3672, last_event: 'RUNNING',
     n1: 62000, n2: 24200, tot: 640, oil: 2.15, p1: 1.42, p2: 3.55, oil_temp: 78, batt_voltage: 12.45, torque: 18.7, turbo_power_w: 4850,
-    tit: 810, fuel_press: 2.6, fuel_flow: 12.25, throttle_demand: 0.61, throttle_input_type: 'servo', throttle_input_raw: 2500, throttle_input_us: 1500, throttle_input_norm: 0.5, rc_throttle_norm: 0.5, idle_input_type: 'servo', idle_input_us: 1280,
+    tit: 810, fuel_press: 2.6, fuel_flow: 12.25, fuel_flow_type: 1, throttle_demand: 0.61, throttle_input_type: 'servo', throttle_input_raw: 2500, throttle_input_us: 1500, throttle_input_norm: 0.5, rc_throttle_norm: 0.5, idle_input_type: 'servo', idle_input_us: 1280,
     oil_demand: 2.2, oil_pct: 43, oil_min_bar: 1.85, flame: true, flame_raw: 2810, flame_threshold: 1800,
     n1_healthy: true, n2_healthy: true, tot_healthy: true, oil_healthy: true, oil_temp_healthy: true, tit_healthy: true, fuel_press_healthy: true, batt_healthy: true, torque_healthy: true,
     max_n1: 67100, max_n2: 24900, max_tot: 676, max_oil_temp: 82, max_tit: 848, max_fuel_press: 2.9, max_batt_voltage: 12.6, max_p1: 1.8, max_p2: 3.9,
-    rpm_limit: 95000, tot_limit: 720, oil_running_min: 1.2, oil_temp_limit: 115, tit_limit: 900, fuel_press_min: 1.1, batt_volt_min: 10.5, tot_rise_rate: 2.5,
+    rpm_limit: 95000, tot_limit: 720, egt_source: 1, egt_limit: 720, oil_running_min: 1.2, oil_temp_limit: 115, tit_limit: 900, fuel_press_min: 1.1, batt_volt_min: 10.5, tot_rise_rate: 2.5,
     idle_min_pct: 8, fuel_idle_min_pct: 10, fuel_idle_max_pct: 25, oil_pump_on_pct: 100, ws_interval_ms: 333,
     dynamic_idle_enabled: true, limp_mode: false, idle_target_rpm: 24000, relight_enabled: true, relight_armed: true, relight_attempts: 0,
     dev_mode_fw: true, dev_mode: false, skip_safety_checks: false, bench_mode: false,
     has_n1: true, has_n2: true, has_tot: true, has_oil_press: true, has_flame: true, has_p1: true, has_p2: true, has_oil_temp: true, has_batt_voltage: true, has_torque: true, has_fuel_press: true, has_fuel_flow: true, has_tit: true, has_governor: true,
-    has_glow_plug: true, has_glow_current: true, has_igniter_current: true, has_igniter2_current: true, has_oil_pump_current: true, has_bleed_valve: true, has_prop_pitch: true, has_fuel_pump2: true, has_cool_fan: true, has_airstarter: true, has_oil_scavenge: true, has_afterburner: true,
-    has_throttle: true, has_oil_pump: true, has_dynamic_idle: true,
+    has_glow_plug: true, has_glow_current: true, has_igniter_current: true, has_igniter2_current: true, has_oil_pump_current: true, has_bleed_valve: true, has_prop_pitch: true, has_fuel_pump2: true, has_cool_fan: true, has_airstarter: true, has_oil_scavenge: true, has_afterburner: true, has_ab_flame: true,
+    has_throttle: true, has_oil_pump: true, has_dynamic_idle: true, has_oil_loop: true, has_mavlink: true, has_starter_assist: true,
     glow_current_amps: 3.2, glow_plug_hot: true, igniter_current_amps: 0, igniter2_current_amps: 0, oil_pump_current_amps: 2.3, oil_pump_overcurrent: false,
     glow_plug_pct: 20, bleed_valve_open: false, prop_pitch_demand: 0.38, fuel_pump2_demand: 0.42, cool_fan_on: true, airstarter_open: false, oil_scavenge_on: true,
-    ab_mode: 'Off', ab_sol_open: false, ab_arm_switch_on: true, ab_flame_on: false, ab_trigger_active: false,
+    ab_mode: 'Off', ab_sol_open: false, ab_arm_switch_on: true, ab_flame_on: false, ab_flame_raw: 760, ab_flame_threshold: 1800, ab_trigger_active: false,
     governor_target_rpm: 25000, flash_free_kb: 560, flash_used_kb: 256, flash_total_kb: 816, log_records: 14, log_max_records: 400, boot_count: 4, reset_reason: 1, run_count: 8, total_run_seconds: 9860,
     oil_raw: 1400, p1_raw: 810, p2_raw: 1740, fuel_press_raw: 1320, fuel_flow_raw: 1044, config_storage_fault: false, profile_match: true, config_version_mismatch: false,
     labels: makeHardware().labels,
@@ -163,7 +163,8 @@ const scenarios = {
     has_torque: false, has_fuel_press: false, has_fuel_flow: false, has_tit: false, has_governor: false,
     has_glow_plug: false, has_glow_current: false, has_igniter_current: false, has_igniter2_current: false,
     has_oil_pump_current: false, has_bleed_valve: false, has_prop_pitch: false, has_fuel_pump2: false,
-    has_cool_fan: false, has_airstarter: false, has_oil_scavenge: false, has_afterburner: false, relight_enabled: false
+    has_cool_fan: false, has_airstarter: false, has_oil_scavenge: false, has_afterburner: false, has_ab_flame: false,
+    has_mavlink: false, has_starter_assist: false, relight_enabled: false
   }),
   startup: () => merge(fullTelemetry(), {
     mode: 'STARTUP', n1: 8200, n2: 0, tot: 175, oil: 1.55, throttle_demand: 0.18,
@@ -182,16 +183,69 @@ function initialState() {
     data: scenarios.full(),
     commands: [],
     logs: [
-      { t: 10, ev: 'START_ATTEMPT', n1: 0, tot: 22 },
-      { t: 14, ev: 'BLOCK', block: 'Ignition', n1: 6300, tot: 84 },
-      { t: 26, ev: 'RUNNING', n1: 61000, tot: 620 },
-      { t: 112, ev: 'NORMAL_SHUTDOWN', n1: 0, tot: 105 },
-      { t: 210, ev: 'START_ATTEMPT', n1: 0, tot: 90 },
-      { t: 226, ev: 'FAULT', code: 'LOW_OIL', n1: 57000, tot: 735, oil: 0.55 },
-      { t: 227, ev: 'FAULT_SHUTDOWN', code: 'LOW_OIL', block: 'SafetyHold' }
+      { t: 10, ev: 'START_ATTEMPT', n1Rpm: 0, oilBar: 0, totDegC: 22, titDegC: 25 },
+      { t: 14, ev: 'BLOCK', block: 'Ignition', n1: 6300, tot: 84, tit: 110 },
+      { t: 26, ev: 'RUNNING_ENTRY', n1Rpm: 61000, oilBar: 2.1, totDegC: 620, titDegC: 760 },
+      { t: 112, ev: 'RUN_SUMMARY', runS: 86, maxN1: 67100, maxTot: 676, maxTit: 848, minOil: 1.8 },
+      { t: 113, ev: 'NORMAL_SHUTDOWN' },
+      { t: 210, ev: 'START_ATTEMPT', n1Rpm: 0, oilBar: 0.2, totDegC: 90, titDegC: 110 },
+      { t: 226, ev: 'FAULT', code: 'LOW_OIL', n1Rpm: 57000, totDegC: 735, titDegC: 840, oilBar: 0.55 },
+      { t: 227, ev: 'RUN_SUMMARY', runS: 17, maxN1: 57000, maxTot: 735, maxTit: 840, minOil: 0.55 },
+      { t: 228, ev: 'FAULT_SHUTDOWN', code: 'LOW_OIL', block: 'SafetyHold' }
     ],
     sessionCsv: 't_s,n1_rpm,n2_rpm,tot_c,tit_c,oil_bar,p1_bar,p2_bar,throttle_pct,batt_v,fuel_press_bar,fuel_flow,glow_pct,fp2_pct,ab_mode,prop_pct,mode\n0,1000,0,35,40,1.1,0.2,0.3,8,12.5,1.3,1,0,0,0,0,STARTUP\n2,62000,24200,640,810,2.15,1.42,3.55,61,12.45,2.6,12.25,20,42,0,38,RUNNING\n'
   };
+}
+
+function syncDataFromHardware(data, hardware) {
+  const s = hardware.sensors || {};
+  const a = hardware.actuators || {};
+  data.has_n1 = !!s.n1_rpm?.enabled;
+  data.has_n2 = !!(hardware.has_two_shaft && s.n2_rpm?.enabled);
+  data.has_tot = !!s.tot?.enabled;
+  data.has_tit = !!s.tit?.enabled;
+  if (data.egt_source === 1 && !data.has_tot) data.egt_source = data.has_tit ? 2 : 0;
+  if (data.egt_source === 2 && !data.has_tit) data.egt_source = data.has_tot ? 1 : 0;
+  if (!data.egt_source) data.egt_source = data.has_tot ? 1 : (data.has_tit ? 2 : 0);
+  data.egt_limit = data.egt_source === 2 ? data.tit_limit : data.tot_limit;
+  data.has_oil_press = !!s.oil_press?.enabled;
+  data.has_flame = !!s.flame?.enabled;
+  data.has_p1 = !!s.p1?.enabled;
+  data.has_p2 = !!s.p2?.enabled;
+  data.has_oil_temp = !!s.oil_temp?.enabled;
+  data.has_batt_voltage = !!s.batt_voltage?.enabled;
+  data.has_torque = !!s.torque?.enabled;
+  data.has_fuel_press = !!s.fuel_press?.enabled;
+  data.has_fuel_flow = !!s.fuel_flow?.enabled;
+  data.fuel_flow_type = s.fuel_flow?.type ?? data.fuel_flow_type;
+  data.has_throttle = !!a.throttle?.enabled;
+  data.has_oil_pump = !!a.oil_pump?.enabled;
+  data.has_glow_plug = !!a.glow_plug?.enabled;
+  data.has_glow_current = !!(a.glow_plug?.enabled && a.glow_plug?.has_current);
+  data.has_igniter_current = !!(a.igniter?.enabled && a.igniter?.has_current);
+  data.has_igniter2_current = !!(a.igniter2?.enabled && a.igniter2?.has_current);
+  data.has_oil_pump_current = !!(a.oil_pump?.enabled && a.oil_pump?.has_current);
+  data.has_bleed_valve = !!a.bleed_valve?.enabled;
+  data.has_prop_pitch = !!a.prop_pitch?.enabled;
+  data.has_fuel_pump2 = !!a.fuel_pump2?.enabled;
+  data.has_cool_fan = !!a.cool_fan?.enabled;
+  data.has_airstarter = !!a.airstarter_sol?.enabled;
+  data.has_oil_scavenge = !!a.oil_scavenge_pump?.enabled;
+  data.has_afterburner = !!hardware.has_afterburner;
+  data.has_ab_flame = !!(hardware.has_afterburner && hardware.ab_flame?.enabled);
+  data.ab_flame_threshold = hardware.ab_flame?.threshold ?? data.ab_flame_threshold;
+  data.has_governor = !!(hardware.controllers?.governor && data.has_n2);
+  data.has_dynamic_idle = !!(hardware.controllers?.dynamic_idle && data.has_throttle && (data.has_n1 || data.has_n2));
+  data.has_oil_loop = !!(hardware.controllers?.oil_loop && data.has_oil_pump && data.has_oil_press);
+  data.has_mavlink = !!hardware.mavlink?.enabled;
+  data.has_starter_assist = !!(data.has_n1 &&
+    (a.starter?.enabled || hardware.has_starter) &&
+    a.starter?.assist_enabled !== false &&
+    a.starter?.type !== 2);
+  data.relight_enabled = !!(hardware.safety?.flameout && data.has_n1 && a.igniter?.enabled);
+  data.throttle_input_type = s.throttle_input?.enabled ? (s.throttle_input?.rc_pwm ? 'servo' : 'adc') : 'none';
+  data.idle_input_type = s.idle_input?.enabled ? (s.idle_input?.rc_pwm ? 'servo' : 'adc') : 'none';
+  return data;
 }
 
 let state = initialState();
@@ -251,7 +305,17 @@ function acceptWebSocket(req, socket) {
 }
 
 async function serveStatic(urlPath, res) {
-  const requested = urlPath === '/' ? '/index.html' : urlPath;
+  const portalPaths = new Set([
+    '/generate_204',
+    '/hotspot-detect.html',
+    '/library/test/success.html',
+    '/connecttest.txt',
+    '/ncsi.txt',
+    '/fwlink',
+    '/redirect',
+    '/canonical.html'
+  ]);
+  const requested = (urlPath === '/' || portalPaths.has(urlPath)) ? '/index.html' : urlPath;
   const cleaned = path.normalize(requested).replace(/^(\.\.[/\\])+/, '');
   const filePath = path.join(root, cleaned);
   if (!filePath.startsWith(root)) return sendText(res, 403, 'Forbidden');
@@ -276,7 +340,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/ecu_config') return sendJson(res, 200, { hardware: state.hardware, settings: state.settings });
     if (req.method === 'GET' && url.pathname === '/api/log') return sendJson(res, 200, state.logs);
     if (req.method === 'GET' && url.pathname === '/api/log/raw') return sendText(res, 200, state.logs.map(item => JSON.stringify(item)).join('\n') + '\n', 'application/x-ndjson');
-    if (req.method === 'GET' && url.pathname === '/api/log/csv') return sendText(res, 200, 't,ev,n1,tot,oil\n' + state.logs.map(item => `${item.t},${item.ev},${item.n1 ?? ''},${item.tot ?? ''},${item.oil ?? ''}`).join('\n') + '\n', 'text/csv');
+    if (req.method === 'GET' && url.pathname === '/api/log/csv') return sendText(res, 200, 't,ev,n1,tot,tit,oil\n' + state.logs.map(item => `${item.t},${item.ev},${item.n1 ?? item.n1Rpm ?? item.maxN1 ?? ''},${item.tot ?? item.totDegC ?? item.maxTot ?? ''},${item.tit ?? item.titDegC ?? item.maxTit ?? ''},${item.oil ?? item.oilBar ?? item.minOil ?? ''}`).join('\n') + '\n', 'text/csv');
     if (req.method === 'GET' && url.pathname === '/api/session/list') return sendJson(res, 200, [8]);
     if (req.method === 'GET' && url.pathname === '/api/session/log') return sendText(res, 200, state.sessionCsv, 'text/csv');
     if (req.method === 'GET' && url.pathname === '/__sim/state') return sendJson(res, 200, state);
@@ -289,6 +353,7 @@ const server = http.createServer(async (req, res) => {
     if ((req.method === 'POST' || req.method === 'PATCH') && url.pathname === '/api/hardware') {
       const body = await bodyJson(req);
       state.hardware = req.method === 'POST' ? body : merge(state.hardware, body);
+      syncDataFromHardware(state.data, state.hardware);
       if (req.method === 'POST' && state.hardware.profile_id) {
         state.settings.profile_id = state.hardware.profile_id;
       }
@@ -305,6 +370,7 @@ const server = http.createServer(async (req, res) => {
       }
       state.hardware = body.hardware;
       state.settings = body.settings;
+      syncDataFromHardware(state.data, state.hardware);
       return sendJson(res, 200, { ok: true, reboot: true });
     }
     if (req.method === 'POST' && url.pathname === '/api/start') {

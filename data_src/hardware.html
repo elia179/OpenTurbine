@@ -4,17 +4,17 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css?v=20260607b">
+<link rel="stylesheet" href="/style.css?v=20260619a">
 </head>
 <body>
 <nav>
-  <a href="/hardware.html" class="active">Hardware</a>
-  <a href="/calibration.html">Calibration</a>
-  <a href="/config.html">Config</a>
-  <a href="/sequence.html">Sequence</a>
-  <a href="/">Dashboard</a>
-  <a href="/log.html">Log</a>
-  <a href="/tools.html">Tools</a>
+  <a href="/" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
+  <a href="/hardware.html" class="active" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
+  <a href="/config.html" title="Tune limits, controllers, logging, telemetry, and hardware-dependent settings.">Config</a>
+  <a href="/calibration.html" title="Calibrate fitted analog, servo, pressure, temperature, current, and flow inputs.">Calibration</a>
+  <a href="/sequence.html" title="Edit startup, shutdown, afterburner sequences, block timings, and control rules.">Sequence</a>
+  <a href="/log.html" title="View fault/event history and per-run CSV session logs.">Log</a>
+  <a href="/tools.html" title="Run standby-only actuator tests, backups, restore, OTA, factory reset, and dev tools.">Tools</a>
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 
@@ -827,7 +827,7 @@
         <div class="act-subgroup" id="grp-str-assist">
           <span>STARTER ASSIST</span>
           <div class="hw-field" style="margin-top:.35rem">
-            <span class="hw-desc">Allow starter to briefly re-engage at low idle RPM. Only useful for servo/PWM starters (not relay). <a href="/config.html#starter-assist-section">Configure speed and exit RPM in Config.</a></span>
+            <span class="hw-desc">Allow starter to briefly re-engage at low idle RPM. Only useful for servo/PWM starters (not relay). Configure starter demand and handoffs on the Sequence page.</span>
             <div class="hw-toggle" style="margin-top:.25rem">
               <input type="checkbox" id="f-str-assist" onchange="setAct('starter','assist_enabled',this.checked)">
               <span>Enable starter assist</span>
@@ -1354,7 +1354,7 @@
           <b>Dedicated AB Flame Sensor</b>
         </div>
         <span class="hw-desc" style="display:block;margin-bottom:.5rem">
-          Optional. When disabled, AB flame confirmation uses TOT rise or timed assumption (set in Config → Afterburner).
+          Optional. When disabled, AB flame confirmation uses selected EGT rise or timed assumption (set in Config → Afterburner).
         </span>
         <div id="grp-ab-flame" class="hw-grid" style="display:none">
           <div class="hw-field">
@@ -1658,8 +1658,16 @@
       </div>
       <div class="hw-grid" id="grp-statusled">
         <div class="hw-field">
+          <span class="hw-label">LED type</span>
+          <span class="hw-desc">Use NeoPixel RGB for the YD-ESP32-S3 onboard LED on GPIO48. Use plain GPIO for a normal external on/off LED.</span>
+          <select id="f-led-type" onchange="setStatusLedType(+this.value)">
+            <option value="0">Plain GPIO on/off</option>
+            <option value="1">NeoPixel RGB data LED</option>
+          </select>
+        </div>
+        <div class="hw-field">
           <span class="hw-label">GPIO pin</span>
-          <span class="hw-desc">GPIO 2 is the onboard LED on most ESP32 dev boards — use that if no external LED is fitted.</span>
+          <span class="hw-desc">YD-ESP32-S3 / YD-ESP32-23 onboard RGB LED is usually GPIO48 and may require the RGB solder jumper to be bridged. External status LEDs can use any free GPIO.</span>
           <select id="f-led-pin" onchange="setAct('status_led','pin',+this.value)"></select>
         </div>
       </div>
@@ -1819,7 +1827,7 @@
           <input type="checkbox" id="f-saf-overtemp" onchange="setSafety('overtemp',this.checked,'sc-overtemp')">
           <b>Overtemp</b>
         </div>
-        <span style="font-size:.63rem;color:var(--dim)">TOT exceeds temperature limit → fault shutdown.</span>
+        <span style="font-size:.63rem;color:var(--dim)">Selected EGT source (TOT or TIT) exceeds its configured limit → fault shutdown.</span>
       </div>
       <div class="safety-card" id="sc-lowoil">
         <div class="hw-toggle">
@@ -1847,7 +1855,7 @@
           <input type="checkbox" id="f-saf-hotstart" onchange="setSafety('hot_start',this.checked,'sc-hotstart')">
           <b>Hot Start</b>
         </div>
-        <span style="font-size:.63rem;color:var(--dim)">TOT above threshold when START pressed → abort startup. Threshold in Config → Safety Monitor.</span>
+        <span style="font-size:.63rem;color:var(--dim)">Selected EGT above threshold when START pressed → abort startup. Threshold in Config → Safety Monitor.</span>
       </div>
       <div class="safety-card disabled-safety" id="sc-titovertemp">
         <div class="hw-toggle">
@@ -2015,7 +2023,7 @@ const GPIO_DB_ESP32S3 = {
   45: {s:1, label:'GPIO45 (strap)'},
   46: {s:1, i:1, label:'GPIO46 (strap, input only)'},
   47: {label:'GPIO47'},
-  48: {label:'GPIO48'},
+  48: {label:'GPIO48 (YD onboard RGB / NeoPixel)'},
 };
 
 let GPIO_DB = GPIO_DB_ESP32;
@@ -2028,7 +2036,7 @@ function buildPinOptions(currentVal, mode) {
     const g = +gpio;
     if (info.r) continue;
     if (mode === 'adc') { if (!info.adc1) continue; }
-    else if (mode === 'out') { if (info.i) continue; }
+    else if (mode === 'out' || mode === 'status-led') { if (info.i) continue; }
     const used = usedPins.has(g) && g !== currentVal;
     let suffix = '';
     if (used) suffix += ' [IN USE]';
@@ -2098,6 +2106,15 @@ function collectUsedPins() {
 function refreshPinSel(id, mode, currentVal) {
   const el = document.getElementById(id);
   if (!el) return;
+  if (id === 'f-led-pin' && cfg.platform === 'esp32s3' &&
+      (currentVal === undefined || currentVal === null || currentVal < 0 || currentVal === 38)) {
+    currentVal = 48;
+    if (!cfg.actuators) cfg.actuators = {};
+    if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+    cfg.actuators.status_led.enabled = true;
+    cfg.actuators.status_led.pin = 48;
+    if (cfg.actuators.status_led.type === undefined) cfg.actuators.status_led.type = 1;
+  }
   el.innerHTML = buildPinOptions(currentVal, mode);
   el.value = currentVal !== undefined && currentVal !== null ? currentVal : -1;
 }
@@ -2145,7 +2162,7 @@ function refreshAllPins() {
   refreshPinSel('f-abp-pin',        'out', (a.ab_pump||{}).pin);
   refreshPinSel('f-airs-pin',       'out', (a.airstarter_sol||{}).pin);
   refreshPinSel('f-fan-pin',        'out', (a.cool_fan||{}).pin);
-  refreshPinSel('f-led-pin',        'out', (a.status_led||{}).pin);
+  refreshPinSel('f-led-pin',        'status-led', (a.status_led||{}).pin);
   refreshPinSel('f-buzzer-pin',     'out', (cfg.buzzer||{}).pin);
   refreshPinSel('f-cl-tx',          'out', cl.tx_pin);
   refreshPinSel('f-cl-rx',          'in',  cl.rx_pin);
@@ -2319,10 +2336,25 @@ let _profileIdInvalid = false;
 let _loadedProfileId = 'OpenTurbine';
 
 let ws;
+let wsPullTimer = null;
+function requestHardwareTelemetry() {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
+}
 function connectWs() {
+  if (ws && ws.readyState <= WebSocket.OPEN) return;
   ws = new WebSocket('ws://' + location.host + '/ws');
-  ws.onopen  = () => setConn(true);
-  ws.onclose = () => { setConn(false); setTimeout(connectWs, 2000); };
+  ws.onopen  = () => {
+    setConn(true);
+    requestHardwareTelemetry();
+    if (wsPullTimer) clearInterval(wsPullTimer);
+    wsPullTimer = setInterval(requestHardwareTelemetry, 1000);
+  };
+  ws.onclose = () => {
+    if (wsPullTimer) { clearInterval(wsPullTimer); wsPullTimer = null; }
+    setConn(false);
+    setTimeout(connectWs, 2000);
+  };
+  ws.onerror = () => { try { ws.close(); } catch(_) {} };
   ws.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
@@ -2589,6 +2621,10 @@ function populate() {
   // Status LED defaults ON — only false if explicitly disabled in stored config
   const statusLedEnabled = (a.status_led?.enabled !== false);
   chk('en-statusled', statusLedEnabled);
+  if (!a.status_led) a.status_led = {};
+  if (cfg.platform === 'esp32s3' && a.status_led.type === undefined) a.status_led.type = 1;
+  if (cfg.platform !== 'esp32s3' && a.status_led.type === undefined) a.status_led.type = 0;
+  v('f-led-type', a.status_led.type ?? 0);
   updateGroupEnabled('grp-statusled', statusLedEnabled);
   const buz = cfg.buzzer || {};
   chk('en-buzzer', !!buz.enabled);
@@ -2728,6 +2764,7 @@ function populate() {
   v('f-mav-interval', mav.interval_ms ?? 200);
 
   updateHardwarePrerequisites(false);
+  applyEnableDependencyTooltips();
   refreshAllPins();
   // Re-evaluate changed borders after pin selects have been rebuilt
   if (Object.keys(_fieldSnap).length) _refreshChangedBorders();
@@ -2846,13 +2883,13 @@ const SEQ_ACTION_KEYS = [
 ];
 const SENSOR_DEPENDENCIES = {
   n1_rpm: { name:'N1 RPM sensor', safety:['overspeed','surge'], logs:['n1'], rules:[2],
-            functions:['N1 overspeed guard','Surge guard','N1 session logging','rules using N1 RPM'] },
+            functions:['N1 overspeed guard','Surge guard','dynamic idle RPM feedback','standby oil feed source','auto-relight windmill check','flameout source','starter/spool RPM sequence checks','N1 session logging','rules using N1 RPM'] },
   n2_rpm: { name:'N2 RPM sensor', logs:['n2'], rules:[6],
-            functions:['N2 session logging','N2 governor/dynamic idle if selected','rules using N2 RPM'] },
+            functions:['N2 governor','dynamic idle N2 feedback','standby oil feed source','N2 session logging','rules using N2 RPM'] },
   tot: { name:'TOT sensor', safety:['overtemp','hot_start'], logs:['tot'], rules:[1],
-         functions:['TOT overtemp guard','Hot-start guard','TOT session logging','rules using TOT'] },
-  tit: { name:'TIT sensor', safety:['tit_overtemp'], logs:['tit'], rules:[4],
-         functions:['TIT overtemp guard','TIT session logging','rules using TIT'] },
+         functions:['Primary EGT safety when selected','Hot-start guard','TOT session logging','rules using TOT'] },
+  tit: { name:'TIT sensor', safety:['overtemp','hot_start','tit_overtemp'], logs:['tit'], rules:[4],
+         functions:['Primary EGT safety when selected','TIT overtemp guard','Hot-start guard','TIT session logging','rules using TIT'] },
   oil_press: { name:'Oil pressure sensor', safety:['low_oil','oil_zero'], controllers:['oil_loop'], logs:['oil'], rules:[3],
                functions:['Low oil pressure guard','Zero oil pressure guard','Oil pressure loop','Oil pressure logging','rules using oil pressure'] },
   oil_temp: { name:'Oil temperature sensor', safety:['oil_temp_high'], logs:[], rules:[0],
@@ -2873,9 +2910,9 @@ const ACT_DEPENDENCIES = {
   oil_scavenge_pump: { name:'Oil scavenge pump', rules:[3], logs:[], blocks:['OilScavengeOn','OilScavengeOff'],
                        functions:['Scavenge sequence blocks','sequencer side-actions using scavenge pump','rules driving scavenge pump'] },
   oil_pump: { name:'Oil pump', controllers:['oil_loop'], logs:['oil_pct'], rules:[7], blocks:['OilPumpOn','OilPumpOff','OilPrime'],
-              functions:['Oil pressure loop','Oil pump logging','oil-pump sequence side-actions','rules driving oil pump'] },
+              functions:['Oil pressure loop','standby oil feed output','Oil pump logging','oil-pump sequence side-actions','rules driving oil pump'] },
   starter: { name:'Starter', rules:[5], blocks:['StarterSpin','StarterOff'], functions:['Starter sequence blocks','starter side-actions','rules driving starter'] },
-  throttle: { name:'Throttle / fuel ESC', controllers:['dynamic_idle','governor'], logs:['throttle'], rules:[4],
+  throttle: { name:'Throttle / fuel ESC', controllers:['throttle_slew','dynamic_idle','governor'], logs:['throttle'], rules:[4],
               blocks:['FuelPumpIdle','ModifiedIdle','Spool','ThrottleSet'], functions:['Throttle sequence blocks','dynamic idle/governor output','throttle logging','rules driving throttle'] },
   fuel_pump2: { name:'Aux fuel pump 2', logs:['fp2'], rules:[2], blocks:['FuelPumpRamp','FuelPump2Set','FuelPump2On','FuelPump2Off'],
                 functions:['Aux fuel pump 2 sequence blocks','FP2 logging','rules driving FP2'] },
@@ -2890,7 +2927,91 @@ const ACT_DEPENDENCIES = {
   ab_pump: { name:'AB pump', logs:['ab'], rules:[12], blocks:['ABPumpOn','ABPumpOff'], functions:['AB pump sequence blocks','AB logging','rules driving AB pump'] },
   airstarter_sol: { name:'Airstarter solenoid', rules:[15], blocks:['AirstarterOn','AirstarterOff'], functions:['Airstarter sequence blocks','rules driving airstarter'] },
   starter_en: { name:'Starter enable relay', rules:[6], blocks:['StarterEnOn','StarterEnOff'], functions:['Starter enable sequence blocks','rules driving starter enable'] },
+  status_led: { name:'Status LED', functions:['mode blink indication','rapid fault flash','bench-test visual status'] },
 };
+
+const SPECIAL_DEPENDENCIES = {
+  oil_pump_current: { name:'Oil pump current sensor', functions:['oil-pump current live data','oil-pump current calibration','oil-pump current session logging'] },
+  glow_current: { name:'Glow plug current sensor', functions:['wait-until-hot glow preheat','glow current live data','glow current calibration','glow current session logging'] },
+  ab_flame: { name:'Afterburner flame sensor', functions:['AB flame-confirm mode','AB flame live data','rules and diagnostics using AB flame state'] },
+  buzzer: { name:'Buzzer', functions:['audible mode transitions','audible fault indication','bench-test tone output'] },
+  cluster: { name:'OT Cluster serial', functions:['external display telemetry','cluster warning thresholds','optional cluster command RX'] },
+  mavlink: { name:'MAVLink serial output', functions:['Mission Planner / QGroundControl telemetry','MAVLink HEARTBEAT','MAVLink NAMED_VALUE_FLOAT data'] }
+};
+
+const HW_ENABLE_DEP_KEYS = {
+  'en-n1rpm': ['sensor', 'n1_rpm'],
+  'en-n2rpm': ['sensor', 'n2_rpm'],
+  'en-tot': ['sensor', 'tot'],
+  'en-tit': ['sensor', 'tit'],
+  'en-oilpress': ['sensor', 'oil_press'],
+  'en-oiltemp': ['sensor', 'oil_temp'],
+  'en-fuelpress': ['sensor', 'fuel_press'],
+  'en-fuelflow': ['sensor', 'fuel_flow'],
+  'en-battvolt': ['sensor', 'batt_voltage'],
+  'en-p1': ['sensor', 'p1'],
+  'en-p2': ['sensor', 'p2'],
+  'en-torque': ['sensor', 'torque'],
+  'en-flame': ['sensor', 'flame'],
+  'en-thinput': ['sensor', 'throttle_input'],
+  'en-idiinput': ['sensor', 'idle_input'],
+  'en-throttle': ['actuator', 'throttle'],
+  'en-starter': ['actuator', 'starter'],
+  'en-starteren': ['actuator', 'starter_en'],
+  'en-airstarter': ['actuator', 'airstarter_sol'],
+  'en-fuelsol': ['actuator', 'fuel_sol'],
+  'en-oilpump': ['actuator', 'oil_pump'],
+  'en-oilscav': ['actuator', 'oil_scavenge_pump'],
+  'en-igniter': ['actuator', 'igniter'],
+  'en-igniter2': ['actuator', 'igniter2'],
+  'en-absol': ['actuator', 'ab_sol'],
+  'en-abpump': ['actuator', 'ab_pump'],
+  'en-coolfan': ['actuator', 'cool_fan'],
+  'en-fuelpump2': ['actuator', 'fuel_pump2'],
+  'en-bleedvalve': ['actuator', 'bleed_valve'],
+  'en-proppitch': ['actuator', 'prop_pitch'],
+  'en-glowplug': ['actuator', 'glow_plug'],
+  'en-statusled': ['actuator', 'status_led'],
+  'en-oilpumpcurrent': ['special', 'oil_pump_current'],
+  'en-glowcurrent': ['special', 'glow_current'],
+  'en-ab-flame': ['special', 'ab_flame'],
+  'en-buzzer': ['special', 'buzzer'],
+  'en-cluster': ['special', 'cluster'],
+  'en-mavlink': ['special', 'mavlink']
+};
+
+function dependencyFor(kind, key) {
+  if (kind === 'sensor') return SENSOR_DEPENDENCIES[key];
+  if (kind === 'actuator') return ACT_DEPENDENCIES[key];
+  return SPECIAL_DEPENDENCIES[key];
+}
+
+function unlockTooltip(kind, key, enabled) {
+  const dep = dependencyFor(kind, key);
+  if (!dep) return '';
+  const list = [...new Set(dep.functions || [])];
+  if (!list.length) return enabled ? dep.name + ' is enabled.' : 'Enable ' + dep.name + '.';
+  return (enabled ? dep.name + ' is enabled. Provides: ' : 'Enable ' + dep.name + ' to unlock: ') + list.join(', ') + '.';
+}
+
+function applyEnableDependencyTooltips() {
+  for (const [id, [kind, key]] of Object.entries(HW_ENABLE_DEP_KEYS)) {
+    const input = document.getElementById(id);
+    if (!input) continue;
+    const text = unlockTooltip(kind, key, input.checked);
+    input.title = text;
+    const label = input.closest('label') || input.parentElement;
+    if (label) label.title = text;
+    const card = input.closest('.hw-item-card');
+    if (card) card.title = text;
+  }
+}
+
+document.addEventListener('change', ev => {
+  if (ev.target?.id && HW_ENABLE_DEP_KEYS[ev.target.id]) {
+    setTimeout(applyEnableDependencyTooltips, 0);
+  }
+});
 
 function dependencyWarning(kind, key) {
   const dep = kind === 'sensor' ? SENSOR_DEPENDENCIES[key] : ACT_DEPENDENCIES[key];
@@ -2966,6 +3087,7 @@ function setSensorEnabled(sensor, grpId, val) {
   updateGroupEnabled('grp-' + grpId, val);
   updateSafetyPrerequisites(true);
   updateHardwarePrerequisites(true);
+  applyEnableDependencyTooltips();
 }
 function setAct(act, key, val) {
   if (!cfg.actuators) cfg.actuators = {};
@@ -2977,6 +3099,15 @@ function setAct(act, key, val) {
   if (key === 'pin') refreshAllPins();
   dirty();
 }
+function setStatusLedType(val) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+  cfg.actuators.status_led.type = val;
+  cfg.actuators.status_led.enabled = true;
+  if (cfg.platform === 'esp32s3' && val === 1) cfg.actuators.status_led.pin = 48;
+  dirty();
+  refreshAllPins();
+}
 function setActEnabled(act, grpId, val) {
   if (!val && cfg.actuators?.[act]?.enabled && !dependencyWarning('actuator', act)) {
     chk('en-' + grpId, true);
@@ -2986,6 +3117,7 @@ function setActEnabled(act, grpId, val) {
   if (!val) cleanupRemovedActuator(act);
   updateGroupEnabled('grp-' + grpId, val);
   updateHardwarePrerequisites(true);
+  applyEnableDependencyTooltips();
 }
 function setBuzzerEnabled(val) {
   if (!cfg.buzzer) cfg.buzzer = {};
@@ -3013,11 +3145,11 @@ function setSafetyUI(key, val, cardId) {
 function updateSafetyPrerequisites(markDirty) {
   const requirements = {
     overspeed: ['n1_rpm', 'sc-overspeed', 'N1 RPM sensor required'],
-    overtemp: ['tot', 'sc-overtemp', 'TOT sensor required'],
+    overtemp: ['egt_source', 'sc-overtemp', 'TOT or TIT sensor required'],
     low_oil: ['oil_press', 'sc-lowoil', 'Oil pressure sensor required'],
     oil_zero: ['oil_press', 'sc-oilzero', 'Oil pressure sensor required'],
-    flameout: ['combustion_source', 'sc-flameout', 'Flameout safety requires a flame sensor, N1 RPM, or TOT sensor'],
-    hot_start: ['tot', 'sc-hotstart', 'TOT sensor required'],
+    flameout: ['combustion_source', 'sc-flameout', 'Flameout safety requires a flame sensor, N1 RPM, TOT, or TIT sensor'],
+    hot_start: ['egt_source', 'sc-hotstart', 'TOT or TIT sensor required'],
     tit_overtemp: ['tit', 'sc-titovertemp', 'TIT sensor required'],
     oil_temp_high: ['oil_temp', 'sc-oiltemphi', 'Oil temperature sensor required'],
     fuel_press_low: ['fuel_press', 'sc-fuelpresslo', 'Fuel pressure sensor required'],
@@ -3033,7 +3165,9 @@ function updateSafetyPrerequisites(markDirty) {
   };
   for (const [key, [sensor, cardId, reason]] of Object.entries(requirements)) {
     const available = sensor === 'combustion_source'
-      ? !!(cfg.sensors?.flame?.enabled || cfg.sensors?.n1_rpm?.enabled || cfg.sensors?.tot?.enabled)
+      ? !!(cfg.sensors?.flame?.enabled || cfg.sensors?.n1_rpm?.enabled || cfg.sensors?.tot?.enabled || cfg.sensors?.tit?.enabled)
+      : sensor === 'egt_source'
+      ? !!(cfg.sensors?.tot?.enabled || cfg.sensors?.tit?.enabled)
       : sensor !== null && !!cfg.sensors?.[sensor]?.enabled;
     const input = document.getElementById(inputs[key]);
     const card = document.getElementById(cardId);
@@ -3062,6 +3196,11 @@ function updateHardwarePrerequisites(markDirty) {
       id: 'f-ctrl-oil',
       ok: !!(sensors.oil_press?.enabled && acts.oil_pump?.enabled),
       why: 'Requires fitted oil pressure sensor and oil pump.'
+    },
+    throttle_slew: {
+      id: 'f-ctrl-slew',
+      ok: !!acts.throttle?.enabled,
+      why: 'Requires a fitted throttle / fuel output.'
     },
     dynamic_idle: {
       id: 'f-ctrl-idle',
@@ -3898,6 +4037,14 @@ function _releaseInactivePinConflicts() {
 
 function saveHardware() {
   _releaseInactivePinConflicts();
+  if (cfg.platform === 'esp32s3') {
+    if (!cfg.actuators) cfg.actuators = {};
+    if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+    if (cfg.actuators.status_led.enabled !== false && cfg.actuators.status_led.type === undefined) {
+      cfg.actuators.status_led.type = 1;
+      cfg.actuators.status_led.pin = 48;
+    }
+  }
   const missing = [];
   const requirePin = (obj, key, label) => {
     if (!obj || obj[key] === undefined || obj[key] === null || obj[key] < 0) missing.push(label);
@@ -4014,13 +4161,24 @@ async function _doSave() {
   document.getElementById('btn-save').disabled = true;
   const nextProfileId = (cfg.profile_id || 'OpenTurbine').trim() || 'OpenTurbine';
   const profileChanged = nextProfileId !== (_loadedProfileId || 'OpenTurbine');
+  const controller = new AbortController();
+  const started = Date.now();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const r = await fetch('/api/hardware', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(cfg)
+      body: JSON.stringify(cfg),
+      signal: controller.signal
     });
-    const j = await r.json();
+    clearTimeout(timeout);
+    const text = await r.text();
+    let j = {};
+    try { j = text ? JSON.parse(text) : {}; }
+    catch (_) {
+      if (r.ok) j = { ok:true, reboot:true };
+      else throw new Error(text || 'invalid save response');
+    }
     if (j.ok) {
       clearDirty();
       document.getElementById('save-msg').textContent = 'Saved — rebooting…';
@@ -4030,8 +4188,17 @@ async function _doSave() {
       updateSaveButton();
     }
   } catch(e) {
-    document.getElementById('save-msg').textContent = 'Save failed: ' + e;
-    updateSaveButton();
+    clearTimeout(timeout);
+    // Hardware saves intentionally reboot the ESP32. Chrome can keep the POST
+    // pending if Wi-Fi drops before the JSON response is fully consumed. Do not
+    // leave the page stuck at "Saving..." in that normal reboot window.
+    if (e.name === 'AbortError' || Date.now() - started > 1000) {
+      document.getElementById('save-msg').textContent = 'Save response lost — reconnecting…';
+      showRebootOverlay(profileChanged ? nextProfileId : '');
+    } else {
+      document.getElementById('save-msg').textContent = 'Save failed: ' + e;
+      updateSaveButton();
+    }
   }
 }
 

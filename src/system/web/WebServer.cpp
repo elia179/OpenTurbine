@@ -19,6 +19,7 @@ extern AnalogLinearSensor g_sensorIgniterCurrent;
 extern AnalogLinearSensor g_sensorIgniter2Current;
 extern AnalogLinearSensor g_sensorOilPumpCurrent;
 extern AnalogLinearSensor g_sensorFuelFlow;
+extern AnalogThSensor     g_sensorAbFlame;
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -67,12 +68,12 @@ static constexpr const char* FACTORY_CONFIG_PATH = "/factory_config.json";
 // Shared buffers. Body handlers hold g_webRxOwner across all chunks so concurrent
 // uploads cannot corrupt one another while RAM use remains bounded.
 // Consolidating here (vs function-local statics) keeps them out of .bss individually and
-// makes the total DRAM footprint explicit: 2 × 8192 = 16 KB instead of the ~68 KB that
+// makes the total DRAM footprint explicit: 2 × 16384 = 32 KB instead of the ~68 KB that
 // nine separate function-local statics would consume.
-static char   g_webRxBuf[8192];   // request body accumulation (POST / PATCH)
+static char   g_webRxBuf[16384];  // request body accumulation (POST / PATCH)
 static size_t g_webRxLen     = 0;
 static bool   g_webRxOverflow = false;
-static char   g_webTxBuf[8192];   // response serialisation + PATCH merge work buffer
+static char   g_webTxBuf[16384];  // response serialisation + PATCH merge work buffer
 static AsyncWebServerRequest* g_webRxOwner = nullptr;
 static unsigned long g_webRxClaimMs = 0;
 
@@ -281,6 +282,15 @@ static void _sendGzipAsset(AsyncWebServerRequest* req, const char* path,
     req->send(resp);
 }
 
+static constexpr const char* VERSIONED_ASSET_CACHE =
+    "public, max-age=31536000, immutable";
+
+static void _finalizeJsonResponse(AsyncWebServerResponse* resp) {
+    if (!resp) return;
+    resp->addHeader("Cache-Control", "no-store");
+    resp->addHeader("Connection", "close");
+}
+
 static bool _sendTelemetryFrame(AsyncWebSocketClient* client, const char* buf, size_t len) {
     // ESPAsyncWebServer copies each text frame into a heap-backed vector.
     // Avoid entering that allocator when RAM is already under pressure.
@@ -462,6 +472,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["ab_trigger_active"]     = ed.abTriggerActive;
     doc["ab_arm_switch_on"]      = ed.abArmSwitchOn;
     doc["ab_flame_on"]           = ed.abFlameOn;
+    doc["ab_flame_raw"]          = HardwareConfig::hasAbFlame ? g_sensorAbFlame.rawCounts() : 0;
     doc["ab_sol_open"]           = ed.abSolOpen;
     // ── Sequence progress + fault ─────────────────────────────────────────
     doc["current_block"]         = ed.currentBlock;
@@ -477,7 +488,12 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["batt_healthy"]          = ed.battHealthy;
     doc["max_batt_voltage"]      = (float)(int)(ed.maxBattVoltage * 100) / 100.0f;
     doc["torque"]                = (float)(int)(ed.torque * 10) / 10.0f;
-    doc["turbo_power_w"]         = (int)ed.turboPower;
+    if (HardwareConfig::hasTorque && HardwareConfig::hasN2Rpm &&
+        ed.torqueHealthy && ed.n2Healthy && ed.n2Rpm > 0) {
+        doc["turbo_power_w"]     = (int)ed.turboPower;
+    } else {
+        doc["turbo_power_w"]     = nullptr;
+    }
     doc["torque_healthy"]        = ed.torqueHealthy;
     doc["fuel_press"]            = (float)(int)(ed.fuelPressure * 100) / 100.0f;
     doc["fuel_press_healthy"]    = ed.fuelPressHealthy;
@@ -528,7 +544,9 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_dynamic_idle"]      = HardwareConfig::hasDynamicIdle;
         doc["ws_interval_ms"]        = Config::wsIntervalMs;
         doc["has_oil_loop"]          = HardwareConfig::instance().hasOilLoop;
-        doc["relight_enabled"]       = Config::relightEnabled;
+        doc["relight_enabled"]       = Config::relightEnabled
+                                       && HardwareConfig::hasN1Rpm
+                                       && HardwareConfig::hasIgniter;
         doc["flameout_source"]       = Config::flameoutSource;
         doc["flameout_n1_min_rpm"]   = Config::flameoutN1MinRpm;
         doc["flameout_tot_drop_c"]   = Config::flameoutTotDropC;
@@ -557,6 +575,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         // Safety limits (for color gauge thresholds)
         doc["rpm_limit"]             = (int)Config::rpmLimit;
         doc["tot_limit"]             = Config::totLimit;
+        doc["egt_source"]            = Config::effectiveEgtSource();
+        doc["egt_limit"]             = Config::primaryEgtLimitC();
         doc["oil_running_min"]       = Config::oilRunningMin;
         doc["oil_temp_limit"]        = Config::oilTempLimit;
         doc["tit_limit"]             = Config::titLimit;
@@ -565,6 +585,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         // has_* capability flags
         doc["has_afterburner"]       = HardwareConfig::hasAfterburner;
         doc["has_ab_flame"]          = HardwareConfig::hasAbFlame;
+        doc["ab_flame_threshold"]    = HardwareConfig::abFlameThreshold;
         doc["has_n1"]                = HardwareConfig::hasN1Rpm;
         doc["has_n2"]                = HardwareConfig::hasN2Rpm;
         doc["has_tot"]               = HardwareConfig::hasTot;
@@ -590,8 +611,10 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_oil_scavenge"]      = HardwareConfig::hasOilScavengePump;
         doc["has_mavlink"]           = HardwareConfig::hasMAVLink;
         doc["has_tit"]               = HardwareConfig::hasTit;
-        doc["has_starter_assist"]    = HardwareConfig::starterAssistEnabled
-                                       && (HardwareConfig::starterType != 2);
+        doc["has_starter_assist"]    = HardwareConfig::hasStarter
+                                       && HardwareConfig::starterAssistEnabled
+                                       && (HardwareConfig::starterType != 2)
+                                       && HardwareConfig::hasN1Rpm;
         // Calibration / raw ADC (used by calibration page via /api/data REST)
         doc["igniter_coil"]          = HardwareConfig::igniterCoil;
         // ── Channel labels ────────────────────────────────────────────────
@@ -681,10 +704,10 @@ void WebServer::_setupRoutes() {
     // page navigation, which would exhaust the lwIP TCP PCB pool alongside the
     // persistent SSE connection and cause "IP not responding" errors.
     _server.on("/app.js", HTTP_GET, [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/app.js.gz", "application/javascript", "no-cache");
+        _sendGzipAsset(req, "/app.js.gz", "application/javascript", VERSIONED_ASSET_CACHE);
     });
     _server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/style.css.gz", "text/css", "no-cache");
+        _sendGzipAsset(req, "/style.css.gz", "text/css", VERSIONED_ASSET_CACHE);
     });
     _server.on("/", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
         if (redirectCaptiveToIp(req)) return;
@@ -731,8 +754,17 @@ void WebServer::_setupRoutes() {
     // allocation inside the async TCP task callback (task stack is ~8 KB).
     _server.on("/api/data", HTTP_GET, [](AsyncWebServerRequest* req) {
         static JsonDocument doc;   // static: avoids re-allocating ArduinoJson heap every call
-        _buildTelemetry(g_webTxBuf, sizeof(g_webTxBuf), doc, true);
-        req->send(200, "application/json", g_webTxBuf);
+        size_t n = _buildTelemetry(g_webTxBuf, sizeof(g_webTxBuf), doc, true);
+        if (n >= sizeof(g_webTxBuf)) {
+            AsyncWebServerResponse* resp = req->beginResponse(
+                500, "application/json", "{\"error\":\"telemetry frame too large\"}");
+            _finalizeJsonResponse(resp);
+            req->send(resp);
+            return;
+        }
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
+        _finalizeJsonResponse(resp);
+        req->send(resp);
     });
 
     // GET /api/status
@@ -744,14 +776,19 @@ void WebServer::_setupRoutes() {
             sysModeStr(ed.mode),
             Config::isLocked() ? "true" : "false",
             Config::profileMatch ? "true" : "false");
-        req->send(200, "application/json", buf);
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", buf);
+        _finalizeJsonResponse(resp);
+        req->send(resp);
     });
 
     // GET /api/config — expose the settings section for page editors
     _server.on("/api/config", HTTP_GET, [](AsyncWebServerRequest* req) {
-        size_t n = Config::toJson(g_webTxBuf, sizeof(g_webTxBuf));
-        if (n >= sizeof(g_webTxBuf)) Serial.printf("[WebServer] WARNING: config JSON truncated (%u >= %u)\n", (unsigned)n, (unsigned)sizeof(g_webTxBuf));
-        req->send(200, "application/json", g_webTxBuf);
+        JsonDocument doc;
+        Config::toJson(doc);
+        AsyncResponseStream* resp = req->beginResponseStream("application/json");
+        serializeJson(doc, *resp);
+        _finalizeJsonResponse(resp);
+        req->send(resp);
     });
 
     // POST /api/config — replace only the settings section in ecu_config.json.
@@ -869,6 +906,7 @@ void WebServer::_setupRoutes() {
         }
         resp->print(']');
         FlightRecorder::unlockLog();
+        _finalizeJsonResponse(resp);
         req->send(resp);
     });
 
@@ -889,6 +927,8 @@ void WebServer::_setupRoutes() {
         AsyncWebServerResponse* resp = req->beginResponse(
             LittleFS, FlightRecorder::PATH, "application/x-ndjson");
         resp->addHeader("Content-Disposition", "attachment; filename=\"flight_log.ndjson\"");
+        resp->addHeader("Cache-Control", "no-store");
+        resp->addHeader("Connection", "close");
         req->send(resp);
     });
 
@@ -936,6 +976,8 @@ void WebServer::_setupRoutes() {
             f.close();
         }
         FlightRecorder::unlockLog();
+        resp->addHeader("Cache-Control", "no-store");
+        resp->addHeader("Connection", "close");
         req->send(resp);
     });
 
@@ -1139,6 +1181,7 @@ void WebServer::_setupRoutes() {
             resp->print(runs[i]);
         }
         resp->print(']');
+        _finalizeJsonResponse(resp);
         req->send(resp);
     });
 
@@ -1169,6 +1212,8 @@ void WebServer::_setupRoutes() {
         snprintf(disp, sizeof(disp), "attachment; filename=\"%s\"", fname);
         AsyncWebServerResponse* resp = req->beginResponse(LittleFS, path, "text/csv");
         resp->addHeader("Content-Disposition", disp);
+        resp->addHeader("Cache-Control", "no-store");
+        resp->addHeader("Connection", "close");
         req->send(resp);
     });
 
@@ -1342,11 +1387,12 @@ void WebServer::_setupRoutes() {
 
     // GET /api/hardware — return the hardware section of ecu_config.json
     _server.on("/api/hardware", HTTP_GET, [](AsyncWebServerRequest* req) {
-        size_t n = HardwareConfig::toJson(g_webTxBuf, sizeof(g_webTxBuf), true);
-        if (n >= sizeof(g_webTxBuf))
-            Serial.printf("[WebServer] WARNING: hardware section JSON truncated (%u >= %u)\n",
-                          (unsigned)n, (unsigned)sizeof(g_webTxBuf));
-        req->send(200, "application/json", g_webTxBuf);
+        JsonDocument doc;
+        HardwareConfig::toJson(doc, true);
+        AsyncResponseStream* resp = req->beginResponseStream("application/json");
+        serializeJson(doc, *resp);
+        _finalizeJsonResponse(resp);
+        req->send(resp);
     });
 
     // POST /api/hardware — validate + replace the hardware section, schedule reboot
@@ -1481,6 +1527,13 @@ void WebServer::_setupRoutes() {
                         }
                         if (!calibrationOnly) break;
                     }
+                } else if (strcmp(topKey, "ab_flame") == 0 && top.value().is<JsonObject>()) {
+                    for (JsonPair field : top.value().as<JsonObject>()) {
+                        if (strcmp(field.key().c_str(), "threshold") != 0) {
+                            calibrationOnly = false;
+                            break;
+                        }
+                    }
                 } else {
                     calibrationOnly = false;
                 }
@@ -1530,6 +1583,8 @@ void WebServer::_setupRoutes() {
         AsyncWebServerResponse* resp = req->beginResponse(
             LittleFS, Config::PATH, "application/json");
         resp->addHeader("Content-Disposition", "attachment; filename=\"ecu_config.json\"");
+        resp->addHeader("Cache-Control", "no-store");
+        resp->addHeader("Connection", "close");
         req->send(resp);
     });
 
@@ -1724,16 +1779,22 @@ void WebServer::_setupRoutes() {
         // Keep each WebSocket frame small. ESPAsyncWebServer copies outgoing text
         // into a heap-backed vector; the previous full-frame size could exhaust
         // ESP32 heap and throw from operator new in the async TCP task.
-        static char buf[3584];
+        static char buf[6144];
         static JsonDocument doc;
         size_t n = _buildTelemetry(buf, sizeof(buf), doc, full);
         if (n < sizeof(buf)) {
             if (!_sendTelemetryFrame(client, buf, n)) _wsPendingResponse = true;
         } else if (full) {
+            Serial.printf("[WebSocket] Full telemetry frame too large (%u >= %u), falling back to fast frame\n",
+                          (unsigned)n, (unsigned)sizeof(buf));
             doc.clear();
             n = _buildTelemetry(buf, sizeof(buf), doc, false);
             if (n >= sizeof(buf) || !_sendTelemetryFrame(client, buf, n))
                 _wsPendingResponse = true;
+        } else {
+            Serial.printf("[WebSocket] Fast telemetry frame too large (%u >= %u)\n",
+                          (unsigned)n, (unsigned)sizeof(buf));
+            _wsPendingResponse = true;
         }
     });
     _server.addHandler(&_ws);

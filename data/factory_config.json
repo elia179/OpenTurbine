@@ -143,7 +143,7 @@
         "current_zero_v": 1.65,
         "current_ready_a": 3.0
       },
-      "status_led": { "enabled": true, "pin": 2 }
+      "status_led": { "enabled": true, "pin": 2, "type": 0 }
     },
     "cluster_serial": { "enabled": false, "tx_pin": 17, "rx_pin": -1, "baud": 115200, "interval_ms": 50, "protocol": 1 },
     "buzzer": { "enabled": false, "pin": -1 },

@@ -1,13 +1,14 @@
 #pragma once
 #include "../IBlock.h"
 #include "../../EngineData.h"
+#include "../../../system/Config.h"
 #include <Arduino.h>
 
 // ============================================================
-//  ABStabilize — hold after AB lights, monitor TOT
+//  ABStabilize - hold after AB lights, monitor selected EGT.
 //
 //  Waits stabilizeMs to confirm a stable AB burn.
-//  If stabilizeMaxTot > 0 and TOT exceeds it → Fault.
+//  If stabilizeMaxTot > 0 and selected EGT exceeds it, fault.
 //  On Complete: sets abMode = Running.
 // ============================================================
 
@@ -27,14 +28,15 @@ public:
     BlockResult tick() override {
         auto& ed = EngineData::instance();
 
-        // TOT guard
-        if (stabilizeMaxTot > 0 && !ed.totHealthy) {
-            Serial.println("[AB] Stabilize fault: TOT sensor unavailable");
+        // EGT guard.
+        if (stabilizeMaxTot > 0 && !Config::primaryEgtHealthy(ed)) {
+            Serial.println("[AB] Stabilize fault: EGT sensor unavailable");
             return BlockResult::Fault;
         }
-        if (stabilizeMaxTot > 0 && ed.totHealthy && ed.tot > stabilizeMaxTot) {
-            Serial.printf("[AB] Stabilize: TOT %.1f > limit %.1f — FAULT\n",
-                          (double)ed.tot, (double)stabilizeMaxTot);
+        if (stabilizeMaxTot > 0 && Config::primaryEgtHealthy(ed)
+            && Config::primaryEgtC(ed) > stabilizeMaxTot) {
+            Serial.printf("[AB] Stabilize: EGT %.1f > limit %.1f - FAULT\n",
+                          (double)Config::primaryEgtC(ed), (double)stabilizeMaxTot);
             return BlockResult::Fault;
         }
 

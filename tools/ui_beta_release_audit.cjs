@@ -229,12 +229,54 @@ function enumNames(source, marker) {
     const ecuCluster = fs.readFileSync(path.join('src', 'system', 'ClusterSerial.cpp'), 'utf8');
     const client = fs.readFileSync(path.join('examples', 'OTCClusterClient.h'), 'utf8');
     assert.deepEqual(enumNames(client, 'enum FieldId'), enumNames(ecuCluster, 'enum FieldId'));
+    assert.match(ecuCluster, /bool hasPrimaryEgt\(\) \{ return Config::effectiveEgtSource\(\) != 0; \}/);
+    assert.match(ecuCluster, /bool hasShaftPower\(\) \{ return HardwareConfig::hasTorque && HardwareConfig::hasN2Rpm; \}/);
+    assert.match(ecuCluster, /\{ F_TOT_RATE,[^}]*"TOT_RATE",\s*"EGT rise C\/s",\s*hasPrimaryEgt/s);
+    assert.match(ecuCluster, /\{ F_POWER_W,[^}]*"POWER_W",\s*"Power W",\s*hasShaftPower/s);
+    assert.match(ecuCluster, /\{ F_THROTTLE_PCT,[^}]*"THROTTLE_PCT",\s*"Throttle pct",\s*hasThrottle/s);
     assert.match(client, /OTC:SUB,ALL/);
     assert.match(client, /OTC:CMD,STOP/);
     assert.match(client, /signalLost\(\)/);
     results.push('cluster example field ids and documented commands match the ECU protocol enum');
 
+    const throttleSlew = fs.readFileSync(path.join('src', 'engine', 'controllers', 'ThrottleSlew.h'), 'utf8');
+    assert.match(throttleSlew, /totHardLimit > 0\.0f/);
+    const safetyMonitor = fs.readFileSync(path.join('src', 'engine', 'SafetyMonitor.h'), 'utf8');
+    assert.match(safetyMonitor, /HardwareConfig::hasIgniter && n1Ok/);
+    const configSource = fs.readFileSync(path.join('src', 'system', 'Config.cpp'), 'utf8');
+    assert.match(configSource, /!HardwareConfig::hasN1Rpm \|\| !HardwareConfig::hasIgniter[\s\S]*relightEnabled = false/);
+    results.push('runtime safety guards cover zero EGT limits and stale auto-relight prerequisites');
+
+    const indexHtml = fs.readFileSync(path.join('data_src', 'index.html'), 'utf8');
+    assert.doesNotMatch(indexHtml, /20260612b|20260617b|Primary thermal limit/);
+    assert.match(indexHtml, /20260619a/);
+    assert.match(indexHtml, /<body data-page="dashboard">/);
+    assert.match(indexHtml, /id="profile-mismatch-banner" style="display:none"/);
+    results.push('dashboard asset cache key and selected-EGT tooltip are beta-current');
+
+    await page.goto(`${base}/generate_204`);
+    await page.waitForSelector('#n1-card', { state: 'attached' });
+    const portalBoot = await page.evaluate(() => {
+      startTelemetryBoot();
+      return {
+        path: location.pathname,
+        isLive: isLiveTelemetryPage(),
+        isDashboard: isDashboardPage(),
+        pullPeriod: _pullPeriodMs
+      };
+    });
+    assert.deepEqual(portalBoot, {
+      path: '/generate_204',
+      isLive: true,
+      isDashboard: true,
+      pullPeriod: 333
+    });
+    results.push('captive portal dashboard entry starts the same 3 Hz telemetry pull as /index.html');
+
     const webServer = fs.readFileSync(path.join('src', 'system', 'web', 'WebServer.cpp'), 'utf8');
+    assert.match(webServer, /VERSIONED_ASSET_CACHE[\s\S]*max-age=31536000, immutable/);
+    assert.match(webServer, /app\.js\.gz", "application\/javascript", VERSIONED_ASSET_CACHE/);
+    assert.match(webServer, /style\.css\.gz", "text\/css", VERSIONED_ASSET_CACHE/);
     assert.match(webServer, /static void _mergeJsonObject\(JsonObject dst, JsonObjectConst patch\)/);
     assert.equal((webServer.match(/_mergeJsonObject\(current\.as<JsonObject>\(\), patch\.as<JsonObjectConst>\(\)\)/g) || []).length, 2);
     assert.doesNotMatch(webServer, /2-level deep merge/);

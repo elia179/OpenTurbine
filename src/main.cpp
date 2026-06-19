@@ -221,13 +221,13 @@ static void validateSequences() {
                 // ERROR (not warning): without a flame sensor this block always aborts startup.
                 // Bench mode bypasses the error gate so testing still works.
                 addIssue(nm, "No flame sensor fitted — FlameConfirm will always abort startup. "
-                             "Replace with TempConfirm (TOT sensor) or TimedDelay, "
+                             "Replace with TempConfirm (EGT sensor) or TimedDelay, "
                              "or enable Bench Mode to test without sensors.", true);
         }
         else if (strcmp(nm, "TempConfirm") == 0) {
-            if (!hw.hasTot)
-                // ERROR: same logic — TempConfirm without a TOT sensor always aborts.
-                addIssue(nm, "No TOT sensor fitted — TempConfirm will always abort startup. "
+            if (Config::effectiveEgtSource() == 0)
+                // ERROR: TempConfirm without a selected EGT sensor always aborts.
+                addIssue(nm, "No TOT/TIT sensor fitted - TempConfirm will always abort startup. "
                              "Replace with FlameConfirm (flame sensor) or TimedDelay, "
                              "or enable Bench Mode to test without sensors.", true);
         }
@@ -371,25 +371,25 @@ static void validateSequences() {
                 // Torch is silently skipped at runtime when torchTotLimit == 0.
                 // Warn so the user knows to set abTorchTotLimit in config.
                 if (g_blkABIgnite.useTorch && g_blkABIgnite.torchTotLimit == 0.0f)
-                    addIssue(nm, "useTorch=true but abTorchTotLimit is 0 — torch will be silently disabled at runtime (no TOT safety cap). Set abTorchTotLimit > 0 in engine settings to enable torch.", false);
+                    addIssue(nm, "useTorch=true but abTorchTotLimit is 0 - torch will be silently disabled at runtime (no EGT safety cap). Set abTorchTotLimit > 0 in engine settings to enable torch.", false);
             }
             else if (strcmp(nm, "ABFlameConfirm") == 0) {
                 if (g_blkABFlameConfirm.flameMode == 0 && !hw.hasAbFlame)
                     addIssue(nm, "AB flame sensor mode is selected but no dedicated AB flame sensor is configured", false);
-                if (g_blkABFlameConfirm.flameMode == 1 && !hw.hasTot)
-                    addIssue(nm, "TOT-rise confirmation is selected but no TOT sensor is configured", false);
+                if (g_blkABFlameConfirm.flameMode == 1 && Config::effectiveEgtSource() == 0)
+                    addIssue(nm, "EGT-rise confirmation is selected but no TOT/TIT sensor is configured", false);
             }
         }
         // ABStabilize is the block that normally promotes Igniting → Running.
         // Without it, abSequenceDone() forces Running at sequence end with no
-        // stabilization hold or TOT check — warn so the omission is deliberate.
+        // stabilization hold or EGT check - warn so the omission is deliberate.
         if (_abIgnCount > 0) {
             bool hasStabilize = false;
             for (int i = 0; i < _abIgnCount; i++) {
                 if (strcmp(_abIgnBlocks[i]->name(), "ABStabilize") == 0) { hasStabilize = true; break; }
             }
             if (!hasStabilize)
-                addIssue("ABStabilize", "AB ignition sequence has no ABStabilize block — AB is marked Running as soon as the sequence completes, with no stabilization hold or TOT check", false);
+                addIssue("ABStabilize", "AB ignition sequence has no ABStabilize block - AB is marked Running as soon as the sequence completes, with no stabilization hold or EGT check", false);
         }
     }
 
@@ -404,8 +404,8 @@ static void validateSequences() {
 
     if (hw.safetyOverspeed && !hw.hasN1Rpm)
         addIssue("Overspeed", "Overspeed safety is enabled but no N1 RPM sensor is configured", true);
-    if (hw.safetyOvertemp && !hw.hasTot)
-        addIssue("Overtemp", "Overtemp safety is enabled but no TOT sensor is configured", true);
+    if (hw.safetyOvertemp && (Config::effectiveEgtSource() == 0 || Config::primaryEgtLimitC() <= 0.0f))
+        addIssue("Overtemp", "Overtemp safety requires a selected TOT/TIT source and a limit above zero", true);
     if ((hw.safetyLowOil || hw.safetyOilZero) && !hw.hasOilPress)
         addIssue("Oil Safety", "Oil pressure safety is enabled but no oil pressure sensor is configured", true);
     if (hw.safetyFlameout) {
@@ -413,17 +413,17 @@ static void validateSequences() {
         if (flameoutSrc == 0) {
             if (hw.hasFlame) flameoutSrc = 1;
             else if (hw.hasN1Rpm) flameoutSrc = 2;
-            else if (hw.hasTot) flameoutSrc = 3;
+            else if (Config::effectiveEgtSource() != 0) flameoutSrc = 3;
         }
         if ((flameoutSrc == 1 && !hw.hasFlame) ||
             (flameoutSrc == 2 && !hw.hasN1Rpm) ||
-            (flameoutSrc == 3 && !hw.hasTot) ||
+            (flameoutSrc == 3 && Config::effectiveEgtSource() == 0) ||
             flameoutSrc == 0) {
             addIssue("Flameout", "Flameout safety is enabled but the selected source is not configured", true);
         }
     }
-    if (hw.safetyHotStart && (!hw.hasTot || Config::hotStartTotThreshold <= 0.0f))
-        addIssue("Hot Start", "Hot-start safety requires a TOT sensor and a threshold above zero", true);
+    if (hw.safetyHotStart && ((!hw.hasTot && !hw.hasTit) || Config::hotStartTotThreshold <= 0.0f))
+        addIssue("Hot Start", "Hot-start safety requires a TOT or TIT sensor and a threshold above zero", true);
     if (hw.safetyTitOvertemp && (!hw.hasTit || Config::titLimit <= 0.0f))
         addIssue("TIT Safety", "TIT overtemp safety requires a TIT sensor and a limit above zero", true);
     if (hw.safetyOilTempHigh && (!hw.hasOilTemp || Config::oilTempLimit <= 0.0f))
@@ -435,10 +435,14 @@ static void validateSequences() {
     if (hw.safetySurge && (!hw.hasN1Rpm || Config::surgeDetectRpmVariance <= 0.0f))
         addIssue("Surge", "Surge safety requires N1 RPM and a variance threshold above zero", true);
 
-    if (Config::relightEnabled && !hw.hasN1Rpm)
-        addIssue("AutoRelight", "Auto-relight is enabled but no N1 RPM sensor is configured. "
-                                 "Relight requires N1 feedback to prove the engine is still windmilling.",
-                 false);
+    if (Config::relightEnabled && (!hw.hasN1Rpm || !hw.hasIgniter)) {
+        const char* reason = !hw.hasN1Rpm
+            ? "no N1 RPM sensor is configured. Relight requires N1 feedback to prove the engine is still windmilling."
+            : "Igniter 1 is not configured. Relight drives Igniter 1 during the recovery attempt.";
+        char msg[180];
+        snprintf(msg, sizeof(msg), "Auto-relight is enabled but %s", reason);
+        addIssue("AutoRelight", msg, false);
+    }
 
     if (ed.seqIssueCount == 0)
         Serial.println("[VALIDATE] All sequences OK");
@@ -540,7 +544,7 @@ static bool anyToolTimerActive() {
 // Cleared when: flame returns, N1 drops below min, or mode leaves RUNNING.
 static bool          _relightActive    = false;
 static unsigned long _relightBeginMs   = 0;
-static float         _relightBeginTot  = 0.0f;
+static float         _relightBeginEgt  = 0.0f;
 
 static bool deadlineExpired(unsigned long now, unsigned long deadline) {
     return deadline && (long)(now - deadline) >= 0;
@@ -587,7 +591,8 @@ static void checkExtraCooldown() {
         ed.extraCooldownActive = false;
         ed.starterDemand       = 0;
         ed.starterEnabled      = false;
-        ed.oilPumpPct        = 0;
+        ed.oilPumpPct          = 0;
+        ed.oilScavengeOn       = false;
         ed.extraCooldownUntilMs  = 0;
         return;
     }
@@ -596,7 +601,8 @@ static void checkExtraCooldown() {
         ed.extraCooldownActive = false;
         ed.starterDemand       = 0;
         ed.starterEnabled      = false;
-        ed.oilPumpPct        = 0;
+        ed.oilPumpPct          = 0;
+        ed.oilScavengeOn       = false;
         ed.extraCooldownUntilMs  = 0;
         Serial.println("[OT] Extra cooldown complete (timeout)");
     }
@@ -613,7 +619,7 @@ static int effectiveRelightConfirmSource() {
         return Config::flameoutSource;
     if (HardwareConfig::hasFlame) return 1;
     if (HardwareConfig::hasN1Rpm) return 2;
-    if (HardwareConfig::hasTot) return 3;
+    if (Config::effectiveEgtSource() != 0) return 3;
     return 0;
 }
 
@@ -629,8 +635,8 @@ static bool relightConfirmed(const EngineData& ed) {
                 && (millis() - _relightBeginMs) >= 1000UL;
         }
         case 3:
-            return HardwareConfig::hasTot && ed.totHealthy && Config::relightTotRiseC > 0.0f
-                && ed.tot >= (_relightBeginTot + Config::relightTotRiseC);
+            return Config::primaryEgtHealthy(ed) && Config::relightTotRiseC > 0.0f
+                && Config::primaryEgtC(ed) >= (_relightBeginEgt + Config::relightTotRiseC);
         default:
             return false;
     }
@@ -670,23 +676,36 @@ static void checkRelight() {
 }
 
 // ── Standby oil feed (windmill protection) ───────────────────
-// When engine is windmilling in STANDBY (N1 above threshold from wind/momentum),
-// run oil pump at a low feed duty to protect bearings.
+// When a selected shaft is windmilling in STANDBY, run oil pump at a low feed
+// duty to protect bearings. Source: 0=N1, 1=N2, 2=either fitted shaft.
 
 static void checkStandbyOilFeed() {
     auto& hw = HardwareConfig::instance();
-    if (!hw.hasOilPump || !hw.hasN1Rpm) return;
     auto& ed = EngineData::instance();
+    if (!hw.hasOilPump) {
+        ed.standbyOilFeedActive = false;
+        return;
+    }
     if (ed.mode != SysMode::STANDBY) {
         ed.standbyOilFeedActive = false;
         return;
     }
     if (ed.extraCooldownActive) return;  // extra cooldown controls oil in standby
 
-    if (ed.n1Rpm >= Config::standbyOilRpmLimit) {
+    const bool n1Ok = hw.hasN1Rpm && ed.n1Healthy && ed.n1Rpm >= Config::standbyOilRpmLimit;
+    const bool n2Ok = hw.hasN2Rpm && ed.n2Healthy && ed.n2Rpm >= Config::standbyOilRpmLimit;
+    bool windmilling = false;
+    switch (Config::standbyOilSource) {
+        case 1:  windmilling = n2Ok; break;
+        case 2:  windmilling = n1Ok || n2Ok; break;
+        default: windmilling = n1Ok; break;
+    }
+
+    if (windmilling) {
         if (!ed.standbyOilFeedActive) {
             ed.standbyOilFeedActive = true;
-            Serial.printf("[OT] Standby oil feed ON (N1=%.0f)\n", (double)ed.n1Rpm);
+            Serial.printf("[OT] Standby oil feed ON (N1=%.0f N2=%.0f)\n",
+                (double)ed.n1Rpm, (double)ed.n2Rpm);
         }
         // Only set if no other tool is using the oil (prime etc.)
         if (ed.oilPumpPct < Config::standbyOilFeedPct) {
@@ -1044,12 +1063,6 @@ static void checkCooldownSkip() {
                  >= (unsigned long)Config::cooldownSkipHoldMs)
         {
             _cooldownSkipHoldStart = 0;
-            if (HardwareConfig::hasTot &&
-                (!ed.totHealthy || ed.tot > Config::totCooldownTarget)) {
-                strncpy(ed.lastEvent, "Cooldown skip blocked: turbine still hot",
-                        sizeof(ed.lastEvent) - 1);
-                return;
-            }
             Serial.println("[OT] Cooldown skip — both buttons held");
             strncpy(ed.lastEvent, "Cooldown skipped by operator", sizeof(ed.lastEvent) - 1);
             enterStandby();
@@ -1227,7 +1240,7 @@ static void enterStandby() {
     _propPitchTestUntilMs  = 0;
     _relightActive         = false;
     _relightBeginMs        = 0;
-    _relightBeginTot       = 0.0f;
+    _relightBeginEgt       = 0.0f;
     ed.limpMode           = false;
     ed.clusterCode        = 0;
     ed.fuelEverOpened     = false;
@@ -1330,9 +1343,9 @@ static void handleCommand(const OTPacket& pkt) {
                     Serial.println("[OT] START blocked: stop switch active");
                     break;
                 }
-                // Extra cooldown owns the starter and oil pump. Starting now
+                // Extra cooldown owns the configured CooldownSpin actuators. Starting now
                 // would race its cancel path: checkExtraCooldown() zeroes
-                // starterDemand/oilPumpPct AFTER the first startup block's
+                // actuator demands AFTER the first startup block's
                 // onEnter() ran — on builds without an oil pressure sensor,
                 // OilPrime's fixed pump duty is wiped and the prime runs to
                 // "Complete" having delivered no oil.
@@ -1498,16 +1511,21 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::EXTRA_COOLDOWN:
-            if ((HardwareConfig::hasStarter || HardwareConfig::hasOilPump) && ed.mode == SysMode::STANDBY) {
+            {
+            const bool ecUseStarter = HardwareConfig::hasStarter && Config::cooldownUseStarter;
+            const bool ecUseOil = HardwareConfig::hasOilPump && Config::cooldownUseOilPump;
+            const bool ecUseScavenge = HardwareConfig::hasOilScavengePump && Config::cooldownUseScavengePump;
+            if ((ecUseStarter || ecUseOil || ecUseScavenge) && ed.mode == SysMode::STANDBY) {
                 if (!ed.extraCooldownActive && pkt.iParam > 0) {
                     // iParam = duration in seconds from UI slider (60–300 s)
                     int seconds = constrain(pkt.iParam, 60, 300);
                     unsigned long durationMs  = (unsigned long)seconds * 1000UL;
                     ed.extraCooldownActive    = true;
                     ed.oilFailsafeActive      = false;  // take manual control
-                    ed.starterEnabled         = HardwareConfig::hasStarter;
-                    ed.starterDemand          = HardwareConfig::hasStarter ? 0.3f : 0.0f;
-                    ed.oilPumpPct             = HardwareConfig::hasOilPump ? 30.0f : 0.0f;
+                    ed.starterEnabled         = ecUseStarter;
+                    ed.starterDemand          = ecUseStarter ? (Config::cooldownStarterPct / 100.0f) : 0.0f;
+                    ed.oilPumpPct             = ecUseOil ? Config::cooldownOilPct : 0.0f;
+                    ed.oilScavengeOn          = ecUseScavenge;
                     ed.extraCooldownUntilMs     = millis() + durationMs;
                     Serial.printf("[OT] Extra cooldown started (%lu s)\n",
                         (unsigned long)seconds);
@@ -1517,10 +1535,12 @@ static void handleCommand(const OTPacket& pkt) {
                     ed.oilFailsafeActive   = false;
                     ed.starterDemand       = 0;
                     ed.starterEnabled      = false;
-                    ed.oilPumpPct        = 0;
+                    ed.oilPumpPct          = 0;
+                    ed.oilScavengeOn       = false;
                     ed.extraCooldownUntilMs  = 0;
                     Serial.println("[OT] Extra cooldown cancelled");
                 }
+            }
             }
             break;
 
@@ -1837,7 +1857,7 @@ void setup() {
             ed.relightAttempts = ed.relightAttempts + 1;
             _relightActive     = true;
             _relightBeginMs    = millis();
-            _relightBeginTot   = ed.tot;
+            _relightBeginEgt   = Config::primaryEgtHealthy(ed) ? Config::primaryEgtC(ed) : 0.0f;
             ed.clusterCode     = 2;   // ClCode::RelightActive
             FlightRecorder::logRelight(ed.relightAttempts);
             Serial.printf("[OT] Relight started — N1=%.0f RPM\n", (double)ed.n1Rpm);

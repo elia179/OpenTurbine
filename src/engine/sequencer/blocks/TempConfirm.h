@@ -1,13 +1,14 @@
 #pragma once
 #include "../IBlock.h"
 #include "../../EngineData.h"
+#include "../../../system/Config.h"
 #include <Arduino.h>
 
-// Wait for TOT to rise above a target temperature.
+// Wait for the selected engine temperature source to rise above a target.
 // Alternative to FlameConfirm for engines without a flame sensor.
 // Requires requiredCount consecutive readings above tempTarget to avoid
 // triggering on a single sensor glitch.
-// Abort if timeout is reached without TOT meeting the threshold.
+// Abort if timeout is reached without EGT meeting the threshold.
 class TempConfirm : public IBlock {
 public:
     float         tempTarget    = 200.0f;   // °C
@@ -23,13 +24,13 @@ public:
 
     BlockResult tick() override {
         auto& ed = EngineData::instance();
-        // Bench mode: immediately simulate TOT above threshold — no sensor, no wait
+        // Bench mode: immediately simulate EGT above threshold - no sensor, no wait.
         if (ed.benchMode) {
-            Serial.println("[TempConfirm] BENCH: simulating TOT threshold met");
+            Serial.println("[TempConfirm] BENCH: simulating EGT threshold met");
             return BlockResult::Complete;
         }
         if ((millis() - _entryMs) > timeoutMs) return BlockResult::Abort;
-        if (ed.totHealthy && ed.tot >= tempTarget) {
+        if (Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) >= tempTarget) {
             if (++_count >= requiredCount) return BlockResult::Complete;
         } else {
             _count = 0;  // reset on any reading below threshold

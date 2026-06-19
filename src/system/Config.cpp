@@ -57,6 +57,7 @@ float Config::idleIMax              = 0.10f;  // ±10% integral authority
 
 int   Config::safetyCheckIntervalMs      = 100;
 float Config::flameoutShutdownMs         = 3000;
+int   Config::egtSource                  = 0;
 int   Config::flameoutSource             = 0;
 float Config::flameoutN1MinRpm           = 0.0f;
 float Config::flameoutTotDropC           = 80.0f;
@@ -99,6 +100,7 @@ float    Config::rpmZeroThreshold     = 100.0f;
 float    Config::oilZeroBar          = 0.1f;
 float    Config::oilPressureDeadband = 0.2f;
 
+int      Config::standbyOilSource    = 0;
 float    Config::standbyOilRpmLimit  = 100.0f;
 float    Config::standbyOilFeedPct   = 25.0f;
 
@@ -171,7 +173,7 @@ int      Config::rpmZeroStuckTicks   = 5;
 
 float    Config::n1WarnRpm          = 90000.0f;   // default = rpmLimit * 0.9
 float    Config::n2WarnRpm          = 22000.0f;
-float    Config::totWarnC           = 0.0f;       // 0 = auto (totLimit - totSafeMargin)
+float    Config::totWarnC           = 0.0f;       // 0 = auto (selected EGT limit - totSafeMargin)
 float    Config::oilWarnBar         = 0.0f;       // 0 = auto (oilRunningMin)
 bool     Config::clusterEnabled     = true;
 
@@ -432,9 +434,16 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(th["expo"], 0.0f, 1.0f)) return false;
     if (present(th["idle_min_pct"]) && present(th["idle_max_pct"]) && th["idle_max_pct"].as<float>() < th["idle_min_pct"].as<float>()) return false;
 
+    JsonVariantConst so = doc["standby_oil"];
+    if (present(so) && (!so.is<JsonObjectConst>() ||
+        !validInt(so["source"], 0, 2) ||
+        !validNumber(so["rpm_limit"], 0.0f, 500000.0f) ||
+        !validNumber(so["feed_pct"], 0.0f, 100.0f))) return false;
+
     JsonVariantConst sf = doc["safety"];
     if (!validInt(sf["check_interval_ms"], 10, 60000) ||
         !validNumber(sf["flameout_shutdown_ms"], 100.0f, 60000.0f) ||
+        !validInt(sf["egt_source"], 0, 2) ||
         !validInt(sf["flameout_source"], 0, 3) ||
         !validNumber(sf["flameout_n1_min_rpm"], 0.0f, 500000.0f) ||
         !validNumber(sf["flameout_tot_drop_c"], 0.0f, 1400.0f) ||
@@ -685,6 +694,22 @@ void Config::releaseStorageWrite() {
 }
 
 void Config::sanitizeForHardware() {
+    if ((egtSource == 1 && !HardwareConfig::hasTot) ||
+        (egtSource == 2 && !HardwareConfig::hasTit)) {
+        egtSource = 0;
+    }
+    if ((!HardwareConfig::hasN1Rpm || !HardwareConfig::hasIgniter) && relightEnabled) {
+        relightEnabled = false;
+    }
+    const bool hasN1 = HardwareConfig::hasN1Rpm;
+    const bool hasN2 = HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
+    if (!hasN1 && !hasN2) {
+        standbyOilSource = 0;
+    } else if (standbyOilSource == 0 && !hasN1) {
+        standbyOilSource = 1;
+    } else if (standbyOilSource == 1 && !hasN2) {
+        standbyOilSource = 0;
+    }
     if (!HardwareConfig::hasN1Rpm) sessionLogMask &= ~SLOG_N1;
     if (!HardwareConfig::hasTwoShaft || !HardwareConfig::hasN2Rpm) sessionLogMask &= ~SLOG_N2;
     if (!HardwareConfig::hasTot) sessionLogMask &= ~SLOG_TOT;
@@ -774,6 +799,46 @@ bool Config::flushPendingRuntimeStats() {
         return false;
     }
     return true;
+}
+
+int Config::effectiveEgtSource() {
+    if (egtSource == 1 && HardwareConfig::hasTot) return 1;
+    if (egtSource == 2 && HardwareConfig::hasTit) return 2;
+    if (HardwareConfig::hasTot) return 1;
+    if (HardwareConfig::hasTit) return 2;
+    return 0;
+}
+
+bool Config::primaryEgtHealthy(const EngineData& ed) {
+    switch (effectiveEgtSource()) {
+        case 1: return ed.totHealthy;
+        case 2: return ed.titHealthy;
+        default: return false;
+    }
+}
+
+float Config::primaryEgtC(const EngineData& ed) {
+    switch (effectiveEgtSource()) {
+        case 1: return ed.tot;
+        case 2: return ed.tit;
+        default: return 0.0f;
+    }
+}
+
+float Config::primaryEgtLimitC() {
+    switch (effectiveEgtSource()) {
+        case 1: return totLimit;
+        case 2: return titLimit;
+        default: return 0.0f;
+    }
+}
+
+const char* Config::primaryEgtLabel() {
+    switch (effectiveEgtSource()) {
+        case 1: return "TOT";
+        case 2: return "TIT";
+        default: return "EGT";
+    }
 }
 
 void Config::clearRuntimeStats() {
@@ -942,7 +1007,7 @@ void Config::_applyDefaults() {
     idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f;
     idleUseN2 = false; idleIGain = 0.0f; idleIMax = 0.10f;
     safetyCheckIntervalMs = 100; flameoutShutdownMs = 3000;
-    flameoutSource = 0; flameoutN1MinRpm = 0.0f; flameoutTotDropC = 80.0f;
+    egtSource = 0; flameoutSource = 0; flameoutN1MinRpm = 0.0f; flameoutTotDropC = 80.0f;
     totRiseRateLimitDegPerSec = 0.0f; titLimit = 0.0f; oilTempLimit = 120.0f;
     fuelPressMin = 0.0f; battVoltMin = 0.0f; surgeDetectRpmVariance = 0.0f;
     relightEnabled = false; relightConfirmSource = 0; relightMinRpm = 30000.0f;
@@ -952,7 +1017,7 @@ void Config::_applyDefaults() {
     wsIntervalMs = 333; snapshotIntervalMs = 10000; logStandby = false;
     starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
-    standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
+    standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
     limpMaxThrottlePct = 50.0f; igniterOnStart = true;
     cooldownSkipHoldMs = 1000;
     fuelPumpIdleMinPct = 8.0f; fuelPumpIdleMaxPct = 18.0f;
@@ -1098,6 +1163,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     auto sf = doc["safety"];
     safetyCheckIntervalMs         = sf["check_interval_ms"]         | safetyCheckIntervalMs;
     flameoutShutdownMs            = sf["flameout_shutdown_ms"]       | flameoutShutdownMs;
+    if (sf["egt_source"].isNull()) _missingRequiredSections = true;
+    egtSource                     = sf["egt_source"]                 | egtSource;
     flameoutSource                = sf["flameout_source"]            | flameoutSource;
     flameoutN1MinRpm              = sf["flameout_n1_min_rpm"]        | flameoutN1MinRpm;
     flameoutTotDropC              = sf["flameout_tot_drop_c"]        | flameoutTotDropC;
@@ -1107,6 +1174,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     fuelPressMin                  = sf["fuel_press_min_bar"]         | fuelPressMin;
     battVoltMin                   = sf["batt_volt_min_v"]            | battVoltMin;
     surgeDetectRpmVariance        = sf["surge_detect_rpm_variance"]  | surgeDetectRpmVariance;
+    if (egtSource < 0 || egtSource > 2) egtSource = 0;
 
     auto gov = doc["governor"];
     governorTargetRpm  = gov["target_rpm"]   | governorTargetRpm;
@@ -1184,6 +1252,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     // ignition section kept for forward compatibility but postIgnDwellMs removed
 
     auto sob = doc["standby_oil"];
+    standbyOilSource   = sob["source"]    | standbyOilSource;
     standbyOilRpmLimit = sob["rpm_limit"] | standbyOilRpmLimit;
     standbyOilFeedPct  = sob["feed_pct"]  | standbyOilFeedPct;
 
@@ -1356,6 +1425,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (relightTotRiseC < 0.0f) relightTotRiseC = 0.0f;
     if (starterAssistExitRpm < 0.0f) starterAssistExitRpm = 0.0f;
     if (starterRampPctPerSec < 0.0f) starterRampPctPerSec = 0.0f;
+    standbyOilSource = constrain(standbyOilSource, 0, 2);
     if (standbyOilRpmLimit < 0.0f) standbyOilRpmLimit = 0.0f;
     if (toolFuelPrimeMs > 60000u) toolFuelPrimeMs = 3000u;
     if (toolOilPrimeMs > 60000u) toolOilPrimeMs = 5000u;
@@ -1549,6 +1619,7 @@ void Config::_toDoc(JsonDocument& doc) {
     auto sf = doc["safety"].to<JsonObject>();
     sf["check_interval_ms"]           = safetyCheckIntervalMs;
     sf["flameout_shutdown_ms"]        = flameoutShutdownMs;
+    sf["egt_source"]                  = egtSource;
     sf["flameout_source"]             = flameoutSource;
     sf["flameout_n1_min_rpm"]         = flameoutN1MinRpm;
     sf["flameout_tot_drop_c"]         = flameoutTotDropC;
@@ -1633,6 +1704,7 @@ void Config::_toDoc(JsonDocument& doc) {
 
 
     auto sob = doc["standby_oil"].to<JsonObject>();
+    sob["source"]    = standbyOilSource;
     sob["rpm_limit"] = standbyOilRpmLimit;
     sob["feed_pct"]  = standbyOilFeedPct;
 

@@ -4,17 +4,17 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260607b">
+<link rel="stylesheet" href="/style.css?v=20260619a">
 </head>
 <body>
 <nav>
-  <a href="/hardware.html">Hardware</a>
-  <a href="/calibration.html">Calibration</a>
-  <a href="/config.html">Config</a>
-  <a href="/sequence.html">Sequence</a>
-  <a href="/">Dashboard</a>
-  <a href="/log.html">Log</a>
-  <a href="/tools.html" class="active">Tools</a>
+  <a href="/" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
+  <a href="/hardware.html" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
+  <a href="/config.html" title="Tune limits, controllers, logging, telemetry, and hardware-dependent settings.">Config</a>
+  <a href="/calibration.html" title="Calibrate fitted analog, servo, pressure, temperature, current, and flow inputs.">Calibration</a>
+  <a href="/sequence.html" title="Edit startup, shutdown, afterburner sequences, block timings, and control rules.">Sequence</a>
+  <a href="/log.html" title="View fault/event history and per-run CSV session logs.">Log</a>
+  <a href="/tools.html" class="active" title="Run standby-only actuator tests, backups, restore, OTA, factory reset, and dev tools.">Tools</a>
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
@@ -28,7 +28,7 @@
   <div id="tool-area"></div>
 </main>
 
-<script src="/app.js?v=20260607b"></script>
+<script src="/app.js?v=20260619a"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -57,7 +57,8 @@ const TOOLS = [
   { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, desc:'Turns closed-loop idle RPM hold on or off while running. Available only when it is enabled in Hardware and has throttle output plus RPM feedback.', toggleKey:'dynamic_idle_enabled',
     visibleIf: hw => !!(hw?.controllers?.dynamic_idle && hw?.actuators?.throttle?.enabled &&
       (hw?.sensors?.n1_rpm?.enabled || (hw?.has_two_shaft && hw?.sensors?.n2_rpm?.enabled))) },
-  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode' },
+  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode',
+    visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
 ];
 
 let activeId    = null;
@@ -66,6 +67,33 @@ let activeStart = 0;
 let engineMode  = null;
 let liveData    = {};
 let hwCfg       = {};
+let cfgData     = {};
+let toolsTelemetryTimer = null;
+
+function extraCooldownDescription() {
+  const sd = cfgData?.sequence?.shutdown || {};
+  const parts = [];
+  if (hwCfg?.actuators?.starter?.enabled && sd.cooldown_use_starter !== false) {
+    parts.push(`starter at ${sd.cooldown_starter_pct ?? 40}%`);
+  }
+  if (hwCfg?.actuators?.oil_pump?.enabled && sd.cooldown_use_oil !== false) {
+    parts.push(`oil pump at ${sd.cooldown_oil_pct ?? 30}%`);
+  }
+  if (hwCfg?.actuators?.oil_scavenge_pump?.enabled && sd.cooldown_use_scavenge === true) {
+    parts.push('scavenge pump');
+  }
+  if (!parts.length) return 'Extra Cooldown is available only when the shutdown CooldownSpin block has a fitted actuator enabled.';
+  return 'Manual standby cooldown using Sequencer CooldownSpin settings: ' + parts.join(' + ') + '. Duration is set by this Tools slider.';
+}
+
+function extraCooldownAvailable() {
+  const sd = cfgData?.sequence?.shutdown || {};
+  return !!(
+    (hwCfg?.actuators?.starter?.enabled && sd.cooldown_use_starter !== false) ||
+    (hwCfg?.actuators?.oil_pump?.enabled && sd.cooldown_use_oil !== false) ||
+    (hwCfg?.actuators?.oil_scavenge_pump?.enabled && sd.cooldown_use_scavenge === true)
+  );
+}
 
 // ── Render ────────────────────────────────────────────────────
 function renderTools() {
@@ -93,9 +121,10 @@ function renderTools() {
   });
 
   // ── Extra Cooldown — slider-based special card ────────────
-  if (hwCfg?.actuators?.starter?.enabled || hwCfg?.actuators?.oil_pump?.enabled) {
+  const cooldownDesc = extraCooldownDescription();
+  if (extraCooldownAvailable()) {
     html += `<hr class="tool-divider">
-  <div class="tool-card" id="card-EXTRA_COOLDOWN" title="Runs fitted starter and/or oil pump for a timed post-stop cooling cycle. Available only with relevant fitted hardware.">
+  <div class="tool-card" id="card-EXTRA_COOLDOWN" title="${cooldownDesc}">
     <div class="tool-header">
       <div class="tool-name">Extra Cooldown</div>
       <div class="tool-state off" id="state-EXTRA_COOLDOWN">OFF</div>
@@ -108,13 +137,13 @@ function renderTools() {
         <span id="cooldown-slider-val" style="font-size:.75rem;color:var(--dim);min-width:3.5rem;text-align:right">120 s</span>
       </div>
       <div class="tool-footer">
-        <div class="tool-desc">Runs starter + oil pump to spin-cool engine after a hot stop.</div>
+        <div class="tool-desc">${cooldownDesc}</div>
         <button id="btn-EXTRA_COOLDOWN" onclick="startCooldown()" disabled>Start</button>
       </div>
     </div>
     <div id="cooldown-stop-ui" style="display:none">
       <div class="tool-footer">
-        <div class="tool-desc" style="color:var(--yellow)">Cooldown running — starter + oil pump active.</div>
+        <div class="tool-desc" style="color:var(--yellow)">${cooldownDesc}</div>
         <button onclick="stopCooldown()" class="danger">Stop</button>
       </div>
     </div>
@@ -371,7 +400,7 @@ function setAllButtons(forcedOff) {
   // Cooldown start button — only in STANDBY and not already running
   const ecBtn = document.getElementById('btn-EXTRA_COOLDOWN');
   const ecActive = !!(liveData && liveData.extra_cooldown_active);
-  if (ecBtn) ecBtn.disabled = forcedOff || !inStandby || ecActive;
+  if (ecBtn) ecBtn.disabled = forcedOff || !inStandby || ecActive || !extraCooldownAvailable();
   // Factory reset — standby only (card label says so; enforce it here)
   const frBtn = document.getElementById('btn-factory-reset');
   if (frBtn) frBtn.disabled = forcedOff || !inStandby;
@@ -380,10 +409,12 @@ function setAllButtons(forcedOff) {
 // ── WS integration ────────────────────────────────────────────
 const _base = window.applyData;
 window.applyData = function(d) {
-  _base(d);
+  const merged = _base(d);
+  if (!merged) return;
   // Use _lastData (accumulated by app.js) so slow fields like dev_mode_fw
   // are not lost when a partial fast frame arrives and overwrites liveData.
-  liveData = _lastData || d;
+  liveData = merged;
+  d = merged;
   if (!d.mode) return;
   engineMode = d.mode;
 
@@ -486,7 +517,7 @@ window.applyData = function(d) {
     ecState.className   = 'tool-state ' + (ecActive ? 'active' : 'off');
   }
   const ecBtn = document.getElementById('btn-EXTRA_COOLDOWN');
-  if (ecBtn) ecBtn.disabled = (d.mode !== 'STANDBY') || ecActive;
+  if (ecBtn) ecBtn.disabled = (d.mode !== 'STANDBY') || ecActive || !extraCooldownAvailable();
 };
 
 // ── Dev mode toggle ───────────────────────────────────────────
@@ -504,7 +535,9 @@ function toggleDevMode() {
     method: 'POST',
     body: JSON.stringify({ cmd: 'TOGGLE_DEV_MODE' }),
     headers: { 'Content-Type': 'application/json' }
-  }).catch(e => alert('Network error: ' + e));
+  })
+    .then(() => setTimeout(pollToolsTelemetry, 200))
+    .catch(e => alert('Network error: ' + e));
 }
 
 // ── Safety checks bypass (dev mode only) ─────────────────────
@@ -522,7 +555,9 @@ function toggleSafetyChecks() {
     method: 'POST',
     body: JSON.stringify({ cmd: 'TOGGLE_SAFETY_CHECKS' }),
     headers: { 'Content-Type': 'application/json' }
-  }).catch(e => alert('Network error: ' + e));
+  })
+    .then(() => setTimeout(pollToolsTelemetry, 200))
+    .catch(e => alert('Network error: ' + e));
 }
 
 // ── Bench mode toggle ─────────────────────────────────────────
@@ -538,7 +573,9 @@ function toggleBenchMode() {
     method: 'POST',
     body: JSON.stringify({ cmd: 'TOGGLE_BENCH_MODE' }),
     headers: { 'Content-Type': 'application/json' }
-  }).catch(e => alert('Network error: ' + e));
+  })
+    .then(() => setTimeout(pollToolsTelemetry, 200))
+    .catch(e => alert('Network error: ' + e));
 }
 
 // ── Load config to sync tool durations ───────────────────────
@@ -546,18 +583,64 @@ function getNestedVal(obj, dotPath) {
   return dotPath.split('.').reduce((cur, k) => (cur && typeof cur === 'object' ? cur[k] : undefined), obj);
 }
 
-Promise.all([
-  fetch('/api/config').then(r => r.json()).catch(() => ({})),
-  fetch('/api/hardware').then(r => r.json()).catch(() => ({}))
-]).then(([cfg, hw]) => {
+loadToolConfig().then(({cfg, hw}) => {
   hwCfg = hw || {};
+  cfgData = cfg || {};
   TOOLS.forEach(t => {
     if (!t.configKey) return;
     const v = getNestedVal(cfg, t.configKey);
     if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
   });
   renderTools();
+  startToolsTelemetry();
 });
+
+async function fetchJsonWithTimeout(url, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!r.ok) throw new Error(url + ' returned HTTP ' + r.status);
+    const text = await r.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchJsonWithRetry(url, attempts = 3) {
+  let lastError;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchJsonWithTimeout(url);
+    } catch (e) {
+      lastError = e;
+      await new Promise(resolve => setTimeout(resolve, 200 + i * 300));
+    }
+  }
+  throw lastError;
+}
+
+async function loadToolConfig() {
+  const cfg = await fetchJsonWithRetry('/api/config').catch(() => ({}));
+  const hw = await fetchJsonWithRetry('/api/hardware').catch(() => ({}));
+  return { cfg, hw };
+}
+
+async function pollToolsTelemetry() {
+  try {
+    const d = await fetchJsonWithTimeout('/api/data', 3000);
+    window.applyData(d);
+  } catch (_) {
+    setConnectionState(false, 'Disconnected');
+  }
+}
+
+function startToolsTelemetry() {
+  if (toolsTelemetryTimer) return;
+  pollToolsTelemetry();
+  toolsTelemetryTimer = setInterval(pollToolsTelemetry, 2000);
+}
 
 
 // ── Config backup ─────────────────────────────────────────────

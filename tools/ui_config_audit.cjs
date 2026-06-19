@@ -48,7 +48,7 @@ async function patchData(page, patch) {
 
 async function goto(page, route, waitSelector) {
   await page.goto(`${base}/${route}`);
-  await page.waitForSelector(waitSelector);
+  await page.waitForSelector(waitSelector, { state: 'attached' });
 }
 
 (async () => {
@@ -87,6 +87,7 @@ async function goto(page, route, waitSelector) {
       cfg.safety.overtemp = true;
       cfg.safety.hot_start = true;
       setSensor('tot', false);
+      setSensor('tit', false);
       updateSafetyPrerequisites(true);
       const totOff = { overtemp: st('f-saf-overtemp'), hotStart: st('f-saf-hotstart') };
 
@@ -94,6 +95,7 @@ async function goto(page, route, waitSelector) {
       setSensor('flame', false);
       setSensor('n1_rpm', false);
       setSensor('tot', false);
+      setSensor('tit', false);
       updateSafetyPrerequisites(true);
       const combustionOff = { flameout: st('f-saf-flameout') };
 
@@ -294,13 +296,13 @@ async function goto(page, route, waitSelector) {
     await patchHardware(page, {
       has_afterburner: false,
       controllers: { governor: false },
-      sensors: { tit: { enabled: false }, oil_temp: { enabled: false }, fuel_press: { enabled: false }, batt_voltage: { enabled: false }, tot: { enabled: false } },
+      sensors: { n1_rpm: { enabled: false }, tit: { enabled: false }, oil_temp: { enabled: false }, fuel_press: { enabled: false }, batt_voltage: { enabled: false }, tot: { enabled: false } },
       actuators: { igniter2: { enabled: false }, ab_pump: { enabled: false } },
       ab_flame: { enabled: false },
       ab_trigger: { input_pin: -1 }
     });
     await patchData(page, {
-      has_afterburner: false, has_governor: false, has_tit: false, has_oil_temp: false,
+      has_afterburner: false, has_governor: false, has_n1: false, has_tit: false, has_oil_temp: false,
       has_fuel_press: false, has_batt_voltage: false, has_tot: false,
       fuel_press_min: 0, tit_limit: 0
     });
@@ -308,7 +310,9 @@ async function goto(page, route, waitSelector) {
     await page.waitForSelector('#cf-tot_limit');
     assert.equal(await shown(page, '#safety-ext-section'), false);
     assert.equal(await shown(page, '#governor-cfg-section'), false);
-    assert.equal(await shown(page, '#afterburner-cfg-section'), false);
+    for (const selector of ['#ab-cfg-section', '#ab-ign-section', '#ab-flame-section', '#ab-run-section']) {
+      assert.equal(await shown(page, selector), false, `${selector} should hide`);
+    }
     results.push('config unit conversions preserve meaning and optional sections hide when hardware is absent');
 
     await reset(page);
@@ -338,8 +342,17 @@ async function goto(page, route, waitSelector) {
     for (const selector of ['#oil-press-cal-row', '#flame-cal-row', '#p1-cal-row', '#p2-cal-row', '#oiltemp-cal-row', '#battvolt-cal-row', '#torque-cal-row', '#fuelpress-cal-row', '#fuelflow-cal-row', '#throttle-cal-row', '#idle-cal-row']) {
       assert.equal(await shown(page, selector), false, `${selector} should be hidden`);
     }
+    await patchHardware(page, {
+      sensors: {
+        fuel_flow: { enabled: true, type: 0 },
+        throttle_input: { enabled: true, rc_pwm: true },
+        idle_input: { enabled: true, rc_pwm: true }
+      }
+    });
     await patchData(page, { has_fuel_flow: true, fuel_flow_type: 0, throttle_input_type: 'servo', throttle_input_us: 1500, idle_input_type: 'servo', idle_input_us: 1300 });
-    await page.waitForTimeout(100);
+    await page.reload();
+    await page.waitForSelector('#oil-press-cal-row', { state: 'attached' });
+    await page.waitForFunction(() => /us|µs|Âµs/.test(document.querySelector('#cal-th-raw')?.textContent || ''), null, { timeout: 5000 });
     assert.equal(await shown(page, '#fuelflow-cal-row'), true);
     assert.equal(await shown(page, '#throttle-cal-row'), true);
     assert.equal(await shown(page, '#idle-cal-row'), true);
@@ -382,6 +395,7 @@ async function goto(page, route, waitSelector) {
     assert.equal(await page.locator('#card-AB_SOL_TEST').count(), 0);
     assert.equal(await page.locator('#card-AB_PUMP_TEST').count(), 0);
     assert.equal(await page.locator('#card-TOGGLE_DYNAMIC_IDLE').count(), 0);
+    assert.equal(await page.locator('#card-TOGGLE_LIMP_MODE').count(), 0);
     results.push('tools page hides tests and toggles whose hardware prerequisites are absent');
 
     console.log(`UI configuration audit passed (${results.length} groups):`);

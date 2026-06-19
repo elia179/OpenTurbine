@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Sequence</title>
-<link rel="stylesheet" href="/style.css?v=20260607b">
+<link rel="stylesheet" href="/style.css?v=20260619a">
 <style>
 #seq-validation-banner { margin-bottom: .6rem; }
 .seq-val-error, .seq-val-warn {
@@ -29,13 +29,13 @@
 </head>
 <body>
 <nav>
-  <a href="/hardware.html">Hardware</a>
-  <a href="/calibration.html">Calibration</a>
-  <a href="/config.html">Config</a>
-  <a href="/sequence.html" class="active">Sequence</a>
-  <a href="/">Dashboard</a>
-  <a href="/log.html">Log</a>
-  <a href="/tools.html">Tools</a>
+  <a href="/" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
+  <a href="/hardware.html" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
+  <a href="/config.html" title="Tune limits, controllers, logging, telemetry, and hardware-dependent settings.">Config</a>
+  <a href="/calibration.html" title="Calibrate fitted analog, servo, pressure, temperature, current, and flow inputs.">Calibration</a>
+  <a href="/sequence.html" class="active" title="Edit startup, shutdown, afterburner sequences, block timings, and control rules.">Sequence</a>
+  <a href="/log.html" title="View fault/event history and per-run CSV session logs.">Log</a>
+  <a href="/tools.html" title="Run standby-only actuator tests, backups, restore, OTA, factory reset, and dev tools.">Tools</a>
   <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
@@ -125,7 +125,7 @@
           oninput="setAbEntryNumber('max_n1', this.value)">
       </div>
       <div class="param-field" id="ab-edit-tot-wrap">
-        <span class="param-label">Maximum TOT To Light <span class="param-unit">(deg C, 0 = off)</span></span>
+        <span class="param-label">Maximum EGT To Light <span class="param-unit">(deg C, 0 = off)</span></span>
         <input class="param-input" id="ab-edit-max-tot" type="number" min="0" max="1000" step="10"
           oninput="setAbEntryNumber('max_tot_for_light', this.value)">
       </div>
@@ -366,30 +366,34 @@ const BLOCKS = {
     visibleIf: hw => !!hw.sensors?.flame?.enabled,
     condition: hw => `flame count < ${hw.flame_required_count ?? 3}`,
     timeout_action:'abort',
-    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout → ABORT. On exit: optionally cuts igniter. Sensor sensitivity (required count, check interval) is configured in Config → Startup — Flame Detection.',
+    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout → ABORT. On exit: optionally cuts igniter.',
     hwWarnings:[
       { check: hw => !!hw.sensors?.flame?.enabled,
         msg: '🚫 No flame sensor configured — flame count will never increment. This block will always timeout and ABORT. Use TempConfirm as a replacement if a temperature sensor is fitted.',
         level: 'error' },
     ],
     params:[
+      {key:'flame_required_count',    label:'Required detections',     type:'int', min:1, max:20, step:1, def:3, configKey:'flame_required_count',
+        desc:'Consecutive flame detections required before the block confirms self-sustained combustion.'},
+      {key:'flame_check_interval_ms', label:'Detection interval', unit:'ms', type:'int', min:50, max:2000, step:50, def:250, configKey:'flame_check_interval_ms',
+        desc:'Time window for each required flame detection. Longer is more tolerant of slow/noisy sensors but delays startup.'},
       {key:'flame_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:1000, max:30000, step:500, def:5000, configKey:'flame_timeout_ms'},
       {key:'flame_turn_off_igniter', label:'Turn off igniter on exit',           type:'bool', def:true, configKey:'flame_turn_off_igniter'},
     ]
   },
   TempConfirm: {
     label:'Temp Confirm', type:'while', badgeClass:'badge-while',
-    visibleIf: hw => !!hw.sensors?.tot?.enabled,
-    condition: hw => `TOT < ${hw.temp_confirm_target ?? 200}°C`,
+    visibleIf: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
+    condition: hw => `EGT < ${hw.temp_confirm_target ?? 200}°C`,
     timeout_action:'abort',
-    desc:'Waits until TOT rises above the configured threshold. Use as an alternative to or alongside FlameConfirm when a flame sensor is not fitted. On timeout → ABORT. Does NOT change any actuator state.',
+    desc:'Waits until selected engine temperature (TOT or TIT) rises above the configured threshold. Use as an alternative to or alongside FlameConfirm when a flame sensor is not fitted. On timeout → ABORT. Does NOT change any actuator state.',
     hwWarnings:[
-      { check: hw => !!hw.sensors?.tot?.enabled,
-        msg: '🚫 No temperature (TOT) sensor configured — TOT will never rise above ambient. This block will always timeout and ABORT.',
+      { check: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
+        msg: '🚫 No temperature (TOT/TIT) sensor configured — EGT will never rise above ambient. This block will always timeout and ABORT.',
         level: 'error' },
     ],
     params:[
-      {key:'temp_confirm_target',  label:'Target TOT',unit:'°C', type:'float', min:0, max:1000, step:10, def:200,  configKey:'temp_confirm_target'},
+      {key:'temp_confirm_target',  label:'Target EGT',unit:'°C', type:'float', min:0, max:1000, step:10, def:200,  configKey:'temp_confirm_target'},
       {key:'temp_confirm_timeout', label:'Timeout',   unit:'ms', type:'int',   min:1000, max:60000, step:1000, def:10000, configKey:'temp_confirm_timeout'},
     ]
   },
@@ -592,15 +596,15 @@ const BLOCKS = {
   },
   CooldownSpin: {
     label:'Cooldown', type:'while', badgeClass:'badge-while',
-    condition: hw => `TOT > ${hw.tot_cooldown_target ?? 150}°C`,
+    condition: hw => `EGT > ${hw.tot_cooldown_target ?? 150}°C`,
     timeout_action:'continue',
     desc:'Spin starter and/or run oil pump to cool EGT below target. Skipped if fuel was never opened. Proceeds on timeout. With oil pressure sensor: pump is regulated to target pressure; without: runs at fixed %.',
     hwWarnings:[
-      { check: hw => !!hw.sensors?.tot?.enabled,
+      { check: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
         msg: '⚠ No temperature sensor — cooldown cannot verify EGT has dropped. Block will run for the full timeout then continue (safe).' },
     ],
     params:[
-      {key:'tot_cooldown_target',       label:'TOT target',              unit:'°C', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
+      {key:'tot_cooldown_target',       label:'EGT target',              unit:'°C', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
       {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:200000, configKey:'cooldown_timeout_ms'},
       {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
         visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
@@ -651,12 +655,12 @@ const BLOCKS = {
     ]
   },
   WaitTOTCool: {
-    label:'Wait TOT Cool', type:'while', badgeClass:'badge-while',
-    condition: hw => `TOT < ${hw.wait_tot_target ?? 150}°C`,
+    label:'Wait EGT Cool', type:'while', badgeClass:'badge-while',
+    condition: hw => `EGT < ${hw.wait_tot_target ?? 150}°C`,
     timeout_action:'continue',
-    desc:'Holds the sequence until TOT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout → continues (does not abort). If TOT sensor is unhealthy, completes immediately.',
+    desc:'Holds the sequence until selected EGT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout → continues (does not abort). If the selected EGT sensor is unhealthy, completes immediately.',
     params:[
-      {key:'wait_tot_target',  label:'Target TOT', unit:'°C', type:'float', min:0,    max:500,    step:10,   def:150,    configKey:'wait_tot_target'},
+      {key:'wait_tot_target',  label:'Target EGT', unit:'°C', type:'float', min:0,    max:500,    step:10,   def:150,    configKey:'wait_tot_target'},
       {key:'wait_tot_timeout', label:'Timeout',    unit:'ms', type:'int',  min:5000, max:600000, step:5000, def:120000, configKey:'wait_tot_timeout'},
     ]
   },
@@ -779,12 +783,12 @@ const BLOCKS = {
   },
   ABStabilize: {
     label:'AB Stabilize', type:'while', badgeClass:'badge-while',
-    condition: hw => `Hold ${hw.ab_stab_ms ?? 1000} ms, monitor TOT`,
+    condition: hw => `Hold ${hw.ab_stab_ms ?? 1000} ms, monitor EGT`,
     timeout_action:'complete',
-    desc:'Hold after lighting. Monitors TOT — faults if too hot. On completion, sets AB state to Running.',
+    desc:'Hold after lighting. Monitors selected EGT — faults if too hot. On completion, sets AB state to Running.',
     params:[
       {key:'ab_stab_ms',        label:'Hold Time',       unit:'ms', type:'int',  min:100, max:10000,step:100,def:1000,configKey:'ab_stab_ms'},
-      {key:'ab_stab_max_tot',   label:'Max TOT (0=off)', unit:'°C', type:'float',min:0,   max:1000, step:10, def:0,   configKey:'ab_stab_max_tot'},
+      {key:'ab_stab_max_tot',   label:'Max EGT (0=off)', unit:'°C', type:'float',min:0,   max:1000, step:10, def:0,   configKey:'ab_stab_max_tot'},
     ]
   },
 
@@ -1011,25 +1015,15 @@ let customBlocks = {};
 const BLOCK_INFO = {
   OilPrime: {
     desc: 'Turns the oil pump ON and waits until oil pressure exceeds the arm threshold. Safe to abort — no fuel or ignition active.',
-    links: [
-      { label: 'Startup Oil Target',   url: '/config.html#oil' },
-      { label: 'Arm Minimum Pressure', url: '/config.html#oil' },
-      { label: 'Oil Startup Timeout',  url: '/config.html#oil' },
-    ]
+    links: []
   },
   StarterSpin: {
     desc: 'Enables starter relay and ramps starter demand until N1 reaches pre-ignition RPM. Fault shutdown on timeout.',
-    links: [
-      { label: 'Starter Demand %',      url: '/config.html#starter-assist-section' },
-      { label: 'Ramp Rate (%/s)',        url: '/config.html#starter-assist-section' },
-      { label: 'RPM Limit',             url: '/config.html#engine-limits' },
-    ]
+    links: []
   },
   PreIgnSpark: {
     desc: 'Fires the igniter for the configured spark duration. Igniter stays ON when block exits — place FuelOpen immediately after.',
-    links: [
-      { label: 'Pre-Ignition Spark Duration', url: '/config.html#startup' },
-    ]
+    links: []
   },
   FuelOpen: {
     desc: 'Opens the fuel solenoid. Sets fuelEverOpened flag so CooldownSpin knows cooling is needed.',
@@ -1038,14 +1032,13 @@ const BLOCK_INFO = {
   FlameConfirm: {
     desc: 'Waits until the flame sensor fires N consecutive times within the check interval, confirming self-sustained combustion.',
     links: [
-      { label: 'Flame Detection (count, interval)', url: '/config.html#flame-detect-section' },
       { label: 'Flameout Delay (Safety Monitor)',   url: '/config.html#safety-monitor' },
     ]
   },
   TempConfirm: {
-    desc: 'Waits until TOT rises above the configured threshold. Alternative to FlameConfirm when no flame sensor is fitted.',
+    desc: 'Waits until selected EGT rises above the configured threshold. Alternative to FlameConfirm when no flame sensor is fitted.',
     links: [
-      { label: 'TOT Limit',      url: '/config.html#engine-limits' },
+      { label: 'Engine Temperature Source', url: '/config.html#engine-limits' },
       { label: 'Cooldown Target', url: '/config.html#engine-limits' },
     ]
   },
@@ -1067,14 +1060,12 @@ const BLOCK_INFO = {
   CooldownSpin: {
     desc: 'Spins starter and/or runs oil pump to cool EGT below target temperature. Skipped if fuel was never opened.',
     links: [
-      { label: 'Cooldown Target TOT', url: '/config.html#engine-limits' },
+      { label: 'Cooldown EGT Target', url: '/config.html#engine-limits' },
     ]
   },
   FinalStop: {
     desc: 'Waits for N1 to reach zero. Oil pump cuts; scavenge pump continues if configured.',
-    links: [
-      { label: 'Oil Scavenge ms', url: '/config.html#post-stop-oil-scavenge' },
-    ]
+    links: []
   },
   RPMDrop: {
     desc: 'Waits for N1 to fall below threshold RPM before proceeding to cooldown. Continues on timeout.',
@@ -1088,10 +1079,7 @@ const BLOCK_INFO = {
   },
   FuelPumpIdle: {
     desc: 'Maps idle input (pot or RC) to fuel/throttle ESC demand using the configured idle min/max range.',
-    links: [
-      { label: 'Throttle / Fuel ESC Idle Min %', url: '/config.html#throttle-fuel-esc-idle-range' },
-      { label: 'Throttle / Fuel ESC Idle Max %', url: '/config.html#throttle-fuel-esc-idle-range' },
-    ]
+    links: []
   },
   ModifiedIdle: {
     desc: 'Sets throttle demand = idle input × multiplier. Use for a slightly higher idle on first spool.',
@@ -1111,7 +1099,7 @@ const BLOCK_INFO = {
     ]
   },
   ABCheckReady: {
-    desc: 'Gate block: checks N1, TOT, and throttle conditions before proceeding with AB ignition.',
+    desc: 'Gate block: checks N1, selected EGT, and throttle conditions before proceeding with AB ignition.',
     links: [
       { label: 'AB Ignition Conditions', url: '/config.html#ab-cfg-section' },
     ]
@@ -1123,13 +1111,13 @@ const BLOCK_INFO = {
     ]
   },
   ABFlameConfirm: {
-    desc: 'Waits for AB flame confirmation using sensor, TOT rise, or timed mode.',
+    desc: 'Waits for AB flame confirmation using sensor, selected EGT rise, or timed mode.',
     links: [
       { label: 'AB Flame Confirmation Config', url: '/config.html#ab-flame-section' },
     ]
   },
   ABStabilize: {
-    desc: 'Hold period after AB lights. Monitors TOT — faults if too hot. Transitions to AB Running on exit.',
+    desc: 'Hold period after AB lights. Monitors selected EGT — faults if too hot. Transitions to AB Running on exit.',
     links: [
       { label: 'AB Running Config', url: '/config.html#ab-run-section' },
     ]
@@ -1284,13 +1272,8 @@ function switchTab(tab) {
 async function loadAll() {
   setSaveStatus('Loading…');
   try {
-    const [hwRes, cfgRes] = await Promise.all([
-      fetch('/api/hardware'), fetch('/api/config')
-    ]);
-    if (!hwRes.ok)  throw new Error('Hardware config unavailable (' + hwRes.status + ')');
-    if (!cfgRes.ok) throw new Error('Config unavailable (' + cfgRes.status + ')');
-    hwCfg = await hwRes.json();
-    cfg   = await cfgRes.json();
+    hwCfg = await fetchJsonWithRetry('/api/hardware');
+    cfg   = await fetchJsonWithRetry('/api/config');
     // Rebuild runtime custom block defs from raw stored defs
     customBlocks = {};
     if (hwCfg.custom_blocks) {
@@ -1299,10 +1282,11 @@ async function loadAll() {
       }
     }
     buildParamVals();
-    renderWithLiveIdle('startup');
-    renderWithLiveIdle('shutdown');
-    renderWithLiveIdle('afterburner');
-    renderWithLiveIdle('ab-shut');
+    await refreshSequenceLiveData();
+    render('startup', lastIdleRaw);
+    render('shutdown', lastIdleRaw);
+    render('afterburner', lastIdleRaw);
+    render('ab-shut', lastIdleRaw);
     populateAddSelects();
     buildAbCriteriaHtml();
     renderRules();
@@ -1313,6 +1297,32 @@ async function loadAll() {
   } catch(e) {
     setSaveStatus('⚠ Load failed: ' + e.message);
   }
+}
+
+async function fetchJsonWithTimeout(url, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!r.ok) throw new Error(url + ' returned HTTP ' + r.status);
+    const text = await r.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchJsonWithRetry(url, attempts = 3) {
+  let lastError;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchJsonWithTimeout(url);
+    } catch (e) {
+      lastError = e;
+      await new Promise(resolve => setTimeout(resolve, 200 + i * 300));
+    }
+  }
+  throw lastError;
 }
 
 // Build paramVals from the settings section using each block's configKey mapping.
@@ -1380,7 +1390,15 @@ function timedDelayValue(tab, idx) {
   return hwCfg[delaySeqKey(tab)][idx] || cfg?.sequence?.startup?.timed_delay_ms || 1000;
 }
 
-function render(tab, idleRaw) {
+function _openBlockKeys(tab) {
+  const list = document.getElementById('list-' + tab);
+  if (!list) return new Set();
+  return new Set(Array.from(list.querySelectorAll('.block-card'))
+    .filter(card => card.querySelector('.block-params.open'))
+    .map(card => `${card.dataset.block}:${card.dataset.index}`));
+}
+
+function render(tab, idleRaw, openKeys = new Set()) {
   const key = seqKey(tab);
   const seq  = hwCfg[key] || [];
   ensureDelaySlots(tab);
@@ -1389,6 +1407,7 @@ function render(tab, idleRaw) {
   list.innerHTML = '';
   seq.forEach((bname, idx) => {
     const card = buildCard(bname, idx, tab, seq.length);
+    if (openKeys.has(`${bname}:${idx}`)) card.querySelector('.block-params')?.classList.add('open');
     list.appendChild(card);
   });
   // Append final state summary card — pass live idle raw if available
@@ -1397,16 +1416,32 @@ function render(tab, idleRaw) {
 }
 
 function renderWithLiveIdle(tab) {
-  fetch('/api/data').then(r => r.json()).then(d => {
+  refreshSequenceLiveData().finally(() => render(tab, lastIdleRaw));
+}
+
+function renderAllTabsWithLiveIdle() {
+  refreshSequenceLiveData().finally(() => {
+    render('startup', lastIdleRaw);
+    render('shutdown', lastIdleRaw);
+    render('afterburner', lastIdleRaw);
+    render('ab-shut', lastIdleRaw);
+  });
+}
+
+async function refreshSequenceLiveData() {
+  try {
+    const r = await fetch('/api/data', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
     lastIdleRaw = d.idle_input_raw ?? lastIdleRaw;
     if (d.mode !== undefined) updateEngineMode(d.mode);
     if (d.seq_issues !== undefined) _applySeqValidation(d);
-    render(tab, lastIdleRaw);
-  }).catch(() => render(tab, lastIdleRaw));
+  } catch (_) {}
 }
 
 function renderFast(tab) {
-  render(tab, lastIdleRaw);
+  const openKeys = _openBlockKeys(tab);
+  render(tab, lastIdleRaw, openKeys);
   setSaveStatus('Sequence edited - save to apply');
 }
 
@@ -1661,7 +1696,7 @@ function buildAbCriteriaHtml() {
   const totWrap = document.getElementById('ab-edit-tot-wrap');
   if (throttleWrap) throttleWrap.style.display = src === 1 ? '' : 'none';
   if (inputWrap) inputWrap.style.display = src === 3 ? '' : 'none';
-  if (totWrap) totWrap.style.opacity = hwCfg.sensors?.tot?.enabled ? '1' : '.45';
+  if (totWrap) totWrap.style.opacity = (hwCfg.sensors?.tot?.enabled || hwCfg.sensors?.tit?.enabled) ? '1' : '.45';
   const sourceNote = document.getElementById('ab-entry-source-note');
   if (sourceNote) {
     sourceNote.textContent = src === 0 ? 'Manual trigger selected in Hardware. Entry gate limits below still apply when AB Check Ready is present.'
@@ -1672,8 +1707,8 @@ function buildAbCriteriaHtml() {
   const gateActive = !(hwCfg.ab_seq || []).length || (hwCfg.ab_seq || []).includes('ABCheckReady');
   const gateNote = document.getElementById('ab-entry-gate-note');
   if (gateNote) gateNote.textContent = gateActive
-    ? 'N1 and TOT limits are checked by AB Check Ready in the light-up sequence.'
-    : 'AB Check Ready is not present in this custom light-up sequence, so the N1 and TOT gate values are not evaluated.';
+    ? 'N1 and EGT limits are checked by AB Check Ready in the light-up sequence.'
+    : 'AB Check Ready is not present in this custom light-up sequence, so the N1 and EGT gate values are not evaluated.';
 
   // Light-up entry conditions
   const upLines = [];
@@ -1684,7 +1719,7 @@ function buildAbCriteriaHtml() {
   if (src !== 0 && hwCfg.ab_trigger?.requires_arm) upLines.push('<strong>Arm:</strong> Arm switch must be active');
   if ((ab.min_n1 ?? 0) > 0)              upLines.push(`<strong>Min N1:</strong> ${ab.min_n1} rpm`);
   if ((ab.max_n1 ?? 0) > 0)              upLines.push(`<strong>Max N1:</strong> ${ab.max_n1} rpm`);
-  if ((ab.max_tot_for_light ?? 0) > 0)   upLines.push(`<strong>Max TOT to light:</strong> ${ab.max_tot_for_light}°C`);
+  if ((ab.max_tot_for_light ?? 0) > 0)   upLines.push(`<strong>Max EGT to light:</strong> ${ab.max_tot_for_light}°C`);
 
   const upBox = document.getElementById('ab-lightup-criteria');
   if (upBox) {
@@ -2442,7 +2477,7 @@ function confirmCustomBlock() {
 
   closeCustomBlockDialog();
   populateAddSelects();
-  renderWithLiveIdle('startup'); renderWithLiveIdle('shutdown'); renderWithLiveIdle('afterburner'); renderWithLiveIdle('ab-shut');
+  renderAllTabsWithLiveIdle();
 }
 
 // ── Sequence validation ────────────────────────────────────────────────────
@@ -2453,7 +2488,7 @@ function _validateSequence(blocks) {
 
   // Must have flame confirmation — otherwise ignition failure goes undetected
   if (!has('FlameConfirm') && !has('TempConfirm')) {
-    warnings.push('Timer-based light-up cannot confirm combustion. When a TOT or flame sensor is configured, replace the ignition hold TimedDelay with TempConfirm or FlameConfirm before live engine testing.');
+    warnings.push('Timer-based light-up cannot confirm combustion. When a temperature or flame sensor is configured, replace the ignition hold TimedDelay with TempConfirm or FlameConfirm before live engine testing.');
   }
   // Should have oil priming — running without it risks bearing damage
   if (!manualFuelWorkflow && !has('OilPrime')) {
@@ -2754,8 +2789,28 @@ async function refreshEngineStatus() {
   } catch (_) {}
 }
 
+let statusPollTimer = null;
+function startStatusPoll() {
+  if (statusPollTimer) return;
+  refreshEngineStatus();
+  statusPollTimer = setInterval(refreshEngineStatus, 3000);
+}
+function stopStatusPoll() {
+  if (!statusPollTimer) return;
+  clearInterval(statusPollTimer);
+  statusPollTimer = null;
+}
+
 function startWS() {
+  if (ws && ws.readyState <= WebSocket.OPEN) return;
   ws = new WebSocket('ws://' + location.host + '/ws');
+  let pullTimer = null;
+  const pull = () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('p'); };
+  ws.onopen = () => {
+    stopStatusPoll();
+    pull();
+    pullTimer = setInterval(pull, 1000);
+  };
   ws.onmessage = e => {
     try {
       const d = JSON.parse(e.data);
@@ -2763,9 +2818,14 @@ function startWS() {
       if (d.seq_issues !== undefined) _applySeqValidation(d);
     } catch(_){}
   };
-  ws.onclose = () => setTimeout(startWS, 3000);
+  ws.onclose = () => {
+    if (pullTimer) clearInterval(pullTimer);
+    startStatusPoll();
+    setTimeout(startWS, 3000);
+  };
+  ws.onerror = () => { try { ws.close(); } catch(_) {} };
 }
-setInterval(refreshEngineStatus, 1500);
+startStatusPoll();
 
 // ── Sequence validation banner ─────────────────────────────────────────────
 function _applySeqValidation(d) {

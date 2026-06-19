@@ -158,7 +158,7 @@ static const MsgDef MSGS[] = {
     { 14, 2, "Oil pres low" },
     { 15, 2, "Overspeed" },
     { 16, 2, "Oil zero/disc" },
-    { 17, 1, "TOT high" },
+    { 17, 1, "EGT high" },
     { 18, 1, "Oil warn" },
 };
 
@@ -177,6 +177,7 @@ bool yes() { return true; }
 bool hasN2() { return HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm; }
 bool hasTot() { return HardwareConfig::hasTot; }
 bool hasTit() { return HardwareConfig::hasTit; }
+bool hasPrimaryEgt() { return Config::effectiveEgtSource() != 0; }
 bool hasOilPress() { return HardwareConfig::hasOilPress; }
 bool hasOilTemp() { return HardwareConfig::hasOilTemp; }
 bool hasFuelPress() { return HardwareConfig::hasFuelPress; }
@@ -185,6 +186,8 @@ bool hasP1() { return HardwareConfig::hasP1; }
 bool hasP2() { return HardwareConfig::hasP2; }
 bool hasBatt() { return HardwareConfig::hasBattVoltage; }
 bool hasTorque() { return HardwareConfig::hasTorque; }
+bool hasShaftPower() { return HardwareConfig::hasTorque && HardwareConfig::hasN2Rpm; }
+bool hasThrottle() { return HardwareConfig::hasThrottle; }
 bool hasStarter() { return HardwareConfig::hasStarter; }
 bool hasOilPump() { return HardwareConfig::hasOilPump; }
 bool hasFuelPump2() { return HardwareConfig::hasFuelPump2; }
@@ -295,8 +298,8 @@ static const FieldDef FIELDS[] = {
     { F_P2_BAR,         U_BAR,     2, "P2_BAR",         "P2 bar",         hasP2,          rP2,               true },
     { F_BATT_V,         U_VOLT,    2, "BATT_V",         "Battery V",      hasBatt,        rBatt,             true },
     { F_TORQUE_NM,      U_NM,      1, "TORQUE_NM",      "Torque Nm",      hasTorque,      rTorque,           true },
-    { F_POWER_W,        U_WATT,    0, "POWER_W",        "Power W",        hasTorque,      rPower,            true },
-    { F_THROTTLE_PCT,   U_PERCENT, 1, "THROTTLE_PCT",   "Throttle pct",   yes,            rThrottle,         true },
+    { F_POWER_W,        U_WATT,    0, "POWER_W",        "Power W",        hasShaftPower,  rPower,            true },
+    { F_THROTTLE_PCT,   U_PERCENT, 1, "THROTTLE_PCT",   "Throttle pct",   hasThrottle,    rThrottle,         true },
     { F_STARTER_PCT,    U_PERCENT, 1, "STARTER_PCT",    "Starter pct",    hasStarter,     rStarter,          true },
     { F_OIL_PUMP_PCT,   U_PERCENT, 1, "OIL_PUMP_PCT",   "Oil pump pct",   hasOilPump,     rOilPump,          true },
     { F_FUEL_PUMP2_PCT, U_PERCENT, 1, "FUEL_PUMP2_PCT", "Fuel pump2 pct", hasFuelPump2,   rFuelPump2,        true },
@@ -305,7 +308,7 @@ static const FieldDef FIELDS[] = {
     { F_GLOW_PCT,       U_PERCENT, 1, "GLOW_PCT",       "Glow pct",       hasGlow,        rGlow,             true },
     { F_MODE,           U_NONE,    0, "MODE",           "Mode",           yes,            rMode,             false },
     { F_AB_MODE,        U_NONE,    0, "AB_MODE",        "AB mode",        hasAfterburner, rAbMode,           false },
-    { F_TOT_RATE,       U_DEG_C,   1, "TOT_RATE",       "TOT rise C/s",   hasTot,         rTotRate,          false },
+    { F_TOT_RATE,       U_DEG_C,   1, "TOT_RATE",       "EGT rise C/s",   hasPrimaryEgt,  rTotRate,          false },
     { F_OIL_TARGET_BAR, U_BAR,     2, "OIL_TARGET_BAR", "Oil target",     hasOilPump,     rOilTarget,        false },
     { F_FUEL_SOL,       U_BOOL,    0, "FUEL_SOL",       "Fuel sol",       hasFuelSol,      rFuelSol,           false },
     { F_IGNITER1,       U_BOOL,    0, "IGNITER1",       "Igniter 1",      hasIgniter,     rIgniter1,         false },
@@ -574,12 +577,13 @@ void ClusterSerial::_sendSchema() {
     }
 
     uint8_t limits[28] = {};
-    float totWarn = Config::totWarnC > 0.0f ? Config::totWarnC : (Config::totLimit - Config::totSafeMargin);
+    float egtLimit = Config::primaryEgtLimitC();
+    float totWarn = Config::totWarnC > 0.0f ? Config::totWarnC : (egtLimit - Config::totSafeMargin);
     float oilWarn = Config::oilWarnBar > 0.0f ? Config::oilWarnBar : Config::oilRunningMin;
     putFloat(limits + 0,  Config::rpmLimit);
     putFloat(limits + 4,  Config::n1WarnRpm);
     putFloat(limits + 8,  Config::n2WarnRpm);
-    putFloat(limits + 12, Config::totLimit);
+    putFloat(limits + 12, egtLimit);
     putFloat(limits + 16, totWarn);
     putFloat(limits + 20, oilWarn);
     putFloat(limits + 24, Config::oilZeroBar);
@@ -757,10 +761,10 @@ void ClusterSerial::tick() {
     }
 
     if (m == SysMode::RUNNING) {
-        float totWarnThresh = (Config::totWarnC > 0.0f)
+        float egtWarnThresh = (Config::totWarnC > 0.0f)
             ? Config::totWarnC
-            : (Config::totLimit - Config::totSafeMargin);
-        bool totHigh = ed.totHealthy && (ed.tot >= totWarnThresh);
+            : (Config::primaryEgtLimitC() - Config::totSafeMargin);
+        bool totHigh = Config::primaryEgtHealthy(ed) && (Config::primaryEgtC(ed) >= egtWarnThresh);
         if (totHigh && !_totWarnActive) {
             _totWarnActive = true;
             sendStatus(ClCode::TotHigh);

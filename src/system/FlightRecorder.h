@@ -8,8 +8,8 @@
 //  FlightRecorder — black-box event log to LittleFS
 //
 //  Combines lifecycle events (start/fault/shutdown/abort/config-change)
-//  with compact 10-second SNAP records (N1, TOT, throttle + fitted
-//  sensors) and a per-run RUN_SUMMARY (max N1, max TOT, min oil,
+//  with compact 10-second SNAP records (N1, EGT, throttle + fitted
+//  sensors) and a per-run RUN_SUMMARY (max N1, max TOT/TIT, min oil,
 //  run duration).
 //
 //  Ring buffer of MAX_RECORDS.  At ~203 records per 30-min run, 2200
@@ -79,6 +79,7 @@ private:
     // Run-peak accumulators — reset at RUNNING_ENTRY, written in RUN_SUMMARY
     static float    _runMaxN1;
     static float    _runMaxTot;
+    static float    _runMaxTit;
     static float    _runMinOil;
     static uint32_t _runStartSec;
 };

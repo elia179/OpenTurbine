@@ -2,7 +2,11 @@
 #include "../../engine/EngineData.h"
 #include "../../engine/Types.h"
 #include "../../system/HardwareConfig.h"
+#include "hardware_profile.h"
 #include <Arduino.h>
+#if defined(OT_PLATFORM_ESP32S3)
+#include "esp32-hal-rgb-led.h"
+#endif
 
 // ============================================================
 //  StatusLED — mode-driven blink indicator
@@ -35,6 +39,41 @@ static int           _blinksRemaining = 0;
 static bool          _ledOn           = false;
 static unsigned long _nextMs          = 0;
 static bool          _inPause         = false;
+static constexpr int AUTO_S3_RGB_STATUS_LED_PIN = -2;
+static constexpr uint8_t S3_RGB_LEVEL = 64;
+
+static bool _isRgbStatusLed(int pin) {
+#if defined(OT_PLATFORM_ESP32S3)
+    return HardwareConfig::statusLedType == 1 && pin == 48;
+#else
+    (void)pin;
+    return false;
+#endif
+}
+
+static int _statusPin() {
+    int pin = HardwareConfig::statusLedPin;
+#if defined(OT_PLATFORM_ESP32S3)
+    if (pin == AUTO_S3_RGB_STATUS_LED_PIN || pin == 38) return 48;
+#endif
+    return pin;
+}
+
+static void _writeLed(int pin, bool on) {
+#if defined(OT_PLATFORM_ESP32S3)
+    if (_isRgbStatusLed(pin)) {
+        const uint8_t level = on ? S3_RGB_LEVEL : 0;
+        rgbLedWrite((uint8_t)pin, 0, level, 0);
+        return;
+    }
+#endif
+    digitalWrite(pin, on ? HIGH : LOW);
+}
+
+static void _writeStatusLed(bool on) {
+    int pin = _statusPin();
+    if (pin >= 0) _writeLed(pin, on);
+}
 
 static int _blinksForMode(SysMode m) {
     switch (m) {
@@ -48,18 +87,30 @@ static int _blinksForMode(SysMode m) {
 }
 
 inline void begin() {
-    int pin = HardwareConfig::statusLedPin;
+    int pin = _statusPin();
     if (pin < 0) return;
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, LOW);
-    _nextMs          = millis() + BURST_PAUSE_MS;
+#if defined(OT_PLATFORM_ESP32S3)
+    if (!_isRgbStatusLed(pin))
+#endif
+        pinMode(pin, OUTPUT);
+    _writeStatusLed(false);
+    _nextMs          = millis();
     _blinksRemaining = 0;
     _inPause         = true;
     _ledOn           = false;
+#if defined(OT_PLATFORM_ESP32S3)
+    if (_isRgbStatusLed(pin)) {
+        _ledOn = true;
+        _blinksRemaining = 1;
+        _inPause = false;
+        _writeStatusLed(true);
+        _nextMs = millis() + 300;
+    }
+#endif
 }
 
 inline void tick() {
-    int pin = HardwareConfig::statusLedPin;
+    int pin = _statusPin();
     if (pin < 0) return;
     unsigned long now = millis();
     if (now < _nextMs) return;
@@ -68,7 +119,7 @@ inline void tick() {
 
     if (mode == SysMode::FAULT) {
         _ledOn = !_ledOn;
-        digitalWrite(pin, _ledOn ? HIGH : LOW);
+        _writeStatusLed(_ledOn);
         _nextMs = now + FAULT_PERIOD_MS;
         return;
     }
@@ -83,11 +134,11 @@ inline void tick() {
     if (_blinksRemaining > 0) {
         if (!_ledOn) {
             _ledOn = true;
-            digitalWrite(pin, HIGH);
+            _writeStatusLed(true);
             _nextMs = now + BLINK_ON_MS;
         } else {
             _ledOn = false;
-            digitalWrite(pin, LOW);
+            _writeStatusLed(false);
             _blinksRemaining--;
             if (_blinksRemaining > 0) {
                 _nextMs = now + BLINK_OFF_MS;

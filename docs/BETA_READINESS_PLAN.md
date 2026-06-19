@@ -1,7 +1,7 @@
-# OpenTurbine Alpha Readiness Plan
+# OpenTurbine Beta Readiness Plan
 
 This checklist is the working plan for making the firmware and web UI coherent
-enough for external alpha testers. It focuses on user experience, supported
+enough for external beta testers. It focuses on user experience, supported
 hardware combinations, dependency gates, and release-facing documentation.
 
 ## Goals
@@ -117,4 +117,4 @@ hardware combinations, dependency gates, and release-facing documentation.
 4. Fix confirmed product bugs first; update audit scripts when they expose stale
    assumptions.
 5. Update README and docs after behavior is stable.
-6. Run the verification set and record any remaining alpha risks.
+6. Run the verification set and record any remaining beta risks.

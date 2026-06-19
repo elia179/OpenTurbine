@@ -65,6 +65,18 @@ function installedBrowser() {
     assert.equal(await page.locator('.gs-steps a').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 255, 255)');
     results.push('getting-started checklist uses readable white plain-text actions');
 
+    await page.request.post(`${base}/__sim/data`, { data: {
+      mode: 'RUNNING', bench_mode: false, egt_source: 2,
+      has_tit: true, tit_healthy: false,
+      has_tot: true, tot_healthy: true,
+      has_n1: true, n1_healthy: true
+    } });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('throttle-feedback-inhibit-note')).display !== 'none');
+    await page.request.post(`${base}/__sim/data`, { data: { tit_healthy: true, egt_source: 1 } });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('throttle-feedback-inhibit-note')).display === 'none');
+    results.push('dashboard throttle inhibit warning follows selected EGT source, including TIT-primary setups');
+    await scenario(page, 'full');
+
     await page.locator('#unit-temp-btn').click();
     await page.locator('#unit-press-btn').click();
     assert.equal(await text(page, '#tot'), '1184.0');
@@ -72,12 +84,16 @@ function installedBrowser() {
     assert.match(await text(page, '#tot-abs-label'), /F$/);
     assert.match(await text(page, '#oil-abs-label'), /PSI$/);
     results.push('dashboard temperature and pressure unit toggles convert live values and limit labels');
+    await page.locator('#unit-temp-btn').click();
 
     const retainedTot = await text(page, '#tot');
     await page.evaluate(() => ws.close());
     await page.waitForTimeout(50);
     assert.equal(await text(page, '#tot'), retainedTot);
-    results.push('brief telemetry reconnect retains last valid card values instead of blanking them');
+    await page.request.post(`${base}/__sim/data`, { data: { tot: 651 } });
+    await page.waitForFunction(() => document.getElementById('tot')?.textContent?.includes('651'), null, { timeout: 5000 });
+    results.push('brief telemetry reconnect retains values and REST fallback keeps live pages updating without navigation');
+    await page.locator('#unit-temp-btn').click();
 
     await page.reload();
     await waitShown(page, '#n1-card', true);
@@ -273,12 +289,16 @@ function installedBrowser() {
       cfg.actuators.oil_pump.enabled = false;
       cfg.actuators.oil_pump.has_current = true;
       cfg.controllers.oil_loop = true;
+      cfg.actuators.throttle.enabled = false;
+      cfg.controllers.throttle_slew = true;
       updateHardwarePrerequisites(true);
     });
     assert.equal(await page.locator('#en-oilpumpcurrent').isDisabled(), true);
     assert.equal(await page.locator('#en-oilpumpcurrent').isChecked(), false);
     assert.equal(await page.locator('#f-ctrl-oil').isDisabled(), true);
     assert.equal(await page.locator('#f-ctrl-oil').isChecked(), false);
+    assert.equal(await page.locator('#f-ctrl-slew').isDisabled(), true);
+    assert.equal(await page.locator('#f-ctrl-slew').isChecked(), false);
     results.push('hardware editor ghosts current sensing and controllers when required hardware is absent');
     await page.evaluate(() => {
       cfg.has_two_shaft = false;
@@ -303,7 +323,7 @@ function installedBrowser() {
     } });
     await page.reload();
     assert.equal(await page.locator('#cf-ab_fm option[value="0"]').isDisabled(), true);
-    assert.equal(await page.locator('#cf-ab_fm option[value="1"]').isDisabled(), true);
+    assert.equal(await page.locator('#cf-ab_fm option[value="1"]').isDisabled(), false);
     assert.equal(await page.locator('#cf-ab_pcm option[value="2"]').isDisabled(), true);
     assert.equal(await page.locator('#cf-ab_ui').isDisabled(), true);
     results.push('config editor ghosts afterburner choices whose hardware is unavailable');
@@ -355,8 +375,12 @@ function installedBrowser() {
 
     await page.goto(`${base}/log.html`);
     await page.waitForFunction(() => document.body.textContent.includes('Run #'));
-    assert.match(await page.locator('body').textContent(), /Low_Oil|LOW_OIL|Fault/);
-    results.push('flight log renders event and fault run summaries');
+    const logText = await page.locator('body').textContent();
+    assert.match(logText, /Low_Oil|LOW_OIL|Fault/);
+    assert.match(logText, /Peak TIT/);
+    assert.match(logText, /TIT 840/);
+    assert.match(logText, /Oil 0\.55 bar/);
+    results.push('flight log renders firmware event keys, TIT peaks, and fault summaries');
 
     console.log(`UI smoke test passed (${results.length} checks):`);
     results.forEach(result => console.log(`- ${result}`));

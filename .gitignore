@@ -13,3 +13,7 @@
 flash_output.txt
 flash_fw_output.txt
 flash_fs_output.txt
+
+# ESP32-S3 dynconfig module copied into project root for pioarduino toolchain lookup
+xtensa_esp32s3.so
+xtensa_esp32.so

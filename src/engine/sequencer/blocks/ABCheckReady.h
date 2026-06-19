@@ -8,7 +8,7 @@
 // ============================================================
 //  ABCheckReady — gate block before AB ignition sequence
 //
-//  Checks that N1, TOT and throttle position are within the
+//  Checks that N1, selected EGT, and throttle position are within the
 //  configured windows for a safe AB ignition attempt.
 //
 //  Completes immediately if all conditions are met.
@@ -21,7 +21,7 @@ class ABCheckReady : public IBlock {
 public:
     float minN1          = 30000.0f;  // N1 must be >= this
     float maxN1          = 0.0f;      // N1 must be <= this (0 = disabled)
-    float maxTotForLight = 0.0f;      // TOT must be <= this (0 = disabled)
+    float maxTotForLight = 0.0f;      // EGT must be <= this (0 = disabled)
     float minThrottle    = 0.0f;      // throttle demand must be >= this (0 = disabled)
 
     const char* name() override { return "ABCheckReady"; }
@@ -61,15 +61,14 @@ public:
             return BlockResult::Abort;
         }
 
-        // TOT must be below the "too hot to light" limit
-        if (maxTotForLight > 0 &&
-            (!HardwareConfig::hasTot || !ed.totHealthy)) {
-            Serial.println("[AB] CheckReady abort: TOT sensor unavailable");
+        // EGT must be below the "too hot to light" limit.
+        if (maxTotForLight > 0 && !Config::primaryEgtHealthy(ed)) {
+            Serial.println("[AB] CheckReady abort: EGT sensor unavailable");
             return BlockResult::Abort;
         }
-        if (maxTotForLight > 0 && ed.tot > maxTotForLight) {
-            Serial.printf("[AB] CheckReady abort: TOT too high for light (%.1f > %.1f)\n",
-                          (double)ed.tot, (double)maxTotForLight);
+        if (maxTotForLight > 0 && Config::primaryEgtC(ed) > maxTotForLight) {
+            Serial.printf("[AB] CheckReady abort: EGT too high for light (%.1f > %.1f)\n",
+                          (double)Config::primaryEgtC(ed), (double)maxTotForLight);
             return BlockResult::Abort;
         }
 

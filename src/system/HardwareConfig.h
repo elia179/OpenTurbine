@@ -282,6 +282,7 @@ public:
     static int   mavlinkIntervalMs;    // telemetry send interval (ms)
 
     static int   statusLedPin;
+    static int   statusLedType;        // 0=plain GPIO, 1=NeoPixel/RGB data LED
 
     // ── Cluster serial ────────────────────────────────────────
     static int   clusterTxPin;
@@ -302,7 +303,7 @@ public:
     static bool safetyOilZero;
     static bool safetyFlameout;
     static bool safetyLowFuel;
-    static bool safetyHotStart;   // abort startup if TOT above hotStartTotThreshold
+    static bool safetyHotStart;   // abort startup if selected EGT is above hotStartTotThreshold
     static bool safetyTitOvertemp;  // TIT (turbine inlet temp) overtemp shutdown
     static bool safetyOilTempHigh;  // oil temperature overtemp shutdown
     static bool safetyFuelPressLow; // fuel pressure below minimum shutdown
@@ -404,6 +405,7 @@ public:
 
     // Serialize to / from JSON
     static size_t toJson(char* buf, size_t len, bool redactPassword = false);
+    static void   toJson(JsonDocument& doc, bool redactPassword = false);
     static bool   validateJson(const char* json, size_t len);
     static bool   validateJson(const JsonDocument& doc);
     static bool   fromJson(const char* json, size_t len);

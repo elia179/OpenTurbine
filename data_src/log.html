@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Log</title>
-<link rel="stylesheet" href="/style.css?v=20260607b">
+<link rel="stylesheet" href="/style.css?v=20260619a">
 </head>
 <body>
 <nav>
-  <a href="/hardware.html">Hardware</a>
-  <a href="/calibration.html">Calibration</a>
-  <a href="/config.html">Config</a>
-  <a href="/sequence.html">Sequence</a>
-  <a href="/">Dashboard</a>
-  <a href="/log.html" class="active">Log</a>
-  <a href="/tools.html">Tools</a>
-  <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
+  <a href="/" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
+  <a href="/hardware.html" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
+  <a href="/config.html" title="Tune limits, controllers, logging, telemetry, and hardware-dependent settings.">Config</a>
+  <a href="/calibration.html" title="Calibrate fitted analog, servo, pressure, temperature, current, and flow inputs.">Calibration</a>
+  <a href="/sequence.html" title="Edit startup, shutdown, afterburner sequences, block timings, and control rules.">Sequence</a>
+  <a href="/log.html" class="active" title="View fault/event history and per-run CSV session logs.">Log</a>
+  <a href="/tools.html" title="Run standby-only actuator tests, backups, restore, OTA, factory reset, and dev tools.">Tools</a>
+  <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
   <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.9rem;flex-wrap:wrap">
@@ -168,7 +168,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260607b"></script>
+<script src="/app.js?v=20260619a"></script>
 <script>
 // ── Tab switching ─────────────────────────────────────────────
 function showTab(tab) {
@@ -218,9 +218,25 @@ function fmtDuration(secs) {
   return m > 0 ? m + 'm ' + s + 's' : s + 's';
 }
 
+function numField(entry, keys) {
+  for (const key of keys) {
+    const v = entry?.[key];
+    if (v !== undefined && v !== null && v !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return undefined;
+}
+
+function eventN1(entry)  { return numField(entry, ['n1', 'n1Rpm', 'maxN1']); }
+function eventTOT(entry) { return numField(entry, ['tot', 'totDegC', 'maxTot']); }
+function eventTIT(entry) { return numField(entry, ['tit', 'titDegC', 'maxTit']); }
+function eventOil(entry) { return numField(entry, ['oil', 'oilBar', 'minOil']); }
+
 // ── Run grouping ──────────────────────────────────────────────
 // A "run" opens on START_ATTEMPT and closes on NORMAL_SHUTDOWN,
-// FAULT_SHUTDOWN, or ABORT.  Peak N1 / TOT collected from all events.
+// FAULT_SHUTDOWN, or ABORT. Peaks are collected from compact SNAP keys and firmware event keys.
 function parseRuns(events) {
   const runs = [];
   let cur = null;
@@ -234,16 +250,19 @@ function parseRuns(events) {
         num:     runNum,
         tStart:  e.t,
         tEnd:    null,
-        peakN1:  e.n1  || 0,
-        peakTOT: e.tot || 0,
+        peakN1:  eventN1(e)  || 0,
+        peakTOT: eventTOT(e) || 0,
+        peakTIT: eventTIT(e) || 0,
         outcome: 'IN_PROGRESS',
         outCode: '',
         events:  [e]
       };
     } else if (cur) {
       cur.events.push(e);
-      if (e.n1  !== undefined && e.n1  > cur.peakN1)  cur.peakN1  = e.n1;
-      if (e.tot !== undefined && e.tot > cur.peakTOT) cur.peakTOT = e.tot;
+      const n1 = eventN1(e), tot = eventTOT(e), tit = eventTIT(e);
+      if (n1  !== undefined && n1  > cur.peakN1)  cur.peakN1  = n1;
+      if (tot !== undefined && tot > cur.peakTOT) cur.peakTOT = tot;
+      if (tit !== undefined && tit > cur.peakTIT) cur.peakTIT = tit;
 
       if (e.ev === 'NORMAL_SHUTDOWN') {
         cur.outcome = 'NORMAL_SHUTDOWN'; cur.tEnd = e.t; runs.push(cur); cur = null;
@@ -272,6 +291,7 @@ function renderSummary(runs) {
                      : r.outcome === 'IN_PROGRESS' ? 'in progress' : '—';
     const n1Str  = r.peakN1  > 0 ? Math.round(r.peakN1).toLocaleString()  + ' RPM' : '—';
     const totStr = r.peakTOT > 0 ? r.peakTOT.toFixed(1) + ' °C'                    : '—';
+    const titStr = r.peakTIT > 0 ? r.peakTIT.toFixed(1) + ' °C'                    : '—';
     const tStr   = r.tStart  !== undefined ? r.tStart + 's'                         : '—';
 
     let outClass, outLabel;
@@ -284,9 +304,11 @@ function renderSummary(runs) {
         let faultDetail = r.outCode || '?';
         if (faultEv) {
           const parts = [];
-          if (faultEv.n1  !== undefined) parts.push('N1 ' + Math.round(faultEv.n1).toLocaleString() + ' RPM');
-          if (faultEv.tot !== undefined) parts.push('TOT ' + Number(faultEv.tot).toFixed(0) + ' °C');
-          if (faultEv.oil !== undefined) parts.push('Oil ' + Number(faultEv.oil).toFixed(2) + ' bar');
+          const n1 = eventN1(faultEv), tot = eventTOT(faultEv), tit = eventTIT(faultEv), oil = eventOil(faultEv);
+          if (n1  !== undefined) parts.push('N1 ' + Math.round(n1).toLocaleString() + ' RPM');
+          if (tot !== undefined) parts.push('TOT ' + Number(tot).toFixed(0) + ' °C');
+          if (tit !== undefined) parts.push('TIT ' + Number(tit).toFixed(0) + ' °C');
+          if (oil !== undefined) parts.push('Oil ' + Number(oil).toFixed(2) + ' bar');
           if (parts.length) faultDetail += ' — ' + parts.join(', ');
         }
         outLabel = '✗ Fault: ' + faultDetail;
@@ -326,6 +348,10 @@ function renderSummary(runs) {
           <div class="run-stat">
             <div class="run-stat-label">Peak TOT</div>
             <div class="run-stat-val">${totStr}</div>
+          </div>
+          <div class="run-stat">
+            <div class="run-stat-label">Peak TIT</div>
+            <div class="run-stat-val">${titStr}</div>
           </div>
           <div class="run-stat">
             <div class="run-stat-label">Events</div>
@@ -458,11 +484,7 @@ function confirmClear() {
 const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','oil_pct','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode'];
 
 function loadSessionCfg() {
-  // Load config + hardware in parallel so we can hide sensors not fitted
-  Promise.all([
-    fetch('/api/config').then(r => r.json()),
-    fetch('/api/hardware').then(r => r.json())
-  ]).then(([cfg, hw]) => {
+  loadSessionCfgJson().then(({cfg, hw}) => {
     const sl = cfg.session_log || {};
     const sb = document.getElementById('log-standby');
     if (sb) sb.checked = !!cfg.telemetry?.log_standby;
@@ -553,6 +575,38 @@ function _applyLogHwVisibility(hw) {
       lbl.title         = (hwLabel[bit] || bit) + ' is not configured — enable it on the Hardware Config page to log this value';
     }
   });
+}
+
+async function fetchJsonWithTimeout(url, ms = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!r.ok) throw new Error(url + ' returned HTTP ' + r.status);
+    const text = await r.text();
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchJsonWithRetry(url, attempts = 3) {
+  let lastError;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchJsonWithTimeout(url);
+    } catch (e) {
+      lastError = e;
+      await new Promise(resolve => setTimeout(resolve, 200 + i * 300));
+    }
+  }
+  throw lastError;
+}
+
+async function loadSessionCfgJson() {
+  const cfg = await fetchJsonWithRetry('/api/config');
+  const hw = await fetchJsonWithRetry('/api/hardware');
+  return { cfg, hw };
 }
 
 function saveSessionCfg() {

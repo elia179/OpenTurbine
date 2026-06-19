@@ -7,7 +7,7 @@
 #include <Arduino.h>
 
 // Spin starter motor and/or run oil pump to cool EGT below safe storage temperature.
-// Exits when TOT < target OR timeout.
+// Exits when selected engine temperature source is below target OR timeout.
 // If oil pressure sensor is configured, drives the pump via a simple P-controller
 // targeting oilPressureTarget bar instead of a fixed percentage.
 class CooldownSpin : public IBlock {
@@ -70,7 +70,9 @@ public:
             _oilWarnLogged = true;
         }
 
-        if (ed.totHealthy && ed.tot < totTarget) return BlockResult::Complete;
+        if (Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) < totTarget) {
+            return BlockResult::Complete;
+        }
         if ((millis() - _entryMs) > timeoutMs)   return BlockResult::Complete;
         return BlockResult::Running;
     }

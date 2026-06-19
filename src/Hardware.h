@@ -496,8 +496,9 @@ namespace Hardware {
             g_ctrlThrottleSlew.rampDownMs   = Config::throttleRampDownMs;
             g_ctrlThrottleSlew.rpmHardLimit = Config::rpmLimit;
             g_ctrlThrottleSlew.rpmSoftLimit = Config::rpmLimit * 0.95f;
-            g_ctrlThrottleSlew.totHardLimit = Config::totLimit;
-            g_ctrlThrottleSlew.totSoftLimit = Config::totLimit - Config::totSafeMargin;
+            const float egtLimit = Config::primaryEgtLimitC();
+            g_ctrlThrottleSlew.totHardLimit = egtLimit;
+            g_ctrlThrottleSlew.totSoftLimit = egtLimit - Config::totSafeMargin;
         }
         if (hw.hasDynamicIdle) {
             g_ctrlDynamicIdle.targetRpm     = Config::idleTargetRpm;
@@ -523,7 +524,6 @@ namespace Hardware {
                            g_sensorN2Rpm.rpmLimit       = Config::rpmLimit; }
         g_safety.rpmLimit              = Config::rpmLimit;
         g_safety.minRpm               = Config::minRpm;
-        g_safety.totLimit             = Config::totLimit;
         g_safety.titLimit             = Config::titLimit;
         g_safety.oilTempLimit         = Config::oilTempLimit;
         g_safety.fuelPressMin         = Config::fuelPressMin;
@@ -802,6 +802,8 @@ namespace Hardware {
             if (ed.torqueHealthy && ed.n2Healthy && ed.n2Rpm > 0) {
                 float omega = ed.n2Rpm * (2.0f * 3.14159f / 60.0f); // rad/s
                 ed.turboPower = ed.torque * omega;
+            } else {
+                ed.turboPower = 0.0f;
             }
         }
         if (hw.hasFuelFlow) {
@@ -1175,10 +1177,19 @@ namespace Hardware {
     // ── Status LED init / tick ────────────────────────────────
     inline void initStatusLED() {
         auto& hw = HardwareConfig::instance();
-        if (hw.hasStatusLed && hw.statusLedPin >= 0) StatusLED::begin();
+#if defined(OT_PLATFORM_ESP32S3)
+        (void)hw;
+        StatusLED::begin();
+#else
+        if (hw.hasStatusLed) StatusLED::begin();
+#endif
     }
     inline void tickStatusLED() {
+#if defined(OT_PLATFORM_ESP32S3)
+        StatusLED::tick();
+#else
         if (HardwareConfig::instance().hasStatusLed) StatusLED::tick();
+#endif
     }
 
     // ── Controller init ───────────────────────────────────────

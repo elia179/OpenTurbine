@@ -392,22 +392,6 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
 }
 .hour-meter span { color: var(--text); font-weight: 600; font-family: var(--font-mono); }
 
-/* ── Pre-flight checklist ────────────────────────────────────── */
-.checklist { list-style: none; padding: 0; margin: 0.5rem 0 0; }
-.checklist li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.84rem;
-  color: var(--text-2);
-  line-height: 1.4;
-}
-.checklist li:last-child { border-bottom: none; }
-.checklist input[type=checkbox] { margin-top: 0.15rem; accent-color: var(--green); flex-shrink: 0; }
-.checklist li.checked { color: var(--dim); text-decoration: line-through; }
-
 /* ── Start confirm dialog ────────────────────────────────────── */
 #start-confirm-overlay {
   position: fixed; inset: 0;

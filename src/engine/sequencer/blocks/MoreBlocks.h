@@ -1,6 +1,7 @@
 #pragma once
 #include "../IBlock.h"
 #include "../../EngineData.h"
+#include "../../../system/Config.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -48,16 +49,16 @@ private:
 };
 
 // ============================================================
-//  WaitTOTCool — hold until TOT falls below threshold
+//  WaitTOTCool - hold until selected engine temperature falls below threshold
 //
 //  Useful between relight attempts, before hot restart, or as a
 //  post-cooldown verification step.  On timeout → CONTINUES
 //  (does not abort — operator is waiting for thermal settle).
-//  If TOT sensor is unhealthy, completes immediately.
+//  If the selected EGT source is unhealthy, completes immediately.
 // ============================================================
 class WaitTOTCool : public IBlock {
 public:
-    float         targetTot = 150.0f;   // °C — complete when TOT falls below this
+    float         targetTot = 150.0f;   // deg C - complete when selected EGT falls below this
     unsigned long timeoutMs = 120000;   // 2 min default; continues (does not abort)
 
     const char* name() override { return "WaitTOTCool"; }
@@ -68,8 +69,8 @@ public:
 
     BlockResult tick() override {
         auto& ed = EngineData::instance();
-        if (!ed.totHealthy)                         return BlockResult::Complete;
-        if (ed.tot <= targetTot)                    return BlockResult::Complete;
+        if (!Config::primaryEgtHealthy(ed))         return BlockResult::Complete;
+        if (Config::primaryEgtC(ed) <= targetTot)   return BlockResult::Complete;
         if ((millis() - _entryMs) > timeoutMs)      return BlockResult::Complete;
         return BlockResult::Running;
     }

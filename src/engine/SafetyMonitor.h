@@ -25,7 +25,6 @@ public:
     // Config parameters (populated from Config before begin())
     float         rpmLimit              = 100000.0f;
     float         minRpm               = 30000.0f;
-    float         totLimit             = 750.0f;
     float         titLimit             = 0.0f;    // °C — 0 = disabled
     float         oilTempLimit         = 0.0f;    // °C — 0 = disabled
     float         fuelPressMin         = 0.0f;    // bar — 0 = disabled
@@ -44,8 +43,8 @@ public:
         _lastCheckMs      = 0;
         _flameoutMs       = 0;
         _relightStartMs   = 0;
-        _relightStartTot  = 0.0f;
-        _runningTotRef    = -1.0f;
+        _relightStartEgt  = 0.0f;
+        _runningEgtRef    = -1.0f;
         _startupSpooled   = false;
     }
 
@@ -64,10 +63,10 @@ public:
         if (!inOp) {
             _flameoutMs     = 0;
             _relightStartMs = 0;
-            _relightStartTot = 0.0f;
-            _runningTotRef   = -1.0f;
-            _lastTot        = -1.0f;
-            _lastTotMs      = 0;
+            _relightStartEgt = 0.0f;
+            _runningEgtRef   = -1.0f;
+            _lastEgt        = -1.0f;
+            _lastEgtMs      = 0;
             ed.totRiseRate  = 0.0f;
             // Surge buffer is only reset on STANDBY entry — not on every non-op
             // mode change (e.g. SHUTDOWN) — so the buffer isn't wiped mid-spindown.
@@ -80,10 +79,11 @@ public:
             return;
         }
 
-        // ── Hot start — abort startup if TOT still too high ──
-        if (HardwareConfig::safetyHotStart && HardwareConfig::hasTot && m == SysMode::STARTUP
-            && ed.totHealthy && Config::hotStartTotThreshold > 0
-            && ed.tot > Config::hotStartTotThreshold)
+        // Hot start aborts if the configured engine temperature source is still too high.
+        const bool hotStartEgt = Config::primaryEgtHealthy(ed)
+                              && Config::primaryEgtC(ed) > Config::hotStartTotThreshold;
+        if (HardwareConfig::safetyHotStart && m == SysMode::STARTUP
+            && Config::hotStartTotThreshold > 0 && hotStartEgt)
         {
             _trigger("HOT_START");
             return;
@@ -101,30 +101,31 @@ public:
         if (now - _lastCheckMs < checkIntervalMs) return;
         _lastCheckMs = now;
 
-        // ── EGT rate-of-rise ─────────────────────────────────
-        if (HardwareConfig::hasTot && ed.totHealthy) {
-            float currentTot = ed.tot;
-            if (_lastTot >= 0.0f && _lastTotMs > 0) {
-                float dtSec = (now - _lastTotMs) / 1000.0f;
+        // EGT rate-of-rise.
+        if (Config::primaryEgtHealthy(ed)) {
+            float currentEgt = Config::primaryEgtC(ed);
+            if (_lastEgt >= 0.0f && _lastEgtMs > 0) {
+                float dtSec = (now - _lastEgtMs) / 1000.0f;
                 if (dtSec > 0.0f) {
-                    ed.totRiseRate = (currentTot - _lastTot) / dtSec;
+                    ed.totRiseRate = (currentEgt - _lastEgt) / dtSec;
                 }
             }
-            _lastTot   = currentTot;
-            _lastTotMs = now;
+            _lastEgt   = currentEgt;
+            _lastEgtMs = now;
 
             if (totRiseRateLimit > 0.0f && ed.totRiseRate > totRiseRateLimit) {
                 _trigger("TOT_RISE");
                 return;
             }
         } else {
-            _lastTot   = -1.0f;
-            _lastTotMs = 0;
+            _lastEgt   = -1.0f;
+            _lastEgtMs = 0;
             ed.totRiseRate = 0.0f;
         }
 
-        if (HardwareConfig::safetyOvertemp && HardwareConfig::hasTot &&
-            ed.totHealthy && ed.tot > totLimit) {
+        const float primaryLimit = Config::primaryEgtLimitC();
+        if (HardwareConfig::safetyOvertemp && primaryLimit > 0.0f &&
+            Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) > primaryLimit) {
             _trigger("OVERTEMP");
             return;
         }
@@ -157,12 +158,12 @@ public:
                     // Relight path: enabled, armed, N1 still viable
                     bool n1Ok = HardwareConfig::hasN1Rpm && ed.n1Healthy
                              && ed.n1Rpm >= Config::relightMinRpm;
-                    if (Config::relightEnabled && ed.relightArmed && n1Ok && _relight) {
+                    if (Config::relightEnabled && ed.relightArmed && HardwareConfig::hasIgniter && n1Ok && _relight) {
                         if (_relightStartMs == 0) {
                             // First trigger — start continuous ignition
                             _relight();
                             _relightStartMs = now;
-                            _relightStartTot = ed.tot;
+                            _relightStartEgt = Config::primaryEgtC(ed);
                         } else {
                             // Relight window: check N1 still viable and timeout not expired
                             bool stillViable = HardwareConfig::hasN1Rpm && ed.n1Healthy
@@ -182,7 +183,7 @@ public:
                 }
             } else {
                 _flameoutMs     = 0;
-                _relightStartTot = 0.0f;
+                _relightStartEgt = 0.0f;
                 _relightStartMs = 0;  // flame returned — reset relight state
             }
         }
@@ -294,11 +295,11 @@ private:
     unsigned long _lastCheckMs    = 0;
     unsigned long _flameoutMs     = 0;
     unsigned long _relightStartMs = 0;   // millis() when relight was first triggered; 0 = not active
-    float         _relightStartTot = 0.0f;
+    float         _relightStartEgt = 0.0f;
     const char*   _lastFault      = nullptr;
-    float         _lastTot        = -1.0f;   // for dEGT/dt calculation
-    unsigned long _lastTotMs      = 0;
-    float         _runningTotRef  = -1.0f;
+    float         _lastEgt        = -1.0f;   // for dEGT/dt calculation
+    unsigned long _lastEgtMs      = 0;
+    float         _runningEgtRef  = -1.0f;
     bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
     uint8_t       _n1BufIdx       = 0;
@@ -308,7 +309,7 @@ private:
         if (flameoutSource >= 1 && flameoutSource <= 3) return flameoutSource;
         if (HardwareConfig::hasFlame) return 1;
         if (HardwareConfig::hasN1Rpm) return 2;
-        if (HardwareConfig::hasTot) return 3;
+        if (Config::effectiveEgtSource() != 0) return 3;
         return 0;
     }
 
@@ -316,18 +317,19 @@ private:
         switch (_effectiveFlameoutSource()) {
             case 1: return HardwareConfig::hasFlame;
             case 2: return HardwareConfig::hasN1Rpm;
-            case 3: return HardwareConfig::hasTot;
+            case 3: return Config::effectiveEgtSource() != 0;
             default: return false;
         }
     }
 
     void _updateFlameoutReference(const EngineData& ed) {
         if (_effectiveFlameoutSource() != 3) {
-            _runningTotRef = -1.0f;
+            _runningEgtRef = -1.0f;
             return;
         }
-        if (!HardwareConfig::hasTot || !ed.totHealthy) return;
-        if (_runningTotRef < 0.0f || ed.tot > _runningTotRef) _runningTotRef = ed.tot;
+        if (!Config::primaryEgtHealthy(ed)) return;
+        float egt = Config::primaryEgtC(ed);
+        if (_runningEgtRef < 0.0f || egt > _runningEgtRef) _runningEgtRef = egt;
     }
 
     bool _flameoutLost(const EngineData& ed) const {
@@ -339,9 +341,9 @@ private:
                 return HardwareConfig::hasN1Rpm && ed.n1Healthy && ed.n1Rpm < threshold;
             }
             case 3:
-                return HardwareConfig::hasTot && ed.totHealthy && _runningTotRef >= 0.0f
+                return Config::primaryEgtHealthy(ed) && _runningEgtRef >= 0.0f
                     && flameoutTotDropC > 0.0f
-                    && ed.tot <= (_runningTotRef - flameoutTotDropC);
+                    && Config::primaryEgtC(ed) <= (_runningEgtRef - flameoutTotDropC);
             default:
                 return false;
         }
@@ -358,9 +360,9 @@ private:
             "What to do: Wait for the engine to cool down fully. Check your RPM limit setting "
             "in Config and verify throttle calibration before the next start.";
         else if (strcmp(code, "OVERTEMP")   == 0) desc =
-            "Over-temperature: Exhaust gas temperature (TOT/EGT) exceeded the limit.\n"
+            "Over-temperature: selected engine temperature source (TOT/TIT) exceeded the limit.\n"
             "What to do: Allow the engine to cool. Check your fuel flow, throttle calibration, "
-            "and TOT limit setting. Inspect the turbine for damage if this was severe.";
+            "and configured EGT limit. Inspect the turbine for damage if this was severe.";
         else if (strcmp(code, "LOW_OIL")    == 0) desc =
             "Low oil pressure during operation.\n"
             "What to do: Do not restart until you have checked the oil level, oil pump, "
@@ -384,7 +386,7 @@ private:
         else if (strcmp(code, "TOT_RISE")      == 0) desc =
             "EGT rate-of-rise too fast: temperature is climbing dangerously quickly.\n"
             "What to do: Check for fuel enrichment issues, throttle calibration, "
-            "and confirm the TOT rise-rate limit in Config is appropriate for your engine.";
+            "and confirm the EGT rise-rate limit in Config is appropriate for your engine.";
         else if (strcmp(code, "TIT_OVERTEMP")  == 0) desc =
             "Turbine inlet temperature (TIT) exceeded the safety limit.\n"
             "What to do: Allow full cool-down. Check combustion system, fuel flow, and "

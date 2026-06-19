@@ -28,7 +28,7 @@ enum class OTCommand : uint8_t {
     TOGGLE_SAFETY_CHECKS, // DEV_MODE only
     TOGGLE_DEV_MODE,      // runtime dev mode — unlocks config during engine operation
     TOGGLE_BENCH_MODE,    // bench/debug: all sequencer waits proceed on timer, safety skipped
-    EXTRA_COOLDOWN,       // toggle: run starter+oil in standby until TOT drops or timeout
+    EXTRA_COOLDOWN,       // toggle: run configured cooldown actuators in standby until timeout
     STARTER_ASSIST,       // iParam: 1=enable, 0=disable — low-RPM starter torque assist
     CLEAR_LOG,
     AB_FIRE,              // manual afterburner ignition (from web UI)

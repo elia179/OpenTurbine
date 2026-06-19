@@ -42,7 +42,8 @@
 // the two chips.
 //
 // ESP32-S3 IMPORTANT: GPIO 19 and 20 are USB D−/D+ — never use them.
-// The default SPI MISO moves to GPIO 38 on S3.
+// The default SPI MISO moves to GPIO 37 on S3. GPIO38 is kept free for
+// the ESP32-S3 DevKitC-1 v1.1 RGB status LED.
 //
 #ifdef OT_PLATFORM_ESP32S3
   //  ADC1-capable: GPIO 1–10.  GPIO 4 left free (oil pump PWM default).
@@ -52,7 +53,7 @@
   #define OT_ADC_4    5     // ADC1 CH4  (skipping 4 — oil pump default)
   #define OT_ADC_5    6     // ADC1 CH5
   #define OT_ADC_6    7     // ADC1 CH6
-  #define OT_SPI_MISO_DEFAULT  38   // safe MISO; GPIO 19 = USB D− on S3!
+  #define OT_SPI_MISO_DEFAULT  37   // safe MISO; GPIO 19 = USB D− on S3, GPIO48 = YD onboard RGB LED
   #define OT_SPI_CLK_DEFAULT   36   // GPIO 36 is full I/O on S3 (input-only on ESP32)
 #else
   //  ADC1-capable: GPIO 32–39.  GPIO 36/39 are input-only (fine for ADC).
@@ -87,7 +88,7 @@
 #define OT_HAS_TOT
 #define OT_TOT_CLK       OT_SPI_CLK_DEFAULT   // ESP32: 5 / S3: 36
 #define OT_TOT_CS        18
-#define OT_TOT_MISO      OT_SPI_MISO_DEFAULT  // ESP32: 19 / S3: 38 (19=USB D− on S3)
+#define OT_TOT_MISO      OT_SPI_MISO_DEFAULT  // ESP32: 19 / S3: 37 (19=USB D− on S3)
 
 // Oil pressure via analog (ADC1, polynomial calibrated)
 #define OT_HAS_OIL_PRESS
@@ -278,6 +279,8 @@
 // ── Status LED (mode blink indicator) ────────────────────────
 // Blink pattern: STANDBY=1, STARTUP=2, RUNNING=3, SHUTDOWN=4, FAULT=rapid
 // Built-in LED is usually GPIO 2 on ESP32 dev boards.
+// YD-ESP32-S3 / YD-ESP32-23 has an addressable RGB LED on GPIO48.
+// Some boards require the solder jumper marked RGB to be bridged.
 // #define OT_HAS_STATUS_LED
 // #define OT_STATUS_LED_PIN  2
 

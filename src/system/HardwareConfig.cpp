@@ -7,12 +7,61 @@
 
 namespace {
 constexpr const char* FACTORY_CONFIG_PATH = "/factory_config.json";
+constexpr int AUTO_S3_RGB_STATUS_LED_PIN = -2;
 
-#if defined(OT_PLATFORM_ESP32S3)
-constexpr int DEFAULT_STATUS_LED_PIN = -1;
+#if defined(OT_HAS_STATUS_LED) && defined(OT_STATUS_LED_PIN)
+constexpr int DEFAULT_STATUS_LED_PIN = OT_STATUS_LED_PIN;
+#elif defined(OT_PLATFORM_ESP32S3)
+constexpr int DEFAULT_STATUS_LED_PIN = 48;
 #else
 constexpr int DEFAULT_STATUS_LED_PIN = 2;
 #endif
+
+#if defined(OT_PLATFORM_ESP32S3)
+constexpr int DEFAULT_STATUS_LED_TYPE = 1;
+#else
+constexpr int DEFAULT_STATUS_LED_TYPE = 0;
+#endif
+
+constexpr const char* currentPlatformName() {
+#if defined(OT_PLATFORM_ESP32S3)
+    return "esp32s3";
+#else
+    return "esp32";
+#endif
+}
+
+bool storedHardwarePlatformMismatch(const JsonDocument& doc) {
+    const char* stored = doc["platform"] | "";
+    return stored[0] && strcmp(stored, currentPlatformName()) != 0;
+}
+
+void normalizeS3StatusLedDefault(JsonDocument& doc) {
+#if defined(OT_PLATFORM_ESP32S3)
+    JsonObject actuators = doc["actuators"].to<JsonObject>();
+    JsonObject led = actuators["status_led"].to<JsonObject>();
+    const bool enabled = led["enabled"] | false;
+    const int pin = led["pin"] | -1;
+    if (!enabled || pin < 0 || pin == AUTO_S3_RGB_STATUS_LED_PIN || pin == 38) {
+        led["enabled"] = true;
+        led["pin"] = DEFAULT_STATUS_LED_PIN;
+        led["type"] = DEFAULT_STATUS_LED_TYPE;
+        JsonVariant sensorsVar = doc["sensors"];
+        if (sensorsVar.is<JsonObject>()) {
+            JsonObject sensors = sensorsVar.as<JsonObject>();
+            const char* spiKeys[] = { "tot", "tit", "oil_temp" };
+            for (const char* key : spiKeys) {
+                JsonVariant sensorVar = sensors[key];
+                if (!sensorVar.is<JsonObject>()) continue;
+                JsonObject sensor = sensorVar.as<JsonObject>();
+                if ((sensor["miso"] | -1) == 38) sensor["miso"] = OT_SPI_MISO_DEFAULT;
+            }
+        }
+    }
+#else
+    (void)doc;
+#endif
+}
 
 bool gpioAllowed(int pin) {
     if (pin < 0) return true;
@@ -147,7 +196,8 @@ bool sequenceBlockAvailable(const char* name) {
         strcmp(name, "IgniterOn") == 0 || strcmp(name, "IgniterOff") == 0)
         return HardwareConfig::hasIgniter;
     if (strcmp(name, "FlameConfirm") == 0) return HardwareConfig::hasFlame;
-    if (strcmp(name, "TempConfirm") == 0 || strcmp(name, "WaitTOTCool") == 0) return HardwareConfig::hasTot;
+    if (strcmp(name, "TempConfirm") == 0 || strcmp(name, "WaitTOTCool") == 0)
+        return HardwareConfig::hasTot || HardwareConfig::hasTit;
     if (strcmp(name, "StarterEnOn") == 0 || strcmp(name, "StarterEnOff") == 0) return HardwareConfig::hasStarterEn;
     if (strcmp(name, "OilScavengeOn") == 0 || strcmp(name, "OilScavengeOff") == 0) return HardwareConfig::hasOilScavengePump;
     if (strcmp(name, "AirstarterOn") == 0 || strcmp(name, "AirstarterOff") == 0) return HardwareConfig::hasAirstarterSol;
@@ -306,6 +356,13 @@ bool validatePlatformPins(const JsonDocument& doc) {
             (strcmp(key, "ab_sol") == 0 || strcmp(key, "ab_pump") == 0)) continue;
         if (enabled(item)) {
             const int pin = jsonPin(item, "pin");
+            if (strcmp(key, "status_led") == 0 && pin == AUTO_S3_RGB_STATUS_LED_PIN) {
+#if defined(OT_PLATFORM_ESP32S3)
+                continue;
+#else
+                return false;
+#endif
+            }
             if (pin < 0 || !outputGpioAllowed(pin) ||
                 (pin >= 0 && (pin == stopPin || pin == startPin))) return false;
         }
@@ -554,7 +611,7 @@ bool  HardwareConfig::hasIgniter2CurrentSensor   = false;
 bool  HardwareConfig::hasOilPumpCurrentSensor    = false;
 bool  HardwareConfig::hasGovernor      = false;
 bool  HardwareConfig::hasMAVLink       = false;
-bool  HardwareConfig::hasStatusLed     = DEFAULT_STATUS_LED_PIN >= 0;
+bool  HardwareConfig::hasStatusLed     = DEFAULT_STATUS_LED_PIN != -1;
 bool  HardwareConfig::hasClusterSerial = false;
 bool  HardwareConfig::hasBuzzer        = false;
 int   HardwareConfig::buzzerPin        = -1;
@@ -714,6 +771,7 @@ int   HardwareConfig::abFlamePin         = -1;
 int   HardwareConfig::abFlameThreshold   = 500;
 
 int   HardwareConfig::statusLedPin     = DEFAULT_STATUS_LED_PIN;
+int   HardwareConfig::statusLedType    = DEFAULT_STATUS_LED_TYPE;
 
 // Cluster serial
 int   HardwareConfig::clusterTxPin     = 17;
@@ -821,6 +879,20 @@ void HardwareConfig::load() {
                     Serial.println("[HWCfg] Legacy hardware profile ID is missing - START inhibited");
                     return;
                 }
+                if (storedHardwarePlatformMismatch(doc)) {
+                    Serial.printf("[HWCfg] Legacy hardware platform %s does not match firmware %s - regenerating safe defaults\n",
+                                  doc["platform"] | "(unset)", currentPlatformName());
+                    applyDefaults();
+                    if (!save()) {
+                        inhibitStartForHardwareConfigFailure(
+                            "Cannot start: hardware configuration could not be saved to storage.");
+                        Serial.println("[HWCfg] Platform migration save failed - START inhibited");
+                    } else {
+                        LittleFS.remove(LEGACY_PATH);
+                    }
+                    return;
+                }
+                normalizeS3StatusLedDefault(doc);
                 if (!validatePlatformPins(doc)) {
                     inhibitStartForHardwareConfigFailure(
                         "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");
@@ -898,6 +970,18 @@ void HardwareConfig::load() {
         Serial.println("[HWCfg] Hardware profile ID is missing - START inhibited");
         return;
     }
+    if (storedHardwarePlatformMismatch(workDoc)) {
+        Serial.printf("[HWCfg] Stored hardware platform %s does not match firmware %s - regenerating safe defaults\n",
+                      workDoc["platform"] | "(unset)", currentPlatformName());
+        applyDefaults();
+        if (!save()) {
+            inhibitStartForHardwareConfigFailure(
+                "Cannot start: hardware configuration could not be saved to storage.");
+            Serial.println("[HWCfg] Platform migration save failed - START inhibited");
+        }
+        return;
+    }
+    normalizeS3StatusLedDefault(workDoc);
     if (!validatePlatformPins(workDoc)) {
         inhibitStartForHardwareConfigFailure(
             "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");
@@ -1018,7 +1102,7 @@ void HardwareConfig::applyDefaults() {
     hasGlowCurrentSensor = false; hasIgniterCurrentSensor = false;
     hasIgniter2CurrentSensor = false; hasOilPumpCurrentSensor = false;
     hasGovernor = false; hasMAVLink = false;
-    hasStatusLed = DEFAULT_STATUS_LED_PIN >= 0; hasClusterSerial = false;
+    hasStatusLed = DEFAULT_STATUS_LED_PIN != -1; hasClusterSerial = false;
     hasBuzzer = false; buzzerPin = -1;
 
     fuelPump2Pin = -1; fuelPump2Type = 1; fuelPump2MinUs = 1000; fuelPump2MaxUs = 2000;
@@ -1192,10 +1276,14 @@ static constexpr const char* WIFI_PASSWORD_RETAINED = "__KEEP_PASSWORD__";
 
 size_t HardwareConfig::toJson(char* buf, size_t len, bool redactPassword) {
     JsonDocument doc;
+    toJson(doc, redactPassword);
+    return serializeJson(doc, buf, len);
+}
+
+void HardwareConfig::toJson(JsonDocument& doc, bool redactPassword) {
     _toDoc(doc);
     if (redactPassword)
         doc["wifi_password"] = wifiPassword[0] ? WIFI_PASSWORD_RETAINED : "";
-    return serializeJson(doc, buf, len);
 }
 
 // ── fromJson ──────────────────────────────────────────────────
@@ -1431,7 +1519,12 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     glw["has_current"]    = hasGlowCurrentSensor;
 
     auto led = acts["status_led"].to<JsonObject>();
-    led["enabled"] = hasStatusLed; led["pin"] = statusLedPin;
+#if defined(OT_PLATFORM_ESP32S3)
+    hasStatusLed = true;
+    statusLedPin = DEFAULT_STATUS_LED_PIN;
+    statusLedType = DEFAULT_STATUS_LED_TYPE;
+#endif
+    led["enabled"] = hasStatusLed; led["pin"] = statusLedPin; led["type"] = statusLedType;
 
     auto clus = doc["cluster_serial"].to<JsonObject>();
     clus["enabled"] = hasClusterSerial; clus["tx_pin"] = clusterTxPin;
@@ -1831,6 +1924,27 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     auto led = a["status_led"];
     if (!led["enabled"].isNull()) hasStatusLed = led["enabled"].as<bool>();
     statusLedPin = led["pin"] | statusLedPin;
+    statusLedType = led["type"] | statusLedType;
+#if defined(OT_PLATFORM_ESP32S3)
+    if (!hasStatusLed ||
+        statusLedPin < 0 ||
+        statusLedPin == AUTO_S3_RGB_STATUS_LED_PIN ||
+        statusLedPin == 38) {
+        auto moveOldRgbMiso = [](int& pin) {
+            if (pin == 38) pin = OT_SPI_MISO_DEFAULT;
+        };
+        moveOldRgbMiso(totMiso);
+        moveOldRgbMiso(titMiso);
+        moveOldRgbMiso(oilTempMiso);
+        hasStatusLed = true;
+        statusLedPin = DEFAULT_STATUS_LED_PIN;
+        statusLedType = DEFAULT_STATUS_LED_TYPE;
+        Serial.println("[HWCfg] Status LED migrated to YD-ESP32-S3 RGB LED default");
+    }
+    if (statusLedPin == DEFAULT_STATUS_LED_PIN && led["type"].isNull()) {
+        statusLedType = DEFAULT_STATUS_LED_TYPE;
+    }
+#endif
 
     auto clus = doc["cluster_serial"];
     if (!clus["enabled"].isNull()) hasClusterSerial = clus["enabled"].as<bool>();
@@ -1858,6 +1972,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (hasOilLoop && (!hasOilPress || !hasOilPump)) {
         Serial.println("[HWCfg] Oil pressure loop disabled: requires oil pressure sensor and oil pump");
         hasOilLoop = false;
+    }
+    if (hasThrottleSlew && !hasThrottle) {
+        Serial.println("[HWCfg] Throttle slew disabled: requires throttle output");
+        hasThrottleSlew = false;
     }
     if (hasDynamicIdle && (!hasThrottle || (!hasN1Rpm && !hasN2Rpm))) {
         Serial.println("[HWCfg] Dynamic idle disabled: requires throttle output and an RPM sensor");
@@ -1887,7 +2005,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         safetyOverspeed = false;
         safetySurge = false;
     }
-    if (!hasTot) {
+    if (!hasTot && !hasTit) {
         safetyOvertemp = false;
         safetyHotStart = false;
     }
@@ -1895,7 +2013,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         safetyLowOil = false;
         safetyOilZero = false;
     }
-    if (!hasFlame && !hasN1Rpm && !hasTot) safetyFlameout = false;
+    if (!hasFlame && !hasN1Rpm && !hasTot && !hasTit) safetyFlameout = false;
     if (!hasTit) safetyTitOvertemp = false;
     if (!hasOilTemp) safetyOilTempHigh = false;
     if (!hasFuelPress) safetyFuelPressLow = false;

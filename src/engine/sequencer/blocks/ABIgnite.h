@@ -11,7 +11,7 @@
 //  useIgniter : fire igniter2On for torchDurationMs
 //  Both may be true simultaneously.
 //
-//  If torchTotLimit > 0 and TOT exceeds it, torch is cut early.
+//  If torchTotLimit > 0 and selected EGT exceeds it, torch is cut early.
 //  AB solenoid is NOT opened here — sequence designer places ABSolOpen
 //  before this block if required.
 // ============================================================
@@ -22,7 +22,7 @@ public:
     bool  useIgniter      = false;   // fire AB igniter (igniter2)
     float torchSpikePct   = 30.0f;   // extra fuel pump demand % (0–100)
     int   torchDurationMs = 400;
-    float torchTotLimit   = 0.0f;    // safety TOT cap during torch (0=disabled)
+    float torchTotLimit   = 0.0f;    // safety EGT cap during torch (0=disabled)
 
     const char* name() override { return "ABIgnite"; }
 
@@ -38,7 +38,7 @@ public:
         // for all subsequent AB ignition attempts in this run.
         _doTorch = useTorch && (torchTotLimit > 0.0f);
         if (useTorch && torchTotLimit == 0.0f) {
-            Serial.println("[AB] Ignite: torch skipped — torchTotLimit is 0 (no TOT safety cap configured)");
+            Serial.println("[AB] Ignite: torch skipped - torchTotLimit is 0 (no EGT safety cap configured)");
         }
 
         // Torch: temporarily boost main fuel via ed.abFuelOffset.
@@ -66,17 +66,18 @@ public:
         auto& ed = EngineData::instance();
         unsigned long elapsed = millis() - _startMs;
 
-        if (_doTorch && !ed.totHealthy) {
-            Serial.println("[AB] Ignite fault: TOT sensor unavailable during torch");
+        if (_doTorch && !Config::primaryEgtHealthy(ed)) {
+            Serial.println("[AB] Ignite fault: EGT sensor unavailable during torch");
             _cutTorch(ed);
             _done = true;
             return BlockResult::Fault;
         }
 
-        // Safety: cut torch if TOT is getting too hot
-        if (_doTorch && torchTotLimit > 0 && ed.totHealthy && ed.tot > torchTotLimit) {
-            Serial.printf("[AB] Ignite: torch cut — TOT %.1f > limit %.1f\n",
-                          (double)ed.tot, (double)torchTotLimit);
+        // Safety: cut torch if EGT is getting too hot.
+        if (_doTorch && torchTotLimit > 0 && Config::primaryEgtHealthy(ed)
+            && Config::primaryEgtC(ed) > torchTotLimit) {
+            Serial.printf("[AB] Ignite: torch cut - EGT %.1f > limit %.1f\n",
+                          (double)Config::primaryEgtC(ed), (double)torchTotLimit);
             _cutTorch(ed);
             _done = true;
             return BlockResult::Complete;
