@@ -4,6 +4,8 @@
 
 OpenTurbine is an open-source engine control unit for small jet turbines. It runs on a standard ESP32 (or ESP32-S3) development board and provides a complete control loop — startup sequencing, oil pump control, safety shutdowns, afterburner management, and a Wi-Fi web interface — with zero code changes between different engine builds. A compile-time profile provides safe factory defaults; the complete per-engine hardware and settings file is then tuned at runtime via the web UI.
 
+For a practical first-setup walkthrough, use [`docs/BETA_USER_GUIDE.md`](docs/BETA_USER_GUIDE.md).
+
 ---
 
 ## Features

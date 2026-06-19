@@ -19,6 +19,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Documentation now calls out ESP32-S3 GPIO48 NeoPixel status LED mode separately from plain GPIO status LEDs, and platform notes no longer refer to old GPIO38/S3 auto-detect assumptions.
 
 ### Documentation
+- Added `docs/BETA_USER_GUIDE.md` with first-flash, first-setup, calibration, dry-test, first-fuel, backup/restore, update, and troubleshooting guidance for beta testers.
 - Added a beta-readiness review plan covering supported setups, dependency gates, critical user flows, and required verification.
 - Updated the README hardware/setup guide to reflect the unified `ecu_config.json` engine file, runtime hardware configuration, OTA web assets, and current ESP32-S3 target.
 

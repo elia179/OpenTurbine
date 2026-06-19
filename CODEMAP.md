@@ -1,8 +1,9 @@
 # OpenTurbine ECU — CODEMAP
 
-Recon for the static code audit. All locations cite `file:line`. Scope is source only,
-no execution. Project is a personal turbine (jet/turboprop) ECU on ESP32 / ESP32-S3
-running Arduino-ESP32 (IDF5). Wireless web UI is the primary tuning surface.
+Current high-level source map for the firmware and web stack. Line counts are
+approximate and intended for orientation only. Project is a turbine ECU on
+ESP32 / ESP32-S3 running Arduino-ESP32 (IDF5). Wireless web UI is the primary
+tuning surface.
 
 Glossary used below:
 - **ISR**: Interrupt Service Routine.
@@ -22,8 +23,8 @@ Glossary used below:
 
 ```
 src/
-  main.cpp                       1690 lines  — setup(), loop(), mode transitions, command dispatch
-  Hardware.h                     ~2000 lines — HAL: sensor/actuator/controller/block global instances + Hardware::* funcs
+  main.cpp                       ~1780 lines — setup(), loop(), mode transitions, command dispatch
+  Hardware.h                     ~1240 lines — HAL: sensor/actuator/controller/block global instances + Hardware::* funcs
   engine/
     EngineData.{h,cpp}                       — singleton shared state (sensors, demands, mode, faults, peaks)
     SafetyMonitor.h                          — 12 fault checks, relight FSM, external-fault injection
@@ -49,7 +50,7 @@ src/
     RulesEngine.h                            — up to 8 sensor→actuator threshold rules
     ClusterSerial.{h,cpp}                    — OTC framed external display/device protocol (UART1)
     MAVLinkOutput.h                          — TX-only MAVLink v1 HEARTBEAT / NAMED_VALUE_FLOAT / STATUSTEXT
-    web/WebServer.{h,cpp}                    — 1172 lines: HTTP+WS+OTA+captive portal
+    web/WebServer.{h,cpp}                    — ~1810 lines: HTTP+WS+OTA+captive portal
   platform/esp32/
     PlatformInit.h                           — boot sequence (LittleFS, ADC config, Preferences, reset reason)
     StatusLED.h                              — millis-based blink FSM
@@ -303,4 +304,5 @@ Recon is complete. Proposed subagent dispatch order (each writes
 
 Each subagent gets the bug taxonomy, finding template, and a scoped path list.
 
-Ready to dispatch on your go.
+Keep this map current when moving major ownership boundaries or adding new
+subsystems.

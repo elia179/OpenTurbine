@@ -87,6 +87,8 @@ hardware combinations, dependency gates, and release-facing documentation.
 
 - `README.md`: release-facing setup guide, minimum hardware, optional hardware,
   flashing, OTA, one-file engine config, and user workflows.
+- `docs/BETA_USER_GUIDE.md`: beta-tester first setup, calibration, dry test,
+  first fuel test, update, restore, and troubleshooting guide.
 - `docs/OTC_CLUSTER_PROTOCOL.md`: cluster serial behavior and current command
   set.
 - `CHANGELOG.md`: user-visible changes since the last release.

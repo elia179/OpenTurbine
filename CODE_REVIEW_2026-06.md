@@ -1,5 +1,11 @@
 # OpenTurbine — Independent Code Review
 
+> **Archived audit snapshot:** this file records a review of commit `93ec5a2`
+> and firmware 1.1.0 from 2026-06-10. It is kept for traceability, not as the
+> current beta status or user guidance. Use `README.md`,
+> `docs/BETA_USER_GUIDE.md`, `docs/BETA_READINESS_PLAN.md`, and `CHANGELOG.md`
+> for current release-facing information.
+
 **Date:** 2026-06-10 · **Commit reviewed:** `93ec5a2` (main) · **Firmware version:** 1.1.0
 **Scope:** full firmware source (`src/`, `hardware_profile.h`, build config), web UI (`data_src/`), docs, prior `.audit/` findings, build verification.
 
@@ -39,7 +45,7 @@ Also notable: **flash is at 90.6% of the 1.5 MB OTA slot.** A few more features 
 | `pio run -e esp32dev` | **SUCCESS**, 0 warnings. RAM 26.6%, **Flash 90.6%** of OTA slot |
 | `esp32s3dev` build | Not run (separate toolchain download; recommend CI for both) |
 | `data/*.gz` vs `data_src/` | 7 HTML pages byte-identical; **app.js and style.css differ** (CRLF/LF only — see F5) |
-| Docs vs code | README ~95% accurate; CODEMAP structurally right, line counts stale; DESIGN_SPEC self-labeled historical; CHANGELOG matches v1.1.0; OTC protocol doc matches implementation |
+| Docs vs code | Archived 1.1.0-era assessment. Current README, CODEMAP, DESIGN_SPEC, beta docs, and changelog have been updated since this review. |
 | Prior `.audit/` findings | All 137 verified individually — see §5 |
 
 Note: your local PlatformIO venv had a corrupted `charset-normalizer` package that broke `pio` entirely mid-review; I repaired it (removed the broken package remnants, reinstalled). If `pio` misbehaves again, `pip install --force-reinstall platformio` inside `%USERPROFILE%\.platformio\penv` is the fix.
@@ -148,9 +154,9 @@ Things I'd evolve:
 
 ## 7. Documentation status
 
-- **README:** accurate except the repo URL (`EliasLaaj/OpenTurbine` → actual remote is `JaakkoLipp/openturbine`) and a referenced **`flash.ps1` that doesn't exist**. Quick-start step 4 fails for Windows users following it.
-- **CODEMAP.md:** an artifact of the previous AI audit ("Ready to dispatch on your go"). Structure is accurate; line counts are stale (main.cpp 1690→1908, WebServer.cpp 1172→1829, Hardware.h "~2000"→1265). Either refresh it or label it as an audit artifact like DESIGN_SPEC.
-- **DESIGN_SPEC.md:** correctly self-labeled historical; references a `PostIgnDwell` block that no longer exists.
+- **Current documentation note:** this section is retained as the 2026-06-10
+  reviewer's assessment. README, CODEMAP, DESIGN_SPEC, and beta docs have been
+  updated since this review.
 - **CHANGELOG:** accurate for v1.1.0 but silent about the large post-audit remediation commit.
 - **OTC protocol doc + example client:** verified accurate against `ClusterSerial.cpp`.
 
@@ -184,7 +190,7 @@ The whole control plane trusts the Wi-Fi link. Current barriers: physical RF ran
 10. Set up CI: build both envs, fail on warnings, check data/ sync, flash-size budget alarm (you're at 90.6%).
 
 **Ongoing**
-11. Update README URL, remove/restore `flash.ps1`, refresh or retire CODEMAP, changelog the audit remediation.
+11. Documentation cleanup was a follow-up item from this archived review; current release-facing docs have since been refreshed.
 12. Decide the fate of `SysMode::FAULT` (wire up or delete).
 13. Plan for flash headroom (trim, or 8 MB parts for new hardware).
 
