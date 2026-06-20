@@ -122,11 +122,15 @@ function isLiveTelemetryPage() {
   if (document.body?.dataset?.page === 'dashboard') return true;
   return location.pathname === '/' ||
     location.pathname === '/index.html' ||
-    location.pathname === '/calibration.html';
+    location.pathname === '/calibration.html' ||
+    location.pathname === '/config.html';
 }
 function isDashboardPage() {
   if (document.body?.dataset?.page === 'dashboard') return true;
   return location.pathname === '/' || location.pathname === '/index.html';
+}
+function isConfigPage() {
+  return location.pathname === '/config.html';
 }
 function usesGlobalTelemetry() {
   return isLiveTelemetryPage();
@@ -137,8 +141,8 @@ function hasPageLocalTelemetry() {
 }
 
 function desiredPullPeriodMs() {
-  const livePage = isLiveTelemetryPage();
-  if (!livePage) return 2000;
+  if (!isLiveTelemetryPage()) return 2000;
+  if (isConfigPage()) return 1000;
   // Dashboard and Calibration are live-control pages.  Keep them at 3 Hz from
   // the first load; slower background pages still use the 2 s period above.
   return 333;
@@ -502,6 +506,22 @@ function applyData(d) {
   if (devBanner) devBanner.style.display = d.dev_mode ? '' : 'none';
   const benchBanner = document.getElementById('bench-banner');
   if (benchBanner) benchBanner.style.display = d.bench_mode ? '' : 'none';
+  const logDropBanner = document.getElementById('session-log-drop-banner');
+  if (logDropBanner) {
+    const dropped = Number(d.session_dropped_rows || 0);
+    logDropBanner.style.display = dropped > 0 ? '' : 'none';
+    if (dropped > 0) {
+      logDropBanner.textContent = 'Session log dropped ' + dropped + ' row' + (dropped === 1 ? '' : 's') + '. CSV for this run is incomplete.';
+    }
+  }
+  const flightDropBanner = document.getElementById('flight-log-drop-banner');
+  if (flightDropBanner) {
+    const dropped = Number(d.flight_dropped_events || 0);
+    flightDropBanner.style.display = dropped > 0 ? '' : 'none';
+    if (dropped > 0) {
+      flightDropBanner.textContent = 'Flight recorder dropped ' + dropped + ' event' + (dropped === 1 ? '' : 's') + '. Event log may be incomplete.';
+    }
+  }
 
   // Stop switch warning below start button
   const stopWarn = document.getElementById('stop-switch-warn');
@@ -1209,7 +1229,7 @@ function startTelemetryBoot() {
   }
   connect();
   startRestFallbackTimer();
-  if (isDashboardPage()) {
+  if (isDashboardPage() || isConfigPage()) {
     fetch('/api/data', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { try { applyData(d); } catch(e) {} })

@@ -40,9 +40,13 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
 #if defined(OT_PLATFORM_ESP32S3)
     JsonObject actuators = doc["actuators"].to<JsonObject>();
     JsonObject led = actuators["status_led"].to<JsonObject>();
-    const bool enabled = led["enabled"] | false;
-    const int pin = led["pin"] | -1;
-    if (!enabled || pin < 0 || pin == AUTO_S3_RGB_STATUS_LED_PIN || pin == 38) {
+    const bool enabledPresent = !led["enabled"].isNull();
+    const bool pinPresent = !led["pin"].isNull();
+    const bool typePresent = !led["type"].isNull();
+    const bool enabled = led["enabled"] | true;
+    const int pin = led["pin"] | DEFAULT_STATUS_LED_PIN;
+    if (!enabledPresent ||
+        (enabled && (!pinPresent || pin < 0 || pin == AUTO_S3_RGB_STATUS_LED_PIN || pin == 38))) {
         led["enabled"] = true;
         led["pin"] = DEFAULT_STATUS_LED_PIN;
         led["type"] = DEFAULT_STATUS_LED_TYPE;
@@ -57,6 +61,8 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
                 if ((sensor["miso"] | -1) == 38) sensor["miso"] = OT_SPI_MISO_DEFAULT;
             }
         }
+    } else if (enabled && pin == DEFAULT_STATUS_LED_PIN && !typePresent) {
+        led["type"] = DEFAULT_STATUS_LED_TYPE;
     }
 #else
     (void)doc;
@@ -356,12 +362,21 @@ bool validatePlatformPins(const JsonDocument& doc) {
             (strcmp(key, "ab_sol") == 0 || strcmp(key, "ab_pump") == 0)) continue;
         if (enabled(item)) {
             const int pin = jsonPin(item, "pin");
-            if (strcmp(key, "status_led") == 0 && pin == AUTO_S3_RGB_STATUS_LED_PIN) {
+            if (strcmp(key, "status_led") == 0) {
+                const int ledType = item["type"] | 0;
+                if (ledType < 0 || ledType > 1) return false;
 #if defined(OT_PLATFORM_ESP32S3)
-                continue;
+                if (ledType == 1 && pin != DEFAULT_STATUS_LED_PIN && pin != AUTO_S3_RGB_STATUS_LED_PIN) return false;
 #else
-                return false;
+                if (ledType == 1) return false;
 #endif
+                if (pin == AUTO_S3_RGB_STATUS_LED_PIN) {
+#if defined(OT_PLATFORM_ESP32S3)
+                    continue;
+#else
+                    return false;
+#endif
+                }
             }
             if (pin < 0 || !outputGpioAllowed(pin) ||
                 (pin >= 0 && (pin == stopPin || pin == startPin))) return false;
@@ -1519,11 +1534,6 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     glw["has_current"]    = hasGlowCurrentSensor;
 
     auto led = acts["status_led"].to<JsonObject>();
-#if defined(OT_PLATFORM_ESP32S3)
-    hasStatusLed = true;
-    statusLedPin = DEFAULT_STATUS_LED_PIN;
-    statusLedType = DEFAULT_STATUS_LED_TYPE;
-#endif
     led["enabled"] = hasStatusLed; led["pin"] = statusLedPin; led["type"] = statusLedType;
 
     auto clus = doc["cluster_serial"].to<JsonObject>();
@@ -1922,14 +1932,18 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!glw["has_current"].isNull()) hasGlowCurrentSensor = hasGlowPlug && glw["has_current"].as<bool>();
 
     auto led = a["status_led"];
-    if (!led["enabled"].isNull()) hasStatusLed = led["enabled"].as<bool>();
+    const bool ledEnabledPresent = !led["enabled"].isNull();
+    const bool ledPinPresent = !led["pin"].isNull();
+    const bool ledTypePresent = !led["type"].isNull();
+    if (ledEnabledPresent) hasStatusLed = led["enabled"].as<bool>();
     statusLedPin = led["pin"] | statusLedPin;
     statusLedType = led["type"] | statusLedType;
 #if defined(OT_PLATFORM_ESP32S3)
-    if (!hasStatusLed ||
+    if (!ledEnabledPresent) hasStatusLed = true;
+    if (hasStatusLed && (!ledPinPresent ||
         statusLedPin < 0 ||
         statusLedPin == AUTO_S3_RGB_STATUS_LED_PIN ||
-        statusLedPin == 38) {
+        statusLedPin == 38)) {
         auto moveOldRgbMiso = [](int& pin) {
             if (pin == 38) pin = OT_SPI_MISO_DEFAULT;
         };
@@ -1941,9 +1955,11 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         statusLedType = DEFAULT_STATUS_LED_TYPE;
         Serial.println("[HWCfg] Status LED migrated to YD-ESP32-S3 RGB LED default");
     }
-    if (statusLedPin == DEFAULT_STATUS_LED_PIN && led["type"].isNull()) {
+    if (hasStatusLed && statusLedPin == DEFAULT_STATUS_LED_PIN && !ledTypePresent) {
         statusLedType = DEFAULT_STATUS_LED_TYPE;
     }
+#else
+    if (statusLedType == 1) statusLedType = 0;
 #endif
 
     auto clus = doc["cluster_serial"];

@@ -10,6 +10,7 @@ SemaphoreHandle_t FlightRecorder::_mutex          = nullptr;
 volatile bool     FlightRecorder::_evictionPending = false;
 static volatile bool s_clearPending = false;
 static volatile int  s_activeRawDownloads = 0;
+static volatile uint32_t s_droppedEvents = 0;
 unsigned long     FlightRecorder::_lastSnapshotMs  = 0;
 float             FlightRecorder::_runMaxN1        = 0.0f;
 float             FlightRecorder::_runMaxTot       = 0.0f;
@@ -70,13 +71,25 @@ void FlightRecorder::tick() {
         "{\"t\":%lu,\"ev\":\"SNAP\",\"n1\":%.0f,\"tot\":%.0f,\"thr\":%d",
         _uptimeSec(), ed.n1Rpm, ed.tot, thrPct);
 
-    if (hw.hasOilPress)
-        n += snprintf(buf+n, sizeof(buf)-n, ",\"oil\":%.2f,\"oilP\":%d",
-                      ed.oilPressure, (int)ed.oilPumpPct);
-    if (hw.hasTit)
-        n += snprintf(buf+n, sizeof(buf)-n, ",\"tit\":%.0f", ed.tit);
+    #define APPEND_EVENT_FIELD(...) do { \
+        if (n >= 0 && n < (int)sizeof(buf)) { \
+            int wrote = snprintf(buf + n, sizeof(buf) - (size_t)n, __VA_ARGS__); \
+            if (wrote < 0) { \
+                n = (int)sizeof(buf) - 1; \
+            } else { \
+                n += wrote; \
+                if (n >= (int)sizeof(buf)) n = (int)sizeof(buf) - 1; \
+            } \
+        } \
+    } while (0)
 
-    snprintf(buf+n, sizeof(buf)-n, "}");
+    if (hw.hasOilPress)
+        APPEND_EVENT_FIELD(",\"oil\":%.2f,\"oilP\":%d", ed.oilPressure, (int)ed.oilPumpPct);
+    if (hw.hasTit)
+        APPEND_EVENT_FIELD(",\"tit\":%.0f", ed.tit);
+
+    APPEND_EVENT_FIELD("}");
+    #undef APPEND_EVENT_FIELD
     _append(buf);
 }
 
@@ -170,11 +183,25 @@ void FlightRecorder::logRunSummary() {
     int n = snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"RUN_SUMMARY\",\"runS\":%lu,\"maxN1\":%.0f,\"maxTot\":%.0f",
         _uptimeSec(), (unsigned long)runS, _runMaxN1, _runMaxTot);
+
+    #define APPEND_SUMMARY_FIELD(...) do { \
+        if (n >= 0 && n < (int)sizeof(buf)) { \
+            int wrote = snprintf(buf + n, sizeof(buf) - (size_t)n, __VA_ARGS__); \
+            if (wrote < 0) { \
+                n = (int)sizeof(buf) - 1; \
+            } else { \
+                n += wrote; \
+                if (n >= (int)sizeof(buf)) n = (int)sizeof(buf) - 1; \
+            } \
+        } \
+    } while (0)
+
     if (HardwareConfig::hasTit)
-        n += snprintf(buf+n, sizeof(buf)-n, ",\"maxTit\":%.0f", _runMaxTit);
+        APPEND_SUMMARY_FIELD(",\"maxTit\":%.0f", _runMaxTit);
     if (_runMinOil < 9000.0f)
-        n += snprintf(buf+n, sizeof(buf)-n, ",\"minOil\":%.2f", _runMinOil);
-    snprintf(buf+n, sizeof(buf)-n, "}");
+        APPEND_SUMMARY_FIELD(",\"minOil\":%.2f", _runMinOil);
+    APPEND_SUMMARY_FIELD("}");
+    #undef APPEND_SUMMARY_FIELD
     _append(buf);
     _runStartSec = 0;   // prevent duplicate summary if shutdown handlers chain
 }
@@ -229,6 +256,10 @@ void FlightRecorder::logRelight(uint8_t attemptNum) {
 
 int FlightRecorder::recordCount() {
     return s_lineCount < 0 ? 0 : s_lineCount;
+}
+
+uint32_t FlightRecorder::droppedEvents() {
+    return s_droppedEvents;
 }
 
 void FlightRecorder::clear() {
@@ -365,7 +396,10 @@ void FlightRecorder::runEviction() {
 void FlightRecorder::_append(const char* eventJson) {
     // Short timeout: _append runs on Core 1 (ECU loop). toJson() on Core 0 can hold
     // the mutex for ~250 ms reading a full log. portMAX_DELAY would stall safety checks.
-    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(8)) != pdTRUE) return;
+    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(8)) != pdTRUE) {
+        s_droppedEvents++;
+        return;
+    }
 
     // Lazy-init: count existing lines on first call after boot/clear
     if (s_lineCount < 0) {
@@ -386,12 +420,17 @@ void FlightRecorder::_append(const char* eventJson) {
     if (s_lineCount >= MAX_RECORDS) {
         _evictionPending = true;
         if (_mutex) xSemaphoreGive(_mutex);
+        s_droppedEvents++;
         return;
     }
 
     // Append the new event
     File fa = LittleFS.open(PATH, "a");
-    if (!fa) { if (_mutex) xSemaphoreGive(_mutex); return; }
+    if (!fa) {
+        s_droppedEvents++;
+        if (_mutex) xSemaphoreGive(_mutex);
+        return;
+    }
     fa.println(eventJson);
     fa.close();
     s_lineCount++;

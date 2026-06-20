@@ -43,7 +43,8 @@ public:
         unsigned long now = millis();
         float dt          = (now - _lastMs) / 1000.0f;
         _lastMs           = now;
-        if (dt > 0.05f) dt = 0.05f;
+        if (dt <= 0.0f) dt = 0.001f;
+        else if (dt > 0.05f) dt = 0.05f;
 
         float target = constrain(ed.throttleDemand, 0.0f, 1.0f);
         // Dry Bench Mode intentionally permits actuator travel without fitted

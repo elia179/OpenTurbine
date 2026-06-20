@@ -885,6 +885,8 @@ window.applyData = function(d) {
   }
 
   // Fuel pressure
+  const fpCalRow = document.getElementById('fuelpress-cal-row');
+  if (fpCalRow) fpCalRow.style.display = hasFuelPress ? '' : 'none';
   if (hasFuelPress) {
     setText('cal-fuelpress-raw', d.fuel_press_raw ?? '—');
     if (d.fuel_press !== undefined) {

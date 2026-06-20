@@ -693,7 +693,7 @@ void ClusterSerial::_handleLine(const char* line) {
         ok = CommandQueue::push(pkt);
     } else if (strcmp(cmd, "AB_STOP") == 0) {
         pkt.cmd = OTCommand::AB_STOP;
-        ok = CommandQueue::push(pkt);
+        ok = CommandQueue::pushFront(pkt);
     } else if (strcmp(cmd, "RESET_PEAKS") == 0) {
         pkt.cmd = OTCommand::RESET_PEAKS;
         ok = CommandQueue::push(pkt);

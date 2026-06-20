@@ -513,6 +513,33 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     JsonVariantConst sl = doc["session_log"];
     if (present(sl) && (!sl.is<JsonObjectConst>() || !validInt(sl["interval_ms"], 100, 60000))) return false;
 
+    JsonVariantConst gov = doc["governor"];
+    if (present(gov) && (!gov.is<JsonObjectConst>() ||
+        !validNumber(gov["target_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(gov["band_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(gov["kp"], 0.0f, 0.01f) ||
+        !validNumber(gov["pitch_kp"], 0.0f, 0.01f) ||
+        !validNumber(gov["pitch_ramp_sec"], 0.0f, 3600000.0f) ||
+        !validNumber(gov["pitch_idle_deg"], 0.0f, 1000000.0f) ||
+        !validNumber(gov["pitch_max_deg"], 0.0f, 1000000.0f))) return false;
+    if (present(gov["pitch_idle_deg"]) && present(gov["pitch_max_deg"]) &&
+        gov["pitch_max_deg"].as<float>() < gov["pitch_idle_deg"].as<float>()) return false;
+
+    JsonVariantConst glow = doc["glow_plug"];
+    if (present(glow) && (!glow.is<JsonObjectConst>() ||
+        !validInt(glow["preheat_ms"], 0, 3600000) ||
+        !validNumber(glow["preheat_max_pct"], 0.0f, 100.0f) ||
+        !validNumber(glow["hold_pct"], 0.0f, 100.0f) ||
+        !validBool(glow["wait_until_hot"]))) return false;
+
+    JsonVariantConst rc = doc["rc_input"];
+    if (present(rc) && (!rc.is<JsonObjectConst>() ||
+        !validInt(rc["min_us"], 500, 2500) ||
+        !validInt(rc["max_us"], 500, 2500) ||
+        !validInt(rc["failsafe_ms"], 20, 60000))) return false;
+    if (present(rc["min_us"]) && present(rc["max_us"]) &&
+        rc["min_us"].as<int>() >= rc["max_us"].as<int>()) return false;
+
     JsonVariantConst rules = doc["rules"];
     if (present(rules)) {
         if (!rules.is<JsonArrayConst>() || rules.size() > Config::MAX_RULES) return false;
@@ -700,6 +727,16 @@ void Config::sanitizeForHardware() {
     }
     if ((!HardwareConfig::hasN1Rpm || !HardwareConfig::hasIgniter) && relightEnabled) {
         relightEnabled = false;
+    }
+    if ((flameoutSource == 1 && !HardwareConfig::hasFlame) ||
+        (flameoutSource == 2 && !HardwareConfig::hasN1Rpm) ||
+        (flameoutSource == 3 && effectiveEgtSource() == 0)) {
+        flameoutSource = 0;
+    }
+    if ((relightConfirmSource == 1 && !HardwareConfig::hasFlame) ||
+        (relightConfirmSource == 2 && !HardwareConfig::hasN1Rpm) ||
+        (relightConfirmSource == 3 && effectiveEgtSource() == 0)) {
+        relightConfirmSource = 0;
     }
     const bool hasN1 = HardwareConfig::hasN1Rpm;
     const bool hasN2 = HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
@@ -952,7 +989,7 @@ bool Config::fromJson(const char* json, size_t len) {
 }
 
 bool Config::fromJson(const JsonDocument& doc) {
-    if (isLocked()) return false;
+    if (isLocked() || !validateJson(doc)) return false;
     const char* id = doc["profile_id"] | "";
     if (!id[0] || strcmp(id, HardwareConfig::profileId) != 0) return false;
     JsonDocument previous;
@@ -1514,7 +1551,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (governorBandRpm < 0.0f) governorBandRpm = 0.0f;
     if (propPitchIdleDeg < 0.0f) propPitchIdleDeg = 0.0f;
     if (propPitchMaxDeg < propPitchIdleDeg) propPitchMaxDeg = propPitchIdleDeg;
-    if (governorPitchRampSec <= 0.0f) governorPitchRampSec = 1.0f;
+    if (governorPitchRampSec < 0.0f) governorPitchRampSec = 1.0f;
     sanitizeForHardware();
 }
 

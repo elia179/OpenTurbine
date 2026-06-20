@@ -2203,6 +2203,22 @@ function refreshAllPins() {
 }
 
 // ─── General-purpose DI channel renderer ────────────────────
+function updateStatusLedTypeUI() {
+  const sel = document.getElementById('f-led-type');
+  if (!sel) return;
+  const neoOption = Array.from(sel.options).find(o => o.value === '1');
+  if (neoOption) neoOption.disabled = cfg.platform !== 'esp32s3';
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+  if (cfg.platform !== 'esp32s3' && cfg.actuators.status_led.type === 1) {
+    cfg.actuators.status_led.type = 0;
+  }
+  if (cfg.platform === 'esp32s3' && cfg.actuators.status_led.type === 1) {
+    cfg.actuators.status_led.pin = 48;
+  }
+  sel.value = String(cfg.actuators.status_led.type ?? 0);
+}
+
 const DI_ROLES = [
   { val:'none',           lbl:'None (display only)' },
   { val:'fault',          lbl:'Fault — trigger engine fault shutdown' },
@@ -2625,6 +2641,7 @@ function populate() {
   if (cfg.platform === 'esp32s3' && a.status_led.type === undefined) a.status_led.type = 1;
   if (cfg.platform !== 'esp32s3' && a.status_led.type === undefined) a.status_led.type = 0;
   v('f-led-type', a.status_led.type ?? 0);
+  updateStatusLedTypeUI();
   updateGroupEnabled('grp-statusled', statusLedEnabled);
   const buz = cfg.buzzer || {};
   chk('en-buzzer', !!buz.enabled);
@@ -3100,12 +3117,14 @@ function setAct(act, key, val) {
   dirty();
 }
 function setStatusLedType(val) {
+  if (cfg.platform !== 'esp32s3' && val === 1) val = 0;
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
   cfg.actuators.status_led.type = val;
   cfg.actuators.status_led.enabled = true;
   if (cfg.platform === 'esp32s3' && val === 1) cfg.actuators.status_led.pin = 48;
   dirty();
+  updateStatusLedTypeUI();
   refreshAllPins();
 }
 function setActEnabled(act, grpId, val) {
@@ -4044,6 +4063,9 @@ function saveHardware() {
       cfg.actuators.status_led.type = 1;
       cfg.actuators.status_led.pin = 48;
     }
+    if (cfg.actuators.status_led.type === 1) cfg.actuators.status_led.pin = 48;
+  } else if (cfg.actuators?.status_led?.type === 1) {
+    cfg.actuators.status_led.type = 0;
   }
   const missing = [];
   const requirePin = (obj, key, label) => {

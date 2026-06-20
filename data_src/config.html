@@ -89,10 +89,10 @@
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
   { title: 'Engine Limits', id: 'engine-limits', fields: [
-    { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum N1 RPM when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical range: 80,000–180,000 RPM.',                       step:1000, min:0,    basic:true },
+    { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum N1 RPM when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical range: 80,000–180,000 RPM.',                       step:1000, min:1000, basic:true },
     { key:'min_rpm',            path:['engine','min_rpm'],            label:'Min RPM (RPM)',           desc:'Minimum N1 RPM in RUNNING when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical: 25,000–50,000 RPM.',            step:1000, min:0,    basic:true },
     { key:'eg_src',             path:['safety','egt_source'],         label:'Engine Temp Source', type:'select', options:[{v:0,l:'Auto (TOT, else TIT)'},{v:1,l:'TOT'},{v:2,l:'TIT'}], desc:'Selects which fitted temperature sensor is used for primary engine safety, hot-start, EGT rise rate, cooldown checks, throttle pullback, and temperature confirmation. TOT and TIT keep separate limits.', basic:true },
-    { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', desc:'Turbine outlet temperature hard limit. Used as the primary over-temperature limit only when Engine Temp Source is TOT or Auto selects TOT.',             step:10,   min:0,    basic:true },
+    { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', desc:'Turbine outlet temperature hard limit. Used as the primary over-temperature limit only when Engine Temp Source is TOT or Auto selects TOT.',             step:10,   min:1,    basic:true },
     { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'EGT Soft Margin',    unitType:'temp_delta', desc:'Soft warning/pullback margin below the selected primary EGT limit. Used for throttle safety pullback and cluster warnings. Typical: 30-50 °C / 55-90 °F below the hard limit.',                         step:5,    min:0, basic:true },
     { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown EGT Target',    unitType:'temp', desc:'Engine cooldown blocks use this selected EGT target to decide when temperature-based cooldown is complete. Operator cooldown skip bypasses this target intentionally. Typical: 100-200 °C / 212-390 °F.',                              step:10,   min:0, basic:true },
   ]},
@@ -132,8 +132,8 @@ const SCHEMA = [
     { key:'di_im', path:['dynamic_idle','i_max'],        label:'I-Max Authority',  desc:'Maximum integral authority (fraction of throttle range). Limits wind-up so the integrator alone cannot over-speed the engine. 0.10 = ±10% throttle range.', step:0.01, min:0, max:0.5 },
   ]},
   { title: 'Safety Monitor', id: 'safety-monitor', fields: [
-    { key:'sf_ci', path:['safety','check_interval_ms'],    label:'Check Interval (ms)',          desc:'How often the safety checks run (milliseconds). Lower = faster response. Default 100 ms. Rarely needs changing.',                                                     step:10,  min:0 },
-    { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Flameout Delay (ms)',          desc:'How long the selected flameout source must indicate combustion loss before a fault is declared. Set longer if the selected source is noisy or unstable. Default: 3000 ms (3 seconds).',             step:200, min:0, basic:true },
+    { key:'sf_ci', path:['safety','check_interval_ms'],    label:'Check Interval (ms)',          desc:'How often the safety checks run (milliseconds). Lower = faster response. Default 100 ms. Rarely needs changing.',                                                     step:10,  min:10 },
+    { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Flameout Delay (ms)',          desc:'How long the selected flameout source must indicate combustion loss before a fault is declared. Set longer if the selected source is noisy or unstable. Default: 3000 ms (3 seconds).',             step:200, min:100, basic:true },
     { key:'sf_fs', path:['safety','flameout_source'],      label:'Flameout Source', type:'select', options:[{v:0,l:'Auto best fitted source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 RPM drop'},{v:3,l:'EGT drop'}], desc:'Which signal declares a running flameout. Auto uses flame sensor if fitted, otherwise N1 RPM, otherwise selected EGT drop.', basic:true },
     { key:'sf_fn', path:['safety','flameout_n1_min_rpm'],  label:'N1 Flameout RPM', desc:'For N1-source flameout: declare flameout if N1 stays below this RPM. 0 uses Min RPM. This is delayed by Flameout Delay.', step:1000, min:0, basic:true },
     { key:'sf_ft', path:['safety','flameout_tot_drop_c'],  label:'EGT Drop for Flameout (C)', desc:'For EGT-source flameout: declare flameout after selected EGT drops this far below the highest running EGT reference. Use cautiously; throttle changes can affect EGT.', step:5, min:0, basic:true },
@@ -241,8 +241,8 @@ const SCHEMA = [
   { title: 'Power Turbine Governor', id: 'governor-cfg-section', fields: [
     { key:'gv_tr', path:['governor','target_rpm'],   label:'Target N2 RPM',      desc:'Power turbine (N2) speed setpoint for the governor. Set to your rated output shaft RPM. 0 = governor disabled.',                                                             step:100,   min:0, basic:true },
     { key:'gv_bd', path:['governor','band_rpm'],     label:'Deadband (RPM)',      desc:'Governor makes no correction while N2 is within ±this many RPM of target. Prevents hunting. Typical: 200–500 RPM.',                                                          step:50,    min:0 },
-    { key:'gv_kp', path:['governor','kp'],            label:'Response Gain',           desc:'How aggressively the governor reacts to RPM error (throttle fraction per RPM error). Too high = oscillation / surging. Too low = sluggish. Typical: 0.0005–0.002. Start low and increase.',               step:0.0001, min:0 },
-    { key:'gv_pk', path:['governor','pitch_kp'],      label:'Pitch Gain',              desc:'Prop pitch adjustment per RPM error (turboprop pitch-primary mode). Only active when Prop Pitch is enabled in Hardware. Typical: 0.0003–0.001. Set 0 to disable pitch-primary governing and use throttle only.', step:0.0001, min:0 },
+    { key:'gv_kp', path:['governor','kp'],            label:'Response Gain',           desc:'How aggressively the governor reacts to RPM error (throttle fraction per RPM error). Too high = oscillation / surging. Too low = sluggish. Typical: 0.0005–0.002. Start low and increase.',               step:0.0001, min:0, max:0.01 },
+    { key:'gv_pk', path:['governor','pitch_kp'],      label:'Pitch Gain',              desc:'Prop pitch adjustment per RPM error (turboprop pitch-primary mode). Only active when Prop Pitch is enabled in Hardware. Typical: 0.0003–0.001. Set 0 to disable pitch-primary governing and use throttle only.', step:0.0001, min:0, max:0.01 },
     { key:'gv_pr', path:['governor','pitch_ramp_sec'], label:'Pitch Ramp (s)',          desc:'Maximum pitch servo travel time: full stroke (idle→max) in this many seconds. Prevents abrupt pitch changes from destabilising the airframe. 0 = unlimited (instant). Typical: 1–5 s.', step:0.5, min:0 },
     { key:'gv_pi', path:['governor','pitch_idle_deg'],label:'Pitch at Idle (°)',       desc:'Propeller pitch angle at fine/idle (minimum drag). Typical turboprop idle pitch: 10–20°.',                                                                                                                      step:1,     min:0 },
     { key:'gv_pm', path:['governor','pitch_max_deg'], label:'Pitch at Full Power (°)', desc:'Propeller pitch angle at maximum power (coarse pitch, maximum thrust). Typical: 25–45°.',                                                                                                                        step:1,     min:0 },
@@ -723,6 +723,12 @@ function validateBeforeSave(cfg) {
     errors.push('Oil Map Min (' + oilMapMin + ' bar) is greater than Oil Map Max (' + oilMapMax + ' bar). Swap them.');
   if (oilMapMin !== undefined && oilRunning !== undefined && oilMapMin < oilRunning)
     warns.push('Oil Map Min (' + oilMapMin + ' bar) is below Running Min (' + oilRunning + ' bar). The oil map floor should be at or above the fault threshold.');
+
+  // Governor cross-checks
+  const pitchIdle = gv(cfg, 'governor', 'pitch_idle_deg');
+  const pitchMax  = gv(cfg, 'governor', 'pitch_max_deg');
+  if (pitchIdle !== undefined && pitchMax !== undefined && pitchMax < pitchIdle)
+    errors.push('Governor Pitch at Full Power (' + pitchMax + '°) must be at or above Pitch at Idle (' + pitchIdle + '°).');
 
   // EGT / temperature cross-checks
   const totLimit    = gv(cfg, 'engine', 'tot_limit');
@@ -1402,8 +1408,11 @@ function applyHwConditions() {
   ghostField('tl_ig', hasIgniter || hasIgniter2, 'Igniter Test duration requires Igniter 1 or Igniter 2 to be configured in Hardware.');
   ghostField('tl_st', hasStarter, 'Starter Test duration requires a starter output.');
 
-  ['di_tr','di_ru','di_rd','di_db','di_rl','di_mm','di_n2','di_ig','di_im'].forEach(k =>
+  ['di_tr','di_ru','di_rd','di_db','di_rl','di_mm','di_ig','di_im'].forEach(k =>
     ghostField(k, hasDynamicIdle, 'Dynamic Idle needs Hardware > Controllers > Dynamic Idle plus a throttle/fuel output and at least one fitted shaft RPM sensor.'));
+  ghostField('di_n2', hasDynamicIdle && hasN2, hasN2
+    ? 'Dynamic Idle needs Hardware > Controllers > Dynamic Idle plus a throttle/fuel output.'
+    : 'Use N2 Speed requires an N2 RPM sensor in Hardware.');
   ghostSectionByTitle('Dynamic Idle', hasDynamicIdle, 'Dynamic Idle needs a throttle/fuel output and N1 or N2 RPM feedback.');
 
   ghostSectionByTitle('Power Turbine Governor', hasGovernor,

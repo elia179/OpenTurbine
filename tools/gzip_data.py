@@ -16,8 +16,10 @@ for fname in os.listdir(SRC):
     src_path = os.path.join(SRC, fname)
     dst_path = os.path.join(DST, fname + ".gz")
     tmp_path = dst_path + ".tmp"
-    with open(src_path, "rb") as f_in, gzip.open(tmp_path, "wb", compresslevel=9) as f_out:
-        shutil.copyfileobj(f_in, f_out)
+    with open(src_path, "rb") as f_in, open(tmp_path, "wb") as raw_out:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw_out,
+                           compresslevel=9, mtime=0) as f_out:
+            shutil.copyfileobj(f_in, f_out)
     os.replace(tmp_path, dst_path)
     src_kb = os.path.getsize(src_path) / 1024
     dst_kb = os.path.getsize(dst_path) / 1024

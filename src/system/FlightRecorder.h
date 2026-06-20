@@ -1,5 +1,6 @@
 #pragma once
 #include "../engine/EngineData.h"
+#include <stdint.h>
 #include <stddef.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -47,6 +48,7 @@ public:
 
     // Current number of records in the log (0 before first write).
     static int recordCount();
+    static uint32_t droppedEvents();
 
     // For web download — writes full log JSON to buf, returns bytes written
     static size_t toJson(char* buf, size_t len);

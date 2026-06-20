@@ -52,10 +52,7 @@ static unsigned long _hwRebootScheduledMs    = 0;
 // tick() detects this and sends a WS PING; the PONG fires WS_EVT_PONG
 // inside the async_tcp task (correct context), which then delivers the
 // queued telemetry frame without waiting for another "p" from the client.
-// _wsPendingFull: remembers whether the blocked frame should be a full frame
-// (i.e. _fullCounter just rolled over to 0) so the PONG rescue honours it.
 static volatile bool _wsPendingResponse = false;
-static volatile bool _wsPendingFull     = false;
 static unsigned long _wsPingMs          = 0;   // last ping timestamp
 
 // LittleFS usage stats — cached by tick() every 10 s so _buildTelemetry
@@ -275,6 +272,14 @@ static DNSServer       _dns;                 // captive portal DNS
 
 static void _sendGzipAsset(AsyncWebServerRequest* req, const char* path,
                            const char* contentType, const char* cacheControl) {
+    if (!LittleFS.exists(path)) {
+        AsyncWebServerResponse* resp = req->beginResponse(
+            503, "text/plain", "Web UI asset missing - re-upload web assets or reflash filesystem");
+        resp->addHeader("Cache-Control", "no-store");
+        resp->addHeader("Connection", "close");
+        req->send(resp);
+        return;
+    }
     AsyncWebServerResponse* resp = req->beginResponse(LittleFS, path, contentType);
     resp->addHeader("Content-Encoding", "gzip");
     resp->addHeader("Cache-Control", cacheControl);
@@ -282,8 +287,7 @@ static void _sendGzipAsset(AsyncWebServerRequest* req, const char* path,
     req->send(resp);
 }
 
-static constexpr const char* VERSIONED_ASSET_CACHE =
-    "public, max-age=31536000, immutable";
+static constexpr const char* SHARED_ASSET_CACHE = "no-cache";
 
 static void _finalizeJsonResponse(AsyncWebServerResponse* resp) {
     if (!resp) return;
@@ -450,6 +454,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["config_version_mismatch"] = ed.configVersionMismatch;
     doc["fw_version"]            = OT_VERSION;
     doc["uptime_s"]              = ed.uptimeMs / 1000;
+    doc["session_dropped_rows"]  = SessionLogger::droppedRows();
+    doc["flight_dropped_events"] = FlightRecorder::droppedEvents();
     doc["log_records"]           = FlightRecorder::recordCount();
     doc["max_n1"]                = (int)ed.maxN1;
     doc["max_n2"]                = (int)ed.maxN2;
@@ -699,15 +705,13 @@ void WebServer::_setupRoutes() {
     _server.on("/redirect", HTTP_GET, sendPortalPage);
     _server.on("/canonical.html", HTTP_GET, sendPortalPage);
 
-    // app.js and style.css are shared across all pages and only change when the
-    // filesystem is reflashed — cache them for 1 hour to avoid re-fetching on every
-    // page navigation, which would exhaust the lwIP TCP PCB pool alongside the
-    // persistent SSE connection and cause "IP not responding" errors.
+    // app.js and style.css are shared across all pages. Revalidate them so
+    // freshly flashed HTML never runs against stale JS/CSS from an older build.
     _server.on("/app.js", HTTP_GET, [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/app.js.gz", "application/javascript", VERSIONED_ASSET_CACHE);
+        _sendGzipAsset(req, "/app.js.gz", "application/javascript", SHARED_ASSET_CACHE);
     });
     _server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/style.css.gz", "text/css", VERSIONED_ASSET_CACHE);
+        _sendGzipAsset(req, "/style.css.gz", "text/css", SHARED_ASSET_CACHE);
     });
     _server.on("/", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
         if (redirectCaptiveToIp(req)) return;
@@ -856,14 +860,16 @@ void WebServer::_setupRoutes() {
             Config::toJson(current);
             _mergeJsonObject(current.as<JsonObject>(), patch.as<JsonObjectConst>());
             bool ok = Config::fromJson(current);
+            if (!ok) {
+                req->send(400, "application/json", "{\"ok\":false,\"error\":\"settings rejected\"}");
+                return;
+            }
             CommandQueue::push({ OTCommand::APPLY_CONFIG });
             FlightRecorder::logConfigChange("config.patch", 0, 0);
             // Config values are live in memory immediately.
             // Block-instance params (applyConfig) are applied on next START; warn if deferred.
             bool deferred = (EngineData::instance().mode != SysMode::STANDBY);
-            if (!ok) {
-                req->send(500, "application/json", "{\"ok\":false,\"error\":\"flash write failed\"}");
-            } else if (deferred) {
+            if (deferred) {
                 req->send(200, "application/json",
                     "{\"ok\":true,\"warn\":\"config saved; block params will apply on next engine start\"}");
             } else {
@@ -1082,6 +1088,11 @@ void WebServer::_setupRoutes() {
 
     // DELETE /api/session/all — wipe every session_N.csv file from /logs
     _server.on("/api/session/all", HTTP_DELETE, [](AsyncWebServerRequest* req) {
+        if (EngineData::instance().mode != SysMode::STANDBY) {
+            req->send(423, "application/json",
+                "{\"error\":\"Engine must be in STANDBY to delete session logs\"}");
+            return;
+        }
         File dir = LittleFS.open("/logs");
         if (dir) {
             File entry = dir.openNextFile();
@@ -1761,11 +1772,7 @@ void WebServer::_setupRoutes() {
             // A new pull from the browser is already proof that the socket is
             // responsive again; resume immediately instead of waiting for ping.
             _wsPendingResponse = false;
-            _wsPendingFull = false;
-            // A fresh pull is also the fastest recovery from a deferred frame.
             full = false;
-            _wsPendingFull     = false;
-            _wsPendingResponse = true;
             shouldSend = true;
         } else if (type == WS_EVT_PONG && _wsPendingResponse) {
             // Rescue: tick() sent a PING because canSend() was false; now we are
@@ -1847,7 +1854,7 @@ void WebServer::tick() {
     // deliver the pending telemetry frame without a cross-task handoff.
     if (_wsPendingResponse && _ws.count() > 0) {
         unsigned long now = millis();
-        if (now - _wsPingMs >= 1000) {
+        if (now - _wsPingMs >= 200) {
             _wsPingMs = now;
             _ws.pingAll();
         }

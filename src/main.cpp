@@ -1554,7 +1554,11 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::CLEAR_LOG:
-            FlightRecorder::requestClear();
+            if (ed.mode == SysMode::STANDBY) {
+                FlightRecorder::requestClear();
+            } else {
+                Serial.println("[OT] CLEAR_LOG ignored: engine not in STANDBY");
+            }
             break;
 
         case OTCommand::AB_FIRE:

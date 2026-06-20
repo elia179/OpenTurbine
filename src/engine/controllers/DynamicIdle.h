@@ -61,7 +61,8 @@ public:
         unsigned long now = millis();
         float dt          = (now - _lastMs) / 1000.0f;
         _lastMs           = now;
-        if (dt > 0.05f) dt = 0.05f;
+        if (dt <= 0.0f) dt = 0.001f;
+        else if (dt > 0.05f) dt = 0.05f;
 
         // Disengage at high RPM or if sensor not trustworthy
         if (!healthy || rpm > rpmLimit) {

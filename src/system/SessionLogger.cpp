@@ -25,12 +25,15 @@ static File              _file;
 static volatile bool     _open      = false;
 static uint32_t          _lastMs    = 0;
 static uint32_t          _rowCount  = 0;
+static volatile uint32_t _droppedRows = 0;
 static char              _currentPath[40] = {};
 static QueueHandle_t     _rowQueue  = nullptr;
 static volatile bool     _startPending = false;
 static volatile bool     _endPending   = false;
 
 const char* SessionLogger::currentPath() { return _currentPath; }
+
+uint32_t SessionLogger::droppedRows() { return _droppedRows; }
 
 static const char* _modeStr(uint8_t m) {
     switch ((SysMode)m) {
@@ -49,25 +52,39 @@ static void _writeRow(const SessionRow& row) {
     char r[320];
     int n = snprintf(r, sizeof(r), "%lu", (unsigned long)row.t_ms);
 
-    if (mask & Config::SLOG_MODE)       n += snprintf(r+n, sizeof(r)-n, ",%s",  _modeStr(row.sysMode));
-    if (mask & Config::SLOG_N1)         n += snprintf(r+n, sizeof(r)-n, ",%.0f",(double)row.n1);
-    if (mask & Config::SLOG_N2)         n += snprintf(r+n, sizeof(r)-n, ",%.0f",(double)row.n2);
-    if (mask & Config::SLOG_TOT)        n += snprintf(r+n, sizeof(r)-n, ",%.1f",(double)row.tot);
-    if (mask & Config::SLOG_TIT)        n += snprintf(r+n, sizeof(r)-n, ",%.1f",(double)row.tit);
-    if (mask & Config::SLOG_OIL)        n += snprintf(r+n, sizeof(r)-n, ",%.2f",(double)row.oilPressure);
-    if (mask & Config::SLOG_P1)         n += snprintf(r+n, sizeof(r)-n, ",%.2f",(double)row.p1);
-    if (mask & Config::SLOG_P2)         n += snprintf(r+n, sizeof(r)-n, ",%.2f",(double)row.p2);
-    if (mask & Config::SLOG_THR)        n += snprintf(r+n, sizeof(r)-n, ",%.1f",(double)(row.throttleDemand * 100.0f));
-    if (mask & Config::SLOG_BATT)       n += snprintf(r+n, sizeof(r)-n, ",%.2f",(double)row.battVoltage);
-    if (mask & Config::SLOG_FUEL_PRESS) n += snprintf(r+n, sizeof(r)-n, ",%.2f",(double)row.fuelPressure);
-    if (mask & Config::SLOG_FUEL_FLOW)  n += snprintf(r+n, sizeof(r)-n, ",%.3f",(double)row.fuelFlow);
-    if (mask & Config::SLOG_GLOW)       n += snprintf(r+n, sizeof(r)-n, ",%.0f",(double)(row.glowPlugDemand * 100.0f));
-    if (mask & Config::SLOG_FP2)        n += snprintf(r+n, sizeof(r)-n, ",%.1f",(double)(row.fuelPump2Demand * 100.0f));
-    if (mask & Config::SLOG_AB)         n += snprintf(r+n, sizeof(r)-n, ",%d,%d", row.abMode, row.abFlameOn ? 1 : 0);
-    if (mask & Config::SLOG_PROP)       n += snprintf(r+n, sizeof(r)-n, ",%.1f",(double)(row.propPitchDemand * 100.0f));
-    if (mask & Config::SLOG_OIL_PCT)    n += snprintf(r+n, sizeof(r)-n, ",%.1f",(double)row.oilPumpPct);
+    #define APPEND_ROW_FIELD(...) do { \
+        if (n >= 0 && n < (int)sizeof(r)) { \
+            int wrote = snprintf(r + n, sizeof(r) - (size_t)n, __VA_ARGS__); \
+            if (wrote < 0) { \
+                n = (int)sizeof(r) - 1; \
+            } else { \
+                n += wrote; \
+                if (n >= (int)sizeof(r)) n = (int)sizeof(r) - 1; \
+            } \
+        } \
+    } while (0)
 
-    r[n] = 0;
+    if (mask & Config::SLOG_MODE)       APPEND_ROW_FIELD(",%s",  _modeStr(row.sysMode));
+    if (mask & Config::SLOG_N1)         APPEND_ROW_FIELD(",%.0f",(double)row.n1);
+    if (mask & Config::SLOG_N2)         APPEND_ROW_FIELD(",%.0f",(double)row.n2);
+    if (mask & Config::SLOG_TOT)        APPEND_ROW_FIELD(",%.1f",(double)row.tot);
+    if (mask & Config::SLOG_TIT)        APPEND_ROW_FIELD(",%.1f",(double)row.tit);
+    if (mask & Config::SLOG_OIL)        APPEND_ROW_FIELD(",%.2f",(double)row.oilPressure);
+    if (mask & Config::SLOG_P1)         APPEND_ROW_FIELD(",%.2f",(double)row.p1);
+    if (mask & Config::SLOG_P2)         APPEND_ROW_FIELD(",%.2f",(double)row.p2);
+    if (mask & Config::SLOG_THR)        APPEND_ROW_FIELD(",%.1f",(double)(row.throttleDemand * 100.0f));
+    if (mask & Config::SLOG_BATT)       APPEND_ROW_FIELD(",%.2f",(double)row.battVoltage);
+    if (mask & Config::SLOG_FUEL_PRESS) APPEND_ROW_FIELD(",%.2f",(double)row.fuelPressure);
+    if (mask & Config::SLOG_FUEL_FLOW)  APPEND_ROW_FIELD(",%.3f",(double)row.fuelFlow);
+    if (mask & Config::SLOG_GLOW)       APPEND_ROW_FIELD(",%.0f",(double)(row.glowPlugDemand * 100.0f));
+    if (mask & Config::SLOG_FP2)        APPEND_ROW_FIELD(",%.1f",(double)(row.fuelPump2Demand * 100.0f));
+    if (mask & Config::SLOG_AB)         APPEND_ROW_FIELD(",%d,%d", row.abMode, row.abFlameOn ? 1 : 0);
+    if (mask & Config::SLOG_PROP)       APPEND_ROW_FIELD(",%.1f",(double)(row.propPitchDemand * 100.0f));
+    if (mask & Config::SLOG_OIL_PCT)    APPEND_ROW_FIELD(",%.1f",(double)row.oilPumpPct);
+
+    #undef APPEND_ROW_FIELD
+
+    r[sizeof(r) - 1] = 0;
     _file.println(r);
     _rowCount++;
 }
@@ -153,6 +170,7 @@ static void _openSession() {
     if (mask & Config::SLOG_OIL_PCT)    _file.print(",oil_pump_pct");
     _file.println();
     _rowCount = 0;
+    _droppedRows = 0;
     _lastMs   = 0;
     _open     = true;
     Serial.printf("[SessionLogger] Session started — %u sensors → %s\n",
@@ -220,7 +238,9 @@ void SessionLogger::tick() {
     row.sysMode         = (uint8_t)ed.mode;
 
     // Non-blocking — drops silently if Core 0 is behind by more than 20 rows
-    xQueueSendToBack(_rowQueue, &row, 0);
+    if (xQueueSendToBack(_rowQueue, &row, 0) != pdTRUE) {
+        _droppedRows++;
+    }
 }
 
 // ── Core 0: write queued rows to flash (no file I/O on Core 1) ──

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 // ============================================================
 //  SessionLogger — per-run CSV sensor log
 //
@@ -26,4 +28,5 @@ public:
     static void endSession();    // drain remaining rows, flush + close; call at STANDBY
     static void tick();          // Core 1: snapshot → queue push (no file I/O)
     static void drainQueue();    // Core 0: write queued rows to flash
+    static uint32_t droppedRows();
 };
