@@ -22,6 +22,11 @@ constexpr int DEFAULT_STATUS_LED_TYPE = 1;
 #else
 constexpr int DEFAULT_STATUS_LED_TYPE = 0;
 #endif
+constexpr int DEFAULT_STATUS_LED_MODE = 0;
+constexpr uint32_t DEFAULT_STATUS_LED_STANDBY_COLOR  = 0x00FF40;
+constexpr uint32_t DEFAULT_STATUS_LED_STARTUP_COLOR  = 0x0060FF;
+constexpr uint32_t DEFAULT_STATUS_LED_RUNNING_COLOR  = 0x00FF00;
+constexpr uint32_t DEFAULT_STATUS_LED_SHUTDOWN_COLOR = 0xFF8000;
 
 constexpr const char* currentPlatformName() {
 #if defined(OT_PLATFORM_ESP32S3)
@@ -38,8 +43,12 @@ bool storedHardwarePlatformMismatch(const JsonDocument& doc) {
 
 void normalizeS3StatusLedDefault(JsonDocument& doc) {
 #if defined(OT_PLATFORM_ESP32S3)
-    JsonObject actuators = doc["actuators"].to<JsonObject>();
-    JsonObject led = actuators["status_led"].to<JsonObject>();
+    JsonObject actuators = doc["actuators"].is<JsonObject>()
+        ? doc["actuators"].as<JsonObject>()
+        : doc["actuators"].to<JsonObject>();
+    JsonObject led = actuators["status_led"].is<JsonObject>()
+        ? actuators["status_led"].as<JsonObject>()
+        : actuators["status_led"].to<JsonObject>();
     const bool enabledPresent = !led["enabled"].isNull();
     const bool pinPresent = !led["pin"].isNull();
     const bool typePresent = !led["type"].isNull();
@@ -47,9 +56,15 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
     const int pin = led["pin"] | DEFAULT_STATUS_LED_PIN;
     if (!enabledPresent ||
         (enabled && (!pinPresent || pin < 0 || pin == AUTO_S3_RGB_STATUS_LED_PIN || pin == 38))) {
+        const int storedMode = led["mode"] | DEFAULT_STATUS_LED_MODE;
         led["enabled"] = true;
         led["pin"] = DEFAULT_STATUS_LED_PIN;
         led["type"] = DEFAULT_STATUS_LED_TYPE;
+        led["mode"] = constrain(storedMode, 0, 1);
+        if (led["standby_color"].isNull()) led["standby_color"] = DEFAULT_STATUS_LED_STANDBY_COLOR;
+        if (led["startup_color"].isNull()) led["startup_color"] = DEFAULT_STATUS_LED_STARTUP_COLOR;
+        if (led["running_color"].isNull()) led["running_color"] = DEFAULT_STATUS_LED_RUNNING_COLOR;
+        if (led["shutdown_color"].isNull()) led["shutdown_color"] = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
         JsonVariant sensorsVar = doc["sensors"];
         if (sensorsVar.is<JsonObject>()) {
             JsonObject sensors = sensorsVar.as<JsonObject>();
@@ -64,6 +79,19 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
     } else if (enabled && pin == DEFAULT_STATUS_LED_PIN && !typePresent) {
         led["type"] = DEFAULT_STATUS_LED_TYPE;
     }
+    if ((led["mode"] | DEFAULT_STATUS_LED_MODE) < 0 ||
+        (led["mode"] | DEFAULT_STATUS_LED_MODE) > 1) {
+        led["mode"] = DEFAULT_STATUS_LED_MODE;
+    }
+    if ((led["mode"] | DEFAULT_STATUS_LED_MODE) == 1) {
+        led["enabled"] = true;
+        led["type"] = 1;
+        if ((led["pin"] | -1) < 0 || (led["pin"] | -1) == 38) led["pin"] = DEFAULT_STATUS_LED_PIN;
+    }
+    if (led["standby_color"].isNull()) led["standby_color"] = DEFAULT_STATUS_LED_STANDBY_COLOR;
+    if (led["startup_color"].isNull()) led["startup_color"] = DEFAULT_STATUS_LED_STARTUP_COLOR;
+    if (led["running_color"].isNull()) led["running_color"] = DEFAULT_STATUS_LED_RUNNING_COLOR;
+    if (led["shutdown_color"].isNull()) led["shutdown_color"] = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
 #else
     (void)doc;
 #endif
@@ -102,6 +130,133 @@ int jsonPin(JsonVariantConst object, const char* field) {
 
 bool enabled(JsonVariantConst object) {
     return !object["enabled"].isNull() && object["enabled"].as<bool>();
+}
+
+int customSensorId(const char* key) {
+    if (!key) return -1;
+    if (strcmp(key, "oil_temp") == 0) return 0;
+    if (strcmp(key, "tot") == 0) return 1;
+    if (strcmp(key, "n1_rpm") == 0) return 2;
+    if (strcmp(key, "oil_press") == 0) return 3;
+    if (strcmp(key, "tit") == 0) return 4;
+    if (strcmp(key, "batt_voltage") == 0) return 5;
+    if (strcmp(key, "n2_rpm") == 0) return 6;
+    if (strcmp(key, "di0") == 0) return 7;
+    if (strcmp(key, "di1") == 0) return 8;
+    if (strcmp(key, "di2") == 0) return 9;
+    if (strcmp(key, "di3") == 0) return 10;
+    if (strcmp(key, "fuel_press") == 0) return 11;
+    if (strcmp(key, "fuel_flow") == 0) return 12;
+    if (strcmp(key, "p1") == 0) return 13;
+    if (strcmp(key, "p2") == 0) return 14;
+    if (strcmp(key, "torque") == 0) return 15;
+    if (strcmp(key, "flame") == 0) return 16;
+    if (strcmp(key, "throttle_in") == 0) return 17;
+    if (strcmp(key, "idle_in") == 0) return 18;
+    if (strcmp(key, "ab_flame") == 0) return 19;
+    if (strcmp(key, "glow_current") == 0) return 20;
+    if (strcmp(key, "igniter_current") == 0) return 21;
+    if (strcmp(key, "igniter2_current") == 0) return 22;
+    if (strcmp(key, "oil_pump_current") == 0) return 23;
+    if (strcmp(key, "ab_input") == 0) return 24;
+    if (strcmp(key, "start_switch") == 0) return 25;
+    if (strcmp(key, "stop_switch") == 0) return 26;
+    return -1;
+}
+
+const char* customSensorKey(uint8_t sensor) {
+    static const char* keys[] = {
+        "oil_temp", "tot", "n1_rpm", "oil_press", "tit", "batt_voltage",
+        "n2_rpm", "di0", "di1", "di2", "di3", "fuel_press", "fuel_flow",
+        "p1", "p2", "torque", "flame", "throttle_in", "idle_in",
+        "ab_flame", "glow_current", "igniter_current", "igniter2_current",
+        "oil_pump_current", "ab_input", "start_switch", "stop_switch"
+    };
+    return sensor < (sizeof(keys) / sizeof(keys[0])) ? keys[sensor] : "";
+}
+
+int customActuatorId(const char* key) {
+    if (!key) return -1;
+    if (strcmp(key, "cool_fan") == 0) return 0;
+    if (strcmp(key, "bleed_valve") == 0) return 1;
+    if (strcmp(key, "fuel_pump2") == 0) return 2;
+    if (strcmp(key, "oil_scavenge_pump") == 0) return 3;
+    if (strcmp(key, "throttle") == 0) return 4;
+    if (strcmp(key, "starter") == 0) return 5;
+    if (strcmp(key, "starter_en") == 0) return 6;
+    if (strcmp(key, "oil_pump") == 0) return 7;
+    if (strcmp(key, "fuel_sol") == 0) return 8;
+    if (strcmp(key, "igniter") == 0) return 9;
+    if (strcmp(key, "igniter2") == 0) return 10;
+    if (strcmp(key, "ab_sol") == 0) return 11;
+    if (strcmp(key, "ab_pump") == 0) return 12;
+    if (strcmp(key, "airstarter_sol") == 0) return 15;
+    if (strcmp(key, "glow_plug") == 0) return 16;
+    if (strcmp(key, "prop_pitch") == 0) return 17;
+    return -1;
+}
+
+const char* customActuatorKey(uint8_t act) {
+    switch (act) {
+        case 0: return "cool_fan";
+        case 1: return "bleed_valve";
+        case 2: return "fuel_pump2";
+        case 3: return "oil_scavenge_pump";
+        case 4: return "throttle";
+        case 5: return "starter";
+        case 6: return "starter_en";
+        case 7: return "oil_pump";
+        case 8: return "fuel_sol";
+        case 9: return "igniter";
+        case 10: return "igniter2";
+        case 11: return "ab_sol";
+        case 12: return "ab_pump";
+        case 15: return "airstarter_sol";
+        case 16: return "glow_plug";
+        case 17: return "prop_pitch";
+        default: return "";
+    }
+}
+
+bool customActuatorIsAnalog(uint8_t act) {
+    return act == 2 || act == 4 || act == 5 || act == 7 || act == 12 || act == 16 || act == 17;
+}
+
+float customThresholdToStored(uint8_t sensor, float value) {
+    return (sensor == 17 || sensor == 18 || sensor == 24) ? constrain(value, 0.0f, 100.0f) / 100.0f : value;
+}
+
+float customThresholdToDisplay(uint8_t sensor, float value) {
+    return (sensor == 17 || sensor == 18 || sensor == 24) ? value * 100.0f : value;
+}
+
+float customActuatorValueToStored(uint8_t actuator, float value) {
+    if (customActuatorIsAnalog(actuator)) return constrain(value, 0.0f, 100.0f) / 100.0f;
+    return value >= 0.5f ? 1.0f : 0.0f;
+}
+
+float customActuatorValueToDisplay(uint8_t actuator, float value) {
+    if (customActuatorIsAnalog(actuator)) return value * 100.0f;
+    return value >= 0.5f ? 1.0f : 0.0f;
+}
+
+uint8_t customOpId(const char* op) {
+    if (!op) return 0;
+    if (strcmp(op, "<") == 0) return 1;
+    if (strcmp(op, ">=") == 0) return 2;
+    if (strcmp(op, "<=") == 0) return 3;
+    if (strcmp(op, "==") == 0 || strcmp(op, "=") == 0) return 4;
+    return 0;
+}
+
+const char* customOpString(uint8_t op) {
+    switch (op) {
+        case 1: return "<";
+        case 2: return ">=";
+        case 3: return "<=";
+        case 4: return "==";
+        default: return ">";
+    }
 }
 
 void clearSeqSideActions(
@@ -149,6 +304,110 @@ void readSeqSideActions(
     }
 }
 
+void clearCustomBlocks() {
+    memset(HardwareConfig::customBlocks, 0,
+           sizeof(HardwareConfig::CustomBlockDef) * HardwareConfig::MAX_CUSTOM_BLOCKS);
+    HardwareConfig::customBlockCount = 0;
+}
+
+void writeCustomBlocks(JsonDocument& doc) {
+    JsonObject root = doc["custom_blocks"].to<JsonObject>();
+    for (int i = 0; i < HardwareConfig::customBlockCount; i++) {
+        const auto& def = HardwareConfig::customBlocks[i];
+        if (!def.enabled || !def.key[0]) continue;
+        JsonObject item = root[def.key].to<JsonObject>();
+        item["label"] = def.label;
+        item["desc"] = def.desc;
+        item["type"] = def.type == 1 ? "wait" : (def.type == 2 ? "while" : "action");
+        JsonArray steps = item["steps"].to<JsonArray>();
+        for (uint8_t s = 0; s < def.stepCount; s++) {
+            const auto& step = def.steps[s];
+            JsonObject so = steps.add<JsonObject>();
+            if (step.type == 1) {
+                so["type"] = "delay_ms";
+                so["val"] = step.delayMs;
+            } else {
+                so["type"] = "set_act";
+                so["act"] = customActuatorKey(step.actuator);
+                so["val"] = customActuatorValueToDisplay(step.actuator, step.value);
+            }
+        }
+        if (def.type == 1) {
+            item["duration_ms"] = def.durationMs;
+        } else if (def.type == 2) {
+            JsonObject cond = item["condition"].to<JsonObject>();
+            cond["sensor"] = customSensorKey(def.sensor);
+            cond["op"] = customOpString(def.op);
+            cond["value"] = customThresholdToDisplay(def.sensor, def.threshold);
+            item["timeout_ms"] = def.timeoutMs;
+            item["timeout_action"] = def.timeoutAction == 1 ? "fault" :
+                                     (def.timeoutAction == 2 ? "continue" : "abort");
+        }
+    }
+}
+
+void readCustomBlocks(const JsonDocument& doc) {
+    clearCustomBlocks();
+    if (!doc["custom_blocks"].is<JsonObjectConst>()) return;
+    JsonObjectConst root = doc["custom_blocks"];
+    for (JsonPairConst kv : root) {
+        if (HardwareConfig::customBlockCount >= HardwareConfig::MAX_CUSTOM_BLOCKS) break;
+        const char* key = kv.key().c_str();
+        if (!key || strncmp(key, "custom_", 7) != 0) continue;
+        JsonObjectConst item = kv.value().as<JsonObjectConst>();
+        if (item.isNull()) continue;
+
+        HardwareConfig::CustomBlockDef def{};
+        def.enabled = true;
+        strncpy(def.key, key, sizeof(def.key) - 1);
+        def.key[sizeof(def.key) - 1] = '\0';
+        strncpy(def.label, item["label"] | key, sizeof(def.label) - 1);
+        def.label[sizeof(def.label) - 1] = '\0';
+        strncpy(def.desc, item["desc"] | "", sizeof(def.desc) - 1);
+        def.desc[sizeof(def.desc) - 1] = '\0';
+        const char* type = item["type"] | "action";
+        def.type = strcmp(type, "wait") == 0 ? 1 : (strcmp(type, "while") == 0 ? 2 : 0);
+        def.durationMs = constrain((uint32_t)(item["duration_ms"] | 1000UL), 100UL, 600000UL);
+        def.timeoutMs = constrain((uint32_t)(item["timeout_ms"] | 10000UL), 0UL, 600000UL);
+        const char* timeoutAction = item["timeout_action"] | "abort";
+        def.timeoutAction = strcmp(timeoutAction, "fault") == 0 ? 1 :
+                            (strcmp(timeoutAction, "continue") == 0 ? 2 : 0);
+
+        if (def.type == 2 && item["condition"].is<JsonObjectConst>()) {
+            JsonObjectConst cond = item["condition"];
+            int sensor = customSensorId(cond["sensor"] | "");
+            if (sensor < 0) continue;
+            def.sensor = (uint8_t)sensor;
+            def.op = customOpId(cond["op"] | ">");
+            def.threshold = customThresholdToStored(def.sensor, cond["value"] | 0.0f);
+        }
+
+        if (item["steps"].is<JsonArrayConst>()) {
+            JsonArrayConst steps = item["steps"];
+            for (JsonObjectConst step : steps) {
+                if (def.stepCount >= HardwareConfig::MAX_CUSTOM_STEPS) break;
+                const char* st = step["type"] | "";
+                auto& out = def.steps[def.stepCount];
+                if (strcmp(st, "delay_ms") == 0) {
+                    out.type = 1;
+                    out.delayMs = constrain((uint32_t)(step["val"] | 0UL), 0UL, 600000UL);
+                    def.stepCount++;
+                } else if (strcmp(st, "set_act") == 0) {
+                    int act = customActuatorId(step["act"] | "");
+                    if (act < 0) continue;
+                    out.type = 0;
+                    out.actuator = (uint8_t)act;
+                    out.value = customActuatorValueToStored(out.actuator, step["val"] | 0.0f);
+                    def.stepCount++;
+                }
+            }
+        }
+
+        if (def.type == 0 && def.stepCount == 0) continue;
+        HardwareConfig::customBlocks[HardwareConfig::customBlockCount++] = def;
+    }
+}
+
 bool seqActionActuatorAvailable(uint8_t act) {
     switch (act) {
         case 0:  return HardwareConfig::hasCoolFan;
@@ -171,6 +430,62 @@ bool seqActionActuatorAvailable(uint8_t act) {
     }
 }
 
+bool ruleSensorAvailable(uint8_t sensor) {
+    switch (sensor) {
+        case 0:  return HardwareConfig::hasOilTemp;
+        case 1:  return HardwareConfig::hasTot;
+        case 2:  return HardwareConfig::hasN1Rpm;
+        case 3:  return HardwareConfig::hasOilPress;
+        case 4:  return HardwareConfig::hasTit;
+        case 5:  return HardwareConfig::hasBattVoltage;
+        case 6:  return HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
+        case 7:  return HardwareConfig::diCh[0].pin >= 0;
+        case 8:  return HardwareConfig::diCh[1].pin >= 0;
+        case 9:  return HardwareConfig::diCh[2].pin >= 0;
+        case 10: return HardwareConfig::diCh[3].pin >= 0;
+        case 11: return HardwareConfig::hasFuelPress;
+        case 12: return HardwareConfig::hasFuelFlow;
+        case 13: return HardwareConfig::hasP1;
+        case 14: return HardwareConfig::hasP2;
+        case 15: return HardwareConfig::hasTorque;
+        case 16: return HardwareConfig::hasFlame;
+        case 17: return HardwareConfig::hasThrottleInput;
+        case 18: return HardwareConfig::hasIdleInput;
+        case 19: return HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame;
+        case 20: return HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor;
+        case 21: return HardwareConfig::hasIgniter && HardwareConfig::hasIgniterCurrentSensor;
+        case 22: return HardwareConfig::hasIgniter2 && HardwareConfig::hasIgniter2CurrentSensor;
+        case 23: return HardwareConfig::hasOilPump && HardwareConfig::hasOilPumpCurrentSensor;
+        case 24: return HardwareConfig::hasAfterburner && HardwareConfig::abInputPin >= 0;
+        case 25: return HardwareConfig::startPin >= 0;
+        case 26: return HardwareConfig::stopPin >= 0;
+        default: return false;
+    }
+}
+
+int customBlockIndexByKey(const char* key) {
+    if (!key || !key[0]) return -1;
+    for (int i = 0; i < HardwareConfig::customBlockCount; i++) {
+        if (HardwareConfig::customBlocks[i].enabled &&
+            strcmp(HardwareConfig::customBlocks[i].key, key) == 0) return i;
+    }
+    return -1;
+}
+
+bool customBlockAvailable(const char* key) {
+    int idx = customBlockIndexByKey(key);
+    if (idx < 0) return false;
+    const auto& def = HardwareConfig::customBlocks[idx];
+    if (def.type > 2) return false;
+    if (def.type == 2 && !ruleSensorAvailable(def.sensor)) return false;
+    if (def.type == 0 && def.stepCount == 0) return false;
+    for (uint8_t i = 0; i < def.stepCount; i++) {
+        const auto& step = def.steps[i];
+        if (step.type == 0 && !seqActionActuatorAvailable(step.actuator)) return false;
+    }
+    return true;
+}
+
 void sanitizeSeqSideActions(
     HardwareConfig::SeqSideAction actions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
     for (int i = 0; i < HardwareConfig::MAX_SEQ_BLOCKS; i++) {
@@ -189,6 +504,7 @@ void sanitizeSeqSideActions(
 
 bool sequenceBlockAvailable(const char* name) {
     if (!name || !name[0]) return false;
+    if (strncmp(name, "custom_", 7) == 0) return customBlockAvailable(name);
     if (strcmp(name, "OilPrime") == 0 || strcmp(name, "OilPumpOn") == 0 || strcmp(name, "OilPumpOff") == 0)
         return HardwareConfig::hasOilPump;
     if (strcmp(name, "StarterSpin") == 0 || strcmp(name, "StarterOff") == 0)
@@ -364,12 +680,9 @@ bool validatePlatformPins(const JsonDocument& doc) {
             const int pin = jsonPin(item, "pin");
             if (strcmp(key, "status_led") == 0) {
                 const int ledType = item["type"] | 0;
+                const int ledMode = item["mode"] | 0;
                 if (ledType < 0 || ledType > 1) return false;
-#if defined(OT_PLATFORM_ESP32S3)
-                if (ledType == 1 && pin != DEFAULT_STATUS_LED_PIN && pin != AUTO_S3_RGB_STATUS_LED_PIN) return false;
-#else
-                if (ledType == 1) return false;
-#endif
+                if (ledMode < 0 || ledMode > 1) return false;
                 if (pin == AUTO_S3_RGB_STATUS_LED_PIN) {
 #if defined(OT_PLATFORM_ESP32S3)
                     continue;
@@ -787,6 +1100,11 @@ int   HardwareConfig::abFlameThreshold   = 500;
 
 int   HardwareConfig::statusLedPin     = DEFAULT_STATUS_LED_PIN;
 int   HardwareConfig::statusLedType    = DEFAULT_STATUS_LED_TYPE;
+int   HardwareConfig::statusLedMode    = DEFAULT_STATUS_LED_MODE;
+uint32_t HardwareConfig::statusLedStandbyColor  = DEFAULT_STATUS_LED_STANDBY_COLOR;
+uint32_t HardwareConfig::statusLedStartupColor  = DEFAULT_STATUS_LED_STARTUP_COLOR;
+uint32_t HardwareConfig::statusLedRunningColor  = DEFAULT_STATUS_LED_RUNNING_COLOR;
+uint32_t HardwareConfig::statusLedShutdownColor = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
 
 // Cluster serial
 int   HardwareConfig::clusterTxPin     = 17;
@@ -860,11 +1178,14 @@ int   HardwareConfig::abShutSeqLen                 = 0;
 int   HardwareConfig::abShutDelayMs[MAX_SEQ_BLOCKS]= {};
 HardwareConfig::SeqSideAction HardwareConfig::abShutEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::abShutExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
+HardwareConfig::CustomBlockDef HardwareConfig::customBlocks[MAX_CUSTOM_BLOCKS] = {};
+int HardwareConfig::customBlockCount = 0;
 
 // ── Load ──────────────────────────────────────────────────────
-static void inhibitStartForHardwareConfigFailure(const char* reason) {
+static void inhibitStartForHardwareConfigFailure(const char* reason, bool storageFault = false) {
     auto& ed = EngineData::instance();
     ed.configLocked = true;
+    ed.configStorageFault = storageFault;
     strncpy(ed.faultDescription, reason, sizeof(ed.faultDescription) - 1);
     ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
 }
@@ -872,6 +1193,7 @@ static void inhibitStartForHardwareConfigFailure(const char* reason) {
 void HardwareConfig::load() {
     applyDefaults();
     EngineData::instance().configLocked = false;
+    EngineData::instance().configStorageFault = false;
 
     static constexpr const char* BAK_PATH = "/ecu_config.bak";
     if (!LittleFS.exists(PATH) && LittleFS.exists(BAK_PATH)) {
@@ -900,7 +1222,7 @@ void HardwareConfig::load() {
                     applyDefaults();
                     if (!save()) {
                         inhibitStartForHardwareConfigFailure(
-                            "Cannot start: hardware configuration could not be saved to storage.");
+                            "Cannot start: hardware configuration could not be saved to storage.", true);
                         Serial.println("[HWCfg] Platform migration save failed - START inhibited");
                     } else {
                         LittleFS.remove(LEGACY_PATH);
@@ -920,7 +1242,7 @@ void HardwareConfig::load() {
                     Serial.println("[HWCfg] Migrated hardware.json -> ecu_config.json");
                 } else {
                     inhibitStartForHardwareConfigFailure(
-                        "Cannot start: hardware configuration could not be saved to storage.");
+                        "Cannot start: hardware configuration could not be saved to storage.", true);
                     Serial.println("[HWCfg] Migration save failed - retaining hardware.json");
                 }
                 return;
@@ -941,7 +1263,7 @@ void HardwareConfig::load() {
         Serial.println("[HWCfg] No ecu_config.json - using compiled defaults, generating file");
         if (!save()) {
             inhibitStartForHardwareConfigFailure(
-                "Cannot start: hardware configuration storage is unavailable.");
+                "Cannot start: hardware configuration storage is unavailable.", true);
         }
         return;
     }
@@ -950,7 +1272,7 @@ void HardwareConfig::load() {
     if (!f) {
         Serial.println("[HWCfg] Failed to open ecu_config.json — using defaults");
         inhibitStartForHardwareConfigFailure(
-            "Cannot start: failed to read the hardware configuration.");
+            "Cannot start: failed to read the hardware configuration.", true);
         return;
     }
     JsonDocument fullDoc;
@@ -959,7 +1281,7 @@ void HardwareConfig::load() {
     if (err) {
         Serial.printf("[HWCfg] JSON parse error: %s — using defaults\n", err.c_str());
         inhibitStartForHardwareConfigFailure(
-            "Cannot start: the hardware configuration file is corrupted.");
+            "Cannot start: the hardware configuration file is corrupted.", true);
         return;
     }
 
@@ -971,7 +1293,7 @@ void HardwareConfig::load() {
         Serial.println("[HWCfg] Hardware section missing - adding compiled defaults");
         if (!save()) {
             inhibitStartForHardwareConfigFailure(
-                "Cannot start: no stored hardware configuration is available.");
+                "Cannot start: no stored hardware configuration is available.", true);
         }
         return;
     } else {
@@ -991,7 +1313,7 @@ void HardwareConfig::load() {
         applyDefaults();
         if (!save()) {
             inhibitStartForHardwareConfigFailure(
-                "Cannot start: hardware configuration could not be saved to storage.");
+                "Cannot start: hardware configuration could not be saved to storage.", true);
             Serial.println("[HWCfg] Platform migration save failed - START inhibited");
         }
         return;
@@ -1060,6 +1382,8 @@ bool HardwareConfig::save() {
     if (!LittleFS.rename(TMP_PATH, PATH)) {
         Serial.println("[HWCfg] rename ecu_config.hw.tmp failed");
         if (hadOriginal) LittleFS.rename(BAK_PATH, PATH);
+        LittleFS.remove(TMP_PATH);
+        LittleFS.remove(BAK_PATH);
         return false;
     }
     if (hadOriginal) LittleFS.remove(BAK_PATH);
@@ -1216,6 +1540,12 @@ void HardwareConfig::applyDefaults() {
     abFlameThreshold    = 500;
 
     statusLedPin = DEFAULT_STATUS_LED_PIN;
+    statusLedType = DEFAULT_STATUS_LED_TYPE;
+    statusLedMode = DEFAULT_STATUS_LED_MODE;
+    statusLedStandbyColor  = DEFAULT_STATUS_LED_STANDBY_COLOR;
+    statusLedStartupColor  = DEFAULT_STATUS_LED_STARTUP_COLOR;
+    statusLedRunningColor  = DEFAULT_STATUS_LED_RUNNING_COLOR;
+    statusLedShutdownColor = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
 
     clusterTxPin    = 17;
     clusterRxPin    = -1;
@@ -1282,6 +1612,7 @@ void HardwareConfig::applyDefaults() {
     memset(abShutDelayMs, 0, sizeof(abShutDelayMs));
     clearSeqSideActions(abShutEnterActions);
     clearSeqSideActions(abShutExitActions);
+    clearCustomBlocks();
     for (int i = 0; i < abShutSeqLen; i++)
         strncpy(abShutSeq[i], defAbShut[i], sizeof(abShutSeq[i]) - 1);
 }
@@ -1535,6 +1866,11 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto led = acts["status_led"].to<JsonObject>();
     led["enabled"] = hasStatusLed; led["pin"] = statusLedPin; led["type"] = statusLedType;
+    led["mode"] = statusLedMode;
+    led["standby_color"] = statusLedStandbyColor;
+    led["startup_color"] = statusLedStartupColor;
+    led["running_color"] = statusLedRunningColor;
+    led["shutdown_color"] = statusLedShutdownColor;
 
     auto clus = doc["cluster_serial"].to<JsonObject>();
     clus["enabled"] = hasClusterSerial; clus["tx_pin"] = clusterTxPin;
@@ -1613,6 +1949,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < abShutSeqLen; i++) assd.add(abShutDelayMs[i]);
     writeSeqSideActions(doc, "ab_shut_enter_actions", abShutSeqLen, abShutEnterActions);
     writeSeqSideActions(doc, "ab_shut_exit_actions", abShutSeqLen, abShutExitActions);
+    writeCustomBlocks(doc);
 
     auto lbl = doc["labels"].to<JsonObject>();
     lbl["tot"]        = labelTot;
@@ -1650,8 +1987,11 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     const char* pwd  = doc["wifi_password"] | (const char*)wifiPassword;
     if (strcmp(pwd, WIFI_PASSWORD_RETAINED) == 0) pwd = wifiPassword;
     strncpy(profileId,    id,   sizeof(profileId)    - 1);
+    profileId[sizeof(profileId) - 1] = '\0';
     strncpy(profileDesc,  desc, sizeof(profileDesc)  - 1);
+    profileDesc[sizeof(profileDesc) - 1] = '\0';
     strncpy(wifiPassword, pwd,  sizeof(wifiPassword) - 1);
+    wifiPassword[sizeof(wifiPassword) - 1] = '\0';
     wifiTxPowerDbm = constrain(doc["wifi_tx_power_dbm"] | wifiTxPowerDbm, 2, 20);
     if (wifiPassword[0] && strlen(wifiPassword) < 8) {
         Serial.println("[HWCfg] Invalid WiFi password length; using open access point");
@@ -1683,8 +2023,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto tot = s["tot"];
     if (!tot["enabled"].isNull()) hasTot = tot["enabled"].as<bool>();
-    { const char* v = tot["chip"]    | totChip;   strncpy(totChip,   v, sizeof(totChip)   - 1); }
-    { const char* v = tot["tc_type"] | totTcType; strncpy(totTcType, v, sizeof(totTcType) - 1); }
+    { const char* v = tot["chip"]    | totChip;   strncpy(totChip,   v, sizeof(totChip)   - 1); totChip[sizeof(totChip) - 1] = '\0'; }
+    { const char* v = tot["tc_type"] | totTcType; strncpy(totTcType, v, sizeof(totTcType) - 1); totTcType[sizeof(totTcType) - 1] = '\0'; }
     totClk  = tot["clk"]  | totClk;
     totCs   = tot["cs"]   | totCs;
     totMiso = tot["miso"] | totMiso;
@@ -1692,8 +2032,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto tit = s["tit"];
     if (!tit["enabled"].isNull()) hasTit = tit["enabled"].as<bool>();
-    { const char* v = tit["chip"]    | titChip;   strncpy(titChip,   v, sizeof(titChip)   - 1); }
-    { const char* v = tit["tc_type"] | titTcType; strncpy(titTcType, v, sizeof(titTcType) - 1); }
+    { const char* v = tit["chip"]    | titChip;   strncpy(titChip,   v, sizeof(titChip)   - 1); titChip[sizeof(titChip) - 1] = '\0'; }
+    { const char* v = tit["tc_type"] | titTcType; strncpy(titTcType, v, sizeof(titTcType) - 1); titTcType[sizeof(titTcType) - 1] = '\0'; }
     titClk  = tit["clk"]  | titClk;
     titCs   = tit["cs"]   | titCs;
     titMiso = tit["miso"] | titMiso;
@@ -1737,7 +2077,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto oilt = s["oil_temp"];
     if (!oilt["enabled"].isNull()) hasOilTemp = oilt["enabled"].as<bool>();
-    { const char* v = oilt["chip"] | oilTempChip; strncpy(oilTempChip, v, sizeof(oilTempChip) - 1); }
+    { const char* v = oilt["chip"] | oilTempChip; strncpy(oilTempChip, v, sizeof(oilTempChip) - 1); oilTempChip[sizeof(oilTempChip) - 1] = '\0'; }
     if (strcmp(oilTempChip, "ntc") == 0 || strcmp(oilTempChip, "ds18b20") == 0)
         oilTempPin = oilt["pin"] | oilTempPin;
     else if (!oilt["clk"].isNull())
@@ -1747,7 +2087,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     oilTempCs   = oilt["cs"]   | oilTempCs;
     oilTempMiso = oilt["miso"] | oilTempMiso;
     oilTempMosi = oilt["mosi"] | oilTempMosi;
-    { const char* v = oilt["tc_type"] | oilTempTcType; strncpy(oilTempTcType, v, sizeof(oilTempTcType) - 1); }
+    { const char* v = oilt["tc_type"] | oilTempTcType; strncpy(oilTempTcType, v, sizeof(oilTempTcType) - 1); oilTempTcType[sizeof(oilTempTcType) - 1] = '\0'; }
     oilTempResolution = oilt["resolution"] | oilTempResolution;
     ntcBeta   = oilt["ntc_beta"]    | ntcBeta;
     ntcR0     = oilt["ntc_r0"]      | ntcR0;
@@ -1938,6 +2278,20 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (ledEnabledPresent) hasStatusLed = led["enabled"].as<bool>();
     statusLedPin = led["pin"] | statusLedPin;
     statusLedType = led["type"] | statusLedType;
+    statusLedMode = led["mode"] | statusLedMode;
+    statusLedStandbyColor  = led["standby_color"]  | statusLedStandbyColor;
+    statusLedStartupColor  = led["startup_color"]  | statusLedStartupColor;
+    statusLedRunningColor  = led["running_color"]  | statusLedRunningColor;
+    statusLedShutdownColor = led["shutdown_color"] | statusLedShutdownColor;
+    if (statusLedMode < 0 || statusLedMode > 1) statusLedMode = DEFAULT_STATUS_LED_MODE;
+    statusLedStandbyColor  &= 0xFFFFFFu;
+    statusLedStartupColor  &= 0xFFFFFFu;
+    statusLedRunningColor  &= 0xFFFFFFu;
+    statusLedShutdownColor &= 0xFFFFFFu;
+    if (statusLedMode == 1) {
+        hasStatusLed = true;
+        statusLedType = 1;
+    }
 #if defined(OT_PLATFORM_ESP32S3)
     if (!ledEnabledPresent) hasStatusLed = true;
     if (hasStatusLed && (!ledPinPresent ||
@@ -1953,14 +2307,17 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         hasStatusLed = true;
         statusLedPin = DEFAULT_STATUS_LED_PIN;
         statusLedType = DEFAULT_STATUS_LED_TYPE;
+        statusLedMode = constrain(statusLedMode, 0, 1);
         Serial.println("[HWCfg] Status LED migrated to YD-ESP32-S3 RGB LED default");
     }
     if (hasStatusLed && statusLedPin == DEFAULT_STATUS_LED_PIN && !ledTypePresent) {
         statusLedType = DEFAULT_STATUS_LED_TYPE;
     }
 #else
-    if (statusLedType == 1) statusLedType = 0;
+    if (statusLedPin == AUTO_S3_RGB_STATUS_LED_PIN) statusLedPin = DEFAULT_STATUS_LED_PIN;
 #endif
+    Serial.printf("[HWCfg] Status LED: enabled=%d pin=%d type=%d mode=%d\n",
+                  hasStatusLed ? 1 : 0, statusLedPin, statusLedType, statusLedMode);
 
     auto clus = doc["cluster_serial"];
     if (!clus["enabled"].isNull()) hasClusterSerial = clus["enabled"].as<bool>();
@@ -2000,6 +2357,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (hasGovernor && (!hasN2Rpm || (!hasThrottle && !hasPropPitch))) {
         Serial.println("[HWCfg] Governor disabled: requires N2 RPM and throttle or prop pitch output");
         hasGovernor = false;
+    }
+    if (starterAssistEnabled && (!hasStarter || !hasN1Rpm)) {
+        Serial.println("[HWCfg] Starter assist disabled: requires starter output and N1 RPM feedback");
+        starterAssistEnabled = false;
     }
 
     auto saf = doc["safety"];
@@ -2041,8 +2402,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         startupSeqLen = n;
         memset(startupDelayMs, 0, sizeof(startupDelayMs));
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++) {
             strncpy(startupSeq[i], ss[i] | "", sizeof(startupSeq[i]) - 1);
+            startupSeq[i][sizeof(startupSeq[i]) - 1] = '\0';
+        }
     }
     if (doc["startup_delay_ms"].is<JsonArrayConst>()) {
         JsonArrayConst d = doc["startup_delay_ms"];
@@ -2058,8 +2421,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         shutdownSeqLen = n;
         memset(shutdownDelayMs, 0, sizeof(shutdownDelayMs));
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++) {
             strncpy(shutdownSeq[i], ds[i] | "", sizeof(shutdownSeq[i]) - 1);
+            shutdownSeq[i][sizeof(shutdownSeq[i]) - 1] = '\0';
+        }
     }
     if (doc["shutdown_delay_ms"].is<JsonArrayConst>()) {
         JsonArrayConst d = doc["shutdown_delay_ms"];
@@ -2093,8 +2458,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         abSeqLen = n;
         memset(abDelayMs, 0, sizeof(abDelayMs));
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++) {
             strncpy(abSeq[i], as[i] | "", sizeof(abSeq[i]) - 1);
+            abSeq[i][sizeof(abSeq[i]) - 1] = '\0';
+        }
     }
     if (doc["ab_delay_ms"].is<JsonArrayConst>()) {
         JsonArrayConst d = doc["ab_delay_ms"];
@@ -2110,8 +2477,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (n > MAX_SEQ_BLOCKS) n = MAX_SEQ_BLOCKS;
         abShutSeqLen = n;
         memset(abShutDelayMs, 0, sizeof(abShutDelayMs));
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < n; i++) {
             strncpy(abShutSeq[i], ass[i] | "", sizeof(abShutSeq[i]) - 1);
+            abShutSeq[i][sizeof(abShutSeq[i]) - 1] = '\0';
+        }
     }
     if (doc["ab_shut_delay_ms"].is<JsonArrayConst>()) {
         JsonArrayConst d = doc["ab_shut_delay_ms"];
@@ -2120,6 +2489,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     }
     readSeqSideActions(doc, "ab_shut_enter_actions", abShutSeqLen, abShutEnterActions);
     readSeqSideActions(doc, "ab_shut_exit_actions", abShutSeqLen, abShutExitActions);
+    readCustomBlocks(doc);
     sanitizeSeqSideActions(startupEnterActions);
     sanitizeSeqSideActions(startupExitActions);
     sanitizeSeqSideActions(shutdownEnterActions);

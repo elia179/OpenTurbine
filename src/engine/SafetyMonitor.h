@@ -260,7 +260,7 @@ public:
         // STARTUP: only fire if N1 previously crossed minRpm and then fell back
         //          (genuine stall during spool-up, not the normal crank-up phase
         //          where the engine must pass through 0→minRpm on its way to idle).
-        if (m == SysMode::RUNNING) {
+        if (HardwareConfig::hasN1Rpm && m == SysMode::RUNNING) {
             if (ed.n1Healthy && ed.n1Rpm < minRpm) {
                 if (HardwareConfig::safetyFlameout && ed.flameMonitorActive
                     && _effectiveFlameoutSource() == 2) {
@@ -273,7 +273,7 @@ public:
                 ed.limpMode = true;  // RPM sensor lost → limp
             }
         }
-        if (m == SysMode::STARTUP && ed.n1Healthy) {
+        if (HardwareConfig::hasN1Rpm && m == SysMode::STARTUP && ed.n1Healthy) {
             // Track once N1 reaches minRpm so we know the engine has spooled through
             if (ed.n1Rpm >= minRpm) _startupSpooled = true;
             // Only fault if we already spooled past minRpm and now dropped below it

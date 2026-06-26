@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260619a">
+<link rel="stylesheet" href="/style.css?v=20260625a">
 </head>
 <body>
 <nav>
@@ -26,9 +26,31 @@
   </div>
 
   <div id="tool-area"></div>
+
+  <div class="tool-card" id="loop-diag-card" title="Main ECU loop speed and execution timing. Enable ECU loop timing in session logging only when you want these values written to CSV." style="margin-top:1rem">
+    <div class="tool-header">
+      <div class="tool-name">ECU Loop Timing</div>
+      <div class="tool-state off" id="loop-diag-state">Live</div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.65rem;margin-top:.45rem">
+      <div><div class="tool-desc">Loop rate</div><div style="font-family:monospace;font-weight:700" id="diag-loop-hz">-</div></div>
+      <div><div class="tool-desc">Period</div><div style="font-family:monospace;font-weight:700" id="diag-loop-period">-</div></div>
+      <div><div class="tool-desc">Exec avg</div><div style="font-family:monospace;font-weight:700" id="diag-loop-avg">-</div></div>
+      <div><div class="tool-desc">Exec max</div><div style="font-family:monospace;font-weight:700" id="diag-loop-max">-</div></div>
+      <div><div class="tool-desc">Counter</div><div style="font-family:monospace;font-weight:700" id="diag-loop-count">-</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:.55rem;margin-top:.8rem;padding-top:.75rem;border-top:1px solid var(--border)">
+      <div><div class="tool-desc">Sensors</div><div style="font-family:monospace;font-weight:700" id="diag-loop-sensors">-</div></div>
+      <div><div class="tool-desc">Sequencer</div><div style="font-family:monospace;font-weight:700" id="diag-loop-sequencer">-</div></div>
+      <div><div class="tool-desc">Controllers</div><div style="font-family:monospace;font-weight:700" id="diag-loop-controllers">-</div></div>
+      <div><div class="tool-desc">Actuators</div><div style="font-family:monospace;font-weight:700" id="diag-loop-actuators">-</div></div>
+      <div><div class="tool-desc">Logging</div><div style="font-family:monospace;font-weight:700" id="diag-loop-logging">-</div></div>
+      <div><div class="tool-desc">Status LED</div><div style="font-family:monospace;font-weight:700" id="diag-loop-led">-</div></div>
+    </div>
+  </div>
 </main>
 
-<script src="/app.js?v=20260619a"></script>
+<script src="/app.js?v=20260625a"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -300,16 +322,24 @@ function renderTools() {
 }
 
 // ── Run a standard tool ───────────────────────────────────────
+async function postToolCommand(payload) {
+  const r = await fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' }
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || body.ok === false) {
+    throw new Error(body.error || body.reason || ('HTTP ' + r.status));
+  }
+  return body;
+}
+
 function runTool(id) {
   const tool = TOOLS.find(t => t.id === id);
   if (!tool) return;
 
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: id }),
-    headers: { 'Content-Type': 'application/json' }
-  }).then(r => r.json()).then(d => {
-    if (!d.ok) { alert('Failed: ' + JSON.stringify(d)); return; }
+  postToolCommand({ cmd: id }).then(d => {
     if (tool.durationMs === 0) {
       setState(id, 'Toggled', 'done');
       setTimeout(() => refreshToggleState(tool), 800);
@@ -322,19 +352,15 @@ function runTool(id) {
 // ── Extra Cooldown start / stop ───────────────────────────────
 function startCooldown() {
   const secs = parseInt(document.getElementById('cooldown-slider').value, 10) || 120;
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'EXTRA_COOLDOWN', iParam: secs }),
-    headers: { 'Content-Type': 'application/json' }
-  }).catch(e => alert('Network error: ' + e));
+  postToolCommand({ cmd: 'EXTRA_COOLDOWN', iParam: secs })
+    .then(() => setTimeout(pollToolsTelemetry, 200))
+    .catch(e => alert('Cooldown command failed: ' + e.message));
 }
 
 function stopCooldown() {
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'EXTRA_COOLDOWN', iParam: 0 }),
-    headers: { 'Content-Type': 'application/json' }
-  }).catch(e => alert('Network error: ' + e));
+  postToolCommand({ cmd: 'EXTRA_COOLDOWN', iParam: 0 })
+    .then(() => setTimeout(pollToolsTelemetry, 200))
+    .catch(e => alert('Cooldown command failed: ' + e.message));
 }
 
 // ── Countdown progress bar ────────────────────────────────────
@@ -384,6 +410,30 @@ function refreshToggleState(tool) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
+function updateLoopDiagnostics(d) {
+  const hz = Number(d.loop_hz);
+  const period = Number(d.loop_period_ms);
+  const avg = Number(d.loop_exec_avg_ms);
+  const max = Number(d.loop_exec_max_ms);
+  const count = Number(d.loop_counter);
+  const fmtMs = v => Number.isFinite(v) ? v.toFixed(3) + ' ms' : '-';
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  set('diag-loop-hz', Number.isFinite(hz) ? hz.toFixed(1) + ' Hz' : '-');
+  set('diag-loop-period', Number.isFinite(period) ? period.toFixed(2) + ' ms' : '-');
+  set('diag-loop-avg', fmtMs(avg));
+  set('diag-loop-max', fmtMs(max));
+  set('diag-loop-count', Number.isFinite(count) ? count.toLocaleString() : '-');
+  set('diag-loop-sensors', fmtMs(Number(d.loop_sensors_ms)));
+  set('diag-loop-sequencer', fmtMs(Number(d.loop_sequencer_ms)));
+  set('diag-loop-controllers', fmtMs(Number(d.loop_controllers_ms)));
+  set('diag-loop-actuators', fmtMs(Number(d.loop_actuators_ms)));
+  set('diag-loop-logging', fmtMs(Number(d.loop_logging_ms)));
+  set('diag-loop-led', fmtMs(Number(d.loop_led_ms)));
+}
+
 function setState(id, text, cls) {
   const el = document.getElementById('state-' + id);
   if (el) { el.textContent = text; el.className = 'tool-state' + (cls ? ' ' + cls : ''); }
@@ -423,6 +473,7 @@ window.applyData = function(d) {
   const lw = document.getElementById('lock-warn');
   if (lw) lw.style.display = (d.mode !== 'STANDBY') ? '' : 'none';
   if (!activeTick) setAllButtons(false);
+  updateLoopDiagnostics(d);
 
   // Toggle state badges
   TOOLS.forEach(t => { if (t.toggleKey) refreshToggleState(t); });
@@ -531,13 +582,9 @@ function toggleDevMode() {
     ? 'Disable dev mode?'
     : 'Enable dev mode?\n\nThis unlocks the safety bypass controls.\nOnly use for bench testing — never for engine operation.';
   if (!confirm(msg)) return;
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'TOGGLE_DEV_MODE' }),
-    headers: { 'Content-Type': 'application/json' }
-  })
+  postToolCommand({ cmd: 'TOGGLE_DEV_MODE' })
     .then(() => setTimeout(pollToolsTelemetry, 200))
-    .catch(e => alert('Network error: ' + e));
+    .catch(e => alert('Developer mode command failed: ' + e.message));
 }
 
 // ── Safety checks bypass (dev mode only) ─────────────────────
@@ -551,13 +598,9 @@ function toggleSafetyChecks() {
     ? 'Re-enable safety checks? (recommended)'
     : '⚠ DISABLE ALL SAFETY CHECKS?\n\nThe engine will NOT protect against:\n• Overspeed\n• Overtemperature\n• Oil pressure loss\n• Flameout\n\nFor bench testing only — NEVER with fuel flowing.\n\nAre you absolutely sure?';
   if (!confirm(msg)) return;
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'TOGGLE_SAFETY_CHECKS' }),
-    headers: { 'Content-Type': 'application/json' }
-  })
+  postToolCommand({ cmd: 'TOGGLE_SAFETY_CHECKS' })
     .then(() => setTimeout(pollToolsTelemetry, 200))
-    .catch(e => alert('Network error: ' + e));
+    .catch(e => alert('Safety bypass command failed: ' + e.message));
 }
 
 // ── Bench mode toggle ─────────────────────────────────────────
@@ -569,13 +612,9 @@ function toggleBenchMode() {
     ? 'Disable bench mode and return to normal operation?'
     : 'Enable BENCH MODE?\n\nAll sequencer blocks will complete on their configured timeout with NO sensor verification.\n\nSafety faults are bypassed. The engine will NOT protect itself.\n\nUse only to test actuator wiring and sequence timing — NEVER with fuel or a running engine.\n\nAre you sure?';
   if (!confirm(msg)) return;
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'TOGGLE_BENCH_MODE' }),
-    headers: { 'Content-Type': 'application/json' }
-  })
+  postToolCommand({ cmd: 'TOGGLE_BENCH_MODE' })
     .then(() => setTimeout(pollToolsTelemetry, 200))
-    .catch(e => alert('Network error: ' + e));
+    .catch(e => alert('Bench mode command failed: ' + e.message));
 }
 
 // ── Load config to sync tool durations ───────────────────────
@@ -688,7 +727,11 @@ function factoryReset() {
   const btn = document.getElementById('btn-factory-reset');
   if (btn) btn.disabled = true;
   fetch('/api/factory_reset', { method: 'POST' })
-    .then(r => r.json())
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+      return d;
+    })
     .then(d => {
       if (d.ok) {
         if (msg) { msg.textContent = 'Reset sent — device rebooting…'; msg.style.color = 'var(--yellow)'; msg.style.display = ''; }
@@ -729,7 +772,11 @@ function restoreConfig(input) {
       headers: { 'Content-Type': 'application/json' },
       body: ev.target.result
     })
-    .then(r => r.json())
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+      return d;
+    })
     .then(d => {
       if (d.ok) {
         document.getElementById('cfg-backup-state').textContent = 'Done — rebooting…';

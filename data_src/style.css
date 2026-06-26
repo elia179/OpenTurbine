@@ -1110,6 +1110,20 @@ select option.pin-adc2   { color: #c07030; }
   color: var(--dim); cursor: pointer; padding: 0.2rem 0.45rem; font-size: 0.75rem;
   transition: border-color 0.12s, color 0.12s; font-family: var(--font-ui);
 }
+.blk-btn.icon-btn,
+.blk-btn-spacer {
+  width: 1.85rem;
+  min-width: 1.85rem;
+  height: 1.55rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.blk-btn-spacer {
+  border: 1px solid transparent;
+  pointer-events: none;
+}
 .blk-btn:hover     { border-color: var(--accent); color: var(--text); }
 .blk-btn.del:hover { border-color: var(--red); color: var(--red); }
 
@@ -1197,7 +1211,29 @@ select option.pin-adc2   { color: #c07030; }
 .cblk-add-btn:hover { background: var(--accent); color: #000; }
 
 .cblk-step-badge { font-size: 0.61rem; font-weight: 700; letter-spacing: 0.06em; padding: 0.18rem 0.45rem; border-radius: 3px; flex-shrink: 0; white-space: nowrap; font-family: var(--font-ui); }
-.cblk-mv-btn { background: none; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); cursor: pointer; padding: 0.1rem 0.3rem; font-size: 0.65rem; line-height: 1; display: inline-block; min-width: 1.4rem; text-align: center; font-family: var(--font-ui); }
+.cblk-mv-btn,
+.cblk-mv-spacer {
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+  text-align: center;
+  font-family: var(--font-ui);
+}
+.cblk-mv-spacer {
+  border-color: transparent;
+  pointer-events: none;
+}
 .cblk-mv-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 .cblk-output-row { display: flex; gap: 0.4rem; align-items: center; }

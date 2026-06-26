@@ -84,6 +84,24 @@ function installedBrowser() {
     assert.match(await text(page, '#tot-abs-label'), /F$/);
     assert.match(await text(page, '#oil-abs-label'), /PSI$/);
     results.push('dashboard temperature and pressure unit toggles convert live values and limit labels');
+
+    await page.request.post(`${base}/__sim/data`, { data: {
+      mode: 'RUNNING',
+      oil_running_min: 0,
+      fuel_press_min: 0,
+      batt_volt_min: 0,
+      oil_temp_limit: 0,
+      egt_source: 2,
+      has_tit: true,
+      tit: 720,
+      tit_limit: 0
+    } });
+    await page.waitForFunction(() => document.getElementById('oil-abs-label')?.textContent?.includes('/ OFF'));
+    assert.match(await text(page, '#fuel-press-abs-label'), /\/ OFF$/);
+    assert.equal(await text(page, '#batt-volt-min'), 'OFF');
+    assert.match(await text(page, '#tit-abs-label'), /\/ OFF$/);
+    results.push('dashboard zero-disabled thresholds clear stale gauge limits instead of retaining old values');
+    await scenario(page, 'full');
     await page.locator('#unit-temp-btn').click();
 
     const retainedTot = await text(page, '#tot');
@@ -94,6 +112,12 @@ function installedBrowser() {
     await page.waitForFunction(() => document.getElementById('tot')?.textContent?.includes('651'), null, { timeout: 5000 });
     results.push('brief telemetry reconnect retains values and REST fallback keeps live pages updating without navigation');
     await page.locator('#unit-temp-btn').click();
+
+    await page.request.post(`${base}/__sim/data`, { data: { config_storage_fault: true } });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('config-storage-banner')).display !== 'none');
+    await page.request.post(`${base}/__sim/data`, { data: { config_storage_fault: false } });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('config-storage-banner')).display === 'none');
+    results.push('dashboard shows storage-fault lock banner from telemetry');
 
     await page.reload();
     await waitShown(page, '#n1-card', true);

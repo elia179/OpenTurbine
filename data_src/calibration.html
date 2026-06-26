@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Calibration</title>
-<link rel="stylesheet" href="/style.css?v=20260619a">
+<link rel="stylesheet" href="/style.css?v=20260625a">
 </head>
 <body>
 <nav>
@@ -583,7 +583,7 @@
 
 </main>
 
-<script src="/app.js?v=20260619a"></script>
+<script src="/app.js?v=20260625a"></script>
 <script>
 let live = {};
 let oilPts = [];
@@ -613,7 +613,8 @@ function hwFuelFlowAnalog(hw) {
   return !!((fuelFlow.enabled || hw?.has_fuel_flow) && Number(type) === 0);
 }
 function hwAbFlameEnabled(hw) {
-  return !!((hw?.has_afterburner ?? hw?.afterburner?.enabled ?? true) && (hw?.ab_flame?.enabled || hw?.has_ab_flame));
+  const hasAfterburner = hw?.has_afterburner === true || hw?.afterburner?.enabled === true;
+  return !!(hasAfterburner && (hw?.ab_flame?.enabled || hw?.has_ab_flame));
 }
 function setRowVisible(id, visible) {
   const el = document.getElementById(id);
@@ -700,13 +701,6 @@ function refreshOilTempCalMode(sensor) {
   }
   setText('fuelpress-bar-max', fpVal.toFixed(1) + ' bar');
   setText('cal-fuelpress-range', fpMin + ' – ' + fpMax + ' raw');
-  // Load saved P1/P2 zero offsets (elements may be absent if feature is hidden)
-  const p1z = c.calibration?.p1_zero_bar;
-  const p2z = c.calibration?.p2_zero_bar;
-  const _p1zEl = document.getElementById('cal-p1-zero');
-  const _p2zEl = document.getElementById('cal-p2-zero');
-  if (_p1zEl) _p1zEl.textContent = p1z !== undefined ? p1z.toFixed(3) + ' bar' : '—';
-  if (_p2zEl) _p2zEl.textContent = p2z !== undefined ? p2z.toFixed(3) + ' bar' : '—';
   // Show/hide P1/P2 calibration from hardware fitment, not dashboard display preference.
   const p1RowInit = document.getElementById('p1-cal-row');
   const p2RowInit = document.getElementById('p2-cal-row');
@@ -1177,6 +1171,19 @@ function oilGoStep(n) {
   });
 }
 
+async function postCalCommand(payload) {
+  const r = await fetch('/api/command', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type':'application/json' }
+  });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok || body.ok === false) {
+    throw new Error(body.error || body.reason || ('HTTP ' + r.status));
+  }
+  return body;
+}
+
 function oilCalStart() {
   if (!calStandbyGuard('the oil pump calibration')) return;
   const pct = parseInt(document.getElementById('oil-pump-pct').value) || 40;
@@ -1188,12 +1195,9 @@ function oilCalStart() {
   statusEl.style.display = '';
   startBtn.disabled = true;
 
-  fetch('/api/command', { method:'POST',
-    body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: 0 }),
-    headers: { 'Content-Type':'application/json' }
-  }).then(() => {
+  postCalCommand({ cmd:'SET_OIL_PCT', iParam: 0 }).then(() => {
     // Wait 3 s for pressure to settle at zero
-    setTimeout(() => {
+    setTimeout(async () => {
       const raw0 = live.oil_raw;
       if (raw0 === undefined) {
         statusEl.textContent = 'No live ADC data — check connection.';
@@ -1207,15 +1211,17 @@ function oilCalStart() {
 
       // Now spin up to chosen %
       document.getElementById('oil-pump-pct2').value = pct;
-      fetch('/api/command', { method:'POST',
-        body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: pct }),
-        headers: { 'Content-Type':'application/json' }
-      });
-      oilCalActive = true;
-      oilGoStep(2);
+      try {
+        await postCalCommand({ cmd:'SET_OIL_PCT', iParam: pct });
+        oilCalActive = true;
+        oilGoStep(2);
+      } catch(e) {
+        statusEl.textContent = 'Pump command failed: ' + e.message;
+        startBtn.disabled = false;
+      }
     }, 3000);
   }).catch(e => {
-    statusEl.textContent = 'Error: ' + e;
+    statusEl.textContent = 'Pump command failed: ' + e.message;
     startBtn.disabled = false;
   });
 }
@@ -1223,17 +1229,13 @@ function oilCalStart() {
 function oilSetPump() {
   if (!calStandbyGuard('changing the oil pump duty')) return;
   const pct = parseInt(document.getElementById('oil-pump-pct2').value) || 0;
-  fetch('/api/command', { method:'POST',
-    body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: pct }),
-    headers: { 'Content-Type':'application/json' }
-  });
+  postCalCommand({ cmd:'SET_OIL_PCT', iParam: pct })
+    .catch(e => alert('Pump command failed: ' + e.message));
 }
 
 function oilCalStop() {
-  fetch('/api/command', { method:'POST',
-    body: JSON.stringify({ cmd:'SET_OIL_PCT', iParam: 0 }),
-    headers: { 'Content-Type':'application/json' }
-  });
+  postCalCommand({ cmd:'SET_OIL_PCT', iParam: 0 })
+    .catch(e => alert('Pump stop command failed: ' + e.message));
   oilCalActive = false;
   // Reset step-1 button
   const btn = document.getElementById('btn-oil-start');
@@ -1386,10 +1388,7 @@ async function captureFlameNoise() {
   try {
     if (fireIgn) {
       statusEl.textContent = 'Starting igniter for noise capture…';
-      await fetch('/api/command', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({cmd:'IGN_TEST'})
-      });
+      await postCalCommand({cmd:'IGN_TEST'});
       await new Promise(r => setTimeout(r, 400)); // let igniter spin up + EMI settle
     }
 
@@ -1542,39 +1541,19 @@ function saveIdle() {
   cfg.calibration.idle_max_raw = idleMax;
 }
 
-function captureZero(ch) {
-  const val = live[ch];  // current gauge bar (already offset-subtracted in firmware)
-  if (val === undefined) { alert('No live ' + ch.toUpperCase() + ' data yet'); return; }
-  // The raw bar from sensor — add back current zero to get the true raw offset
-  const currentZero = parseFloat(cfg.calibration?.[(ch + '_zero_bar')] || 0);
-  const newZero = currentZero + val;  // raw = gaugeBar + currentZero
-  patchConfig({ calibration: { [ch + '_zero_bar']: newZero } },
-    ch.toUpperCase() + ' zero set to ' + newZero.toFixed(3) + ' bar');
-  document.getElementById('cal-' + ch + '-zero').textContent = newZero.toFixed(3) + ' bar';
-  if (!cfg.calibration) cfg.calibration = {};
-  cfg.calibration[ch + '_zero_bar'] = newZero;
-  document.getElementById(ch + '-zero-status').textContent =
-    'Captured: raw offset = ' + newZero.toFixed(3) + ' bar';
-}
-
-function clearZero(ch) {
-  patchConfig({ calibration: { [ch + '_zero_bar']: 0 } },
-    ch.toUpperCase() + ' zero cleared');
-  document.getElementById('cal-' + ch + '-zero').textContent = '0.000 bar';
-  if (cfg.calibration) cfg.calibration[ch + '_zero_bar'] = 0;
-  document.getElementById(ch + '-zero-status').textContent = 'Zero offset cleared';
-}
-
 // ── Hardware patch (no reboot) ────────────────────────────────
 function patchHardware(patch, onOk) {
   fetch('/api/hardware', {method:'PATCH', body:JSON.stringify(patch),
     headers:{'Content-Type':'application/json'}})
-  .then(r=>r.json())
-  .then(d => {
-    if (d.ok) onOk();
-    else alert('Save failed: ' + JSON.stringify(d));
+  .then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+    return d;
   })
-  .catch(e => alert('Error: ' + e));
+  .then(d => {
+    onOk();
+  })
+  .catch(e => alert('Save failed: ' + e.message));
 }
 
 // ── NTC oil temp calibration ──────────────────────────────────
@@ -1662,7 +1641,10 @@ function saveTorqueScale() {
 
 // ── Config patch ──────────────────────────────────────────────
 function patchConfig(patch, msg) {
-  fetch('/api/config').then(r=>r.json()).then(c => {
+  fetch('/api/config').then(async r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(c => {
     function merge(t, s) {
       for (const k in s) {
         if (s[k] && typeof s[k] === 'object' && !Array.isArray(s[k]))
@@ -1673,10 +1655,12 @@ function patchConfig(patch, msg) {
     merge(c, patch);
     return fetch('/api/config', {method:'POST', body:JSON.stringify(c),
       headers:{'Content-Type':'application/json'}});
-  }).then(r=>r.json()).then(d => {
-    if (d.ok) alert(msg + '\nNote: some calibration changes require restart to take effect.');
-    else alert('Save failed: ' + JSON.stringify(d));
-  }).catch(e => alert('Error: ' + e));
+  }).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+  }).then(() => {
+    alert(msg + '\nNote: some calibration changes require restart to take effect.');
+  }).catch(e => alert('Save failed: ' + e.message));
 }
 
 // ── P1/P2 two-point calibration ───────────────────────────────

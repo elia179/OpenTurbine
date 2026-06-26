@@ -385,20 +385,20 @@ void putFloat(uint8_t* b, float v) {
 
 uint32_t healthFlags(const EngineData& ed) {
     uint32_t f = 0;
-    if (ed.n1Healthy) f |= 1UL << 0;
-    if (ed.n2Healthy) f |= 1UL << 1;
-    if (ed.totHealthy) f |= 1UL << 2;
-    if (ed.titHealthy) f |= 1UL << 3;
-    if (ed.oilHealthy) f |= 1UL << 4;
-    if (ed.oilTempHealthy) f |= 1UL << 5;
-    if (ed.fuelPressHealthy) f |= 1UL << 6;
-    if (ed.battHealthy) f |= 1UL << 7;
-    if (ed.torqueHealthy) f |= 1UL << 8;
-    if (ed.flameDetected) f |= 1UL << 9;
+    if (HardwareConfig::hasN1Rpm && ed.n1Healthy) f |= 1UL << 0;
+    if (HardwareConfig::hasN2Rpm && ed.n2Healthy) f |= 1UL << 1;
+    if (HardwareConfig::hasTot && ed.totHealthy) f |= 1UL << 2;
+    if (HardwareConfig::hasTit && ed.titHealthy) f |= 1UL << 3;
+    if (HardwareConfig::hasOilPress && ed.oilHealthy) f |= 1UL << 4;
+    if (HardwareConfig::hasOilTemp && ed.oilTempHealthy) f |= 1UL << 5;
+    if (HardwareConfig::hasFuelPress && ed.fuelPressHealthy) f |= 1UL << 6;
+    if (HardwareConfig::hasBattVoltage && ed.battHealthy) f |= 1UL << 7;
+    if (HardwareConfig::hasTorque && ed.torqueHealthy) f |= 1UL << 8;
+    if (HardwareConfig::hasFlame && ed.flameDetected) f |= 1UL << 9;
     if (ed.surgeDetected) f |= 1UL << 10;
-    if (ed.abFlameOn) f |= 1UL << 11;
-    if (ed.rcThrottleValid) f |= 1UL << 12;
-    if (ed.rcIdleValid) f |= 1UL << 13;
+    if (HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame && ed.abFlameOn) f |= 1UL << 11;
+    if (HardwareConfig::hasThrottleInput && ed.rcThrottleValid) f |= 1UL << 12;
+    if (HardwareConfig::hasIdleInput && ed.rcIdleValid) f |= 1UL << 13;
     if (ed.configVersionMismatch) f |= 1UL << 14;
     if (ed.seqHasErrors) f |= 1UL << 15;
     return f;
@@ -578,7 +578,8 @@ void ClusterSerial::_sendSchema() {
 
     uint8_t limits[28] = {};
     float egtLimit = Config::primaryEgtLimitC();
-    float totWarn = Config::totWarnC > 0.0f ? Config::totWarnC : (egtLimit - Config::totSafeMargin);
+    float totWarn = Config::totWarnC > 0.0f ? Config::totWarnC
+                  : (egtLimit > 0.0f ? max(0.0f, egtLimit - Config::totSafeMargin) : 0.0f);
     float oilWarn = Config::oilWarnBar > 0.0f ? Config::oilWarnBar : Config::oilRunningMin;
     putFloat(limits + 0,  Config::rpmLimit);
     putFloat(limits + 4,  Config::n1WarnRpm);
@@ -687,13 +688,13 @@ void ClusterSerial::_handleLine(const char* line) {
     bool ok = true;
     if (strcmp(cmd, "STOP") == 0) {
         pkt.cmd = OTCommand::STOP;
-        CommandQueue::pushEmergencyStop(pkt);
+        ok = CommandQueue::pushEmergencyStop(pkt);
     } else if (strcmp(cmd, "START") == 0) {
         pkt.cmd = OTCommand::START;
         ok = CommandQueue::push(pkt);
     } else if (strcmp(cmd, "AB_STOP") == 0) {
         pkt.cmd = OTCommand::AB_STOP;
-        ok = CommandQueue::pushFront(pkt);
+        ok = CommandQueue::pushEmergencyFront(pkt);
     } else if (strcmp(cmd, "RESET_PEAKS") == 0) {
         pkt.cmd = OTCommand::RESET_PEAKS;
         ok = CommandQueue::push(pkt);
@@ -761,10 +762,13 @@ void ClusterSerial::tick() {
     }
 
     if (m == SysMode::RUNNING) {
+        const float egtLimit = Config::primaryEgtLimitC();
         float egtWarnThresh = (Config::totWarnC > 0.0f)
             ? Config::totWarnC
-            : (Config::primaryEgtLimitC() - Config::totSafeMargin);
-        bool totHigh = Config::primaryEgtHealthy(ed) && (Config::primaryEgtC(ed) >= egtWarnThresh);
+            : (egtLimit > 0.0f ? max(0.0f, egtLimit - Config::totSafeMargin) : 0.0f);
+        bool totHigh = egtWarnThresh > 0.0f
+            && Config::primaryEgtHealthy(ed)
+            && (Config::primaryEgtC(ed) >= egtWarnThresh);
         if (totHigh && !_totWarnActive) {
             _totWarnActive = true;
             sendStatus(ClCode::TotHigh);
@@ -776,7 +780,9 @@ void ClusterSerial::tick() {
         float oilWarnThresh = (Config::oilWarnBar > 0.0f)
             ? Config::oilWarnBar
             : Config::oilRunningMin;
-        bool oilLow = ed.oilHealthy && (ed.oilPressure < (oilWarnThresh + 0.3f));
+        bool oilLow = oilWarnThresh > 0.0f
+            && ed.oilHealthy
+            && (ed.oilPressure < (oilWarnThresh + 0.3f));
         if (oilLow && !_oilWarnActive) {
             _oilWarnActive = true;
             sendStatus(ClCode::OilWarn);

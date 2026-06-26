@@ -20,6 +20,7 @@ public:
 
     void begin() override {
         pinMode(_pin, OUTPUT);
+        _hasLast = false;
         off();
     }
 
@@ -38,10 +39,15 @@ public:
 
 private:
     void _write(bool on) {
+        if (_hasLast && on == _lastOn) return;
         digitalWrite(_pin, (_activeHigh ? on : !on) ? HIGH : LOW);
+        _lastOn = on;
+        _hasLast = true;
     }
 
     int         _pin;
     bool        _activeHigh;
+    bool        _lastOn = false;
+    bool        _hasLast = false;
     const char* _name;
 };

@@ -116,6 +116,7 @@ let _restFallbackInFlight = false;
 let _wsRequestInFlight = false;
 let _wsRequestSentMs = 0;
 let _lastUptimeS = null;
+let _lastBootCount = null;
 let _statusHeartbeatTimer = null;
 
 function isLiveTelemetryPage() {
@@ -190,6 +191,23 @@ function startRestFallbackTimer() {
   _restFallbackTimer = setInterval(restTelemetryFallbackNow, 1500);
 }
 
+function stopGlobalTelemetry() {
+  if (_pullTimer) { clearInterval(_pullTimer); _pullTimer = null; _pullPeriodMs = 0; }
+  if (_restFallbackTimer) { clearInterval(_restFallbackTimer); _restFallbackTimer = null; }
+  if (_statusHeartbeatTimer) { clearInterval(_statusHeartbeatTimer); _statusHeartbeatTimer = null; }
+  _wsRequestInFlight = false;
+  _restFallbackInFlight = false;
+  if (ws) {
+    try {
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close(1000, 'page navigation');
+    } catch (_) {}
+    ws = null;
+  }
+}
+
 function setConnectionState(ok, text) {
   const dot = document.getElementById('conn');
   const lbl = document.getElementById('conn-label');
@@ -223,8 +241,8 @@ function connect() {
   ws.onopen = () => {
     setConnectionState(true, 'Connected');
     _lastMsgMs = Date.now();
-    // Start sending pull requests — server responds with full telemetry each time.
-    // Server also sends one frame on WS_EVT_CONNECT so the UI populates immediately.
+    // Start sending pull requests — server responds with compact live telemetry.
+    // /api/data supplies full boot snapshots for slow labels and limits.
     // Dashboard and calibration require responsive live values. Keep them at 1-3 Hz;
     // other pages only need the connection indicator and can poll more slowly.
     startPullTimer();
@@ -256,8 +274,23 @@ function connect() {
 // ── Apply telemetry frame to DOM ──────────────────────────────
 let _lastData = null;
 function applyData(d) {
+  let bootChanged = false;
+  if (d && d.boot_count !== undefined) {
+    const nextBootCount = Number(d.boot_count);
+    if (Number.isFinite(nextBootCount) && _lastBootCount !== null && nextBootCount !== _lastBootCount) {
+      _lastData = null;
+      _lastUptimeS = null;
+      bootChanged = true;
+    }
+    if (Number.isFinite(nextBootCount)) _lastBootCount = nextBootCount;
+  }
   if (d && d.uptime_s !== undefined && _lastUptimeS !== null) {
     const nextUptime = Number(d.uptime_s);
+    if (Number.isFinite(nextUptime) && nextUptime <= 5 && _lastUptimeS > 5) {
+      _lastData = null;
+      _lastUptimeS = null;
+      bootChanged = true;
+    }
     if (Number.isFinite(nextUptime) && nextUptime < _lastUptimeS && (_lastUptimeS - nextUptime) < 30) {
       return null;
     }
@@ -272,6 +305,12 @@ function applyData(d) {
     _lastUptimeS = Number(d.uptime_s);
   }
   if (ws && ws.readyState === WebSocket.OPEN) startPullTimer();
+  if (bootChanged && usesGlobalTelemetry()) {
+    fetch('/api/data', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(full => { try { applyData(full); } catch(e) {} })
+      .catch(() => {});
+  }
   // ── Channel labels ─────────────────────────────────────────
   if (d.labels) {
     Object.assign(_labels, d.labels);
@@ -522,6 +561,8 @@ function applyData(d) {
       flightDropBanner.textContent = 'Flight recorder dropped ' + dropped + ' event' + (dropped === 1 ? '' : 's') + '. Event log may be incomplete.';
     }
   }
+  const storageBanner = document.getElementById('config-storage-banner');
+  if (storageBanner) storageBanner.style.display = d.config_storage_fault ? '' : 'none';
 
   // Stop switch warning below start button
   const stopWarn = document.getElementById('stop-switch-warn');
@@ -618,12 +659,13 @@ function applyData(d) {
   const isPrimaryTot = selectedEgtSource === 'tot';
   const isPrimaryTit = selectedEgtSource === 'tit';
 
-  if (d.tot_limit && d.tot !== undefined) {
-    const pct = Math.min(100, (d.tot / d.tot_limit) * 100);
+  if (d.tot !== undefined) {
+    const totLimit = Number(d.tot_limit || 0);
+    const pct = totLimit > 0 ? Math.min(100, (d.tot / totLimit) * 100) : 0;
     setGaugeBar('tot-gauge-bar', pct);
     const warn = document.getElementById('tot-approach-warn');
     if (warn) {
-      const limit = Number(d.egt_limit || d.tot_limit);
+      const limit = Number(d.egt_limit || totLimit);
       const primaryPct = limit > 0 ? Math.min(100, (Number(d.tot) / limit) * 100) : 0;
       const show = isPrimaryTot && primaryPct >= 85;
       warn.style.display = show ? '' : 'none';
@@ -631,30 +673,36 @@ function applyData(d) {
         + toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(limit).toFixed(0) + ' ' + dispTempUnit();
     }
     const absLbl = document.getElementById('tot-abs-label');
-    if (absLbl) absLbl.textContent = toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(Number(d.tot_limit)).toFixed(0) + ' ' + dispTempUnit();
+    if (absLbl) absLbl.textContent = totLimit > 0
+      ? toDispTemp(Number(d.tot)).toFixed(0) + ' / ' + toDispTemp(totLimit).toFixed(0) + ' ' + dispTempUnit()
+      : toDispTemp(Number(d.tot)).toFixed(0) + ' ' + dispTempUnit() + ' / OFF';
   }
-  if (d.oil_running_min && d.oil !== undefined) {
+  if (d.oil !== undefined) {
+    const oilMin = Number(d.oil_running_min || 0);
     if (d.mode === 'RUNNING') {
       // Oil is inverted vs the other gauges: LOW pressure is the fault state.
       // Width tracks pressure (minimum = 50% width, floor 8% so a red sliver
       // is always visible); color is forced — red below the running minimum,
       // amber within 15% above it, green otherwise. Previously a below-min
       // reading rendered as an EMPTY neutral bar, which read as "fine".
-      const ratio = d.oil / d.oil_running_min;
-      const width = Math.min(100, Math.max(8, ratio * 50));
-      const cls = d.oil < d.oil_running_min ? 'danger'
-                : d.oil < d.oil_running_min * 1.15 ? 'warn' : 'ok';
+      const ratio = oilMin > 0 ? d.oil / oilMin : 0;
+      const width = oilMin > 0 ? Math.min(100, Math.max(8, ratio * 50)) : 0;
+      const cls = oilMin > 0
+                ? (d.oil < oilMin ? 'danger' : d.oil < oilMin * 1.15 ? 'warn' : 'ok')
+                : '';
       setGaugeBar('oil-gauge-bar', width, cls);
       const warn = document.getElementById('oil-approach-warn');
       if (warn) {
-        const low = d.oil < d.oil_running_min * 1.15;
+        const low = oilMin > 0 && d.oil < oilMin * 1.15;
         warn.style.display = low ? '' : 'none';
         if (low) warn.textContent = '⚠ Oil ' + toDispPress(Number(d.oil)).toFixed(2)
-          + ' ' + dispPressUnit() + ' — near min ' + toDispPress(Number(d.oil_running_min)).toFixed(2) + ' ' + dispPressUnit();
+          + ' ' + dispPressUnit() + ' — near min ' + toDispPress(oilMin).toFixed(2) + ' ' + dispPressUnit();
       }
     }
     const absLbl = document.getElementById('oil-abs-label');
-    if (absLbl) absLbl.textContent = toDispPress(Number(d.oil)).toFixed(2) + ' / ≥' + toDispPress(Number(d.oil_running_min)).toFixed(2) + ' ' + dispPressUnit();
+    if (absLbl) absLbl.textContent = oilMin > 0
+      ? toDispPress(Number(d.oil)).toFixed(2) + ' / ≥' + toDispPress(oilMin).toFixed(2) + ' ' + dispPressUnit()
+      : toDispPress(Number(d.oil)).toFixed(2) + ' ' + dispPressUnit() + ' / OFF';
   }
 
   // ── Firmware version (shown once on first telemetry frame) ──
@@ -702,8 +750,9 @@ function applyData(d) {
       setText('oil-temp', d.oil_temp !== undefined ? toDispTemp(Number(d.oil_temp)).toFixed(1) : '—');
       setText('max-oil-temp', d.max_oil_temp !== undefined ? toDispTemp(Number(d.max_oil_temp)).toFixed(1) : '—');
       setDot('oil-temp-health', d.oil_temp_healthy, lbl('oil_temp'));
-      if (d.oil_temp_limit && d.oil_temp_limit > 0 && d.oil_temp !== undefined) {
-        setGaugeBar('oil-temp-gauge-bar', Math.min(100, (d.oil_temp / d.oil_temp_limit) * 100));
+      if (d.oil_temp !== undefined) {
+        const oilTempLimit = Number(d.oil_temp_limit || 0);
+        setGaugeBar('oil-temp-gauge-bar', oilTempLimit > 0 ? Math.min(100, (d.oil_temp / oilTempLimit) * 100) : 0);
       }
     }
   }
@@ -716,11 +765,12 @@ function applyData(d) {
       setText('tit', d.tit !== undefined ? toDispTemp(Number(d.tit)).toFixed(0) : '—');
       setText('max-tit', d.max_tit !== undefined ? toDispTemp(Number(d.max_tit)).toFixed(0) : '—');
       setDot('tit-health', d.tit_healthy, lbl('tit'));
-      if (d.tit_limit && d.tit_limit > 0 && d.tit !== undefined) {
-        setGaugeBar('tit-gauge-bar', Math.min(100, (d.tit / d.tit_limit) * 100));
+      if (d.tit !== undefined) {
+        const titLimit = Number(d.tit_limit || 0);
+        setGaugeBar('tit-gauge-bar', titLimit > 0 ? Math.min(100, (d.tit / titLimit) * 100) : 0);
         const warn = document.getElementById('tit-approach-warn');
         if (warn) {
-          const limit = Number(d.egt_limit || d.tit_limit);
+          const limit = Number(d.egt_limit || titLimit);
           const primaryPct = limit > 0 ? Math.min(100, (Number(d.tit) / limit) * 100) : 0;
           const show = isPrimaryTit && primaryPct >= 85;
           warn.style.display = show ? '' : 'none';
@@ -728,7 +778,9 @@ function applyData(d) {
             + toDispTemp(Number(d.tit)).toFixed(0) + ' / ' + toDispTemp(limit).toFixed(0) + ' ' + dispTempUnit();
         }
         const absLbl = document.getElementById('tit-abs-label');
-        if (absLbl) absLbl.textContent = toDispTemp(Number(d.tit)).toFixed(0) + ' / ' + toDispTemp(Number(d.tit_limit)).toFixed(0) + ' ' + dispTempUnit();
+        if (absLbl) absLbl.textContent = titLimit > 0
+          ? toDispTemp(Number(d.tit)).toFixed(0) + ' / ' + toDispTemp(titLimit).toFixed(0) + ' ' + dispTempUnit()
+          : toDispTemp(Number(d.tit)).toFixed(0) + ' ' + dispTempUnit() + ' / OFF';
       } else {
         const warn = document.getElementById('tit-approach-warn');
         if (warn) warn.style.display = 'none';
@@ -744,13 +796,16 @@ function applyData(d) {
       setText('fuel-press', d.fuel_press !== undefined ? toDispPress(Number(d.fuel_press)).toFixed(2) : '—');
       setText('max-fuel-press', d.max_fuel_press !== undefined ? toDispPress(Number(d.max_fuel_press)).toFixed(2) : '—');
       setDot('fuel-press-health', d.fuel_press_healthy, lbl('fuel_press'));
-      if (d.fuel_press_min && d.fuel_press_min > 0 && d.fuel_press !== undefined) {
+      if (d.fuel_press !== undefined) {
+        const fuelPressMin = Number(d.fuel_press_min || 0);
         // Gauge: 0% = at min threshold, 100% = 3× min (typical healthy range)
-        const pct = Math.min(100, Math.max(0,
-          ((d.fuel_press - d.fuel_press_min) / (d.fuel_press_min * 2)) * 100));
+        const pct = fuelPressMin > 0 ? Math.min(100, Math.max(0,
+          ((d.fuel_press - fuelPressMin) / (fuelPressMin * 2)) * 100)) : 0;
         setGaugeBar('fuel-press-gauge-bar', pct);
         const absLbl = document.getElementById('fuel-press-abs-label');
-        if (absLbl) absLbl.textContent = toDispPress(Number(d.fuel_press)).toFixed(2) + ' / ≥' + toDispPress(Number(d.fuel_press_min)).toFixed(2) + ' ' + dispPressUnit();
+        if (absLbl) absLbl.textContent = fuelPressMin > 0
+          ? toDispPress(Number(d.fuel_press)).toFixed(2) + ' / ≥' + toDispPress(fuelPressMin).toFixed(2) + ' ' + dispPressUnit()
+          : toDispPress(Number(d.fuel_press)).toFixed(2) + ' ' + dispPressUnit() + ' / OFF';
       }
     }
   }
@@ -763,13 +818,14 @@ function applyData(d) {
       setText('batt-voltage', d.batt_voltage !== undefined ? Number(d.batt_voltage).toFixed(2) : '—');
       setText('max-batt-voltage', d.max_batt_voltage !== undefined ? Number(d.max_batt_voltage).toFixed(2) : '—');
       setDot('batt-health', d.batt_healthy, 'Battery voltage');
-      if (d.batt_volt_min && d.batt_volt_min > 0) {
-        setText('batt-volt-min', Number(d.batt_volt_min).toFixed(1));
+      {
+        const battMin = Number(d.batt_volt_min || 0);
+        setText('batt-volt-min', battMin > 0 ? battMin.toFixed(1) : 'OFF');
         if (d.batt_voltage !== undefined) {
           // 0% = at alarm threshold, 100% = 30% above threshold (typical full charge headroom)
-          const fullV = d.batt_volt_min * 1.3;
-          const pct = Math.min(100, Math.max(0,
-            ((d.batt_voltage - d.batt_volt_min) / (fullV - d.batt_volt_min)) * 100));
+          const fullV = battMin * 1.3;
+          const pct = battMin > 0 ? Math.min(100, Math.max(0,
+            ((d.batt_voltage - battMin) / (fullV - battMin)) * 100)) : 0;
           setGaugeBar('batt-gauge-bar', pct);
         }
       }
@@ -1201,9 +1257,11 @@ function sendAbCmd(cmd) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cmd })
   })
-    .then(r => r.json())
-    .then(d => { if (!d.ok) console.warn('AB command failed', d); })
-    .catch(e => console.error('Network error', e));
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+    })
+    .catch(e => alert('Afterburner command failed: ' + e.message));
 }
 
 // ── Boot: prime dashboard via REST for instant first paint, then WS takes over ─
@@ -1222,6 +1280,8 @@ window.addEventListener('pageshow', requestTelemetryNow);
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) requestTelemetryNow();
 });
+window.addEventListener('pagehide', stopGlobalTelemetry);
+window.addEventListener('beforeunload', stopGlobalTelemetry);
 function startTelemetryBoot() {
   if (!usesGlobalTelemetry()) {
     if (!hasPageLocalTelemetry()) startStatusHeartbeat();
@@ -1229,7 +1289,7 @@ function startTelemetryBoot() {
   }
   connect();
   startRestFallbackTimer();
-  if (isDashboardPage() || isConfigPage()) {
+  if (isDashboardPage()) {
     fetch('/api/data', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { try { applyData(d); } catch(e) {} })

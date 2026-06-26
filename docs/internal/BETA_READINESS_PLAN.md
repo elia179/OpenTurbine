@@ -70,7 +70,7 @@ hardware combinations, dependency gates, and release-facing documentation.
 - Hardware save: changed fields are highlighted, conflicts are named, save
   recap is clear, reboot behavior is clear.
 - Config save: units convert correctly, validation errors are actionable, and
-  Basic/Expert mode is understandable.
+  Normal/Advanced mode is understandable.
 - Unified import/export: full engine file restore rejects crossed hardware and
   settings sections.
 - Factory reset: restores one complete factory engine file and makes the user

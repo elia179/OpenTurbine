@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260619a">
+<link rel="stylesheet" href="/style.css?v=20260625a">
 </head>
 <body data-page="dashboard">
 <nav>
@@ -67,6 +67,10 @@
   </div>
   <div id="flight-log-drop-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
     Flight recorder dropped events. Event log may be incomplete.
+  </div>
+  <div id="config-storage-banner" style="display:none;background:rgba(255,60,96,.10);border:1px solid rgba(255,60,96,.55);border-radius:7px;padding:.65rem 1rem;margin-bottom:.7rem;font-size:.82rem;color:var(--red);line-height:1.5">
+    <strong>Storage fault - engine operations locked.</strong>
+    Config, calibration, or log storage could not be read or written. Check LittleFS/web-assets flashing and restore a known-good engine file before testing.
   </div>
   <!-- Config schema mismatch banner -->
   <div id="config-version-banner" style="display:none;background:rgba(255,196,0,0.07);border:1px solid rgba(255,196,0,0.4);border-radius:7px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--yellow);line-height:1.6">
@@ -438,7 +442,7 @@
 <div id="start-confirm-overlay" style="display:none">
   <div id="start-confirm-box">
     <h3>Start Engine?</h3>
-    <p>This will begin the startup sequence. Make sure the area is clear and the engine is ready to run.</p>
+    <p id="start-confirm-text">This will begin the startup sequence. Make sure the area is clear and the engine is ready to run.</p>
     <div class="btns">
       <button onclick="confirmStart()">Confirm Start</button>
       <button class="danger" onclick="cancelStart()">Cancel</button>
@@ -448,6 +452,15 @@
 
 <script>
 function showStartConfirm() {
+  const text = document.getElementById('start-confirm-text');
+  if (text) {
+    const bench = !!(_lastData && _lastData.bench_mode);
+    text.textContent = bench
+      ? 'BENCH MODE is active. The sequence will run on timers and sensor verification is bypassed. Use only for dry bench testing with fuel disabled.'
+      : 'This will begin the startup sequence. Make sure the area is clear and the engine is ready to run.';
+    text.style.color = bench ? 'var(--red)' : '';
+    text.style.fontWeight = bench ? '700' : '';
+  }
   document.getElementById('start-confirm-overlay').style.display = 'flex';
 }
 function confirmStart() {
@@ -462,14 +475,23 @@ function confirmStart() {
     _doStart();
   }).catch(() => _doStart()); // if fetch fails, proceed and let firmware handle it
 }
-function _doStart() {
-  sendCmd('/api/start');
+async function _doStart() {
   // Spinner/feedback state: disable button and change text
   const btn = document.getElementById('btn-start');
   if (btn) {
     btn._originalText = btn.textContent;
     btn.textContent = 'Starting...';
     btn.disabled = true;
+  }
+  const result = await sendCmd('/api/start');
+  if (!result || !result.ok) {
+    if (btn) {
+      btn.textContent = btn._originalText || 'START';
+      btn.disabled = false;
+    }
+    return;
+  }
+  if (btn) {
     // Fallback: re-enable after 3 seconds if telemetry hasn't already confirmed the state.
     // Guard against the engine having already entered STARTUP \u2014 in that case the button
     // must stay disabled until the sequence completes or fails.
@@ -510,6 +532,6 @@ function dismissGettingStarted() {
 }
 </script>
 
-<script src="/app.js?v=20260619a"></script>
+<script src="/app.js?v=20260625a"></script>
 </body>
 </html>

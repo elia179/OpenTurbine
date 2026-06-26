@@ -116,6 +116,7 @@ public:
 
     void onEnter() override {
         _startMs = millis();
+        _completed = false;
         EngineData::instance().fuelPump2Demand = startPct / 100.0f;
     }
 
@@ -123,6 +124,7 @@ public:
         unsigned long elapsed = millis() - _startMs;
         if (elapsed >= rampMs) {
             EngineData::instance().fuelPump2Demand = endPct / 100.0f;
+            _completed = true;
             return BlockResult::Complete;
         }
         float frac = (float)elapsed / (float)rampMs;
@@ -131,14 +133,14 @@ public:
     }
 
     void onExit() override {
-        // Zero fuelPump2Demand on any exit path (Complete, Abort, or Fault).
-        // Without this, an aborted or mid-ramp sequence leaves the secondary
-        // pump running at partial demand through shutdown and into the next start.
-        EngineData::instance().fuelPump2Demand = 0.0f;
+        // Keep the final demand after a normal ramp. Abort/fault exits clear a
+        // partial ramp so the secondary pump cannot remain at a stale demand.
+        if (!_completed) EngineData::instance().fuelPump2Demand = 0.0f;
     }
 
 private:
     unsigned long _startMs = 0;
+    bool          _completed = false;
 };
 
 // ── Fuel pump 2 set point (one-shot) ─────────────────────────

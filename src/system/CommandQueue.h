@@ -26,7 +26,7 @@ enum class OTCommand : uint8_t {
     TOGGLE_LIMP_MODE,
     TOGGLE_DYNAMIC_IDLE,
     TOGGLE_SAFETY_CHECKS, // DEV_MODE only
-    TOGGLE_DEV_MODE,      // runtime dev mode — unlocks config during engine operation
+    TOGGLE_DEV_MODE,      // standby-only toggle; enables live Config edits and bench diagnostics
     TOGGLE_BENCH_MODE,    // bench/debug: all sequencer waits proceed on timer, safety skipped
     EXTRA_COOLDOWN,       // toggle: run configured cooldown actuators in standby until timeout
     STARTER_ASSIST,       // iParam: 1=enable, 0=disable — low-RPM starter torque assist
@@ -76,12 +76,16 @@ public:
         return xQueueSendToFront(_queue, &pkt, 0) == pdTRUE;
     }
 
-    // A main-engine STOP supersedes every pending web command.
-    static bool pushEmergencyStop(const OTPacket& pkt) {
+    // Safety-priority commands supersede pending web/cluster commands.
+    static bool pushEmergencyFront(const OTPacket& pkt) {
         if (!_queue) return false;
         if (pushFront(pkt)) return true;
         xQueueReset(_queue);
         return pushFront(pkt);
+    }
+
+    static bool pushEmergencyStop(const OTPacket& pkt) {
+        return pushEmergencyFront(pkt);
     }
 
     // Called from Core 1 (ECU loop) — drains all pending commands

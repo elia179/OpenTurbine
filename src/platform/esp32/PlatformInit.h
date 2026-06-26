@@ -38,8 +38,16 @@ public:
         // LittleFS
         // Never format automatically on a control-system boot: a transient
         // mount failure must not erase configuration and logs.
-        if (!LittleFS.begin(false)) {
+        bool fsOk = LittleFS.begin(false, "/littlefs", 10, "littlefs");
+        if (!fsOk) {
             Serial.println("[OT] ERROR: LittleFS mount failed - storage unavailable");
+            auto& ed = EngineData::instance();
+            ed.configLocked = true;
+            ed.configStorageFault = true;
+            strncpy(ed.faultDescription,
+                    "Cannot start: LittleFS storage failed to mount. Config, calibration, web assets, and logs are unavailable.",
+                    sizeof(ed.faultDescription) - 1);
+            ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
         } else {
             Serial.println("[OT] LittleFS OK");
         }
@@ -50,10 +58,16 @@ public:
 
         // NVS boot counter via Preferences
         Preferences prefs;
-        prefs.begin("ot", false);
-        uint32_t bc = prefs.getUInt("bootCount", 0) + 1;
-        prefs.putUInt("bootCount", bc);
-        prefs.end();
+        uint32_t bc = 1;
+        if (prefs.begin("ot", false)) {
+            bc = prefs.getUInt("bootCount", 0) + 1;
+            if (prefs.putUInt("bootCount", bc) == 0) {
+                Serial.println("[OT] WARNING: boot counter NVS write failed");
+            }
+            prefs.end();
+        } else {
+            Serial.println("[OT] WARNING: NVS unavailable - boot counter not persisted");
+        }
         EngineData::instance().bootCount = bc;
 
         Serial.printf("[OT] Boot #%lu\n", (unsigned long)bc);

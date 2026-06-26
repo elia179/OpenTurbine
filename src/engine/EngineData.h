@@ -114,6 +114,7 @@ struct EngineData {
     volatile bool     relightArmed       = false;
     volatile bool     devMode            = false;
     volatile bool     configLocked       = false;
+    volatile bool     configStorageFault = false;
 
     // ── Runtime flags (toggleable via web UI) ─────────────────
     volatile bool     skipSafetyChecks   = false;  // DEV_MODE only
@@ -147,6 +148,7 @@ struct EngineData {
     SeqIssue         seqIssues[MAX_SEQ_ISSUES] = {};
     uint8_t          seqIssueCount  = 0;
     bool             seqHasErrors   = false;
+    bool             seqHasStructuralErrors = false;
 
     // ── Sequence progress (written by SequenceEngine) ─────────
     char              currentBlock[32]   = {};     // name of active block, "" when idle
@@ -222,6 +224,17 @@ struct EngineData {
     volatile uint32_t bootCount          = 0;
     volatile uint32_t runCount           = 0;   // entries into RUNNING
     volatile uint32_t uptimeMs           = 0;
+    volatile uint32_t loopCounter        = 0;   // main control-loop iterations since boot
+    volatile float    loopHz             = 0.0f; // measured loop start-to-start rate
+    volatile float    loopPeriodMs       = 0.0f; // measured loop start-to-start period
+    volatile float    loopExecAvgMs      = 0.0f; // EWMA loop body execution time
+    volatile float    loopExecMaxMs      = 0.0f; // worst loop body time in the last sample window
+    volatile float    loopSensorsMs      = 0.0f; // last sensor update section time
+    volatile float    loopSequencerMs    = 0.0f; // last sequencer + command section time
+    volatile float    loopControllersMs  = 0.0f; // last controller/rules section time
+    volatile float    loopActuatorsMs    = 0.0f; // last actuator write section time
+    volatile float    loopLoggingMs      = 0.0f; // last recorder/logger section time
+    volatile float    loopLedMs          = 0.0f; // last status LED section time
     volatile uint8_t  resetReason        = 0;   // esp_reset_reason_t cast to uint8
 
 private:

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css?v=20260619a">
+<link rel="stylesheet" href="/style.css?v=20260625a">
 </head>
 <body>
 <nav>
@@ -1659,7 +1659,7 @@
       <div class="hw-grid" id="grp-statusled">
         <div class="hw-field">
           <span class="hw-label">LED type</span>
-          <span class="hw-desc">Use NeoPixel RGB for the YD-ESP32-S3 onboard LED on GPIO48. Use plain GPIO for a normal external on/off LED.</span>
+          <span class="hw-desc">Use plain GPIO for a normal on/off LED. Use NeoPixel RGB for a WS2812-style LED; ESP32-S3/YD onboard RGB is usually GPIO48.</span>
           <select id="f-led-type" onchange="setStatusLedType(+this.value)">
             <option value="0">Plain GPIO on/off</option>
             <option value="1">NeoPixel RGB data LED</option>
@@ -1669,6 +1669,24 @@
           <span class="hw-label">GPIO pin</span>
           <span class="hw-desc">YD-ESP32-S3 / YD-ESP32-23 onboard RGB LED is usually GPIO48 and may require the RGB solder jumper to be bridged. External status LEDs can use any free GPIO.</span>
           <select id="f-led-pin" onchange="setAct('status_led','pin',+this.value)"></select>
+        </div>
+        <div class="hw-field" id="grp-led-mode" style="display:none">
+          <span class="hw-label">NeoPixel mode</span>
+          <span class="hw-desc">Blink pattern keeps the normal 1/2/3/4 blink indication. State color holds one color per engine state; faults blink the current state color at half brightness.</span>
+          <select id="f-led-mode" onchange="setStatusLedMode(+this.value)">
+            <option value="0">Blink pattern</option>
+            <option value="1">State colors</option>
+          </select>
+        </div>
+        <div class="hw-field" id="grp-led-colors" style="display:none;grid-column:1/-1">
+          <span class="hw-label">State colors</span>
+          <span class="hw-desc">Used only by NeoPixel state color mode. Output is dimmed in firmware for small onboard or panel LEDs.</span>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem">
+            <label>Standby <input type="color" id="f-led-color-standby" onchange="setStatusLedColor('standby_color',this.value)"></label>
+            <label>Startup <input type="color" id="f-led-color-startup" onchange="setStatusLedColor('startup_color',this.value)"></label>
+            <label>Running <input type="color" id="f-led-color-running" onchange="setStatusLedColor('running_color',this.value)"></label>
+            <label>Shutdown <input type="color" id="f-led-color-shutdown" onchange="setStatusLedColor('shutdown_color',this.value)"></label>
+          </div>
         </div>
       </div>
     </div>
@@ -2107,6 +2125,7 @@ function refreshPinSel(id, mode, currentVal) {
   const el = document.getElementById(id);
   if (!el) return;
   if (id === 'f-led-pin' && cfg.platform === 'esp32s3' &&
+      cfg.actuators?.status_led?.enabled !== false &&
       (currentVal === undefined || currentVal === null || currentVal < 0 || currentVal === 38)) {
     currentVal = 48;
     if (!cfg.actuators) cfg.actuators = {};
@@ -2206,17 +2225,42 @@ function refreshAllPins() {
 function updateStatusLedTypeUI() {
   const sel = document.getElementById('f-led-type');
   if (!sel) return;
-  const neoOption = Array.from(sel.options).find(o => o.value === '1');
-  if (neoOption) neoOption.disabled = cfg.platform !== 'esp32s3';
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
-  if (cfg.platform !== 'esp32s3' && cfg.actuators.status_led.type === 1) {
-    cfg.actuators.status_led.type = 0;
-  }
-  if (cfg.platform === 'esp32s3' && cfg.actuators.status_led.type === 1) {
+  if (cfg.actuators.status_led.mode === undefined) cfg.actuators.status_led.mode = 0;
+  if (cfg.actuators.status_led.standby_color === undefined) cfg.actuators.status_led.standby_color = 0x00FF40;
+  if (cfg.actuators.status_led.startup_color === undefined) cfg.actuators.status_led.startup_color = 0x0060FF;
+  if (cfg.actuators.status_led.running_color === undefined) cfg.actuators.status_led.running_color = 0x00FF00;
+  if (cfg.actuators.status_led.shutdown_color === undefined) cfg.actuators.status_led.shutdown_color = 0xFF8000;
+  if (cfg.platform === 'esp32s3' && cfg.actuators.status_led.type === 1 &&
+      (cfg.actuators.status_led.pin === undefined || cfg.actuators.status_led.pin === null ||
+       cfg.actuators.status_led.pin < 0 || cfg.actuators.status_led.pin === 38)) {
     cfg.actuators.status_led.pin = 48;
   }
   sel.value = String(cfg.actuators.status_led.type ?? 0);
+  const isNeo = cfg.actuators.status_led.type === 1;
+  const isColor = isNeo && cfg.actuators.status_led.mode === 1;
+  const modeGrp = document.getElementById('grp-led-mode');
+  const colorGrp = document.getElementById('grp-led-colors');
+  if (modeGrp) modeGrp.style.display = isNeo ? '' : 'none';
+  if (colorGrp) colorGrp.style.display = isColor ? '' : 'none';
+  v('f-led-mode', cfg.actuators.status_led.mode ?? 0);
+  v('f-led-color-standby', colorToHex(cfg.actuators.status_led.standby_color, '#00ff40'));
+  v('f-led-color-startup', colorToHex(cfg.actuators.status_led.startup_color, '#0060ff'));
+  v('f-led-color-running', colorToHex(cfg.actuators.status_led.running_color, '#00ff00'));
+  v('f-led-color-shutdown', colorToHex(cfg.actuators.status_led.shutdown_color, '#ff8000'));
+}
+
+function colorToHex(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return '#' + (n & 0xFFFFFF).toString(16).padStart(6, '0');
+}
+
+function hexToColor(value, fallback = 0) {
+  const s = String(value || '').trim();
+  if (!/^#[0-9a-fA-F]{6}$/.test(s)) return fallback;
+  return parseInt(s.slice(1), 16);
 }
 
 const DI_ROLES = [
@@ -2353,10 +2397,25 @@ let _loadedProfileId = 'OpenTurbine';
 
 let ws;
 let wsPullTimer = null;
+let wsClosingForNavigation = false;
 function requestHardwareTelemetry() {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send('p');
 }
+function stopHardwareTelemetry() {
+  wsClosingForNavigation = true;
+  if (wsPullTimer) { clearInterval(wsPullTimer); wsPullTimer = null; }
+  if (ws) {
+    try {
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close(1000, 'page navigation');
+    } catch(_) {}
+    ws = null;
+  }
+}
 function connectWs() {
+  if (wsClosingForNavigation) return;
   if (ws && ws.readyState <= WebSocket.OPEN) return;
   ws = new WebSocket('ws://' + location.host + '/ws');
   ws.onopen  = () => {
@@ -2368,7 +2427,7 @@ function connectWs() {
   ws.onclose = () => {
     if (wsPullTimer) { clearInterval(wsPullTimer); wsPullTimer = null; }
     setConn(false);
-    setTimeout(connectWs, 2000);
+    if (!wsClosingForNavigation) setTimeout(connectWs, 2000);
   };
   ws.onerror = () => { try { ws.close(); } catch(_) {} };
   ws.onmessage = (e) => {
@@ -2389,6 +2448,8 @@ function connectWs() {
     } catch(_) {}
   };
 }
+window.addEventListener('pagehide', stopHardwareTelemetry);
+window.addEventListener('beforeunload', stopHardwareTelemetry);
 function setConn(ok) {
   document.getElementById('conn').className = 'conn-dot ' + (ok ? 'connected' : 'disconnected');
   document.getElementById('conn-label').textContent = ok ? 'Connected' : 'Disconnected';
@@ -2640,6 +2701,7 @@ function populate() {
   if (!a.status_led) a.status_led = {};
   if (cfg.platform === 'esp32s3' && a.status_led.type === undefined) a.status_led.type = 1;
   if (cfg.platform !== 'esp32s3' && a.status_led.type === undefined) a.status_led.type = 0;
+  if (a.status_led.mode === undefined) a.status_led.mode = 0;
   v('f-led-type', a.status_led.type ?? 0);
   updateStatusLedTypeUI();
   updateGroupEnabled('grp-statusled', statusLedEnabled);
@@ -2902,7 +2964,7 @@ const SENSOR_DEPENDENCIES = {
   n1_rpm: { name:'N1 RPM sensor', safety:['overspeed','surge'], logs:['n1'], rules:[2],
             functions:['N1 overspeed guard','Surge guard','dynamic idle RPM feedback','standby oil feed source','auto-relight windmill check','flameout source','starter/spool RPM sequence checks','N1 session logging','rules using N1 RPM'] },
   n2_rpm: { name:'N2 RPM sensor', logs:['n2'], rules:[6],
-            functions:['N2 governor','dynamic idle N2 feedback','standby oil feed source','N2 session logging','rules using N2 RPM'] },
+            functions:['N2 governor','dynamic idle N2 feedback','standby oil feed source','shaft power calculation with torque sensor','N2 session logging','rules using N2 RPM'] },
   tot: { name:'TOT sensor', safety:['overtemp','hot_start'], logs:['tot'], rules:[1],
          functions:['Primary EGT safety when selected','Hot-start guard','TOT session logging','rules using TOT'] },
   tit: { name:'TIT sensor', safety:['overtemp','hot_start','tit_overtemp'], logs:['tit'], rules:[4],
@@ -2918,7 +2980,7 @@ const SENSOR_DEPENDENCIES = {
                   functions:['Battery low guard','Battery voltage logging','rules using battery voltage'] },
   p1: { name:'P1 sensor', logs:['p1'], rules:[13], functions:['P1 logging','rules using P1'] },
   p2: { name:'P2 sensor', logs:['p2'], rules:[14], functions:['P2 logging','rules using P2'] },
-  torque: { name:'Torque sensor', rules:[15], functions:['rules using torque'] },
+  torque: { name:'Torque sensor', rules:[15], functions:['shaft power calculation with N2 RPM sensor','rules using torque'] },
   flame: { name:'Flame sensor', rules:[16], functions:['FlameConfirm / flameout source if selected','rules using flame'] },
   throttle_input: { name:'Throttle input', rules:[17], functions:['rules using throttle input'] },
   idle_input: { name:'Idle input', rules:[18], functions:['idle input mapping','rules using idle input'] },
@@ -3104,6 +3166,10 @@ function setSensorEnabled(sensor, grpId, val) {
   updateGroupEnabled('grp-' + grpId, val);
   updateSafetyPrerequisites(true);
   updateHardwarePrerequisites(true);
+  if (sensor === 'n1_rpm') {
+    const starterType = cfg.actuators?.starter?.type ?? 0;
+    updateStrTypeUI(starterType);
+  }
   applyEnableDependencyTooltips();
 }
 function setAct(act, key, val) {
@@ -3117,15 +3183,46 @@ function setAct(act, key, val) {
   dirty();
 }
 function setStatusLedType(val) {
-  if (cfg.platform !== 'esp32s3' && val === 1) val = 0;
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
   cfg.actuators.status_led.type = val;
   cfg.actuators.status_led.enabled = true;
-  if (cfg.platform === 'esp32s3' && val === 1) cfg.actuators.status_led.pin = 48;
+  if (cfg.platform === 'esp32s3' && val === 1 &&
+      (cfg.actuators.status_led.pin === undefined || cfg.actuators.status_led.pin === null ||
+       cfg.actuators.status_led.pin < 0 || cfg.actuators.status_led.pin === 38)) {
+    cfg.actuators.status_led.pin = 48;
+  }
+  if (val !== 1) cfg.actuators.status_led.mode = 0;
   dirty();
   updateStatusLedTypeUI();
   refreshAllPins();
+}
+
+function setStatusLedMode(val) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+  const colorMode = val === 1;
+  if (colorMode) {
+    cfg.actuators.status_led.enabled = true;
+    cfg.actuators.status_led.type = 1;
+    if (cfg.platform === 'esp32s3' &&
+        (cfg.actuators.status_led.pin === undefined || cfg.actuators.status_led.pin === null ||
+         cfg.actuators.status_led.pin < 0 || cfg.actuators.status_led.pin === 38)) {
+      cfg.actuators.status_led.pin = 48;
+    }
+  }
+  cfg.actuators.status_led.mode = colorMode ? 1 : 0;
+  dirty();
+  updateStatusLedTypeUI();
+  refreshAllPins();
+}
+
+function setStatusLedColor(key, value) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+  cfg.actuators.status_led[key] = hexToColor(value, cfg.actuators.status_led[key] || 0);
+  dirty();
+  updateStatusLedTypeUI();
 }
 function setActEnabled(act, grpId, val) {
   if (!val && cfg.actuators?.[act]?.enabled && !dependencyWarning('actuator', act)) {
@@ -3284,7 +3381,24 @@ function updateStrTypeUI(t) {
   document.getElementById('grp-str-ledc').style.display   = t === 1 ? '' : 'none';
   document.getElementById('grp-str-onoff').style.display  = t === 2 ? '' : 'none';
   // Starter assist only makes sense for controllable (servo/PWM) starters
-  document.getElementById('grp-str-assist').style.display = t === 2 ? 'none' : '';
+  const assistGrp = document.getElementById('grp-str-assist');
+  const assistCb = document.getElementById('f-str-assist');
+  const hasN1 = !!cfg.sensors?.n1_rpm?.enabled;
+  const available = t !== 2 && hasN1;
+  if (assistGrp) {
+    assistGrp.style.display = t === 2 ? 'none' : '';
+    assistGrp.style.opacity = available ? '' : '.55';
+    assistGrp.title = available ? '' : 'Starter assist requires N1 RPM feedback.';
+  }
+  if (assistCb) {
+    assistCb.disabled = !available;
+    assistCb.title = available ? '' : 'Starter assist requires N1 RPM feedback.';
+    if (!available && cfg.actuators?.starter?.assist_enabled) {
+      cfg.actuators.starter.assist_enabled = false;
+      assistCb.checked = false;
+      dirty();
+    }
+  }
 }
 function setTotChip(chip) { setSensor('tot','chip',chip); updateTotChipUI(chip); }
 function updateTotChipUI(chip) {
@@ -4059,13 +4173,24 @@ function saveHardware() {
   if (cfg.platform === 'esp32s3') {
     if (!cfg.actuators) cfg.actuators = {};
     if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+    if (cfg.actuators.status_led.mode === 1) {
+      cfg.actuators.status_led.enabled = true;
+      cfg.actuators.status_led.type = 1;
+    }
     if (cfg.actuators.status_led.enabled !== false && cfg.actuators.status_led.type === undefined) {
       cfg.actuators.status_led.type = 1;
       cfg.actuators.status_led.pin = 48;
     }
-    if (cfg.actuators.status_led.type === 1) cfg.actuators.status_led.pin = 48;
-  } else if (cfg.actuators?.status_led?.type === 1) {
-    cfg.actuators.status_led.type = 0;
+    if (cfg.actuators.status_led.type === 1 &&
+        (cfg.actuators.status_led.pin === undefined || cfg.actuators.status_led.pin === null ||
+         cfg.actuators.status_led.pin < 0 || cfg.actuators.status_led.pin === 38)) {
+      cfg.actuators.status_led.pin = 48;
+    }
+    if (cfg.actuators.status_led.mode === undefined) cfg.actuators.status_led.mode = 0;
+    if (cfg.actuators.status_led.standby_color === undefined) cfg.actuators.status_led.standby_color = 0x00FF40;
+    if (cfg.actuators.status_led.startup_color === undefined) cfg.actuators.status_led.startup_color = 0x0060FF;
+    if (cfg.actuators.status_led.running_color === undefined) cfg.actuators.status_led.running_color = 0x00FF00;
+    if (cfg.actuators.status_led.shutdown_color === undefined) cfg.actuators.status_led.shutdown_color = 0xFF8000;
   }
   const missing = [];
   const requirePin = (obj, key, label) => {

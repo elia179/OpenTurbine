@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Log</title>
-<link rel="stylesheet" href="/style.css?v=20260619a">
+<link rel="stylesheet" href="/style.css?v=20260625a">
 </head>
 <body>
 <nav>
@@ -25,7 +25,7 @@
     <div style="display:flex;gap:.4rem;margin-left:auto;flex-wrap:wrap">
       <button onclick="loadLog()">Refresh</button>
       <button onclick="downloadLog('raw')" title="Download the black-box event log as newline-delimited JSON: one detailed event object per line for diagnostics and scripts.">NDJSON</button>
-      <button onclick="downloadLog('csv')" title="Download the black-box event log as a table that opens easily in spreadsheet applications.">CSV</button>
+      <button onclick="downloadLog('csv')" title="Download the recent event window as a small spreadsheet-friendly CSV. Use NDJSON for the complete black-box event log.">CSV</button>
       <button onclick="askClear('flightlog')" class="danger">Clear</button>
     </div>
   </div>
@@ -100,6 +100,7 @@
           <label class="slog-chk"><input type="checkbox" data-bit="ab">Afterburner</label>
           <label class="slog-chk"><input type="checkbox" data-bit="prop">Prop pitch %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="loop">ECU loop timing</label>
         </div>
         <div style="margin-top:.65rem;font-size:.7rem;color:var(--dim)">Changes take effect on the next engine start.</div>
         <label class="slog-chk" style="display:block;margin-top:.6rem" title="When off, Flight Log does not add periodic sensor snapshots while the ECU is in standby.">
@@ -168,7 +169,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260619a"></script>
+<script src="/app.js?v=20260625a"></script>
 <script>
 // ── Tab switching ─────────────────────────────────────────────
 function showTab(tab) {
@@ -408,7 +409,11 @@ function loadLog() {
     '<tr><td colspan="3" class="empty-msg">Loading…</td></tr>';
 
   fetch('/api/log')
-    .then(r => r.json())
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+      return body;
+    })
     .then(events => {
       if (!Array.isArray(events)) events = [];
       const countEl = document.getElementById('log-count');
@@ -420,22 +425,28 @@ function loadLog() {
       renderSummary(parseRuns(events));
       renderEvents(events);
     })
-    .catch(() => {
+    .catch(e => {
+      const msg = e.message || 'Error loading log';
       document.getElementById('runs-container').innerHTML =
-        '<div style="text-align:center;color:var(--red);padding:2.5rem;font-size:.8rem">Error loading log</div>';
+        '<div style="text-align:center;color:var(--red);padding:2.5rem;font-size:.8rem">' + escapeHtmlText(msg) + '</div>';
       document.getElementById('log-body').innerHTML =
-        '<tr><td colspan="3" class="empty-msg" style="color:var(--red)">Error loading log</td></tr>';
+        '<tr><td colspan="3" class="empty-msg" style="color:var(--red)">' + escapeHtmlText(msg) + '</td></tr>';
     });
 }
 
 function downloadLog(fmt) {
   const url  = fmt === 'csv' ? '/api/log/csv' : '/api/log/raw';
   const name = fmt === 'csv' ? 'flight_log.csv' : 'flight_log.ndjson';
-  fetch(url).then(r => r.blob()).then(b => {
+  fetch(url).then(async r => {
+    if (!r.ok) throw new Error(await r.text() || ('HTTP ' + r.status));
+    return r.blob();
+  }).then(b => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
     a.download = name;
     a.click();
+  }).catch(e => {
+    alert(e.message || 'Download failed');
   });
 }
 
@@ -465,6 +476,22 @@ function cancelClear() {
   _clearTarget = null;
 }
 
+async function assertOkResponse(r) {
+  if (r.ok) return;
+  const body = await r.text().catch(() => '');
+  throw new Error(body || ('HTTP ' + r.status));
+}
+
+async function waitForFlightLogClear() {
+  for (let i = 0; i < 10; i++) {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const r = await fetch('/api/log');
+    if (!r.ok) continue;
+    const events = await r.json().catch(() => null);
+    if (Array.isArray(events) && events.length === 0) return;
+  }
+}
+
 function confirmClear() {
   document.getElementById('clear-confirm-overlay').style.display = 'none';
   if (_clearTarget === 'flightlog') {
@@ -472,16 +499,23 @@ function confirmClear() {
       method: 'POST',
       body: JSON.stringify({ cmd: 'CLEAR_LOG' }),
       headers: { 'Content-Type': 'application/json' }
-    }).then(() => loadLog());
+    }).then(async r => {
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok || body.ok === false) throw new Error(body.error || body.reason || ('HTTP ' + r.status));
+    }).then(() => waitForFlightLogClear())
+      .then(() => loadLog())
+      .catch(e => alert('Clear log failed: ' + e.message));
   } else if (_clearTarget === 'sessions') {
     fetch('/api/session/all', { method: 'DELETE' })
-      .then(() => { loadSessionCfg(); loadSessionList(); });
+      .then(assertOkResponse)
+      .then(() => { loadSessionCfg(); loadSessionList(); })
+      .catch(e => alert('Clear session logs failed: ' + e.message));
   }
   _clearTarget = null;
 }
 
 // ── Session Data tab ──────────────────────────────────────────
-const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','oil_pct','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode'];
+const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','oil_pct','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode','loop'];
 
 function loadSessionCfg() {
   loadSessionCfgJson().then(({cfg, hw}) => {
@@ -504,13 +538,17 @@ function loadSessionCfg() {
     }).catch(() => {});
   });
   // Row count hint (independent of above)
-  fetch('/api/session/log').then(r => r.text()).then(csv => {
+  fetch('/api/session/log').then(async r => {
+    if (!r.ok) throw new Error(await r.text() || 'no session log');
+    return r.text();
+  }).then(csv => {
     const rows = csv.trim().split('\n').length - 1;
     const el = document.getElementById('session-rows');
     if (el) el.textContent = rows + ' rows logged this session';
-  }).catch(() => {
+  }).catch(e => {
     const el = document.getElementById('session-rows');
-    if (el) el.textContent = 'No session log yet';
+    const msg = e && e.message ? e.message : '';
+    if (el) el.textContent = msg.includes('STANDBY') ? 'Session log available after STANDBY' : 'No session log yet';
   });
 }
 
@@ -624,6 +662,8 @@ function saveSessionCfg() {
       body: JSON.stringify(cfg),
       headers: { 'Content-Type': 'application/json' }
     });
+  }).then(async r => {
+    if (!r.ok) throw new Error(await r.text() || ('HTTP ' + r.status));
   }).then(() => {
     const msg = document.getElementById('session-save-msg');
     if (msg) { msg.style.display = ''; setTimeout(() => msg.style.display = 'none', 2000); }
@@ -631,16 +671,15 @@ function saveSessionCfg() {
 }
 
 function downloadSessionLog() {
-  fetch('/api/session/log').then(r => {
-    if (!r.ok) { alert('No session log available yet'); return; }
+  fetch('/api/session/log').then(async r => {
+    if (!r.ok) throw new Error(await r.text() || 'No session log available yet');
     return r.blob();
   }).then(b => {
-    if (!b) return;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(b);
     a.download = 'session_' + Date.now() + '.csv';
     a.click();
-  });
+  }).catch(e => alert(e.message || 'No session log available yet'));
 }
 
 // ── Session CSV data (parsed, available for chart) ────────────
@@ -656,8 +695,8 @@ function loadSessionPreview() {
   if (wrap)  wrap.style.display = 'none';
   if (empty) empty.style.display = 'none';
 
-  fetch('/api/session/log').then(r => {
-    if (!r.ok) throw new Error('no log');
+  fetch('/api/session/log').then(async r => {
+    if (!r.ok) throw new Error(await r.text() || 'no log');
     return r.text();
   }).then(csv => {
     const lines = csv.trim().split('\n').filter(l => l.trim());
@@ -688,9 +727,10 @@ function loadSessionPreview() {
     // Show chart if useful columns exist
     _updateChartControls();
     redrawChart();
-  }).catch(() => {
+  }).catch(e => {
     if (empty) empty.style.display = '';
-    if (msg)   msg.textContent = '';
+    const err = e && e.message ? e.message : '';
+    if (msg)   msg.textContent = err.includes('STANDBY') ? 'Session preview available after STANDBY' : '';
   });
 }
 
@@ -818,7 +858,11 @@ function loadSessionList() {
   if (!wrap) return;
   wrap.innerHTML = '<div style="font-size:.78rem;color:var(--dim)">Loading…</div>';
   fetch('/api/session/list')
-    .then(r => r.json())
+    .then(async r => {
+      const body = await r.json().catch(() => []);
+      if (!r.ok) throw new Error((body && body.error) || ('HTTP ' + r.status));
+      return body;
+    })
     .then(list => {
       if (!Array.isArray(list) || list.length === 0) {
         wrap.innerHTML = '<div style="font-size:.78rem;color:var(--dim)">No session files found</div>';
@@ -837,10 +881,15 @@ function loadSessionList() {
 }
 
 function downloadSession(run) {
-  const a = document.createElement('a');
-  a.href = '/api/session/log?run=' + run;
-  a.download = 'session_' + run + '.csv';
-  a.click();
+  fetch('/api/session/log?run=' + run).then(async r => {
+    if (!r.ok) throw new Error(await r.text() || ('Run #' + run + ' is not available'));
+    return r.blob();
+  }).then(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'session_' + run + '.csv';
+    a.click();
+  }).catch(e => alert(e.message || ('Run #' + run + ' is not available')));
 }
 
 function previewSession(run) {
@@ -852,8 +901,8 @@ function previewSession(run) {
   if (wrap)  wrap.style.display = 'none';
   if (empty) empty.style.display = 'none';
 
-  fetch('/api/session/log?run=' + run).then(r => {
-    if (!r.ok) throw new Error('not found');
+  fetch('/api/session/log?run=' + run).then(async r => {
+    if (!r.ok) throw new Error(await r.text() || 'not found');
     return r.text();
   }).then(csv => {
     const lines = csv.trim().split('\n').filter(l => l.trim());
@@ -881,8 +930,9 @@ function previewSession(run) {
     if (msg)   msg.textContent = 'Run #' + run + ' — ' + _sessionRows.length + ' rows';
     _updateChartControls();
     redrawChart();
-  }).catch(() => {
-    if (msg) msg.textContent = 'Run #' + run + ' not found';
+  }).catch(e => {
+    const err = e && e.message ? e.message : '';
+    if (msg) msg.textContent = err.includes('STANDBY') ? 'Run #' + run + ' available after STANDBY' : 'Run #' + run + ' not found';
     if (empty) empty.style.display = '';
   });
 }

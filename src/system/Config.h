@@ -111,6 +111,7 @@ public:
     // ── Telemetry intervals ───────────────────────────────────
     static uint32_t wsIntervalMs;        // Browser telemetry request interval (ms; >=333)
     static uint32_t snapshotIntervalMs;  // FlightRecorder RUNNING_SNAP rate (ms)
+    static uint32_t controlLoopHz;       // Main ECU loop target frequency (Hz)
     static bool     logStandby;          // include periodic flight-log snapshots while idle
 
     // ── Starter assist ────────────────────────────────────────
@@ -288,6 +289,7 @@ public:
     static constexpr uint32_t SLOG_AB         = 1u << 14;
     static constexpr uint32_t SLOG_PROP       = 1u << 15;
     static constexpr uint32_t SLOG_OIL_PCT   = 1u << 16;  // oil pump duty %
+    static constexpr uint32_t SLOG_LOOP       = 1u << 17;  // ECU loop speed/timing diagnostics
     static constexpr uint32_t SLOG_DEFAULT = SLOG_N1 | SLOG_TOT | SLOG_OIL;
     static uint32_t sessionLogMask;
     static uint32_t sessionLogIntervalMs;  // session CSV row interval (default 1000 = 1 Hz)
@@ -307,9 +309,6 @@ public:
     static int   p2RawMin;
     static int   p2RawMax;
     static float p2ValMax;
-    // Legacy zero-offset fields — kept for backwards compat, ignored when RawMin/Max set
-    static float p1ZeroBar;
-    static float p2ZeroBar;
     static int   fuelPressRawMin;      // ADC raw count at 0 bar (open-line / zero-pressure capture)
     static int   fuelPressRawMax;      // ADC raw count at known reference pressure
     static float fuelPressValMax;      // Reference pressure in bar (at fuelPressRawMax)
@@ -367,6 +366,7 @@ public:
     static bool validateJson(const JsonDocument& doc);
     static bool fromJson(const char* json, size_t len);
     static bool fromJson(const JsonDocument& doc);  // PATCH merge variant
+    static bool applyJsonRuntimeOnly(const JsonDocument& doc); // no flash write; restore staging only
 
 private:
     static void _applyDefaults();

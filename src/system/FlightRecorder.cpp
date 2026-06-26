@@ -361,30 +361,40 @@ void FlightRecorder::runEviction() {
     if (!fr || !fw) {
         if (fr) fr.close();
         if (fw) fw.close();
+        LittleFS.remove("/logs/events.tmp");
     } else {
         int seen = 0;
         int kept = 0;
+        bool writeOk = true;
         while (fr.available()) {
             String line = fr.readStringUntil('\n');
             line.trim();
             if (line.length() == 0 || line[0] != '{') continue;
             seen++;
             if (seen > keepFrom) {
-                fw.println(line.c_str());
+                if (fw.println(line.c_str()) == 0) {
+                    writeOk = false;
+                    break;
+                }
                 kept++;
             }
         }
         fr.close();
         fw.close();
-        LittleFS.remove("/logs/events.bak");
-        bool hadOriginal = LittleFS.exists(PATH);
-        if (hadOriginal && !LittleFS.rename(PATH, "/logs/events.bak")) {
+        if (!writeOk) {
+            s_droppedEvents = s_droppedEvents + 1;
             LittleFS.remove("/logs/events.tmp");
-        } else if (!LittleFS.rename("/logs/events.tmp", PATH)) {
-            if (hadOriginal) LittleFS.rename("/logs/events.bak", PATH);
         } else {
-            if (hadOriginal) LittleFS.remove("/logs/events.bak");
-            s_lineCount = kept;
+            LittleFS.remove("/logs/events.bak");
+            bool hadOriginal = LittleFS.exists(PATH);
+            if (hadOriginal && !LittleFS.rename(PATH, "/logs/events.bak")) {
+                LittleFS.remove("/logs/events.tmp");
+            } else if (!LittleFS.rename("/logs/events.tmp", PATH)) {
+                if (hadOriginal) LittleFS.rename("/logs/events.bak", PATH);
+            } else {
+                if (hadOriginal) LittleFS.remove("/logs/events.bak");
+                s_lineCount = kept;
+            }
         }
     }
     _evictionPending = false;
@@ -397,7 +407,7 @@ void FlightRecorder::_append(const char* eventJson) {
     // Short timeout: _append runs on Core 1 (ECU loop). toJson() on Core 0 can hold
     // the mutex for ~250 ms reading a full log. portMAX_DELAY would stall safety checks.
     if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(8)) != pdTRUE) {
-        s_droppedEvents++;
+        s_droppedEvents = s_droppedEvents + 1;
         return;
     }
 
@@ -420,18 +430,23 @@ void FlightRecorder::_append(const char* eventJson) {
     if (s_lineCount >= MAX_RECORDS) {
         _evictionPending = true;
         if (_mutex) xSemaphoreGive(_mutex);
-        s_droppedEvents++;
+        s_droppedEvents = s_droppedEvents + 1;
         return;
     }
 
     // Append the new event
     File fa = LittleFS.open(PATH, "a");
     if (!fa) {
-        s_droppedEvents++;
+        s_droppedEvents = s_droppedEvents + 1;
         if (_mutex) xSemaphoreGive(_mutex);
         return;
     }
-    fa.println(eventJson);
+    if (fa.println(eventJson) == 0) {
+        s_droppedEvents = s_droppedEvents + 1;
+        fa.close();
+        if (_mutex) xSemaphoreGive(_mutex);
+        return;
+    }
     fa.close();
     s_lineCount++;
     if (_mutex) xSemaphoreGive(_mutex);

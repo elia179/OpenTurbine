@@ -46,8 +46,13 @@ public:
             return;
         }
 
-        bool  useN2   = Config::idleUseN2;
-        if (useN2 && !HardwareConfig::hasN2Rpm) {
+        const bool hasEffectiveN2 = HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
+        bool  useN2   = Config::idleUseN2 || (!HardwareConfig::hasN1Rpm && hasEffectiveN2);
+        if (useN2 && !hasEffectiveN2) {
+            reset();
+            return;
+        }
+        if (!useN2 && !HardwareConfig::hasN1Rpm) {
             reset();
             return;
         }

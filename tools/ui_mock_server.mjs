@@ -109,7 +109,7 @@ function makeSettings() {
     safety: { check_interval_ms: 20, flameout_shutdown_ms: 500, tot_rise_rate_limit_deg_s: 80, tit_limit_c: 900, oil_temp_limit_c: 115, fuel_press_min_bar: 1.1, batt_volt_min_v: 10.5, surge_detect_rpm_variance: 5000 },
     governor: { target_rpm: 25000, band_rpm: 250, kp: 0.001, pitch_kp: 0.001, pitch_ramp_sec: 1, pitch_idle_deg: 5, pitch_max_deg: 35 },
     glow_plug: { preheat_ms: 1500, preheat_max_pct: 60, hold_pct: 20, wait_until_hot: false },
-    calibration: { throttle_min_raw: 1000, throttle_max_raw: 2000, idle_min_raw: 1000, idle_max_raw: 2000, flame_threshold: 1800, oil_poly: { a: 0, b: 0, c: 0.002, d: 0, x_min: 0, x_max: 4095 }, p1_raw_min: 200, p1_raw_max: 3800, p1_val_max: 8, p2_raw_min: 200, p2_raw_max: 3800, p2_val_max: 8, p1_zero_bar: 0, p2_zero_bar: 0, fuel_press_raw_min: 200, fuel_press_raw_max: 3800, fuel_press_val_max: 8, fuel_flow_raw_min: 0, fuel_flow_raw_max: 4095, fuel_flow_val_max: 50 },
+    calibration: { throttle_min_raw: 1000, throttle_max_raw: 2000, idle_min_raw: 1000, idle_max_raw: 2000, flame_threshold: 1800, oil_poly: { a: 0, b: 0, c: 0.002, d: 0, x_min: 0, x_max: 4095 }, p1_raw_min: 200, p1_raw_max: 3800, p1_val_max: 8, p2_raw_min: 200, p2_raw_max: 3800, p2_val_max: 8, fuel_press_raw_min: 200, fuel_press_raw_max: 3800, fuel_press_val_max: 8, fuel_flow_raw_min: 0, fuel_flow_raw_max: 4095, fuel_flow_val_max: 50 },
     relight: { enabled: true, min_rpm: 6000, relight_timeout_ms: 5000 },
     tools: { fuel_prime_ms: 3000, oil_prime_ms: 5000, ign_test_ms: 1000, start_test_ms: 2000, fuel_sol_test_ms: 1000 },
     telemetry: { ws_interval_ms: 100, snapshot_interval_ms: 500, log_standby: false },
@@ -124,7 +124,7 @@ function makeSettings() {
     display: { pressure_sensors: true },
     rc_input: { min_us: 1000, max_us: 2000, failsafe_ms: 500 },
     afterburner: { min_n1: 45000, max_n1: 92000, max_tot_for_light: 650, throttle_threshold: 0.8, use_torch: true, use_igniter: true, torch_spike_pct: 20, torch_duration_ms: 250, torch_tot_limit: 780, flame_mode: 0, tot_rise_deg_c: 30, tot_rise_window_ms: 1000, assume_ignited_ms: 1500, flame_timeout_ms: 4000, pump_min_pct: 20, pump_max_pct: 80, pump_control_mode: 1, pump_follow_throttle: true, main_fuel_offset_pct: 0, stabilize_ms: 1000, stabilize_max_tot: 750 },
-    session_log: { n1: true, n2: true, tot: true, oil: true, p1: true, p2: true, throttle: true, mode: true, tit: true, batt: true, fuel_press: true, fuel_flow: true, glow: true, fp2: true, ab: true, prop: true, interval_ms: 500 },
+    session_log: { n1: true, n2: true, tot: true, oil: true, p1: true, p2: true, throttle: true, mode: true, tit: true, batt: true, fuel_press: true, fuel_flow: true, glow: true, fp2: true, ab: true, prop: true, loop: false, interval_ms: 500 },
     rules: [{ enabled: true, name: 'Oil fan', sensor: 0, op: 0, threshold: 90, actuator: 0, on_value: 1, off_value: 0 }]
   };
 }
@@ -132,6 +132,7 @@ function makeSettings() {
 function fullTelemetry() {
   return {
     mode: 'RUNNING', fw_version: 'sim-1.0.0', uptime_s: 3672, last_event: 'RUNNING',
+    loop_counter: 482917, loop_hz: 326.4, loop_period_ms: 3.06, loop_exec_avg_ms: 0.84, loop_exec_max_ms: 2.31,
     n1: 62000, n2: 24200, tot: 640, oil: 2.15, p1: 1.42, p2: 3.55, oil_temp: 78, batt_voltage: 12.45, torque: 18.7, turbo_power_w: 4850,
     tit: 810, fuel_press: 2.6, fuel_flow: 12.25, fuel_flow_type: 1, throttle_demand: 0.61, throttle_input_type: 'servo', throttle_input_raw: 2500, throttle_input_us: 1500, throttle_input_norm: 0.5, rc_throttle_norm: 0.5, idle_input_type: 'servo', idle_input_us: 1280,
     oil_demand: 2.2, oil_pct: 43, oil_min_bar: 1.85, flame: true, flame_raw: 2810, flame_threshold: 1800,
@@ -149,6 +150,7 @@ function fullTelemetry() {
     ab_mode: 'Off', ab_sol_open: false, ab_arm_switch_on: true, ab_flame_on: false, ab_flame_raw: 760, ab_flame_threshold: 1800, ab_trigger_active: false,
     governor_target_rpm: 25000, flash_free_kb: 560, flash_used_kb: 256, flash_total_kb: 816, log_records: 14, log_max_records: 400, boot_count: 4, reset_reason: 1, run_count: 8, total_run_seconds: 9860,
     oil_raw: 1400, p1_raw: 810, p2_raw: 1740, fuel_press_raw: 1320, fuel_flow_raw: 1044, config_storage_fault: false, profile_match: true, config_version_mismatch: false,
+    seq_has_errors: false, seq_has_structural_errors: false, seq_issues: [],
     labels: makeHardware().labels,
     di_channels: [{ pin: 18, label: 'Door interlock', state: false }, { pin: -1, label: '', state: false }, { pin: -1, label: '', state: false }, { pin: -1, label: '', state: false }]
   };

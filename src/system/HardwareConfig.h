@@ -283,6 +283,11 @@ public:
 
     static int   statusLedPin;
     static int   statusLedType;        // 0=plain GPIO, 1=NeoPixel/RGB data LED
+    static int   statusLedMode;        // NeoPixel only: 0=blink pattern, 1=state color
+    static uint32_t statusLedStandbyColor;
+    static uint32_t statusLedStartupColor;
+    static uint32_t statusLedRunningColor;
+    static uint32_t statusLedShutdownColor;
 
     // ── Cluster serial ────────────────────────────────────────
     static int   clusterTxPin;
@@ -363,11 +368,36 @@ public:
     // ── Startup / shutdown / afterburner sequences ────────────
     static constexpr int MAX_SEQ_BLOCKS = 16;
     static constexpr int MAX_SEQ_SIDE_ACTIONS = 4;
+    static constexpr int MAX_CUSTOM_BLOCKS = 8;
+    static constexpr int MAX_CUSTOM_STEPS = 8;
     struct SeqSideAction {
         bool    enabled = false;
         uint8_t actuator = 0;
         float   value = 0.0f;  // 0.0-1.0 demand; relays use >=0.5 as ON
     };
+    struct CustomBlockStep {
+        uint8_t type = 0;      // 0 = set actuator, 1 = delay
+        uint8_t actuator = 0;  // RulesEngine::Actuator when type == 0
+        float   value = 0.0f;  // 0.0-1.0 actuator demand
+        uint32_t delayMs = 0;  // when type == 1
+    };
+    struct CustomBlockDef {
+        bool     enabled = false;
+        char     key[24] = {};
+        char     label[32] = {};
+        char     desc[96] = {};
+        uint8_t  type = 0;           // 0 = action, 1 = wait, 2 = while
+        uint32_t durationMs = 1000;  // wait type
+        uint32_t timeoutMs = 10000;  // while type, 0 = no timeout
+        uint8_t  timeoutAction = 0;  // 0 = abort, 1 = fault, 2 = continue
+        uint8_t  sensor = 255;
+        uint8_t  op = 0;
+        float    threshold = 0.0f;
+        uint8_t  stepCount = 0;
+        CustomBlockStep steps[MAX_CUSTOM_STEPS] = {};
+    };
+    static CustomBlockDef customBlocks[MAX_CUSTOM_BLOCKS];
+    static int customBlockCount;
     static char  startupSeq[MAX_SEQ_BLOCKS][24];
     static int   startupSeqLen;
     static int   startupDelayMs[MAX_SEQ_BLOCKS];

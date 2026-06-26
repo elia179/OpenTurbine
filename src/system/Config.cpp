@@ -83,6 +83,7 @@ uint32_t Config::toolFuelSolTestMs  = 1000;
 
 uint32_t Config::wsIntervalMs       = 333;
 uint32_t Config::snapshotIntervalMs = 10000;
+uint32_t Config::controlLoopHz      = 400;
 bool     Config::logStandby         = false;
 
 float    Config::starterAssistPct    = 15.0f;
@@ -222,8 +223,6 @@ float Config::p1ValMax              = 10.0f;
 int   Config::p2RawMin              = 0;
 int   Config::p2RawMax              = 4095;
 float Config::p2ValMax              = 10.0f;
-float Config::p1ZeroBar             = 0.0f;
-float Config::p2ZeroBar             = 0.0f;
 int   Config::fuelPressRawMin       = 0;
 int   Config::fuelPressRawMax       = 4095;
 float Config::fuelPressValMax       = 10.0f;
@@ -236,6 +235,7 @@ bool  Config::profileMatch          = false;
 static SemaphoreHandle_t s_configWriteMutex = nullptr;
 
 static void inhibitStartForConfigWriteFailure() {
+    EngineData::instance().configStorageFault = true;
     strncpy(EngineData::instance().faultDescription,
         "Cannot start: the ECU configuration could not be written to storage. "
         "Check or re-upload the filesystem before operating the engine.",
@@ -246,6 +246,7 @@ static void inhibitStartForConfigWriteFailure() {
 }
 
 static void inhibitStartForProfileMismatch() {
+    EngineData::instance().configStorageFault = false;
     strncpy(EngineData::instance().faultDescription,
         "Cannot start: hardware and settings in ecu_config.json identify different engines. "
         "Restore one complete engine file or save Hardware to synchronize its profile ID.",
@@ -267,7 +268,7 @@ bool ruleSensorAvailable(uint8_t s) {
         case 3:  return HardwareConfig::hasOilPress;
         case 4:  return HardwareConfig::hasTit;
         case 5:  return HardwareConfig::hasBattVoltage;
-        case 6:  return HardwareConfig::hasN2Rpm;
+        case 6:  return HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
         case 7:  return HardwareConfig::diCh[0].pin >= 0;
         case 8:  return HardwareConfig::diCh[1].pin >= 0;
         case 9:  return HardwareConfig::diCh[2].pin >= 0;
@@ -280,11 +281,11 @@ bool ruleSensorAvailable(uint8_t s) {
         case 16: return HardwareConfig::hasFlame;
         case 17: return HardwareConfig::hasThrottleInput;
         case 18: return HardwareConfig::hasIdleInput;
-        case 19: return HardwareConfig::hasAbFlame;
-        case 20: return HardwareConfig::hasGlowCurrentSensor;
-        case 21: return HardwareConfig::hasIgniterCurrentSensor;
-        case 22: return HardwareConfig::hasIgniter2CurrentSensor;
-        case 23: return HardwareConfig::hasOilPumpCurrentSensor;
+        case 19: return HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame;
+        case 20: return HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor;
+        case 21: return HardwareConfig::hasIgniter && HardwareConfig::hasIgniterCurrentSensor;
+        case 22: return HardwareConfig::hasIgniter2 && HardwareConfig::hasIgniter2CurrentSensor;
+        case 23: return HardwareConfig::hasOilPump && HardwareConfig::hasOilPumpCurrentSensor;
         case 24: return HardwareConfig::hasAfterburner && HardwareConfig::abInputPin >= 0;
         case 25: return HardwareConfig::startPin >= 0;
         case 26: return HardwareConfig::stopPin >= 0;
@@ -360,11 +361,11 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     JsonVariantConst eng = doc["engine"];
     if (!validNumber(eng["rpm_limit"], 1000.0f, 500000.0f) ||
         !validNumber(eng["min_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(eng["tot_limit"], 1.0f, 1400.0f) ||
+        !validNumber(eng["tot_limit"], 0.0f, 1400.0f) ||
         !validNumber(eng["tot_cooldown_target"], 0.0f, 1400.0f) ||
         !validNumber(eng["tot_safe_margin"], 0.0f, 1400.0f)) return false;
     if (present(eng["rpm_limit"]) && present(eng["min_rpm"]) && eng["min_rpm"].as<float>() >= eng["rpm_limit"].as<float>()) return false;
-    if (present(eng["tot_limit"]) && present(eng["tot_cooldown_target"]) && eng["tot_cooldown_target"].as<float>() >= eng["tot_limit"].as<float>()) return false;
+    if (present(eng["tot_limit"]) && present(eng["tot_cooldown_target"]) && eng["tot_limit"].as<float>() > 0.0f && eng["tot_cooldown_target"].as<float>() >= eng["tot_limit"].as<float>()) return false;
 
     JsonVariantConst oil = doc["oil"];
     if (!validNumber(oil["startup_pressure"], 0.0f, 20.0f) ||
@@ -545,10 +546,10 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         if (!rules.is<JsonArrayConst>() || rules.size() > Config::MAX_RULES) return false;
         for (JsonObjectConst rule : rules.as<JsonArrayConst>()) {
             if (!validBool(rule["enabled"]) ||
-                !validInt(rule["sensor"], 0, 24) ||
+                !validInt(rule["sensor"], 0, 26) ||
                 !validInt(rule["op"], 0, 4) ||
                 !validNumber(rule["threshold"], -1000000.0f, 1000000.0f) ||
-                !validInt(rule["actuator"], 0, 20) ||
+                !validInt(rule["actuator"], 0, 17) ||
                 !validNumber(rule["on_value"], -100.0f, 100.0f) ||
                 !validNumber(rule["off_value"], -100.0f, 100.0f)) return false;
         }
@@ -582,6 +583,7 @@ void Config::load() {
                 old.close();
                 const char* id = doc["profile_id"] | "";
                 strncpy(profileId, id, sizeof(profileId) - 1);
+                profileId[sizeof(profileId) - 1] = '\0';
                 profileMatch = (strcmp(profileId, HardwareConfig::profileId) == 0);
                 if (!profileMatch) {
                     // Keep web repair available, but never authorize engine operation
@@ -590,6 +592,7 @@ void Config::load() {
                                   " - START inhibited until repaired\n", profileId, HardwareConfig::profileId);
                     _applyDefaults();
                     strncpy(profileId, HardwareConfig::profileId, sizeof(profileId) - 1);
+                    profileId[sizeof(profileId) - 1] = '\0';
                     inhibitStartForProfileMismatch();
                     return;
                 }
@@ -613,6 +616,7 @@ void Config::load() {
             return;
         }
         strncpy(profileId, HardwareConfig::profileId, sizeof(profileId) - 1);
+        profileId[sizeof(profileId) - 1] = '\0';
         profileMatch = true;
         return;
     }
@@ -620,6 +624,7 @@ void Config::load() {
     File f = LittleFS.open(PATH, "r");
     if (!f) {
         Serial.println("[Config] Failed to open ecu_config.json");
+        EngineData::instance().configStorageFault = true;
         strncpy(EngineData::instance().faultDescription,
             "Cannot start: failed to open ecu_config.json.\n"
             "What to do: The config file may be missing or the filesystem is corrupt. "
@@ -635,6 +640,7 @@ void Config::load() {
     f.close();
     if (err) {
         Serial.printf("[Config] JSON parse error: %s\n", err.c_str());
+        EngineData::instance().configStorageFault = true;
         strncpy(EngineData::instance().faultDescription,
             "Cannot start: ecu_config.json is corrupted (JSON parse error).\n"
             "What to do: Use the web UI Tools page to reset config to defaults, "
@@ -655,6 +661,7 @@ void Config::load() {
         if (fullDoc["hardware"].is<JsonObject>()) {
             Serial.println("[Config] Settings missing from ecu_config.json - adding defaults");
             strncpy(profileId, HardwareConfig::profileId, sizeof(profileId) - 1);
+            profileId[sizeof(profileId) - 1] = '\0';
             if (!save()) {
                 inhibitStartForConfigWriteFailure();
                 return;
@@ -667,6 +674,7 @@ void Config::load() {
 
     const char* id = workDoc["profile_id"] | "";
     strncpy(profileId, id, sizeof(profileId) - 1);
+    profileId[sizeof(profileId) - 1] = '\0';
     profileMatch = (strcmp(profileId, HardwareConfig::profileId) == 0);
     if (!profileMatch) {
         // Keep web repair available, but do not run with crossed engine sections.
@@ -675,6 +683,7 @@ void Config::load() {
                       profileId, HardwareConfig::profileId);
         _applyDefaults();
         strncpy(profileId, HardwareConfig::profileId, sizeof(profileId) - 1);
+        profileId[sizeof(profileId) - 1] = '\0';
         inhibitStartForProfileMismatch();
         return;
     }
@@ -740,6 +749,11 @@ void Config::sanitizeForHardware() {
     }
     const bool hasN1 = HardwareConfig::hasN1Rpm;
     const bool hasN2 = HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
+    if (idleUseN2 && !hasN2) {
+        idleUseN2 = false;
+    } else if (!hasN1 && hasN2) {
+        idleUseN2 = true;
+    }
     if (!hasN1 && !hasN2) {
         standbyOilSource = 0;
     } else if (standbyOilSource == 0 && !hasN1) {
@@ -813,7 +827,10 @@ void Config::loadRuntimeStats() {
     char key[14];
     runtimeStatsKey(key, sizeof(key));
     Preferences stats;
-    if (!stats.begin("ot", true)) return;
+    if (!stats.begin("ot", true)) {
+        Serial.println("[Config] WARNING: failed to open NVS for accumulated runtime read");
+        return;
+    }
     uint32_t saved = stats.getUInt(key, totalRunSeconds);
     stats.end();
     if (saved > totalRunSeconds) totalRunSeconds = saved;
@@ -882,7 +899,10 @@ void Config::clearRuntimeStats() {
     char key[14];
     runtimeStatsKey(key, sizeof(key));
     Preferences stats;
-    if (!stats.begin("ot", false)) return;
+    if (!stats.begin("ot", false)) {
+        Serial.println("[Config] WARNING: failed to open NVS to clear accumulated runtime");
+        return;
+    }
     stats.remove(key);
     stats.end();
     totalRunSeconds = 0;
@@ -937,6 +957,8 @@ bool Config::save() {
     if (!LittleFS.rename(TMP_PATH, PATH)) {
         Serial.println("[Config] rename ecu_config.tmp failed");
         if (hadOriginal) LittleFS.rename(BAK_PATH, PATH);
+        LittleFS.remove(TMP_PATH);
+        LittleFS.remove(BAK_PATH);
         return false;
     }
     if (hadOriginal) LittleFS.remove(BAK_PATH);
@@ -944,8 +966,10 @@ bool Config::save() {
 }
 
 bool Config::isLocked() {
-    auto m = EngineData::instance().mode;
-    return m == SysMode::STARTUP || m == SysMode::RUNNING || m == SysMode::SHUTDOWN;
+    auto& ed = EngineData::instance();
+    auto m = ed.mode;
+    bool active = (m == SysMode::STARTUP || m == SysMode::RUNNING || m == SysMode::SHUTDOWN);
+    return active && !ed.devMode;
 }
 
 size_t Config::toJson(char* buf, size_t len) {
@@ -1007,6 +1031,16 @@ bool Config::fromJson(const JsonDocument& doc) {
 }
 
 // ── Private helpers ───────────────────────────────────────────
+bool Config::applyJsonRuntimeOnly(const JsonDocument& doc) {
+    if (isLocked() || !validateJson(doc)) return false;
+    const char* id = doc["profile_id"] | "";
+    if (!id[0] || strcmp(id, HardwareConfig::profileId) != 0) return false;
+    _fromDoc(doc);
+    profileMatch = true;
+    EngineData::instance().configVersionMismatch = false;
+    return true;
+}
+
 void Config::_applyDefaults() {
     // Re-assign every field to its compile-time default so that load() is
     // idempotent: missing JSON keys restore to the default rather than
@@ -1051,7 +1085,7 @@ void Config::_applyDefaults() {
     relightConfirmRpm = 0.0f; relightTotRiseC = 30.0f; relightTimeoutMs = 10000;
     toolFuelPrimeMs = 3000; toolOilPrimeMs = 5000; toolIgnTestMs = 2000;
     toolStartTestMs = 2000; toolFuelSolTestMs = 1000;
-    wsIntervalMs = 333; snapshotIntervalMs = 10000; logStandby = false;
+    wsIntervalMs = 333; snapshotIntervalMs = 10000; controlLoopHz = 400; logStandby = false;
     starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
     standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
@@ -1079,11 +1113,13 @@ void Config::_applyDefaults() {
     idleMinRaw = 0; idleMaxRaw = 4095; flameThreshold = 500;
     oilPolyA = 0; oilPolyB = 0; oilPolyC = 0; oilPolyD = 0;
     oilPolyXMin = 0; oilPolyXMax = 4095;
-    p1RawMin = 0; p1RawMax = 4095; p1ValMax = 10.0f; p1ZeroBar = 0.0f;
-    p2RawMin = 0; p2RawMax = 4095; p2ValMax = 10.0f; p2ZeroBar = 0.0f;
+    p1RawMin = 0; p1RawMax = 4095; p1ValMax = 10.0f;
+    p2RawMin = 0; p2RawMax = 4095; p2ValMax = 10.0f;
     fuelPressRawMin = 0; fuelPressRawMax = 4095; fuelPressValMax = 10.0f;
     fuelFlowRawMin = 0; fuelFlowRawMax = 4095; fuelFlowValMax = 10.0f;
     sessionLogMask = SLOG_DEFAULT; sessionLogIntervalMs = 1000;
+    ruleCount = 0;
+    for (int i = 0; i < MAX_RULES; i++) rules[i] = {};
     // totalRunSeconds is NOT reset — hour meter persists across config reloads
 }
 
@@ -1248,8 +1284,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
     p2RawMin         = cal["p2_raw_min"]         | p2RawMin;
     p2RawMax         = cal["p2_raw_max"]         | p2RawMax;
     p2ValMax         = cal["p2_val_max"]         | p2ValMax;
-    p1ZeroBar        = cal["p1_zero_bar"]        | p1ZeroBar;
-    p2ZeroBar        = cal["p2_zero_bar"]        | p2ZeroBar;
     fuelPressRawMin  = cal["fuel_press_raw_min"] | fuelPressRawMin;
     fuelPressRawMax  = cal["fuel_press_raw_max"] | fuelPressRawMax;
     fuelPressValMax  = cal["fuel_press_val_max"] | fuelPressValMax;
@@ -1275,6 +1309,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     auto tm = doc["telemetry"];
     wsIntervalMs       = tm["ws_interval_ms"]       | wsIntervalMs;
     snapshotIntervalMs = tm["snapshot_interval_ms"] | snapshotIntervalMs;
+    controlLoopHz      = tm["control_loop_hz"]      | controlLoopHz;
     if (!tm["log_standby"].isNull()) logStandby = tm["log_standby"].as<bool>();
 
     auto sa = doc["starter_assist"];
@@ -1371,6 +1406,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
         if (sl["ab"]         | false) mask |= SLOG_AB;
         if (sl["prop"]       | false) mask |= SLOG_PROP;
         if (sl["oil_pct"]    | false) mask |= SLOG_OIL_PCT;
+        if (sl["loop"]       | false) mask |= SLOG_LOOP;
         sessionLogMask = mask;
         sessionLogIntervalMs = sl["interval_ms"] | sessionLogIntervalMs;
     }
@@ -1383,8 +1419,9 @@ void Config::_fromDoc(const JsonDocument& doc) {
 
     // ── Automation rules ──────────────────────────────────────────
     auto rulesArr = doc["rules"];
+    ruleCount = 0;
+    for (int i = 0; i < MAX_RULES; i++) rules[i] = {};
     if (!rulesArr.isNull() && rulesArr.is<JsonArrayConst>()) {
-        ruleCount = 0;
         for (JsonObjectConst jr : rulesArr.as<JsonArrayConst>()) {
             if (ruleCount >= MAX_RULES) break;
             Rule& r = rules[ruleCount++];
@@ -1404,10 +1441,12 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (rpmLimit <= 0.0f) rpmLimit = 100000.0f;
     if (minRpm <= 0.0f) minRpm = 30000.0f;
     if (minRpm >= rpmLimit) minRpm = rpmLimit * 0.3f;
-    if (totLimit <= 0.0f) totLimit = 750.0f;
+    if (totLimit < 0.0f) totLimit = 750.0f;
     if (totCooldownTarget < 0.0f) totCooldownTarget = 0.0f;
-    if (totCooldownTarget >= totLimit) totCooldownTarget = totLimit * 0.2f;
-    totSafeMargin = constrain(totSafeMargin, 0.0f, totLimit);
+    if (totLimit > 0.0f && totCooldownTarget >= totLimit) totCooldownTarget = totLimit * 0.2f;
+    totSafeMargin = totLimit > 0.0f
+        ? constrain(totSafeMargin, 0.0f, totLimit)
+        : max(0.0f, totSafeMargin);
     if (oilStartupMinBar < 0.0f) oilStartupMinBar = 1.5f;
     if (oilRunningMin < 0.0f) oilRunningMin = 2.8f;
     if (oilStartupPressure < 0.0f) oilStartupPressure = 0.0f;
@@ -1471,6 +1510,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (toolFuelSolTestMs > 60000u) toolFuelSolTestMs = 1000u;
     if (wsIntervalMs < 333u || wsIntervalMs > 60000u) wsIntervalMs = 333u;
     if (snapshotIntervalMs < 500u || snapshotIntervalMs > 3600000u) snapshotIntervalMs = 10000u;
+    if (controlLoopHz < 50u || controlLoopHz > 1000u) controlLoopHz = 400u;
     if (sessionLogIntervalMs < 100u || sessionLogIntervalMs > 60000u) sessionLogIntervalMs = 500u;
     if (cooldownSkipHoldMs < 0) cooldownSkipHoldMs = 0;
     if (fp2RampMs < 0) fp2RampMs = 0;
@@ -1701,8 +1741,6 @@ void Config::_toDoc(JsonDocument& doc) {
     cal["p2_raw_min"]         = p2RawMin;
     cal["p2_raw_max"]         = p2RawMax;
     cal["p2_val_max"]         = p2ValMax;
-    cal["p1_zero_bar"]        = p1ZeroBar;
-    cal["p2_zero_bar"]        = p2ZeroBar;
     cal["fuel_press_raw_min"] = fuelPressRawMin;
     cal["fuel_press_raw_max"] = fuelPressRawMax;
     cal["fuel_press_val_max"] = fuelPressValMax;
@@ -1728,6 +1766,7 @@ void Config::_toDoc(JsonDocument& doc) {
     auto tm = doc["telemetry"].to<JsonObject>();
     tm["ws_interval_ms"]       = wsIntervalMs;
     tm["snapshot_interval_ms"] = snapshotIntervalMs;
+    tm["control_loop_hz"]      = controlLoopHz;
     tm["log_standby"]          = logStandby;
 
     auto sa = doc["starter_assist"].to<JsonObject>();
@@ -1816,6 +1855,7 @@ void Config::_toDoc(JsonDocument& doc) {
     sl["ab"]         = (bool)(sessionLogMask & SLOG_AB);
     sl["prop"]       = (bool)(sessionLogMask & SLOG_PROP);
     sl["oil_pct"]    = (bool)(sessionLogMask & SLOG_OIL_PCT);
+    sl["loop"]       = (bool)(sessionLogMask & SLOG_LOOP);
     sl["interval_ms"]= sessionLogIntervalMs;
 
     auto stats = doc["stats"].to<JsonObject>();

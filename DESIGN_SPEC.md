@@ -24,7 +24,7 @@ Non-engineers can configure and operate it; engineers can extend it without touc
 - Safety-critical logic (sequencer structure, fault responses) lives in code, not config
 - Factory profile identity and fallback pin defaults live in `hardware_profile.h`; normal engine setup is stored in `ecu_config.json` through the web UI
 - Every sensor reports health alongside its value — consumers always know if data is trustworthy
-- Config changes during STARTUP / RUNNING / SHUTDOWN are locked unless DEV_MODE is enabled
+- Config changes during STARTUP / RUNNING / SHUTDOWN are locked unless runtime Dev Mode is enabled; hardware and reboot-required changes remain STANDBY-only
 
 ---
 
@@ -116,8 +116,9 @@ OpenTurbine/
 
 ## 3. hardware_profile.h
 
-The only file a user edits for a new build. Describes physical hardware topology.
-Structure is enforced by compile-time checks — missing mandatory items cause clear errors.
+Factory defaults for a new build. Normal beta-user setup is done in the web UI
+and saved into `ecu_config.json`; `hardware_profile.h` only supplies the first
+profile identity and fallback pins/features when no engine file exists yet.
 
 ```cpp
 // ── Profile identity ──────────────────────────────────────────
@@ -636,9 +637,10 @@ All parameters from ecu_config.json.
 ```
 
 ### Config locking
-- STANDBY: all fields editable (unless DEV_MODE=false and engine just stopped — 5s cooldown)
-- STARTUP / RUNNING / SHUTDOWN: all writes rejected, web UI shows lock indicator
-- DEV_MODE: no locking at any time, prominent warning shown on all web UI pages
+- STANDBY: Config fields are editable.
+- STARTUP / RUNNING / SHUTDOWN: Config writes are rejected unless runtime Dev Mode is already enabled.
+- Dev Mode can only be toggled in STANDBY. When active, Config writes are allowed during active modes for controlled bench tuning.
+- Hardware topology, GPIO pins, full engine-file restore, factory reset, OTA, and web-asset update remain STANDBY-only because they require reboot or can disturb outputs.
 
 ---
 
@@ -680,7 +682,7 @@ Core 1 (Arduino loop, priority HIGH):
 
 Core 0 (FreeRTOS WiFi task, managed by ESP-IDF):
   AsyncWebServer handles HTTP requests
-  WebSocket pushes telemetry at configurable interval (default 200ms)
+  WebSocket responds to browser pull frames; Dashboard and Calibration pull near 3 Hz
   CommandQueue::push() when commands received from UI
 ```
 
@@ -688,7 +690,7 @@ Core 0 (FreeRTOS WiFi task, managed by ESP-IDF):
 `CommandQueue` is a small FreeRTOS queue — thread-safe, non-blocking on both ends.
 
 ### WiFi
-Default: Access Point mode. SSID = `OpenTurbine`. No password by default.
+Default: Access Point mode. SSID is the active engine profile ID. No password by default unless configured in Hardware.
 IP: `192.168.4.1`. Also reachable via mDNS at `http://ot.local` on any mDNS-capable client.
 Phone/laptop connects directly, no router needed.
 
@@ -696,21 +698,26 @@ Phone/laptop connects directly, no router needed.
 ```
 GET   /              → serve index.html from LittleFS
 GET   /api/data      → current EngineData snapshot (JSON)
-GET   /api/config    → current ecu_config.json
-POST  /api/config    → upload new ecu_config.json (locked during engine operation)
-PATCH /api/config    → partial update / calibration wizard field save
+GET   /api/config    → current settings section from ecu_config.json
+POST  /api/config    → replace settings section (locked while active unless Dev Mode)
+PATCH /api/config    → merge settings patch / calibration field save
+GET   /api/hardware  → current hardware section from ecu_config.json
+POST  /api/hardware  → replace hardware section, STANDBY-only, schedules reboot
+PATCH /api/hardware  → calibration/topology patch, STANDBY-only
+GET   /api/ecu_config → download full engine file
+POST  /api/ecu_config → restore full engine file, STANDBY-only, schedules reboot
 GET   /api/log       → full flight recorder log (JSON)
 GET   /api/log/csv   → log as CSV download
-GET   /api/session/log → current session CSV (ephemeral, deleted next boot)
+GET   /api/session/log → current or selected per-run session CSV
 POST  /api/command   → queue a command (FuelPrime, IGNtest, etc.)
 POST  /api/start     → queue START command
 POST  /api/stop      → immediate STOP (direct, not queued)
 GET   /api/status    → mode, health summary, lock state
 POST  /update        → OTA firmware upload (binary, writes to inactive OTA slot, reboots)
-WS    /ws            → WebSocket for live telemetry push
+WS    /ws            → client-pulled live telemetry frames
 ```
 
-### WebSocket telemetry frame (pushed every 200ms)
+### WebSocket telemetry frame (Dashboard/Calibration pull near 3 Hz)
 ```json
 {
   "mode": "RUNNING",
@@ -761,13 +768,12 @@ For each configured analog input:
 - All wizards show exactly what to do, no BT command typing
 
 **Config (`/config`)**
-- All ecu_config.json fields as editable inputs, grouped by section
-- Fields show current value and default value
-- Config locked during engine operation — fields shown greyed with lock icon
-- Save to device button
-- Download ecu_config.json button
-- Upload ecu_config.json button (file picker)
-- Profile ID shown prominently — mismatch shown as error banner
+- Settings fields grouped by section with Normal / Advanced views
+- Fields show current value, units, validation warnings, and hardware dependency state
+- Config locked during active engine modes unless Dev Mode is active
+- Save to device button with change recap
+- Full `ecu_config.json` backup/restore is routed through Tools so hardware and settings stay together
+- Profile mismatch shown as an engine-operation lockout banner
 
 **Log (`/log`)**
 - Per-run summary cards: date (boot#), duration, peak N1, peak TOT, outcome
@@ -913,7 +919,7 @@ monitor_speed = 115200
 2. **Sensors always report health.** No consumer uses a value without checking health.
 3. **All hardware assumptions in `hardware_profile.h` only.** Zero chip names elsewhere.
 4. **No dynamic allocation after boot.** No `new`/`malloc` in the run loop.
-5. **Config changes during operation are locked** (except DEV_MODE).
+5. **Config changes during operation are locked unless runtime Dev Mode is active.**
 6. **Profile ID mismatch = no engine operations.** Ever.
 7. **STOP switch always wins.** Checked in hardware, not just software.
 8. **Flight recorder writes are non-blocking.** Buffered, flushed when idle.
@@ -1181,4 +1187,4 @@ The actuator object never reads `EngineData` directly.
 
 ---
 
-*End of specification — OpenTurbine v1.0*
+*End of specification — OpenTurbine v1.2*

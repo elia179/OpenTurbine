@@ -11,6 +11,8 @@ controlled first test. It assumes you have already read the safety warning in
 - Keep the engine restrained and clear of people, loose parts, and flammable
   items.
 - Use Bench Mode only for dry bench testing. Do not use Bench Mode with fuel.
+- Use Dev Mode only when you intentionally need diagnostics or live Config
+  tuning. Do not use it to work around a warning you do not understand.
 - Back up `ecu_config.json` before live testing and after every known-good
   setup change.
 
@@ -41,9 +43,14 @@ Notes:
 
 - If upload does not connect, hold BOOT, tap EN/RESET, then release BOOT when
   upload starts.
-- Firmware upload updates the ECU program.
+- Firmware upload updates the ECU program and partition table.
 - Filesystem upload updates the web pages.
-- OTA firmware and web-asset updates are also available later from Tools.
+- Beta installs and partition-table changes need serial firmware upload plus
+  `uploadfs`. OTA firmware alone does not replace the partition table.
+- OpenTurbine expects its web/config storage partition to be `data/littlefs`
+  named `littlefs`.
+- OTA firmware and web-asset updates are also available later from Tools, after
+  the ECU has already been installed with the current partition table.
 
 ## 3. First Connection
 
@@ -54,6 +61,18 @@ Notes:
    supported by your computer or phone.
 4. If a captive portal opens, use it only as a convenience. Direct browser
    navigation to `192.168.4.1` is the reliable method.
+
+Page order for a first setup:
+
+| Page | Use it for |
+|---|---|
+| Hardware | Tell the ECU what is physically fitted and which GPIO pins are used |
+| Config | Set limits, timings, controller values, logging, and optional features |
+| Calibration | Teach the ECU what each fitted input reads in real units |
+| Sequence | Review startup/shutdown blocks and fix any sequence errors |
+| Dashboard | Watch live readings, mode, faults, peaks, and start/stop state |
+| Log | Review events and per-run CSV data after tests |
+| Tools | Back up/restore, actuator dry tests, OTA, web assets, Dev/Bench tools |
 
 ## 4. Hardware Page First
 
@@ -67,8 +86,10 @@ Open Hardware before changing Config.
    - Status LED enabled
    - Type: `NeoPixel RGB data LED`
    - Pin: GPIO48
-6. For a normal external LED, choose `Plain GPIO on/off` and select the GPIO.
-7. Save Hardware and reboot when prompted.
+   - Mode: `Blink pattern`, or `State colors` if you want one dim color per engine state
+6. For classic ESP32, the default is the onboard GPIO status LED in `Plain GPIO on/off` mode. You may also choose `NeoPixel RGB data LED` if you wire an external NeoPixel to a free output GPIO.
+7. For a normal external LED, choose `Plain GPIO on/off` and select the GPIO.
+8. Save Hardware and reboot when prompted.
 
 After reboot, revisit Hardware and confirm:
 
@@ -79,6 +100,19 @@ After reboot, revisit Hardware and confirm:
 ## 5. Config Page
 
 Set only the limits and features that match fitted hardware.
+
+Normal rule:
+
+- In STANDBY, Config values are editable.
+- During STARTUP, RUNNING, and SHUTDOWN, Config is locked.
+- If Dev Mode was enabled while in STANDBY, Config edits are allowed while the
+  engine is running. This is for controlled bench tuning by someone who knows
+  what the value does.
+- Some saved values affect sequence block setup and are applied on the next
+  engine start. The page warns when this happens.
+- Hardware, GPIO pins, sensor fitted/not-fitted choices, full engine-file
+  restore, factory reset, firmware OTA, and web asset updates still require
+  STANDBY.
 
 Minimum settings to review:
 
@@ -128,9 +162,11 @@ Run these with fuel disabled or physically disconnected:
 4. Confirm every actuator moves the correct physical output.
 5. Confirm active-high / active-low polarity is correct.
 6. Confirm sensor readings are plausible and stable on Dashboard.
-7. Review Sequence page for errors. Errors block START; warnings need review.
-8. Run a dry START only when actuator motion is safe.
-9. Confirm STOP immediately commands a safe shutdown path.
+7. Check Tools > ECU Loop Timing. The loop should be alive and updating; record
+   the values if you report timing or responsiveness problems.
+8. Review Sequence page for errors. Errors block START; warnings need review.
+9. Run a dry START only when actuator motion is safe.
+10. Confirm STOP immediately commands a safe shutdown path.
 
 Do not continue if any actuator moves the wrong output, wrong direction, or does
 not turn off.
@@ -195,15 +231,19 @@ After updating:
 |---|---|---|
 | Page does not load | Wi-Fi not connected, browser cached old page, filesystem not flashed | Connect to ECU AP, open `192.168.4.1`, hard-refresh, flash/upload web assets |
 | Page is unstyled or half-loaded | Missing or stale web assets | Run `uploadfs` or use Tools > Web UI Assets Update |
-| Dashboard slow after connect | Browser/WebSocket reconnect or stale page cache | Hard-refresh once; verify web assets are current |
+| Dashboard updates slowly after connect | Firmware and web assets are from different builds, or Wi-Fi signal is weak | Upload current web assets with the matching firmware; then refresh once and check Tools > ECU Loop Timing |
+| Tools loop timing blank | Old firmware or stale web assets | Flash current firmware and upload current web assets |
 | `Profile ID Mismatch` | Hardware and settings sections came from different engine files | Restore one complete `ecu_config.json` or save Hardware to synchronize IDs |
 | Config page says reconnecting | WebSocket disconnected | Refresh page; check ECU power and Wi-Fi signal |
+| Config is locked | Engine is active and Dev Mode is off | Stop to STANDBY, or enable Dev Mode in STANDBY before the run if live Config tuning is intentional |
+| Dev Mode toggle rejected | Engine is not in STANDBY | Return to STANDBY first; Dev Mode cannot be toggled while running |
+| Saved Config says block params apply next start | The value was saved, but a sequence/block copy cannot be safely reloaded mid-run | Finish or stop the run, then start again before testing that value |
 | Calibration card missing | Sensor/input not enabled in Hardware | Enable sensor, save Hardware, reboot |
 | P1/P2 not shown | Pressure sensors disabled or not saved | Enable P1/P2 in Hardware and save |
 | Oil/flame calibration appears with no sensor | Hardware file is stale or sensor flag still enabled | Disable the sensor in Hardware, save, reboot |
-| S3 status LED dark | Wrong LED type, wrong pin, RGB jumper open, or board variant differs | Select NeoPixel RGB on GPIO48; if still dark, test the board LED separately |
+| Status LED dark | Wrong LED type, wrong pin, RGB jumper open, or board variant differs | Classic ESP32 defaults to plain GPIO. S3/YD onboard RGB normally needs NeoPixel RGB on GPIO48; if still dark, test the board LED separately |
 | START blocked | Sequence validation error, profile mismatch, not STANDBY, or active tool timer | Read Dashboard/Sequence error, return to STANDBY, fix Hardware/Config |
-| Tool command ignored | Engine not in STANDBY or another tool/test active | Return to STANDBY and wait for active test to expire |
+| Tool command rejected | Engine not in STANDBY, required hardware missing, or another tool/test active | Read the browser error, return to STANDBY, enable required hardware, or wait for active test to expire |
 | OTA rejected | Not in STANDBY or controlled output active | Stop engine, wait for all outputs/tools off, retry |
 | Logs missing | No completed run or flash cleanup removed old sessions | Run again and download soon after test |
 
@@ -218,4 +258,3 @@ Report:
 - downloaded `ecu_config.json` if safe to share
 - log/session file when the issue involves a run
 - whether the issue is repeatable after refresh/reboot
-

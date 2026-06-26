@@ -5,6 +5,8 @@
 OpenTurbine is an open-source engine control unit for small jet turbines. It runs on a standard ESP32 (or ESP32-S3) development board and provides a complete control loop — startup sequencing, oil pump control, safety shutdowns, afterburner management, and a Wi-Fi web interface — with zero code changes between different engine builds. A compile-time profile provides safe factory defaults; the complete per-engine hardware and settings file is then tuned at runtime via the web UI.
 
 For a practical first-setup walkthrough, use [`docs/BETA_USER_GUIDE.md`](docs/BETA_USER_GUIDE.md).
+That guide is the best starting point for beta testers. This README is the
+broader feature and build reference.
 
 ---
 
@@ -64,9 +66,10 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 
 ### Developer / diagnostic
 - **Sequence validator** — at boot, cross-checks each block against fitted hardware; flags errors (block START) and warnings, displayed in web UI
-- **Dev mode / bench mode** — explicit operator-gated diagnostics for bench testing, including safety bypasses and timer-based sequence completion; never use with fuel or a live engine unless you fully understand the risk
+- **Dev mode / bench mode** — explicit operator-gated diagnostics for bench testing. Dev Mode unlocks advanced diagnostics and can allow Config edits while running; Bench Mode bypasses normal sequence waits and safety checks for dry testing. Never use Bench Mode with fuel.
 - **Buzzer patterns** — passive piezo tones for mode transitions and fault
-- **Status LED** — mode-driven blink pattern (1–4 blinks + rapid fault flash). Classic ESP32 uses plain GPIO on/off; ESP32-S3 can use the YD onboard NeoPixel/RGB LED on GPIO48 or a normal external GPIO LED.
+- **Status LED** — mode-driven blink pattern (1–4 blinks + rapid fault flash). Classic ESP32 defaults to the onboard GPIO LED as plain on/off, but can also drive an external NeoPixel/RGB status LED. ESP32-S3/YD boards default to the onboard GPIO48 NeoPixel.
+- **ECU loop diagnostics** — Tools shows main-loop rate, period, execution average, execution max, and loop counter. Session CSV can include loop timing when explicitly enabled.
 - **Peak value tracking** — session maxima for N1, N2, TOT, TIT, oil temp, fuel pressure, battery
 - **Run counter and engine-time accumulator** — persisted across power cycles
 
@@ -122,7 +125,7 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 | DI channels (×4) | Configurable roles: fault, estop, ab_arm, ab_fire, inhibit_start, limp_mode |
 | Start switch | Hardware start button |
 | Buzzer | Passive piezo for mode/fault tones |
-| Status LED | Classic ESP32: any output GPIO. ESP32-S3/YD board: GPIO48 NeoPixel by default, or select plain GPIO on/off for an external LED |
+| Status LED | Classic ESP32: onboard GPIO LED by default, or any free output GPIO / external NeoPixel. ESP32-S3/YD board: GPIO48 NeoPixel by default with blink-pattern or state-color mode, or select plain GPIO on/off for an external LED |
 | MAVLink UART | Any UART TX pin |
 | Cluster serial | OTC external display/device protocol; TX telemetry plus optional RX commands. Fit the port in Hardware and control runtime streaming in Config > Cluster |
 | RC PWM inputs | Servo signal for throttle and/or idle |
@@ -145,9 +148,12 @@ git clone https://github.com/EliasLaaj/OpenTurbine.git
 cd OpenTurbine
 ```
 
-### 3. Set your hardware profile
+### 3. Set the factory profile
 
-Open `hardware_profile.h` and set the compile-time profile ID and any pin defaults. All hardware settings can be changed at runtime via the web UI — `hardware_profile.h` is only the starting point:
+If you are building from source, open `hardware_profile.h` and set the factory
+profile ID and any default pins you want the ECU to create on first boot. Most
+beta users should treat this as the starting default only: normal setup is done
+from the Hardware page and saved into `ecu_config.json`.
 
 ```cpp
 #define OT_PROFILE_ID   "my_turbine_v1"   // default ID used when creating a new engine file
@@ -201,7 +207,7 @@ Pre-flight checklist. Guided step-by-step wizards:
 - **Flame sensor** — automated noise-floor capture
 
 ### Config
-All settings grouped by section. **Basic / Expert toggle** hides advanced parameters for new users. Config is locked during engine operation. Full `ecu_config.json` backup and restore lives on Tools so hardware and settings stay together.
+All settings grouped by section. **Normal / Advanced toggle** hides advanced parameters for new users. Config is normally locked during STARTUP, RUNNING, and SHUTDOWN. If Dev Mode was enabled in STANDBY, Config can be edited while running for controlled bench tuning; Hardware changes, pin changes, full engine-file restore, OTA, and other reboot-required actions still require STANDBY. Full `ecu_config.json` backup and restore lives on Tools so hardware and settings stay together.
 
 ### Hardware
 Runtime hardware topology editor — GPIO pin assignments, sensor types, actuator types, safety enables, DI channel roles, AB configuration, MAVLink / cluster serial settings — **without recompiling**. Requires reboot to apply. Engine must be in STANDBY to save.
@@ -220,6 +226,8 @@ Diagnostic actuator tests (STANDBY only, all auto-expire):
 - Cooling fan test, airstarter test, bleed valve test, prop pitch test
 - Extra cooldown (manual timed standby cooldown using the Sequencer CooldownSpin actuator settings)
 - Full engine-file backup/restore, factory reset, firmware OTA, and web UI asset upload
+- ECU loop diagnostics: loop rate, period, execution average/max, loop counter, and optional session-log columns
+- Dev Mode toggle, Bench Mode, and safety-bypass diagnostics for dry testing
 
 ---
 
@@ -249,7 +257,7 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 | `cluster` | Runtime cluster output enable and warning thresholds; physical pins live in Hardware |
 | `rc_input` | RC PWM pulse failsafe timeout; endpoints are calibrated on the Calibration page |
 | `misc` | Cooldown skip hold time, igniter-on-start, manual relight settings |
-| `session_log` | Channel mask (N1, N2, TOT, TIT, oil, P1, P2, throttle, mode…), log interval ms |
+| `session_log` | Channel mask (N1, N2, TOT, TIT, oil, P1, P2, throttle, mode, optional ECU loop timing…), log interval ms |
 | `calibration` | Throttle ADC range, flame threshold, oil polynomial coefficients, voltage divider scale |
 
 ---
@@ -319,7 +327,7 @@ src/
 | Environment | Target | Notes |
 |---|---|---|
 | `esp32dev` | Classic ESP32 (240 MHz, 4 MB) | ADC1: GPIO 32–39 |
-| `esp32s3dev` | ESP32-S3 DevKitC N8 target (240 MHz, 8 MB) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB; YD onboard RGB status LED uses GPIO48 NeoPixel mode by default |
+| `esp32s3dev` | ESP32-S3 DevKitC N8 target (240 MHz, 8 MB) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB; YD onboard RGB status LED uses GPIO48 NeoPixel by default |
 
 ```bash
 pio run -e esp32dev   -t upload      # firmware
@@ -327,6 +335,10 @@ pio run -e esp32dev   -t uploadfs    # LittleFS web assets
 pio run -e esp32s3dev -t upload
 pio run -e esp32s3dev -t uploadfs
 ```
+
+Fresh beta installs and partition-table changes require serial firmware upload
+plus `uploadfs`. OTA firmware alone does not replace the partition table.
+The current storage layout uses a `data/littlefs` partition named `littlefs`.
 
 ---
 

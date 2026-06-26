@@ -20,6 +20,7 @@ public:
         _entryMs   = millis();
         _lastCheck = millis();
         _count     = 0;
+        clearWaitReason();
     }
 
     BlockResult tick() override {
@@ -27,11 +28,13 @@ public:
 
         // Bench mode: immediately simulate a successful flame confirm — no sensor, no wait
         if (ed.benchMode) {
+            clearWaitReason();
             Serial.println("[FlameConfirm] BENCH: simulating flame confirm");
             return BlockResult::Complete;
         }
 
         if ((millis() - _entryMs) > timeoutMs) {
+            clearWaitReason();
             // Log the specific reason so the user sees "no ignition" rather than a generic abort.
             FlightRecorder::logAbort("FlameConfirm", "no_ignition_timeout");
             Serial.println("[FlameConfirm] Abort: flame not detected within timeout — check igniter, fuel nozzle, and fuel valve");
@@ -42,7 +45,10 @@ public:
         if (now - _lastCheck >= checkIntervalMs) {
             _lastCheck = now;
             if (ed.flameDetected) {
-                if (++_count >= requiredCount) return BlockResult::Complete;
+                if (++_count >= requiredCount) {
+                    clearWaitReason();
+                    return BlockResult::Complete;
+                }
             } else {
                 _count = 0;
             }
@@ -52,6 +58,7 @@ public:
     }
 
     void onExit() override {
+        clearWaitReason();
         if (turnOffIgniterOnExit) {
             // Flame is confirmed self-sustaining — cut igniter
             EngineData::instance().igniterOn = false;

@@ -4,9 +4,7 @@
 #include "../../system/HardwareConfig.h"
 #include "hardware_profile.h"
 #include <Arduino.h>
-#if defined(OT_PLATFORM_ESP32S3)
 #include "esp32-hal-rgb-led.h"
-#endif
 
 // ============================================================
 //  StatusLED — mode-driven blink indicator
@@ -39,16 +37,13 @@ static int           _blinksRemaining = 0;
 static bool          _ledOn           = false;
 static unsigned long _nextMs          = 0;
 static bool          _inPause         = false;
+static SysMode       _lastRenderedMode = SysMode::STANDBY;
+static uint32_t      _lastStateColor  = 0;
 static constexpr int AUTO_S3_RGB_STATUS_LED_PIN = -2;
 static constexpr uint8_t S3_RGB_LEVEL = 64;
 
 static bool _isRgbStatusLed(int pin) {
-#if defined(OT_PLATFORM_ESP32S3)
-    return HardwareConfig::statusLedType == 1 && pin == 48;
-#else
-    (void)pin;
-    return false;
-#endif
+    return HardwareConfig::statusLedType == 1 && pin >= 0;
 }
 
 static int _statusPin() {
@@ -60,14 +55,58 @@ static int _statusPin() {
 }
 
 static void _writeLed(int pin, bool on) {
-#if defined(OT_PLATFORM_ESP32S3)
     if (_isRgbStatusLed(pin)) {
         const uint8_t level = on ? S3_RGB_LEVEL : 0;
         rgbLedWrite((uint8_t)pin, 0, level, 0);
         return;
     }
-#endif
     digitalWrite(pin, on ? HIGH : LOW);
+}
+
+static uint32_t _colorForMode(SysMode mode) {
+    switch (mode) {
+        case SysMode::STARTUP:  return HardwareConfig::statusLedStartupColor;
+        case SysMode::RUNNING:  return HardwareConfig::statusLedRunningColor;
+        case SysMode::SHUTDOWN: return HardwareConfig::statusLedShutdownColor;
+        case SysMode::STANDBY:
+        default:                return HardwareConfig::statusLedStandbyColor;
+    }
+}
+
+static uint8_t _scaledChannel(uint32_t color, uint8_t shift, bool half) {
+    uint16_t value = (uint16_t)(((color >> shift) & 0xFFu) * S3_RGB_LEVEL) / 255u;
+    if (half) value /= 2u;
+    return (uint8_t)value;
+}
+
+static void _writeRgbColor(int pin, uint32_t color, bool on, bool half = false) {
+    if (!on) {
+        rgbLedWrite((uint8_t)pin, 0, 0, 0);
+        return;
+    }
+    rgbLedWrite((uint8_t)pin,
+                _scaledChannel(color, 16, half),
+                _scaledChannel(color, 8, half),
+                _scaledChannel(color, 0, half));
+}
+
+static void _tickColorMode(int pin, unsigned long now, SysMode mode) {
+    if (mode == SysMode::FAULT) {
+        if (_lastStateColor == 0) _lastStateColor = _colorForMode(SysMode::STANDBY);
+        _ledOn = !_ledOn;
+        _writeRgbColor(pin, _lastStateColor, _ledOn, true);
+        _nextMs = now + FAULT_PERIOD_MS;
+        return;
+    }
+
+    const uint32_t color = _colorForMode(mode);
+    if (mode != _lastRenderedMode || color != _lastStateColor || !_ledOn) {
+        _lastStateColor = color;
+        _lastRenderedMode = mode;
+        _ledOn = true;
+        _writeRgbColor(pin, color, true, false);
+    }
+    _nextMs = now + 100;
 }
 
 static void _writeStatusLed(bool on) {
@@ -89,24 +128,27 @@ static int _blinksForMode(SysMode m) {
 inline void begin() {
     int pin = _statusPin();
     if (pin < 0) return;
-#if defined(OT_PLATFORM_ESP32S3)
     if (!_isRgbStatusLed(pin))
-#endif
         pinMode(pin, OUTPUT);
     _writeStatusLed(false);
     _nextMs          = millis();
     _blinksRemaining = 0;
     _inPause         = true;
     _ledOn           = false;
-#if defined(OT_PLATFORM_ESP32S3)
+    _lastRenderedMode = SysMode::STANDBY;
+    _lastStateColor = 0;
     if (_isRgbStatusLed(pin)) {
         _ledOn = true;
         _blinksRemaining = 1;
         _inPause = false;
-        _writeStatusLed(true);
+        if (HardwareConfig::statusLedMode == 1) {
+            _lastStateColor = _colorForMode(SysMode::STANDBY);
+            _writeRgbColor(pin, _lastStateColor, true, false);
+        } else {
+            _writeStatusLed(true);
+        }
         _nextMs = millis() + 300;
     }
-#endif
 }
 
 inline void tick() {
@@ -116,6 +158,11 @@ inline void tick() {
     if (now < _nextMs) return;
 
     SysMode mode = EngineData::instance().mode;
+
+    if (_isRgbStatusLed(pin) && HardwareConfig::statusLedMode == 1) {
+        _tickColorMode(pin, now, mode);
+        return;
+    }
 
     if (mode == SysMode::FAULT) {
         _ledOn = !_ledOn;

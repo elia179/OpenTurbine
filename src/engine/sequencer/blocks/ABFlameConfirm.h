@@ -28,6 +28,7 @@ public:
 
     void onEnter() override {
         _startMs     = millis();
+        clearWaitReason();
         auto& ed = EngineData::instance();
         _totBaseline = Config::primaryEgtHealthy(ed) ? Config::primaryEgtC(ed) : 0.0f;
         Serial.printf("[AB] FlameConfirm: mode=%d timeout=%d ms\n", flameMode, flameTimeoutMs);
@@ -42,6 +43,7 @@ public:
         // Uses the timed path regardless of flameMode so mode 0/1 don't fault on timeout.
         if (ed.benchMode) {
             if (elapsed >= (unsigned long)assumeIgnitedMs) {
+                clearWaitReason();
                 Serial.println("[AB] FlameConfirm: BENCH — simulating AB flame confirmed");
                 return BlockResult::Complete;
             }
@@ -50,6 +52,7 @@ public:
 
         // Overall timeout → fault (ignition failed)
         if (elapsed > (unsigned long)flameTimeoutMs) {
+            clearWaitReason();
             Serial.println("[AB] FlameConfirm: TIMEOUT — ignition failed");
             return BlockResult::Fault;
         }
@@ -57,6 +60,7 @@ public:
         switch (flameMode) {
             case 0: // dedicated sensor
                 if (ed.abFlameOn) {
+                    clearWaitReason();
                     Serial.println("[AB] FlameConfirm: sensor detected flame");
                     return BlockResult::Complete;
                 }
@@ -66,11 +70,13 @@ public:
             {
                 // EGT-rise confirmation cannot be trusted without the selected sensor.
                 if (!Config::primaryEgtHealthy(ed)) {
+                    clearWaitReason();
                     Serial.println("[AB] FlameConfirm fault: EGT sensor unavailable");
                     return BlockResult::Fault;
                 }
                 float rise = Config::primaryEgtC(ed) - _totBaseline;
                 if (rise >= totRiseDegC) {
+                    clearWaitReason();
                     Serial.printf("[AB] FlameConfirm: EGT rose %.1f C - confirmed\n",
                                   (double)rise);
                     return BlockResult::Complete;
@@ -84,6 +90,7 @@ public:
 
             case 2: // timed assumption
                 if (elapsed >= (unsigned long)assumeIgnitedMs) {
+                    clearWaitReason();
                     Serial.printf("[AB] FlameConfirm: timed — assuming lit after %d ms\n",
                                   assumeIgnitedMs);
                     return BlockResult::Complete;
@@ -91,6 +98,7 @@ public:
                 break;
 
             default:
+                clearWaitReason();
                 return BlockResult::Complete;
         }
 
@@ -98,6 +106,7 @@ public:
     }
 
     void onExit() override {
+        clearWaitReason();
         // Cut AB igniter regardless of mode
         EngineData::instance().igniter2On = false;
     }

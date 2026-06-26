@@ -44,6 +44,7 @@ public:
         // Final sanity check before handing off to RUNNING
         // (skipped in bench mode — no real sensors)
         if (!ed.benchMode) {
+            if (!HardwareConfig::hasN1Rpm && !HardwareConfig::hasOilPress) return BlockResult::Fault;
             if (HardwareConfig::hasN1Rpm &&
                 (!ed.n1Healthy || ed.n1Rpm < finalCheckRpm)) return BlockResult::Fault;
             if (HardwareConfig::hasOilPress &&

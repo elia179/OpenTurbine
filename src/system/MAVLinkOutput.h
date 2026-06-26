@@ -169,17 +169,17 @@ private:
 
     void _sendEngineData() {
         const auto& ed = EngineData::instance();
-        _sendNamedFloat("N1_RPM",   ed.n1Rpm);
-        _sendNamedFloat("TOT_C",    ed.tot);
-        _sendNamedFloat("OIL_BAR",  ed.oilPressure);
-        if (ed.n2Healthy)        _sendNamedFloat("N2_RPM",   ed.n2Rpm);
-        if (ed.oilTempHealthy)   _sendNamedFloat("OIL_T_C",  ed.oilTemp);
-        if (ed.battHealthy)      _sendNamedFloat("BATT_V",   ed.battVoltage);
-        if (ed.fuelPressHealthy) _sendNamedFloat("FUEL_BAR", ed.fuelPressure);
-        if (ed.torqueHealthy)    _sendNamedFloat("TORQ_NM",  ed.torque);
-        if (ed.titHealthy)       _sendNamedFloat("TIT_C",    ed.tit);
+        if (HardwareConfig::hasN1Rpm && ed.n1Healthy)       _sendNamedFloat("N1_RPM",   ed.n1Rpm);
+        if (HardwareConfig::hasTot && ed.totHealthy)        _sendNamedFloat("TOT_C",    ed.tot);
+        if (HardwareConfig::hasOilPress && ed.oilHealthy)   _sendNamedFloat("OIL_BAR",  ed.oilPressure);
+        if (HardwareConfig::hasN2Rpm && ed.n2Healthy)       _sendNamedFloat("N2_RPM",   ed.n2Rpm);
+        if (HardwareConfig::hasOilTemp && ed.oilTempHealthy) _sendNamedFloat("OIL_T_C",  ed.oilTemp);
+        if (HardwareConfig::hasBattVoltage && ed.battHealthy) _sendNamedFloat("BATT_V",   ed.battVoltage);
+        if (HardwareConfig::hasFuelPress && ed.fuelPressHealthy) _sendNamedFloat("FUEL_BAR", ed.fuelPressure);
+        if (HardwareConfig::hasTorque && ed.torqueHealthy)  _sendNamedFloat("TORQ_NM",  ed.torque);
+        if (HardwareConfig::hasTit && ed.titHealthy)        _sendNamedFloat("TIT_C",    ed.tit);
         if (HardwareConfig::hasFuelFlow) _sendNamedFloat("FUEL_FLOW", ed.fuelFlow);
-        _sendNamedFloat("THR_PCT",  ed.throttleDemand * 100.0f);
+        if (HardwareConfig::hasThrottle) _sendNamedFloat("THR_PCT",  ed.throttleDemand * 100.0f);
     }
 
     void _sendStatusText(const char* text) {

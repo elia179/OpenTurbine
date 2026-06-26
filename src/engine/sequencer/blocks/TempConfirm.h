@@ -20,25 +20,33 @@ public:
     void onEnter() override {
         _entryMs = millis();
         _count   = 0;
+        clearWaitReason();
     }
 
     BlockResult tick() override {
         auto& ed = EngineData::instance();
         // Bench mode: immediately simulate EGT above threshold - no sensor, no wait.
         if (ed.benchMode) {
+            clearWaitReason();
             Serial.println("[TempConfirm] BENCH: simulating EGT threshold met");
             return BlockResult::Complete;
         }
-        if ((millis() - _entryMs) > timeoutMs) return BlockResult::Abort;
+        if ((millis() - _entryMs) > timeoutMs) {
+            clearWaitReason();
+            return BlockResult::Abort;
+        }
         if (Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) >= tempTarget) {
-            if (++_count >= requiredCount) return BlockResult::Complete;
+            if (++_count >= requiredCount) {
+                clearWaitReason();
+                return BlockResult::Complete;
+            }
         } else {
             _count = 0;  // reset on any reading below threshold
         }
         return BlockResult::Running;
     }
 
-    void onExit() override {}
+    void onExit() override { clearWaitReason(); }
 
 private:
     unsigned long _entryMs = 0;

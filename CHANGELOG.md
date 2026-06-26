@@ -10,6 +10,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - Bumped firmware/UI version to 1.2.0 for beta-test builds.
+- Documented the current Config lock rule: Config is locked while the engine is active unless Dev Mode was enabled from STANDBY; Hardware, full restore, OTA, and reboot-required changes remain STANDBY-only.
 - Restored Hardware page controls for the passive buzzer so fitted buzzer pins can be assigned, validated, and included in GPIO conflict checks.
 - Replaced stale flashing instructions that referenced a missing helper script with the actual PlatformIO firmware and filesystem upload commands.
 - Aligned the factory profile and setup guide with the standard N1-free setup; primary EGT safety can use TOT or TIT, while N1-dependent dynamic idle, overspeed, surge, and auto-relight remain optional features.

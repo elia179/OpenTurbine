@@ -48,6 +48,15 @@ public:
         _applyActuator(act, constrain(dem, 0.0f, 1.0f), EngineData::instance());
     }
 
+    static bool sensorUsable(uint8_t sensor) {
+        return _sensorUsable(sensor, EngineData::instance());
+    }
+
+    static bool sensorConditionMet(uint8_t sensor, uint8_t op, float threshold) {
+        auto& ed = EngineData::instance();
+        return _sensorUsable(sensor, ed) && _evalOp(_readSensor(sensor, ed), op, threshold, sensor);
+    }
+
     // Called once per control tick (Core 1, ~10 ms cycle)
     static void evaluate() {
         auto& ed = EngineData::instance();
@@ -78,7 +87,7 @@ private:
             case OIL_PRESS:       return HardwareConfig::hasOilPress && ed.oilHealthy;
             case TIT:             return HardwareConfig::hasTit && ed.titHealthy;
             case BATT_V:          return HardwareConfig::hasBattVoltage && ed.battHealthy;
-            case N2_RPM:          return HardwareConfig::hasN2Rpm && ed.n2Healthy;
+            case N2_RPM:          return HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm && ed.n2Healthy;
             case DI_CH0:          return HardwareConfig::diCh[0].pin >= 0;
             case DI_CH1:          return HardwareConfig::diCh[1].pin >= 0;
             case DI_CH2:          return HardwareConfig::diCh[2].pin >= 0;
@@ -93,11 +102,11 @@ private:
                                          (!HardwareConfig::throttleInputRcPwm || ed.rcThrottleValid);
             case IDLE_INPUT:      return HardwareConfig::hasIdleInput &&
                                          (!HardwareConfig::idleInputRcPwm || ed.rcIdleValid);
-            case AB_FLAME:        return HardwareConfig::hasAbFlame;
-            case GLOW_CURRENT:    return HardwareConfig::hasGlowCurrentSensor;
-            case IGNITER_CURRENT: return HardwareConfig::hasIgniterCurrentSensor;
-            case IGNITER2_CURRENT:return HardwareConfig::hasIgniter2CurrentSensor;
-            case OIL_PUMP_CURRENT:return HardwareConfig::hasOilPumpCurrentSensor;
+            case AB_FLAME:        return HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame;
+            case GLOW_CURRENT:    return HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor;
+            case IGNITER_CURRENT: return HardwareConfig::hasIgniter && HardwareConfig::hasIgniterCurrentSensor;
+            case IGNITER2_CURRENT:return HardwareConfig::hasIgniter2 && HardwareConfig::hasIgniter2CurrentSensor;
+            case OIL_PUMP_CURRENT:return HardwareConfig::hasOilPump && HardwareConfig::hasOilPumpCurrentSensor;
             case AB_INPUT:        return HardwareConfig::hasAfterburner &&
                                          HardwareConfig::abInputPin >= 0;
             case START_SWITCH:    return HardwareConfig::startPin >= 0;

@@ -56,7 +56,7 @@ src/
     StatusLED.h                              — millis-based blink FSM
 data/                — gzipped HTML/CSS/JS UI (served by WebServer)
 hardware_profile.h   — compile-time defaults for pins/features (overridden at runtime by HardwareConfig)
-partitions.csv       — 4 MB OTA layout (nvs / otadata / app0 0x180000 / app1 0x180000 / spiffs 0xE0000)
+partitions.csv       — 4 MB OTA layout (nvs / otadata / app0 0x180000 / app1 0x180000 / littlefs 0xE0000)
 platformio.ini       — esp32dev + esp32s3dev; -DCONFIG_ASYNC_TCP_USE_WDT=0 (workaround)
 ```
 
@@ -150,7 +150,7 @@ Persistence (`Config.cpp`):
 - `save()` writes to `/ecu_config.json.tmp` then atomic-renames.
 - No CRC, no HMAC, no version-migration steps (only `configVersionMismatch` UI flag).
 - `requestSave()` sets `_savePending` flag; Core 0 (web task) calls `flushPendingSave()` to do the LittleFS I/O — keeps Core 1 free of blocking flash writes.
-- `isLocked()` returns true in STARTUP/RUNNING/SHUTDOWN; web `PATCH /api/config` rejected unless `OT_DEV_MODE` build.
+- `isLocked()` returns true in STARTUP/RUNNING/SHUTDOWN unless `EngineData::devMode` is active. Dev Mode itself is only toggleable in STANDBY. Hardware/full-restore/OTA paths have separate STANDBY gates.
 
 ### 3.3 `HardwareConfig` (`system/HardwareConfig.{h,cpp}`)
 
@@ -260,10 +260,9 @@ From `platformio.ini`:
   HTTP+DNS bursts. Implication: more RAM pressure on async_tcp task.
 - `-DCORE_DEBUG_LEVEL=0` — no library-level logging in release.
 - `-mtext-section-literals` — keep ISR literal pools adjacent (Xtensa `l32r` reloc).
-- `OT_DEV_MODE` is an opt-in build flag that enables config edits during RUNNING
-  (`setup()` line 1533-1536); the comment says "NEVER ship this build".
+- `OT_DEV_MODE` is an opt-in build flag that boots runtime Dev Mode already enabled. Normal beta builds leave it off and use the STANDBY-only web toggle when diagnostics or live Config tuning are intentionally needed.
 
-Partition: 4 MB flash, dual 1.5 MB OTA slots, 56 KB spiffs region. `nvs` is reserved
+Partition: 4 MB flash, dual 1.5 MB OTA slots, 896 KB LittleFS region. `nvs` is reserved
 but most config lives in LittleFS JSON, not NVS.
 
 ---

@@ -34,17 +34,17 @@ public:
         }
         _skip = false;
 
-        if (Config::cooldownUseStarter) {
+        if (HardwareConfig::hasStarter && Config::cooldownUseStarter) {
             ed.starterEnabled = true;
             ed.starterDemand  = starterCoolPct;
         }
-        if (Config::cooldownUseOilPump) {
+        if (HardwareConfig::hasOilPump && Config::cooldownUseOilPump) {
             // Start at oilCoolPct regardless of sensor presence.
             // With hasOilPress: tick() regulates up/down via P-controller from this seed.
             // Without hasOilPress: stays fixed at oilCoolPct for the whole cooldown.
             ed.oilPumpPct = oilCoolPct;
         }
-        if (useScavengePump) ed.oilScavengeOn = true;
+        if (HardwareConfig::hasOilScavengePump && useScavengePump) ed.oilScavengeOn = true;
         ed.clusterCode = 11;    // ClCode::CooldownRunning
     }
 
@@ -53,7 +53,7 @@ public:
         auto& ed = EngineData::instance();
 
         // Pressure-fed oil system: regulate pump to target pressure
-        if (HardwareConfig::hasOilPress && Config::cooldownUseOilPump) {
+        if (HardwareConfig::hasOilPump && HardwareConfig::hasOilPress && Config::cooldownUseOilPump) {
             float err = oilPressureTarget - ed.oilPressure;
             float adj = constrain(err * 0.15f, -5.0f, 5.0f);
             ed.oilPumpPct = constrain(ed.oilPumpPct + adj, 5.0f, 100.0f);
@@ -61,7 +61,7 @@ public:
 
         // Oil pump fail-check: if oil is near zero while pump is supposed to be running,
         // log a warning but do NOT abort — the engine must still cool regardless.
-        if (HardwareConfig::hasOilPress && Config::cooldownUseOilPump
+        if (HardwareConfig::hasOilPump && HardwareConfig::hasOilPress && Config::cooldownUseOilPump
             && ed.oilHealthy && ed.oilPressure < Config::oilZeroBar
             && !_oilWarnLogged)
         {

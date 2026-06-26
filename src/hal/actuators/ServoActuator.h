@@ -20,6 +20,7 @@ public:
     void begin() override {
         if (_minUs > _maxUs) { int tmp = _minUs; _minUs = _maxUs; _maxUs = tmp; }
         ledcAttach(_pin, PWM_FREQ_HZ, PWM_RES_BITS);
+        _lastUs = -1;
         writePulse(_minUs); // safe low on boot
     }
 
@@ -41,12 +42,15 @@ private:
 
     void writePulse(int us) {
         us = constrain(us, _minUs, _maxUs);
+        if (us == _lastUs) return;
         uint32_t duty = ((uint64_t)us * PWM_FREQ_HZ * PWM_MAX_DUTY) / 1000000ULL;
         ledcWrite(_pin, duty);
+        _lastUs = us;
     }
 
     int         _pin;
     int         _minUs;
     int         _maxUs;
+    int         _lastUs = -1;
     const char* _name;
 };

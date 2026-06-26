@@ -17,7 +17,6 @@
 // ── MAVLink serial output ─────────────────────────────────────
 static MAVLinkOutput g_mavlink;
 static HardwareSerial _mavSerial(2);  // UART2
-
 // ── Global hardware objects (always compiled in) ──────────────
 OT_DECLARE_HARDWARE;
 
@@ -88,25 +87,126 @@ static constexpr size_t _blockRegistryLen = sizeof(_blockRegistry) / sizeof(Bloc
 
 static IBlock* _startupBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _startupDelays[HardwareConfig::MAX_SEQ_BLOCKS];
+class CustomSequenceBlock : public IBlock {
+public:
+    void bind(const HardwareConfig::CustomBlockDef* def) { _def = def; }
+    const char* name() override { return (_def && _def->key[0]) ? _def->key : "CustomBlock"; }
+
+    void onEnter() override {
+        _entryMs = millis();
+        _stepIdx = 0;
+        _stepMs = 0;
+        _stepDelayActive = false;
+        _whileReleased = false;
+        clearWaitReason();
+    }
+
+    BlockResult tick() override {
+        if (!_def || !_def->enabled) return BlockResult::Abort;
+        const bool benchMode = EngineData::instance().benchMode;
+
+        if (_def->type == 1) {
+            if (benchMode) return BlockResult::Complete;
+            setWaitReason(_def->label[0] ? _def->label : _def->key);
+            return (millis() - _entryMs) >= _def->durationMs ? BlockResult::Complete : BlockResult::Running;
+        }
+
+        if (_def->type == 2) {
+            if (!_whileReleased) {
+                if (benchMode) {
+                    _whileReleased = true;
+                } else {
+                    setWaitReason(_def->label[0] ? _def->label : _def->key);
+                    if (RulesEngine::sensorConditionMet(_def->sensor, _def->op, _def->threshold)) {
+                        _whileReleased = true;
+                        clearWaitReason();
+                    } else if (_def->timeoutMs > 0 && (millis() - _entryMs) >= _def->timeoutMs) {
+                        if (_def->timeoutAction == 2) {
+                            _whileReleased = true;
+                            clearWaitReason();
+                        } else {
+                            return _def->timeoutAction == 1 ? BlockResult::Fault : BlockResult::Abort;
+                        }
+                    } else {
+                        return BlockResult::Running;
+                    }
+                }
+            }
+            return tickSteps();
+        }
+
+        return tickSteps();
+    }
+
+    void onExit() override { clearWaitReason(); }
+
+private:
+    BlockResult tickSteps() {
+        while (_stepIdx < _def->stepCount) {
+            const auto& step = _def->steps[_stepIdx];
+            if (step.type == 1) {
+                if (!_stepDelayActive) {
+                    _stepMs = millis();
+                    _stepDelayActive = true;
+                }
+                if ((millis() - _stepMs) < step.delayMs) {
+                    setWaitReason(_def->label[0] ? _def->label : _def->key);
+                    return BlockResult::Running;
+                }
+                _stepMs = 0;
+                _stepDelayActive = false;
+                _stepIdx++;
+                continue;
+            }
+            RulesEngine::applyActuatorDemand(step.actuator, step.value);
+            _stepIdx++;
+        }
+        clearWaitReason();
+        return BlockResult::Complete;
+    }
+    const HardwareConfig::CustomBlockDef* _def = nullptr;
+    uint8_t _stepIdx = 0;
+    unsigned long _entryMs = 0;
+    unsigned long _stepMs = 0;
+    bool _stepDelayActive = false;
+    bool _whileReleased = false;
+};
+static CustomSequenceBlock _startupCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _startupCount  = 0;
 static IBlock* _shutdownBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _shutdownDelays[HardwareConfig::MAX_SEQ_BLOCKS];
+static CustomSequenceBlock _shutdownCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _shutdownCount = 0;
 static IBlock* _abIgnBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _abIgnDelays[HardwareConfig::MAX_SEQ_BLOCKS];
+static CustomSequenceBlock _abIgnCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _abIgnCount    = 0;
 static IBlock* _abShutBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _abShutDelays[HardwareConfig::MAX_SEQ_BLOCKS];
+static CustomSequenceBlock _abShutCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _abShutCount   = 0;
 static void validateSequences();  // defined after buildSequences
 
 static void buildSequences() {
     auto& hw = HardwareConfig::instance();
-    auto addBlock = [](const char* name, int delayMs, TimedDelay& delay,
+    auto findCustomDef = [&](const char* name) -> const HardwareConfig::CustomBlockDef* {
+        if (!name || strncmp(name, "custom_", 7) != 0) return nullptr;
+        for (int i = 0; i < hw.customBlockCount; i++) {
+            if (hw.customBlocks[i].enabled && strcmp(hw.customBlocks[i].key, name) == 0)
+                return &hw.customBlocks[i];
+        }
+        return nullptr;
+    };
+    auto addBlock = [&](const char* name, int delayMs, TimedDelay& delay, CustomSequenceBlock& custom,
                        IBlock** blocks, int& count) {
         if (strcmp(name, "TimedDelay") == 0) {
             delay.dwellMs = (unsigned long)(delayMs > 0 ? delayMs : Config::timedDelayMs);
             blocks[count++] = &delay;
+            return;
+        }
+        if (const auto* def = findCustomDef(name)) {
+            custom.bind(def);
+            blocks[count++] = &custom;
             return;
         }
         for (size_t j = 0; j < _blockRegistryLen; j++) {
@@ -118,24 +218,24 @@ static void buildSequences() {
     };
     _startupCount = 0;
     for (int i = 0; i < hw.startupSeqLen; i++) {
-        addBlock(hw.startupSeq[i], hw.startupDelayMs[i], _startupDelays[i],
+        addBlock(hw.startupSeq[i], hw.startupDelayMs[i], _startupDelays[i], _startupCustomBlocks[i],
                  _startupBlocks, _startupCount);
     }
     _shutdownCount = 0;
     for (int i = 0; i < hw.shutdownSeqLen; i++) {
-        addBlock(hw.shutdownSeq[i], hw.shutdownDelayMs[i], _shutdownDelays[i],
+        addBlock(hw.shutdownSeq[i], hw.shutdownDelayMs[i], _shutdownDelays[i], _shutdownCustomBlocks[i],
                  _shutdownBlocks, _shutdownCount);
     }
     // AB ignition sequence
     _abIgnCount = 0;
     for (int i = 0; i < hw.abSeqLen; i++) {
-        addBlock(hw.abSeq[i], hw.abDelayMs[i], _abIgnDelays[i],
+        addBlock(hw.abSeq[i], hw.abDelayMs[i], _abIgnDelays[i], _abIgnCustomBlocks[i],
                  _abIgnBlocks, _abIgnCount);
     }
     // AB shutdown sequence
     _abShutCount = 0;
     for (int i = 0; i < hw.abShutSeqLen; i++) {
-        addBlock(hw.abShutSeq[i], hw.abShutDelayMs[i], _abShutDelays[i],
+        addBlock(hw.abShutSeq[i], hw.abShutDelayMs[i], _abShutDelays[i], _abShutCustomBlocks[i],
                  _abShutBlocks, _abShutCount);
     }
     Serial.printf("[OT] Sequences: startup=%d, shutdown=%d, ab_ign=%d, ab_shut=%d blocks\n",
@@ -154,6 +254,7 @@ static void validateSequences() {
     auto& ed = EngineData::instance();
     ed.seqIssueCount = 0;
     ed.seqHasErrors  = false;
+    ed.seqHasStructuralErrors = false;
 
     auto addIssue = [&](const char* block, const char* reason, bool isError) {
         if (ed.seqIssueCount >= EngineData::MAX_SEQ_ISSUES) return;
@@ -172,16 +273,27 @@ static void validateSequences() {
     // Unknown names are silently skipped by buildSequences() — flag them so
     // the user can see exactly which name is wrong rather than just having
     // a mysteriously shorter sequence.
+    auto customDefFor = [&](const char* key) -> const HardwareConfig::CustomBlockDef* {
+        if (!key || strncmp(key, "custom_", 7) != 0) return nullptr;
+        for (int i = 0; i < hw.customBlockCount; i++) {
+            if (hw.customBlocks[i].enabled && strcmp(hw.customBlocks[i].key, key) == 0)
+                return &hw.customBlocks[i];
+        }
+        return nullptr;
+    };
+    auto blockKnown = [&](const char* name) {
+        if (customDefFor(name)) return true;
+        for (size_t j = 0; j < _blockRegistryLen; j++) {
+            if (strcmp(_blockRegistry[j].name, name) == 0) return true;
+        }
+        return false;
+    };
     auto checkNames = [&](const char* seqLabel,
                           const char (*names)[24],
                           int len) {
         for (int i = 0; i < len; i++) {
             if (!names[i][0]) continue;
-            bool found = false;
-            for (size_t j = 0; j < _blockRegistryLen; j++) {
-                if (strcmp(_blockRegistry[j].name, names[i]) == 0) { found = true; break; }
-            }
-            if (!found) {
+            if (!blockKnown(names[i])) {
                 char reason[80];
                 snprintf(reason, sizeof(reason),
                          "Unknown block in %s sequence — will be skipped", seqLabel);
@@ -190,6 +302,7 @@ static void validateSequences() {
                 strncpy(truncated, names[i], sizeof(truncated) - 1);
                 truncated[sizeof(truncated) - 1] = '\0';
                 addIssue(truncated, reason, true);
+                ed.seqHasStructuralErrors = true;
             }
         }
     };
@@ -198,9 +311,95 @@ static void validateSequences() {
     checkNames("ab_ign",   hw.abSeq,       hw.abSeqLen);
     checkNames("ab_shut",  hw.abShutSeq,   hw.abShutSeqLen);
 
+    auto checkCustomBlockHardware = [&](const char* nm) {
+        const auto* def = customDefFor(nm);
+        if (!def) return false;
+        auto sensorConfigured = [&](uint8_t sensor) {
+            switch (sensor) {
+                case 0:  return hw.hasOilTemp;
+                case 1:  return hw.hasTot;
+                case 2:  return hw.hasN1Rpm;
+                case 3:  return hw.hasOilPress;
+                case 4:  return hw.hasTit;
+                case 5:  return hw.hasBattVoltage;
+                case 6:  return hw.hasTwoShaft && hw.hasN2Rpm;
+                case 7:  return hw.diCh[0].pin >= 0;
+                case 8:  return hw.diCh[1].pin >= 0;
+                case 9:  return hw.diCh[2].pin >= 0;
+                case 10: return hw.diCh[3].pin >= 0;
+                case 11: return hw.hasFuelPress;
+                case 12: return hw.hasFuelFlow;
+                case 13: return hw.hasP1;
+                case 14: return hw.hasP2;
+                case 15: return hw.hasTorque;
+                case 16: return hw.hasFlame;
+                case 17: return hw.hasThrottleInput;
+                case 18: return hw.hasIdleInput;
+                case 19: return hw.hasAfterburner && hw.hasAbFlame;
+                case 20: return hw.hasGlowPlug && hw.hasGlowCurrentSensor;
+                case 21: return hw.hasIgniter && hw.hasIgniterCurrentSensor;
+                case 22: return hw.hasIgniter2 && hw.hasIgniter2CurrentSensor;
+                case 23: return hw.hasOilPump && hw.hasOilPumpCurrentSensor;
+                case 24: return hw.hasAfterburner && hw.abInputPin >= 0;
+                case 25: return hw.startPin >= 0;
+                case 26: return hw.stopPin >= 0;
+                default: return false;
+            }
+        };
+        if (def->type == 2 && !sensorConfigured(def->sensor))
+            addIssue(nm, "Custom while-block sensor is not configured", true);
+        for (uint8_t i = 0; i < def->stepCount; i++) {
+            const auto& step = def->steps[i];
+            if (step.type == 0 && !RulesEngine::actuatorUsable(step.actuator))
+                addIssue(nm, "Custom block commands an actuator that is not configured", true);
+        }
+        return true;
+    };
+
+    auto checkCommonBlockHardware = [&](const char* nm) {
+        if (checkCustomBlockHardware(nm)) return;
+        if (strcmp(nm, "FuelSolClose") == 0) {
+            if (!hw.hasFuelSol)
+                addIssue(nm, "No fuel solenoid configured - close command has no physical output", false);
+        }
+        else if (strcmp(nm, "StarterEnOn") == 0 || strcmp(nm, "StarterEnOff") == 0) {
+            if (!hw.hasStarterEn)
+                addIssue(nm, "No starter enable relay configured - starter enable command has no physical output", false);
+        }
+        else if (strcmp(nm, "StarterOff") == 0) {
+            if (!hw.hasStarter)
+                addIssue(nm, "No starter actuator configured - starter command has no physical output", false);
+        }
+        else if (strcmp(nm, "OilPumpOff") == 0) {
+            if (!hw.hasOilPump)
+                addIssue(nm, "No oil pump actuator configured - off command has no physical output", false);
+        }
+        else if (strcmp(nm, "CoolFanOn") == 0 || strcmp(nm, "CoolFanOff") == 0) {
+            if (!hw.hasCoolFan)
+                addIssue(nm, "No cooling fan actuator configured - fan command has no physical output", false);
+        }
+        else if (strcmp(nm, "AirstarterOn") == 0 || strcmp(nm, "AirstarterOff") == 0) {
+            if (!hw.hasAirstarterSol)
+                addIssue(nm, "No airstarter solenoid configured - airstarter command has no physical output", false);
+        }
+        else if (strcmp(nm, "OilScavengeOn") == 0 || strcmp(nm, "OilScavengeOff") == 0) {
+            if (!hw.hasOilScavengePump)
+                addIssue(nm, "No oil scavenge pump configured - scavenge command has no physical output", false);
+        }
+        else if (strcmp(nm, "WaitTOTCool") == 0) {
+            if (Config::effectiveEgtSource() == 0)
+                addIssue(nm, "No selected EGT source - Wait EGT Cool completes immediately without temperature feedback", false);
+        }
+        else if (strcmp(nm, "FinalStop") == 0) {
+            if (!hw.hasN1Rpm)
+                addIssue(nm, "No N1 RPM sensor - FinalStop cannot verify spooldown before completing", false);
+        }
+    };
+
     // ── Check startup blocks ──────────────────────────────────
     for (int i = 0; i < _startupCount; i++) {
         const char* nm = _startupBlocks[i]->name();
+        checkCommonBlockHardware(nm);
 
         if (strcmp(nm, "StarterSpin") == 0) {
             if (!hw.hasN1Rpm)
@@ -214,7 +413,7 @@ static void validateSequences() {
         }
         else if (strcmp(nm, "SafetyHold") == 0) {
             if (!hw.hasN1Rpm && !hw.hasOilPress)
-                addIssue(nm, "No N1 RPM or oil pressure sensor — health check will fault before reaching RUNNING", true);
+                addIssue(nm, "No N1 RPM or oil pressure sensor - SafetyHold has nothing to verify before RUNNING", true);
         }
         else if (strcmp(nm, "FlameConfirm") == 0) {
             if (!hw.hasFlame)
@@ -310,7 +509,7 @@ static void validateSequences() {
             addIssue("FuelOpen", "No fuel delivery block (FuelOpen/FuelPulse) in startup — engine will spin without fuel", false);
     }
 
-    // ── Check shutdown blocks ─────────────────────────────────
+    // ── Startup combustion-confirmation sanity check ──────────
     bool hasCombustionConfirmation = false;
     bool hasTimedIgnition = false;
     bool ignitionOn = false;
@@ -330,10 +529,18 @@ static void validateSequences() {
 
     for (int i = 0; i < _shutdownCount; i++) {
         const char* nm = _shutdownBlocks[i]->name();
+        checkCommonBlockHardware(nm);
         if (strcmp(nm, "RPMDrop") == 0 && !hw.hasN1Rpm)
             addIssue(nm, "No N1 RPM sensor — will wait for full timeout then proceed", false);
-        else if (strcmp(nm, "CooldownSpin") == 0 && !hw.hasStarter && !hw.hasCoolFan)
-            addIssue(nm, "No starter or cooling fan — cooldown will run for timeout with no airflow", false);
+        else if (strcmp(nm, "CooldownSpin") == 0) {
+            const bool coolUsesStarter = hw.hasStarter && Config::cooldownUseStarter;
+            const bool coolUsesOil = hw.hasOilPump && Config::cooldownUseOilPump;
+            const bool coolUsesScavenge = hw.hasOilScavengePump && Config::cooldownUseScavengePump;
+            if (!coolUsesStarter && !coolUsesOil && !coolUsesScavenge)
+                addIssue(nm, "No fitted cooldown actuator is enabled - block will only wait for temperature or timeout", false);
+            if (Config::effectiveEgtSource() == 0)
+                addIssue(nm, "No selected EGT source - cooldown will run until timeout instead of stopping by temperature", false);
+        }
         else if (strcmp(nm, "WaitForInputOff") == 0 &&
                  (Config::waitForInputChannel < 0 ||
                   Config::waitForInputChannel >= HardwareConfig::MAX_DI ||
@@ -344,6 +551,17 @@ static void validateSequences() {
     // ── Check AB ignition blocks ──────────────────────────────
     // AB is optional equipment — issues here should never block main engine START.
     // Skip entirely if no AB hardware is fitted (hasAbSol / hasAbPump).
+    auto checkAbActuatorBlockHardware = [&](const char* nm) {
+        checkCommonBlockHardware(nm);
+        if ((strcmp(nm, "ABPumpOn") == 0 || strcmp(nm, "ABPumpOff") == 0) && !hw.hasAbPump) {
+            addIssue(nm, "No AB pump actuator configured - block has no physical output", false);
+        } else if ((strcmp(nm, "ABSolOpen") == 0 || strcmp(nm, "ABSolClose") == 0) && !hw.hasAbSol) {
+            addIssue(nm, "No AB solenoid configured - block has no physical output", false);
+        } else if ((strcmp(nm, "ABIgnOn") == 0 || strcmp(nm, "ABIgnOff") == 0) && !hw.hasIgniter2) {
+            addIssue(nm, "No AB igniter actuator configured - block has no physical output", false);
+        }
+    };
+
     const bool abFitted = hw.hasAbSol || hw.hasAbPump;
     if (hw.hasAfterburner && !abFitted)
         addIssue("Afterburner", "Afterburner is enabled but no AB fuel output is configured", false);
@@ -354,16 +572,8 @@ static void validateSequences() {
             addIssue("AB Trigger", "Analog / RC trigger is selected but no AB input pin is configured", false);
         for (int i = 0; i < _abIgnCount; i++) {
             const char* nm = _abIgnBlocks[i]->name();
-            if (strcmp(nm, "ABPumpOn") == 0 && !hw.hasAbPump) {
-                addIssue(nm, "No AB pump actuator configured - block has no physical output", false);
-            }
-            else if (strcmp(nm, "ABSolOpen") == 0 && !hw.hasAbSol) {
-                addIssue(nm, "No AB solenoid configured - block has no physical output", false);
-            }
-            else if (strcmp(nm, "ABIgnOn") == 0 && !hw.hasIgniter2) {
-                addIssue(nm, "No AB igniter actuator configured - block has no physical output", false);
-            }
-            else if (strcmp(nm, "ABIgnite") == 0) {
+            checkAbActuatorBlockHardware(nm);
+            if (strcmp(nm, "ABIgnite") == 0) {
                 if (!g_blkABIgnite.useTorch && !g_blkABIgnite.useIgniter)
                     addIssue(nm, "Neither torch nor AB igniter is enabled - AB ignition has no ignition source", false);
                 if (g_blkABIgnite.useIgniter && !hw.hasIgniter2)
@@ -379,6 +589,16 @@ static void validateSequences() {
                 if (g_blkABFlameConfirm.flameMode == 1 && Config::effectiveEgtSource() == 0)
                     addIssue(nm, "EGT-rise confirmation is selected but no TOT/TIT sensor is configured", false);
             }
+            else if (strcmp(nm, "ABCheckReady") == 0) {
+                if ((g_blkABCheckReady.minN1 > 0.0f || g_blkABCheckReady.maxN1 > 0.0f) && !hw.hasN1Rpm)
+                    addIssue(nm, "N1 ignition window is configured but no N1 RPM sensor is available - AB check will abort", false);
+                if (g_blkABCheckReady.maxTotForLight > 0.0f && Config::effectiveEgtSource() == 0)
+                    addIssue(nm, "EGT light-up ceiling is configured but no TOT/TIT source is selected - AB check will abort", false);
+            }
+            else if (strcmp(nm, "ABStabilize") == 0) {
+                if (g_blkABStabilize.stabilizeMaxTot > 0.0f && Config::effectiveEgtSource() == 0)
+                    addIssue(nm, "AB stabilize EGT limit is configured but no TOT/TIT source is selected - stabilize will fault", false);
+            }
         }
         // ABStabilize is the block that normally promotes Igniting → Running.
         // Without it, abSequenceDone() forces Running at sequence end with no
@@ -391,23 +611,28 @@ static void validateSequences() {
             if (!hasStabilize)
                 addIssue("ABStabilize", "AB ignition sequence has no ABStabilize block - AB is marked Running as soon as the sequence completes, with no stabilization hold or EGT check", false);
         }
+        for (int i = 0; i < _abShutCount; i++) {
+            checkAbActuatorBlockHardware(_abShutBlocks[i]->name());
+        }
     }
 
     // ── Config sanity checks (not tied to a specific block) ──────
-    // idleUseN2=true without N2 sensor: DynamicIdle reads n2Healthy=true
-    // by default (unfitted → no fault), so RPM will read 0 and the controller
-    // ramps throttle to its ceiling with no feedback — effectively a runaway.
-    if (Config::idleUseN2 && !hw.hasN2Rpm)
-        addIssue("DynamicIdle", "idleUseN2=true but no N2 RPM sensor configured — "
-                                "DynamicIdle will ramp throttle to maximum with no feedback. "
-                                "Disable idleUseN2 or configure an N2 sensor.", true);
+    if (Config::idleUseN2 && (!hw.hasTwoShaft || !hw.hasN2Rpm))
+        addIssue("DynamicIdle", "Use N2 Speed is selected but no effective N2 RPM sensor is configured. "
+                                "The ECU will fall back to N1 feedback.", false);
 
     if (hw.safetyOverspeed && !hw.hasN1Rpm)
         addIssue("Overspeed", "Overspeed safety is enabled but no N1 RPM sensor is configured", true);
-    if (hw.safetyOvertemp && (Config::effectiveEgtSource() == 0 || Config::primaryEgtLimitC() <= 0.0f))
-        addIssue("Overtemp", "Overtemp safety requires a selected TOT/TIT source and a limit above zero", true);
+    if (hw.safetyOvertemp) {
+        if (Config::effectiveEgtSource() == 0)
+            addIssue("Overtemp", "Overtemp safety is enabled but no selected TOT/TIT source is configured", true);
+        else if (Config::primaryEgtLimitC() <= 0.0f)
+            addIssue("Overtemp", "Selected EGT hard limit is 0 - overtemperature shutdown is disabled", false);
+    }
     if ((hw.safetyLowOil || hw.safetyOilZero) && !hw.hasOilPress)
         addIssue("Oil Safety", "Oil pressure safety is enabled but no oil pressure sensor is configured", true);
+    else if (hw.safetyLowOil && Config::oilRunningMin <= 0.0f)
+        addIssue("Oil Safety", "Running oil minimum is 0 - low-oil shutdown is disabled", false);
     if (hw.safetyFlameout) {
         int flameoutSrc = Config::flameoutSource;
         if (flameoutSrc == 0) {
@@ -421,19 +646,46 @@ static void validateSequences() {
             flameoutSrc == 0) {
             addIssue("Flameout", "Flameout safety is enabled but the selected source is not configured", true);
         }
+        else if (flameoutSrc == 3 && Config::flameoutTotDropC <= 0.0f) {
+            addIssue("Flameout", "EGT flameout drop is 0 - EGT-source flameout detection is disabled", false);
+        }
     }
-    if (hw.safetyHotStart && ((!hw.hasTot && !hw.hasTit) || Config::hotStartTotThreshold <= 0.0f))
-        addIssue("Hot Start", "Hot-start safety requires a TOT or TIT sensor and a threshold above zero", true);
-    if (hw.safetyTitOvertemp && (!hw.hasTit || Config::titLimit <= 0.0f))
-        addIssue("TIT Safety", "TIT overtemp safety requires a TIT sensor and a limit above zero", true);
-    if (hw.safetyOilTempHigh && (!hw.hasOilTemp || Config::oilTempLimit <= 0.0f))
-        addIssue("Oil Temp", "Oil temperature safety requires a sensor and a limit above zero", true);
-    if (hw.safetyFuelPressLow && (!hw.hasFuelPress || Config::fuelPressMin <= 0.0f))
-        addIssue("Fuel Pressure", "Fuel pressure safety requires a sensor and a minimum above zero", true);
-    if (hw.safetyBattLow && (!hw.hasBattVoltage || Config::battVoltMin <= 0.0f))
-        addIssue("Battery", "Battery safety requires a voltage sensor and a minimum above zero", true);
-    if (hw.safetySurge && (!hw.hasN1Rpm || Config::surgeDetectRpmVariance <= 0.0f))
-        addIssue("Surge", "Surge safety requires N1 RPM and a variance threshold above zero", true);
+    if (hw.safetyHotStart) {
+        if (!hw.hasTot && !hw.hasTit)
+            addIssue("Hot Start", "Hot-start safety is enabled but no TOT or TIT sensor is configured", true);
+        else if (Config::hotStartTotThreshold <= 0.0f)
+            addIssue("Hot Start", "Hot-start threshold is 0 - hot-start abort is disabled", false);
+    }
+    if (hw.safetyTitOvertemp) {
+        if (!hw.hasTit)
+            addIssue("TIT Safety", "TIT overtemp safety is enabled but no TIT sensor is configured", true);
+        else if (Config::titLimit <= 0.0f)
+            addIssue("TIT Safety", "TIT limit is 0 - TIT overtemp shutdown is disabled", false);
+    }
+    if (hw.safetyOilTempHigh) {
+        if (!hw.hasOilTemp)
+            addIssue("Oil Temp", "Oil temperature safety is enabled but no oil temperature sensor is configured", true);
+        else if (Config::oilTempLimit <= 0.0f)
+            addIssue("Oil Temp", "Oil temperature limit is 0 - oil temperature shutdown is disabled", false);
+    }
+    if (hw.safetyFuelPressLow) {
+        if (!hw.hasFuelPress)
+            addIssue("Fuel Pressure", "Fuel pressure safety is enabled but no fuel pressure sensor is configured", true);
+        else if (Config::fuelPressMin <= 0.0f)
+            addIssue("Fuel Pressure", "Fuel pressure minimum is 0 - low fuel pressure shutdown is disabled", false);
+    }
+    if (hw.safetyBattLow) {
+        if (!hw.hasBattVoltage)
+            addIssue("Battery", "Battery safety is enabled but no voltage sensor is configured", true);
+        else if (Config::battVoltMin <= 0.0f)
+            addIssue("Battery", "Battery minimum is 0 - undervoltage shutdown is disabled", false);
+    }
+    if (hw.safetySurge) {
+        if (!hw.hasN1Rpm)
+            addIssue("Surge", "Surge safety is enabled but no N1 RPM sensor is configured", true);
+        else if (Config::surgeDetectRpmVariance <= 0.0f)
+            addIssue("Surge", "Surge variance threshold is 0 - surge shutdown is disabled", false);
+    }
 
     if (Config::relightEnabled && (!hw.hasN1Rpm || !hw.hasIgniter)) {
         const char* reason = !hw.hasN1Rpm
@@ -442,6 +694,29 @@ static void validateSequences() {
         char msg[180];
         snprintf(msg, sizeof(msg), "Auto-relight is enabled but %s", reason);
         addIssue("AutoRelight", msg, false);
+    }
+    else if (Config::relightEnabled) {
+        int relightConfirmSrc = Config::relightConfirmSource;
+        if (relightConfirmSrc == 0) {
+            if (Config::flameoutSource >= 1 && Config::flameoutSource <= 3)
+                relightConfirmSrc = Config::flameoutSource;
+            else if (hw.hasFlame) relightConfirmSrc = 1;
+            else if (hw.hasN1Rpm) relightConfirmSrc = 2;
+            else if (Config::effectiveEgtSource() != 0) relightConfirmSrc = 3;
+        }
+        if ((relightConfirmSrc == 1 && !hw.hasFlame) ||
+            (relightConfirmSrc == 2 && !hw.hasN1Rpm) ||
+            (relightConfirmSrc == 3 && Config::effectiveEgtSource() == 0) ||
+            relightConfirmSrc == 0) {
+            addIssue("AutoRelight", "Auto-relight confirmation source is not configured; relight will time out or abort", false);
+        }
+        else if (relightConfirmSrc == 3 && Config::relightTotRiseC <= 0.0f) {
+            addIssue("AutoRelight", "EGT relight recovery rise is 0 - EGT-source relight cannot confirm success", false);
+        }
+        if (Config::relightMinRpm <= 0.0f)
+            addIssue("AutoRelight", "Minimum N1 for relight is 0 - windmill viability check is effectively disabled", false);
+        if (Config::relightTimeoutMs == 0)
+            addIssue("AutoRelight", "Relight timeout is 0 - igniter can stay active indefinitely during a failed relight attempt", false);
     }
 
     if (ed.seqIssueCount == 0)
@@ -453,6 +728,7 @@ static void validateSequences() {
 static void enterStandby();
 static void enterShutdown();
 static void enterFaultShutdown();
+static void handleCommand(const OTPacket& pkt);
 
 // ── General-purpose DI debounce state ────────────────────────
 static unsigned long _diLastChange[HardwareConfig::MAX_DI] = {};
@@ -804,8 +1080,9 @@ static void checkGeneralDI() {
 
             } else if (strcmp(role, "ab_fire") == 0) {
                 // Trigger AB fire — same effect as pressing AB FIRE button in the UI.
-                // Conditions checked in handleCommand(AB_FIRE); push is safe from Core 1.
-                CommandQueue::push({OTCommand::AB_FIRE});
+                // DI polling already runs on the ECU core, so avoid losing the
+                // one-shot edge if the web command queue happens to be full.
+                handleCommand({OTCommand::AB_FIRE});
                 Serial.printf("[DI] ch%d ab_fire triggered\n", i);
             }
             // "inhibit_start" role: state is stored in ed.diState[i] and checked in handleCommand(START)
@@ -1079,6 +1356,7 @@ static void checkCooldownSkip() {
 static void checkStarterAssist() {
     auto& hw = HardwareConfig::instance();
     if (!hw.hasStarter) return;
+    if (!hw.hasN1Rpm) return;
     if (!hw.starterAssistEnabled) return;    // disabled in hardware config
     auto& ed = EngineData::instance();
 
@@ -1357,6 +1635,14 @@ static void handleCommand(const OTPacket& pkt) {
                     Serial.println("[OT] START blocked: extra cooldown active");
                     break;
                 }
+                if (anyToolTimerActive()) {
+                    snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: actuator tool active");
+                    snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                             "Cannot start: an actuator test or prime tool is still active. "
+                             "Wait for the Tools page action to finish before starting.");
+                    Serial.println("[OT] START blocked: actuator tool active");
+                    break;
+                }
                 // Check inhibit_start DI channels
                 {
                     auto& hwi = HardwareConfig::instance();
@@ -1374,14 +1660,24 @@ static void handleCommand(const OTPacket& pkt) {
                     }
                     if (inhibited) break;
                 }
-                // Block start if sequence has errors (e.g. missing required sensors).
-                // Bench mode bypasses this so hardware-less testing is still possible.
-                if (ed.seqHasErrors && !ed.benchMode) {
-                    Serial.println("[OT] START blocked: sequence has hardware errors — enable bench mode to override");
-                    strncpy(ed.faultDescription,
-                            "Cannot start: sequence requires hardware that is not configured. "
-                            "Check Sequence page for details, or enable Bench Mode to override.",
-                            sizeof(ed.faultDescription) - 1);
+                // Block structural sequence errors in every mode. Bench mode can
+                // bypass missing hardware for dry testing, but it must not hide
+                // imported/unknown block names that buildSequences() skipped.
+                if (ed.seqHasStructuralErrors || (ed.seqHasErrors && !ed.benchMode)) {
+                    if (ed.seqHasStructuralErrors) {
+                        Serial.println("[OT] START blocked: sequence contains unknown blocks");
+                        strncpy(ed.faultDescription,
+                                "Cannot start: sequence contains unknown or unavailable block names. "
+                                "Open the Sequence page, fix the red errors, and save again.",
+                                sizeof(ed.faultDescription) - 1);
+                    } else {
+                        Serial.println("[OT] START blocked: sequence has hardware errors — enable bench mode to override");
+                        strncpy(ed.faultDescription,
+                                "Cannot start: sequence requires hardware that is not configured. "
+                                "Check Sequence page for details, or enable Bench Mode to override.",
+                                sizeof(ed.faultDescription) - 1);
+                    }
+                    ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
                     break;
                 }
                 ed.mode = SysMode::STARTUP;
@@ -1546,7 +1842,11 @@ static void handleCommand(const OTPacket& pkt) {
 
         case OTCommand::STARTER_ASSIST:
             // iParam: 0 = off, non-zero = on (pct comes from Config::starterAssistPct)
-            ed.starterAssistActive = (pkt.iParam != 0);
+            ed.starterAssistActive = (pkt.iParam != 0)
+                                   && HardwareConfig::hasStarter
+                                   && HardwareConfig::starterAssistEnabled
+                                   && HardwareConfig::hasN1Rpm
+                                   && ed.mode == SysMode::RUNNING;
             if (!ed.starterAssistActive) {
                 ed.starterEnabled = false;
                 ed.starterDemand  = 0;
@@ -1898,14 +2198,22 @@ void setup() {
 }
 
 void loop() {
+    const uint32_t loopStartUs = micros();
+    static uint32_t lastLoopStartUs = 0;
+    static uint32_t loopWindowStartMs = 0;
+    static uint32_t loopWindowMaxUs = 0;
+    static float loopExecAvgUs = 0.0f;
+
     Watchdog::feed();
 
     checkStopSwitch();
     checkStartSwitch();
 
     CommandQueue::drain(handleCommand);
+    uint32_t afterCommandsUs = micros();
 
     Hardware::updateSensors();
+    uint32_t afterSensorsUs = micros();
 
     // RC PWM input — updates rcIdle*/rcThrottle* and synthesises pot ADC values
     RCInput::tick();
@@ -1914,6 +2222,7 @@ void loop() {
 
     g_sequencer.tick();
     g_abSequencer.tick();
+    uint32_t afterSequencersUs = micros();
 
     Hardware::runControllers();
 
@@ -1931,19 +2240,24 @@ void loop() {
     // through limp limits and slew/sensor safeguards before output.
     RulesEngine::evaluate();
     Hardware::applyThrottleProtection();
+    uint32_t afterControllersUs = micros();
 
     Hardware::updateActuators();
+    uint32_t afterActuatorsUs = micros();
 
     FlightRecorder::tick();
     SessionLogger::tick();
+    uint32_t afterLoggingUs = micros();
 
     if (HardwareConfig::hasClusterSerial)
         ClusterSerial::tick();
 
     if (HardwareConfig::hasMAVLink)
         g_mavlink.tick();
+    uint32_t afterTelemetryUs = micros();
 
     Hardware::tickStatusLED();
+    uint32_t afterLedUs = micros();
 
     // Session peak tracking — health-gated so a failed sensor can't corrupt max values
     auto& edp = EngineData::instance();
@@ -1959,5 +2273,48 @@ void loop() {
                                        && edp.oilTemp    > edp.maxOilTemp)     edp.maxOilTemp     = edp.oilTemp;
     if (HardwareConfig::hasBattVoltage && edp.battVoltage > edp.maxBattVoltage) edp.maxBattVoltage = edp.battVoltage;
 
-    edp.uptimeMs = millis();
+    const uint32_t loopEndUs = micros();
+    const uint32_t execUs = loopEndUs - loopStartUs;
+    if (execUs > loopWindowMaxUs) loopWindowMaxUs = execUs;
+    loopExecAvgUs = (loopExecAvgUs <= 0.0f)
+        ? (float)execUs
+        : (loopExecAvgUs * 0.92f + (float)execUs * 0.08f);
+
+    edp.loopCounter = edp.loopCounter + 1;
+    edp.loopSensorsMs     = (float)(afterSensorsUs - afterCommandsUs) / 1000.0f;
+    edp.loopSequencerMs   = (float)(afterSequencersUs - afterSensorsUs) / 1000.0f;
+    edp.loopControllersMs = (float)(afterControllersUs - afterSequencersUs) / 1000.0f;
+    edp.loopActuatorsMs   = (float)(afterActuatorsUs - afterControllersUs) / 1000.0f;
+    edp.loopLoggingMs     = (float)(afterLoggingUs - afterActuatorsUs) / 1000.0f;
+    edp.loopLedMs         = (float)(afterLedUs - afterTelemetryUs) / 1000.0f;
+    if (lastLoopStartUs != 0) {
+        const uint32_t periodUs = loopStartUs - lastLoopStartUs;
+        if (periodUs > 0) {
+            edp.loopPeriodMs = (float)periodUs / 1000.0f;
+            edp.loopHz = 1000000.0f / (float)periodUs;
+        }
+    }
+    lastLoopStartUs = loopStartUs;
+
+    const uint32_t nowMs = millis();
+    if (loopWindowStartMs == 0) loopWindowStartMs = nowMs;
+    if (nowMs - loopWindowStartMs >= 1000) {
+        edp.loopExecMaxMs = (float)loopWindowMaxUs / 1000.0f;
+        loopWindowMaxUs = 0;
+        loopWindowStartMs = nowMs;
+    }
+    edp.loopExecAvgMs = loopExecAvgUs / 1000.0f;
+    edp.uptimeMs = nowMs;
+
+    const uint32_t loopElapsedUs = micros() - loopStartUs;
+    const uint32_t targetHz = constrain((uint32_t)Config::controlLoopHz, 50u, 1000u);
+    const uint32_t targetPeriodUs = 1000000u / targetHz;
+    if (loopElapsedUs < targetPeriodUs) {
+        uint32_t waitUs = targetPeriodUs - loopElapsedUs;
+        if (waitUs >= 1000u) {
+            delay(waitUs / 1000u);
+            waitUs %= 1000u;
+        }
+        if (waitUs > 0u) delayMicroseconds(waitUs);
+    }
 }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Config</title>
-<link rel="stylesheet" href="/style.css?v=20260619a">
+<link rel="stylesheet" href="/style.css?v=20260625a">
 </head>
 <body>
 <nav>
@@ -33,10 +33,10 @@
       <button id="btn-view-expert" onclick="setView('expert')" title="Advanced view shows every configurable parameter, including rare diagnostics, controller gains, protocol details, and deep tuning values.">Advanced</button>
     </div>
     <button id="btn-dev-mode" onclick="toggleDevMode()" style="font-size:.75rem;padding:.2rem .75rem"
-    title="Dev Mode lets you edit config while the engine is running. Wrong values can cause faults or damage. Use only during controlled bench work.">Dev Mode</button>
+    title="Dev Mode allows Config edits while the engine is running and unlocks bench diagnostics. Hardware and reboot-required changes still require STANDBY.">Dev Mode</button>
   </div>
   <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem" id="view-hint">Normal view shows common setup, hardware-dependent controls, and critical limits. Advanced shows rare tuning, diagnostics, and controller internals.</p>
-  <div id="lock-warn" class="error-banner" style="display:none">⚠ Engine is running — config is locked. Stop the engine or enable Dev Mode before editing.</div>
+  <div id="lock-warn" class="error-banner" style="display:none">Warning: engine is running - config is locked. Stop the engine or enable Dev Mode before editing Config.</div>
 
   <!-- ── Engine Type Presets ──────────────────────────────────── -->
   <div id="preset-bar" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
@@ -84,7 +84,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260619a"></script>
+<script src="/app.js?v=20260625a"></script>
 <script>
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
@@ -92,7 +92,7 @@ const SCHEMA = [
     { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum N1 RPM when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical range: 80,000–180,000 RPM.',                       step:1000, min:1000, basic:true },
     { key:'min_rpm',            path:['engine','min_rpm'],            label:'Min RPM (RPM)',           desc:'Minimum N1 RPM in RUNNING when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical: 25,000–50,000 RPM.',            step:1000, min:0,    basic:true },
     { key:'eg_src',             path:['safety','egt_source'],         label:'Engine Temp Source', type:'select', options:[{v:0,l:'Auto (TOT, else TIT)'},{v:1,l:'TOT'},{v:2,l:'TIT'}], desc:'Selects which fitted temperature sensor is used for primary engine safety, hot-start, EGT rise rate, cooldown checks, throttle pullback, and temperature confirmation. TOT and TIT keep separate limits.', basic:true },
-    { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', desc:'Turbine outlet temperature hard limit. Used as the primary over-temperature limit only when Engine Temp Source is TOT or Auto selects TOT.',             step:10,   min:1,    basic:true },
+    { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', desc:'Turbine outlet temperature hard limit. Used as the primary over-temperature limit only when Engine Temp Source is TOT or Auto selects TOT. 0 = disabled.',             step:10,   min:0,    basic:true },
     { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'EGT Soft Margin',    unitType:'temp_delta', desc:'Soft warning/pullback margin below the selected primary EGT limit. Used for throttle safety pullback and cluster warnings. Typical: 30-50 °C / 55-90 °F below the hard limit.',                         step:5,    min:0, basic:true },
     { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown EGT Target',    unitType:'temp', desc:'Engine cooldown blocks use this selected EGT target to decide when temperature-based cooldown is complete. Operator cooldown skip bypasses this target intentionally. Typical: 100-200 °C / 212-390 °F.',                              step:10,   min:0, basic:true },
   ]},
@@ -136,7 +136,7 @@ const SCHEMA = [
     { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Flameout Delay (ms)',          desc:'How long the selected flameout source must indicate combustion loss before a fault is declared. Set longer if the selected source is noisy or unstable. Default: 3000 ms (3 seconds).',             step:200, min:100, basic:true },
     { key:'sf_fs', path:['safety','flameout_source'],      label:'Flameout Source', type:'select', options:[{v:0,l:'Auto best fitted source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 RPM drop'},{v:3,l:'EGT drop'}], desc:'Which signal declares a running flameout. Auto uses flame sensor if fitted, otherwise N1 RPM, otherwise selected EGT drop.', basic:true },
     { key:'sf_fn', path:['safety','flameout_n1_min_rpm'],  label:'N1 Flameout RPM', desc:'For N1-source flameout: declare flameout if N1 stays below this RPM. 0 uses Min RPM. This is delayed by Flameout Delay.', step:1000, min:0, basic:true },
-    { key:'sf_ft', path:['safety','flameout_tot_drop_c'],  label:'EGT Drop for Flameout (C)', desc:'For EGT-source flameout: declare flameout after selected EGT drops this far below the highest running EGT reference. Use cautiously; throttle changes can affect EGT.', step:5, min:0, basic:true },
+    { key:'sf_ft', path:['safety','flameout_tot_drop_c'],  label:'EGT Drop for Flameout (C)', desc:'For EGT-source flameout: declare flameout after selected EGT drops this far below the highest running EGT reference. 0 disables EGT-drop flameout detection. Use cautiously; throttle changes can affect EGT.', step:5, min:0, basic:true },
     { key:'sf_rr', path:['safety','tot_rise_rate_limit_deg_s'], label:'Max EGT Rise Rate (°C/s)', desc:'Shuts down if the exhaust temperature rises faster than this in a single second. Protects against hot starts or runaway rich fuel. 0 = disabled. Typical safe value: 50-100 °C/s. (Always entered in °C/s regardless of display unit.)', step:5, min:0, basic:true },
     { key:'sf_hs', path:['sequence','startup','hot_start_tot_threshold'], label:'Hot-Start EGT Threshold', unitType:'temp', desc:'Startup is aborted if selected EGT is above this when you press START. Prevents starting into a hot turbine section. 0 = disabled. Typical: 100-200 °C / 212-390 °F.', step:10, min:0, basic:true },
   ]},
@@ -144,7 +144,7 @@ const SCHEMA = [
     { key:'rl_en', path:['relight','enabled'],      label:'Auto-Relight Enabled',  desc:'When ON: if combustion is lost while RUNNING and N1 remains above the relight minimum, the igniter fires again automatically before the ECU commits to shutdown.', type:'checkbox', basic:true },
     { key:'rl_cs', path:['relight','confirm_source'], label:'Relight Confirm Source', type:'select', options:[{v:0,l:'Auto match flameout source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 recovered'},{v:3,l:'EGT recovered'}], desc:'Which fitted signal confirms that relight succeeded and lets the igniter turn off. This does not remove the N1 windmill requirement for starting the relight attempt.', basic:true },
     { key:'rl_cr', path:['relight','confirm_rpm'],         label:'N1 Recovery RPM', desc:'For N1 relight confirmation: igniter stays on until N1 recovers to this RPM. 0 uses Min RPM + 5%.', step:1000, min:0, basic:true },
-    { key:'rl_tr', path:['relight','tot_rise_c'],          label:'EGT Recovery Rise (C)', desc:'For EGT relight confirmation: igniter stays on until selected EGT rises this much above the temperature at relight start.', step:5, min:0, basic:true },
+    { key:'rl_tr', path:['relight','tot_rise_c'],          label:'EGT Recovery Rise (C)', desc:'For EGT relight confirmation: igniter stays on until selected EGT rises this much above the temperature at relight start. 0 prevents EGT-rise confirmation.', step:5, min:0, basic:true },
     { key:'rl_mr', path:['relight','min_rpm'],            label:'Min N1 for Relight (RPM)', desc:'Abort relight if N1 falls below this RPM - the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000-40,000 RPM.', step:1000, min:0, basic:true },
     { key:'rl_to', path:['relight','relight_timeout_ms'], label:'Relight Timeout (ms)',      desc:'How long to keep the igniter on trying to relight after a flameout. If flame is not restored within this window, the engine shuts down. 0 = no timeout (not recommended). Typical: 8,000-15,000 ms.', step:500, min:0, basic:true },
   ]},
@@ -158,6 +158,7 @@ const SCHEMA = [
   { title: 'Telemetry', fields: [
     { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic flight-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox', basic:true },
     { key:'tm_ws', path:['telemetry','ws_interval_ms'],       label:'Background Live Interval ms', desc:'Non-critical pages use this saved interval for slower live refresh. Dashboard and Calibration stay fixed at 333 ms (3 Hz) for responsive live data.', step:1, min:333, basic:true },
+    { key:'tm_lh', path:['telemetry','control_loop_hz'],      label:'ECU Loop Target Hz', desc:'Main control-loop target frequency. Default 400 Hz. Lower values reduce CPU use; higher values improve control granularity but increase load. Recommended beta range: 200-500 Hz.', step:50, min:50, max:1000, basic:true },
     { key:'tm_sn', path:['telemetry','snapshot_interval_ms'], label:'Snapshot Interval ms',  desc:'FlightRecorder RUNNING_SNAP rate (ms). Lower = more history entries. Default 10000 ms (10 s).',          step:500, min:500 },
     { key:'tm_sl', path:['session_log','interval_ms'],        label:'Session Log Rate (ms)', desc:'How often a row is written to the per-run CSV log. Default 1000 ms (1 Hz). Use 500–100 ms only for high-speed transient capture. Lower values increase LittleFS wear and CPU/storage load.', step:100, min:100, basic:true },
     { key:'sl_n1', path:['session_log','n1'],       label:'Log N1 RPM',      type:'checkbox', desc:'Include N1 RPM column in session CSV.', basic:true },
@@ -177,6 +178,7 @@ const SCHEMA = [
     { key:'sl_ab', path:['session_log','ab'],        label:'Log AB State',    type:'checkbox', desc:'Include afterburner mode + flame columns in session CSV.' },
     { key:'sl_pp', path:['session_log','prop'],      label:'Log Prop Pitch',  type:'checkbox', desc:'Include propeller pitch demand (%) column in session CSV.' },
     { key:'sl_op', path:['session_log','oil_pct'],   label:'Log Oil Pump %',  type:'checkbox', desc:'Include oil pump duty cycle (%) column in session CSV.' },
+    { key:'sl_lp', path:['session_log','loop'],      label:'Log ECU Loop Timing', type:'checkbox', desc:'Include main control-loop speed and execution timing columns in session CSV.' },
   ]},
   { title: 'Cluster', fields: [
     { key:'cl_en', path:['cluster','enabled'],      label:'Enable',        desc:'Send live data to instrument cluster via UART TX. When off, no serial data is transmitted.', type:'checkbox', basic:true },
@@ -769,7 +771,7 @@ function validateBeforeSave(cfg) {
 // ── Save ──────────────────────────────────────────────────────
 // Stage 1: collect form values into cfg, validate, then show recap modal.
 function saveConfig() {
-  if (isLocked) { alert('Config is locked — engine is running.'); return; }
+  if (isLocked) { alert('Config is locked - stop the engine or enable Dev Mode.'); return; }
 
   // Read form values into cfg (needed so _buildChanges has current cfg for validation)
   SCHEMA.forEach(sec => {
@@ -838,11 +840,15 @@ function _doSave() {
     method: 'PATCH',
     body: JSON.stringify(cfg),
     headers: { 'Content-Type': 'application/json' }
-  }).then(r => r.json()).then(d => {
+  }).then(async r => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+    return d;
+  }).then(d => {
     if (d.ok) {
       _clearDirty();
-      saveMsg.textContent = '✓ Saved — ' + new Date().toLocaleTimeString();
-      saveMsg.style.color = 'var(--green)';
+      saveMsg.textContent = (d.warn ? 'Saved — ' + d.warn : '✓ Saved — ' + new Date().toLocaleTimeString());
+      saveMsg.style.color = d.warn ? 'var(--yellow)' : 'var(--green)';
       if (cb) cb.disabled = false;
     } else {
       saveMsg.textContent = '✗ ' + JSON.stringify(d);
@@ -971,7 +977,10 @@ function toggleDevMode() {
     method: 'POST',
     body: JSON.stringify({ cmd: 'TOGGLE_DEV_MODE' }),
     headers: { 'Content-Type': 'application/json' }
-  }).catch(e => console.error('Dev mode toggle failed', e));
+  }).then(async r => {
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) throw new Error(body.error || body.reason || ('HTTP ' + r.status));
+  }).catch(e => alert('Dev mode toggle failed: ' + e.message));
 }
 
 // ── Live sensor badge helpers ─────────────────────────────────
@@ -1077,10 +1086,13 @@ window.applyData = function(d) {
   const badge = document.getElementById('cfg-lock-badge');
   if (badge) {
     if (locked) {
-      badge.textContent  = '🔒 Locked';
+      badge.textContent  = 'Locked';
       badge.style.color  = 'var(--red)';
+    } else if (d.dev_mode && d.mode && d.mode !== 'STANDBY') {
+      badge.textContent  = 'Open (Dev Mode)';
+      badge.style.color  = 'var(--yellow)';
     } else {
-      badge.textContent  = '🔓 Open';
+      badge.textContent  = 'Open';
       badge.style.color  = 'var(--green)';
     }
   }

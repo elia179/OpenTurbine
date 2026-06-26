@@ -39,44 +39,56 @@ public:
         Serial.printf("[%s] LEDC attach pin=%d freq=%luHz bits=%u %s\n",
                       _name, _pin, (unsigned long)_freqHz, (unsigned)_resBits,
                       ok ? "OK" : "FAILED");
-        ledcWrite(_pin, _inverted ? _maxDuty : 0);  // off on boot
+        _lastDuty = NO_DUTY;
+        writeDuty(_inverted ? _maxDuty : 0);  // off on boot
     }
 
     void set(float value) override {
         value = constrain(value, 0.0f, 1.0f);
         if (_inverted) value = 1.0f - value;
         uint32_t duty = (uint32_t)(value * _maxDuty);
-        // Log only on transitions into/out of 0% and 100% duty. set() is called
-        // every loop tick, so a level-based condition here would print
-        // continuously while an output sits at full duty (e.g. oil prime) —
-        // Serial blocks once its TX buffer fills, adding jitter to the control loop.
-        if ((duty == 0) != (_lastDuty == 0) || (duty == _maxDuty) != (_lastDuty == _maxDuty)) {
-            Serial.printf("[%s] LEDC duty pin=%d duty=%lu/%lu\n",
-                          _name, _pin, (unsigned long)duty, (unsigned long)_maxDuty);
-        }
-        _lastDuty = duty;
-        ledcWrite(_pin, duty);
+        writeDuty(duty);
     }
 
     void off() override {
-        ledcWrite(_pin, _inverted ? _maxDuty : 0);
+        writeDuty(_inverted ? _maxDuty : 0);
     }
 
     const char* name() override { return _name; }
 
     // Raw duty access for P-controller that works in counts
     void setDuty(uint32_t duty) {
-        ledcWrite(_pin, constrain((int)duty, 0, (int)_maxDuty));
+        writeDuty((uint32_t)constrain((int)duty, 0, (int)_maxDuty));
     }
 
     uint32_t maxDuty() const { return _maxDuty; }
 
 private:
+    static constexpr uint32_t NO_DUTY = UINT32_MAX;
+
+    void writeDuty(uint32_t duty) {
+        duty = (uint32_t)constrain((int)duty, 0, (int)_maxDuty);
+        if (duty == _lastDuty) return;
+
+        // Log only on transitions into/out of 0% and 100% duty. set() is called
+        // every loop tick, so a level-based condition here would print
+        // continuously while an output sits at full duty (e.g. oil prime).
+        if (_lastDuty != NO_DUTY &&
+            ((duty == 0) != (_lastDuty == 0) ||
+             (duty == _maxDuty) != (_lastDuty == _maxDuty))) {
+            Serial.printf("[%s] LEDC duty pin=%d duty=%lu/%lu\n",
+                          _name, _pin, (unsigned long)duty, (unsigned long)_maxDuty);
+        }
+
+        ledcWrite(_pin, duty);
+        _lastDuty = duty;
+    }
+
     int         _pin;
     uint32_t    _freqHz;
     uint8_t     _resBits;
     const char* _name;
     uint32_t    _maxDuty;
-    uint32_t    _lastDuty = 0;
+    uint32_t    _lastDuty = NO_DUTY;
     bool        _inverted = false;
 };

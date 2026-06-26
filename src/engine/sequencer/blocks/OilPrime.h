@@ -30,7 +30,7 @@ public:
         } else {
             ed.oilPumpPct = startupOilPct;   // fixed % — no sensor, run for timeout
         }
-        if (useScavengePump) ed.oilScavengeOn = true;
+        if (HardwareConfig::hasOilScavengePump && useScavengePump) ed.oilScavengeOn = true;
     }
 
     BlockResult tick() override {
@@ -72,7 +72,9 @@ public:
 
     void onExit() override {
         // Arm oil safety check — sequencer sets the real threshold in StarterSpin
-        if (_completed) EngineData::instance().oilMinBar = oilArmMinBar;
+        auto& ed = EngineData::instance();
+        if (_completed) ed.oilMinBar = oilArmMinBar;
+        if (useScavengePump) ed.oilScavengeOn = false;
     }
 
 private:
