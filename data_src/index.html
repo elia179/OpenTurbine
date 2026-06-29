@@ -438,6 +438,30 @@
   </div>
 </div>
 
+<!-- Beta acknowledgement dialog -->
+<div id="beta-ack-overlay" class="beta-ack-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="beta-ack-title">
+  <div class="beta-ack-box">
+    <div class="beta-ack-kicker">Beta Safety Notice</div>
+    <h3 id="beta-ack-title">OpenTurbine is beta ECU software</h3>
+    <p>
+      Parts of this codebase were written with AI assistance and human review. It has almost certainly not been tested with your exact turbine, wiring, sensors, actuators, fuel system, and sequence setup.
+    </p>
+    <ul>
+      <li>Verify every sensor reading, calibration, actuator output, GPIO assignment, failsafe, and startup/shutdown sequence on the bench before any live run.</li>
+      <li>Do not trust defaults. Confirm fuel, oil, starter, ignition, shutdown, and emergency-stop behavior with the engine unable to start.</li>
+      <li>You are responsible for deciding whether this system is safe for your engine. The developer accepts no responsibility for damage, injury, loss, or unexpected ECU behavior.</li>
+      <li>Please report beta issues with enough detail to reproduce them. More setup and safety notes are in the project README.</li>
+    </ul>
+    <label class="beta-ack-check">
+      <input type="checkbox" id="beta-ack-check" onchange="updateBetaAckButton()">
+      <span>I understand this is beta software and I must verify my own setup before running an engine.</span>
+    </label>
+    <div class="btns">
+      <button id="beta-ack-btn" class="primary" onclick="acceptBetaNotice()" disabled>Continue to Dashboard</button>
+    </div>
+  </div>
+</div>
+
 <!-- Start confirmation dialog -->
 <div id="start-confirm-overlay" style="display:none">
   <div id="start-confirm-box">
@@ -451,7 +475,40 @@
 </div>
 
 <script>
+const BETA_ACK_KEY = 'ot_beta_notice_ack_v1';
+let betaAckSession = false;
+function hasBetaNoticeAck() {
+  if (betaAckSession) return true;
+  try { return localStorage.getItem(BETA_ACK_KEY) === '1'; } catch(e) { return false; }
+}
+function showBetaNotice() {
+  const overlay = document.getElementById('beta-ack-overlay');
+  const check = document.getElementById('beta-ack-check');
+  if (check) check.checked = false;
+  updateBetaAckButton();
+  if (overlay) overlay.style.display = 'flex';
+}
+function updateBetaAckButton() {
+  const check = document.getElementById('beta-ack-check');
+  const btn = document.getElementById('beta-ack-btn');
+  if (btn) btn.disabled = !(check && check.checked);
+}
+function acceptBetaNotice() {
+  const check = document.getElementById('beta-ack-check');
+  if (!check || !check.checked) return;
+  betaAckSession = true;
+  try { localStorage.setItem(BETA_ACK_KEY, '1'); } catch(e) {}
+  const overlay = document.getElementById('beta-ack-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+document.addEventListener('DOMContentLoaded', function() {
+  if (!hasBetaNoticeAck()) showBetaNotice();
+});
 function showStartConfirm() {
+  if (!hasBetaNoticeAck()) {
+    showBetaNotice();
+    return;
+  }
   const text = document.getElementById('start-confirm-text');
   if (text) {
     const bench = !!(_lastData && _lastData.bench_mode);

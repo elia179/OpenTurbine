@@ -392,13 +392,71 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
 }
 .hour-meter span { color: var(--text); font-weight: 600; font-family: var(--font-mono); }
 
-/* ── Start confirm dialog ────────────────────────────────────── */
+/* Beta/start dialogs */
+.beta-ack-overlay,
 #start-confirm-overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0,0,0,0.78);
   display: flex; align-items: center; justify-content: center;
   z-index: 1000;
   backdrop-filter: blur(2px);
+  padding: 1rem;
+}
+.beta-ack-overlay { z-index: 1200; }
+.beta-ack-box {
+  background: var(--surface-2);
+  border: 1px solid rgba(255,68,102,0.55);
+  border-radius: var(--r-md);
+  padding: 1.25rem 1.45rem;
+  max-width: 760px;
+  width: min(100%, 760px);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.beta-ack-kicker {
+  color: var(--red);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+.beta-ack-box h3 {
+  margin-bottom: 0.65rem;
+  font-size: 1.22rem;
+  line-height: 1.2;
+}
+.beta-ack-box p,
+.beta-ack-box li {
+  color: var(--text-2);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+.beta-ack-box ul {
+  margin: 0.8rem 0 1rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+.beta-ack-check {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  color: var(--text);
+  background: rgba(255,68,102,0.08);
+  border: 1px solid rgba(255,68,102,0.35);
+  border-radius: var(--r-sm);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  margin-bottom: 1rem;
+}
+.beta-ack-check input { flex: 0 0 auto; margin-top: 0.12rem; }
+.beta-ack-box .btns { display: flex; justify-content: flex-end; }
+
+#start-confirm-overlay {
+  padding: 1rem;
 }
 #start-confirm-box {
   background: var(--surface-2);
