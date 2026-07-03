@@ -1605,6 +1605,13 @@
           <div class="hw-field"><span class="hw-label">GPIO pin</span>
             <span class="hw-desc">Drive a logic-level MOSFET gate from this pin. Do not connect directly to glow plug.</span>
             <select id="f-glow-pin" onchange="setAct('glow_plug','pin',+this.value)"></select></div>
+          <div class="hw-field"><span class="hw-label">Glow type</span>
+            <span class="hw-desc">Wet glow adds a delayed pilot-fuel output while sequencer blocks still command the glow normally.</span>
+            <select id="f-glow-type" onchange="setGlowType(+this.value)">
+              <option value="0">Plain glow plug</option>
+              <option value="1">Current-sensed glow plug</option>
+              <option value="2">Wet glow plug</option>
+            </select></div>
         </div>
         <div class="act-subgroup">
           <span>MOTOR PWM SETTINGS</span>
@@ -1615,6 +1622,31 @@
             <div class="hw-field"><span class="hw-label">Resolution (bits)</span>
               <span class="hw-desc">PWM duty resolution. 10 bits (1024 steps) is fine for glow plugs. Higher bits limit maximum frequency.</span>
               <input type="number" id="f-glow-bits" min="8" max="14" oninput="setAct('glow_plug','res_bits',+this.value)"></div>
+          </div>
+        </div>
+        <div class="act-subgroup" id="grp-wetglow">
+          <span>WET GLOW PILOT FUEL</span>
+          <div class="hw-grid">
+            <div class="hw-field"><span class="hw-label">Fuel GPIO pin</span>
+              <span class="hw-desc">Drives the pilot fuel solenoid or small pump.</span>
+              <select id="f-wetglow-pin" onchange="setAct('glow_plug','fuel_pin',+this.value)"></select></div>
+            <div class="hw-field"><span class="hw-label">Fuel output mode</span>
+              <select id="f-wetglow-type" onchange="setAct('glow_plug','fuel_type',+this.value)">
+                <option value="0">Relay / solenoid</option>
+                <option value="1">PWM motor</option>
+                <option value="2">Servo / ESC signal</option>
+              </select></div>
+            <div class="hw-field"><span class="hw-label">Fuel active high</span>
+              <label class="hw-toggle"><input type="checkbox" id="f-wetglow-activeh" onchange="setAct('glow_plug','fuel_active_h',this.checked)"><span></span> Active high</label></div>
+            <div class="hw-field"><span class="hw-label">Fuel delay after glow ON (ms)</span>
+              <input type="number" id="f-wetglow-delay" min="0" max="3600000" step="100" oninput="setAct('glow_plug','fuel_delay_ms',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Fuel demand (%)</span>
+              <span class="hw-desc">Used for PWM or servo/ESC modes. Relay mode treats any ON as full on.</span>
+              <input type="number" id="f-wetglow-demand" min="0" max="100" step="1" oninput="setAct('glow_plug','fuel_demand_pct',+this.value)"></div>
+            <div class="hw-field"><span class="hw-label">Servo min/max us</span>
+              <div style="display:flex;gap:.35rem"><input type="number" id="f-wetglow-minus" min="500" max="2500" step="10" oninput="setAct('glow_plug','fuel_min_us',+this.value)"><input type="number" id="f-wetglow-maxus" min="500" max="2500" step="10" oninput="setAct('glow_plug','fuel_max_us',+this.value)"></div></div>
+            <div class="hw-field"><span class="hw-label">PWM freq / bits</span>
+              <div style="display:flex;gap:.35rem"><input type="number" id="f-wetglow-freq" min="1" max="100000" step="10" oninput="setAct('glow_plug','fuel_freq_hz',+this.value)"><input type="number" id="f-wetglow-bits" min="1" max="16" step="1" oninput="setAct('glow_plug','fuel_res_bits',+this.value)"></div></div>
           </div>
         </div>
         <!-- Inline current sensor for glow plug -->
@@ -2176,6 +2208,7 @@ function refreshAllPins() {
   refreshPinSel('f-fsol-pin',       'out', (a.fuel_sol||{}).pin);
   refreshPinSel('f-ign-pin',        'out', (a.igniter||{}).pin);
   refreshPinSel('f-ign2-pin',       'out', (a.igniter2||{}).pin);
+  refreshPinSel('f-wetglow-pin',    'out', (a.glow_plug||{}).fuel_pin);
   refreshPinSel('f-sen-pin',        'out', (a.starter_en||{}).pin);
   refreshPinSel('f-abs-pin',        'out', (a.ab_sol||{}).pin);
   refreshPinSel('f-abp-pin',        'out', (a.ab_pump||{}).pin);
@@ -2814,8 +2847,18 @@ function populate() {
   const glow = a.glow_plug || {};
   chk('en-glowplug', glow.enabled || false);
   updateGroupEnabled('grp-glowplug', glow.enabled || false);
+  v('f-glow-type', glow.type ?? (glow.has_current ? 1 : 0));
   v('f-glow-freq', glow.freq_hz  ?? 50);
   v('f-glow-bits', glow.res_bits ?? 12);
+  setOptionalGroupVisible('grp-wetglow', Number(glow.type || 0) === 2);
+  v('f-wetglow-type', glow.fuel_type ?? 0);
+  chk('f-wetglow-activeh', glow.fuel_active_h !== false);
+  v('f-wetglow-delay', glow.fuel_delay_ms ?? 8000);
+  v('f-wetglow-demand', glow.fuel_demand_pct ?? 100);
+  v('f-wetglow-minus', glow.fuel_min_us ?? 1000);
+  v('f-wetglow-maxus', glow.fuel_max_us ?? 2000);
+  v('f-wetglow-freq', glow.fuel_freq_hz ?? 1000);
+  v('f-wetglow-bits', glow.fuel_res_bits ?? 10);
 
   // Glow current — stored inside actuators.glow_plug (not sensors)
   const glowAct = (cfg.actuators && cfg.actuators.glow_plug) || {};
@@ -3472,7 +3515,19 @@ function setGlowCurrentEnabled(en) {
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.glow_plug) cfg.actuators.glow_plug = {};
   cfg.actuators.glow_plug.has_current = en;
+  if (en && Number(cfg.actuators.glow_plug.type || 0) === 0) cfg.actuators.glow_plug.type = 1;
   setOptionalGroupVisible('grp-glowcurrent', en);
+  refreshAllPins(); dirty();
+}
+function setGlowType(type) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.glow_plug) cfg.actuators.glow_plug = {};
+  cfg.actuators.glow_plug.type = Math.max(0, Math.min(2, Number(type) || 0));
+  if (cfg.actuators.glow_plug.type === 1) cfg.actuators.glow_plug.has_current = true;
+  if (cfg.actuators.glow_plug.type === 0) cfg.actuators.glow_plug.has_current = false;
+  chk('en-glowcurrent', !!cfg.actuators.glow_plug.has_current);
+  setOptionalGroupVisible('grp-glowcurrent', !!cfg.actuators.glow_plug.has_current);
+  setOptionalGroupVisible('grp-wetglow', cfg.actuators.glow_plug.type === 2);
   refreshAllPins(); dirty();
 }
 function setOilPumpCurrentEnabled(en) {
@@ -4060,6 +4115,8 @@ function _checkGpioConflicts() {
   // Inline current sensors — stored inside their actuator objects
   if (cfg.actuators?.glow_plug?.enabled && cfg.actuators.glow_plug.has_current)
     add(cfg.actuators.glow_plug.current_pin, 'Glow Current');
+  if (cfg.actuators?.glow_plug?.enabled && Number(cfg.actuators.glow_plug.type || 0) === 2)
+    add(cfg.actuators.glow_plug.fuel_pin, 'Wet Glow Fuel');
   if (cfg.actuators?.igniter?.enabled && cfg.actuators.igniter.has_current)
     add(cfg.actuators.igniter.current_pin, 'Igniter Current');
   if (cfg.actuators?.igniter2?.enabled && cfg.actuators.igniter2.has_current)

@@ -65,6 +65,17 @@ public:
     static float throttleIdleMinPct;
     static float throttleIdleMaxPct;
     static float throttleExpo;       // 0=linear, 0.3=mild expo, 1.0=max expo (reduces sensitivity near zero)
+    static bool  pullbackN1Enabled;
+    static bool  pullbackN2Enabled;
+    static bool  pullbackEgtEnabled;
+    static float pullbackN1SoftRpm;
+    static float pullbackN1HardRpm;
+    static float pullbackN2SoftRpm;
+    static float pullbackN2HardRpm;
+    static float pullbackEgtSoftC;
+    static float pullbackEgtHardC;
+    static float pullbackMinThrottlePct;
+    static float pullbackStrength;
 
     // ── Dynamic idle ──────────────────────────────────────────
     static float idleTargetRpm;

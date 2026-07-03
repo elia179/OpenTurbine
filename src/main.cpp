@@ -171,19 +171,63 @@ private:
     bool _stepDelayActive = false;
     bool _whileReleased = false;
 };
+
+class IgnitionCommandBlock : public IBlock {
+public:
+    void bind(const char* blockName, uint8_t target, unsigned long preheatMs) {
+        _name = blockName;
+        _target = constrain(target, 0, 2);
+        _preheatMs = preheatMs;
+    }
+
+    const char* name() override { return _name ? _name : "IgnitionCommand"; }
+
+    void onEnter() override {
+        _entryMs = millis();
+        if (strcmp(name(), "IgniterOff") == 0) _setTarget(false);
+        else _setTarget(true);
+    }
+
+    BlockResult tick() override {
+        if (strcmp(name(), "PreHeat") != 0) return BlockResult::Complete;
+        return (millis() - _entryMs) >= _preheatMs ? BlockResult::Complete : BlockResult::Running;
+    }
+
+    void onExit() override {}
+
+private:
+    void _setTarget(bool on) {
+        auto& ed = EngineData::instance();
+        switch (_target) {
+            case 1: ed.igniter2On = on; break;
+            case 2: ed.glowPlugDemand = on ? (Config::glowHoldPct / 100.0f) : 0.0f; break;
+            default: ed.igniterOn = on; break;
+        }
+    }
+
+    const char* _name = nullptr;
+    uint8_t _target = 0;
+    unsigned long _preheatMs = 0;
+    unsigned long _entryMs = 0;
+};
+
 static CustomSequenceBlock _startupCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IgnitionCommandBlock _startupIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _startupCount  = 0;
 static IBlock* _shutdownBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _shutdownDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static CustomSequenceBlock _shutdownCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IgnitionCommandBlock _shutdownIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _shutdownCount = 0;
 static IBlock* _abIgnBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _abIgnDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static CustomSequenceBlock _abIgnCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IgnitionCommandBlock _abIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _abIgnCount    = 0;
 static IBlock* _abShutBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static TimedDelay _abShutDelays[HardwareConfig::MAX_SEQ_BLOCKS];
 static CustomSequenceBlock _abShutCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IgnitionCommandBlock _abShutIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
 static int     _abShutCount   = 0;
 static void validateSequences();  // defined after buildSequences
 
@@ -197,11 +241,18 @@ static void buildSequences() {
         }
         return nullptr;
     };
-    auto addBlock = [&](const char* name, int delayMs, TimedDelay& delay, CustomSequenceBlock& custom,
+    auto addBlock = [&](const char* name, int delayMs, uint8_t ignitionTarget,
+                       TimedDelay& delay, CustomSequenceBlock& custom, IgnitionCommandBlock& ignition,
                        IBlock** blocks, int& count) {
         if (strcmp(name, "TimedDelay") == 0) {
             delay.dwellMs = (unsigned long)(delayMs > 0 ? delayMs : Config::timedDelayMs);
             blocks[count++] = &delay;
+            return;
+        }
+        if (strcmp(name, "IgniterOn") == 0 || strcmp(name, "IgniterOff") == 0 ||
+            strcmp(name, "PreHeat") == 0) {
+            ignition.bind(name, ignitionTarget, (unsigned long)Config::preHeatMs);
+            blocks[count++] = &ignition;
             return;
         }
         if (const auto* def = findCustomDef(name)) {
@@ -218,24 +269,28 @@ static void buildSequences() {
     };
     _startupCount = 0;
     for (int i = 0; i < hw.startupSeqLen; i++) {
-        addBlock(hw.startupSeq[i], hw.startupDelayMs[i], _startupDelays[i], _startupCustomBlocks[i],
+        addBlock(hw.startupSeq[i], hw.startupDelayMs[i], hw.startupIgnitionTarget[i],
+                 _startupDelays[i], _startupCustomBlocks[i], _startupIgnitionBlocks[i],
                  _startupBlocks, _startupCount);
     }
     _shutdownCount = 0;
     for (int i = 0; i < hw.shutdownSeqLen; i++) {
-        addBlock(hw.shutdownSeq[i], hw.shutdownDelayMs[i], _shutdownDelays[i], _shutdownCustomBlocks[i],
+        addBlock(hw.shutdownSeq[i], hw.shutdownDelayMs[i], hw.shutdownIgnitionTarget[i],
+                 _shutdownDelays[i], _shutdownCustomBlocks[i], _shutdownIgnitionBlocks[i],
                  _shutdownBlocks, _shutdownCount);
     }
     // AB ignition sequence
     _abIgnCount = 0;
     for (int i = 0; i < hw.abSeqLen; i++) {
-        addBlock(hw.abSeq[i], hw.abDelayMs[i], _abIgnDelays[i], _abIgnCustomBlocks[i],
+        addBlock(hw.abSeq[i], hw.abDelayMs[i], hw.abIgnitionTarget[i],
+                 _abIgnDelays[i], _abIgnCustomBlocks[i], _abIgnitionBlocks[i],
                  _abIgnBlocks, _abIgnCount);
     }
     // AB shutdown sequence
     _abShutCount = 0;
     for (int i = 0; i < hw.abShutSeqLen; i++) {
-        addBlock(hw.abShutSeq[i], hw.abShutDelayMs[i], _abShutDelays[i], _abShutCustomBlocks[i],
+        addBlock(hw.abShutSeq[i], hw.abShutDelayMs[i], hw.abShutIgnitionTarget[i],
+                 _abShutDelays[i], _abShutCustomBlocks[i], _abShutIgnitionBlocks[i],
                  _abShutBlocks, _abShutCount);
     }
     Serial.printf("[OT] Sequences: startup=%d, shutdown=%d, ab_ign=%d, ab_shut=%d blocks\n",
@@ -255,6 +310,14 @@ static void validateSequences() {
     ed.seqIssueCount = 0;
     ed.seqHasErrors  = false;
     ed.seqHasStructuralErrors = false;
+
+    auto ignitionTargetAvailable = [&](uint8_t target) {
+        switch (constrain(target, 0, 2)) {
+            case 1: return hw.hasIgniter2;
+            case 2: return hw.hasGlowPlug;
+            default: return hw.hasIgniter;
+        }
+    };
 
     auto addIssue = [&](const char* block, const char* reason, bool isError) {
         if (ed.seqIssueCount >= EngineData::MAX_SEQ_ISSUES) return;
@@ -447,12 +510,16 @@ static void validateSequences() {
                 addIssue(nm, "No igniter configured — block will complete with no spark", false);
         }
         else if (strcmp(nm, "PreHeat") == 0) {
-            if (!hw.hasIgniter)
+            if (!ignitionTargetAvailable(hw.startupIgnitionTarget[i]))
                 addIssue(nm, "No igniter configured - pre-heat has no physical ignition output", false);
         }
         else if (strcmp(nm, "IgniterOn") == 0) {
-            if (!hw.hasIgniter)
+            if (!ignitionTargetAvailable(hw.startupIgnitionTarget[i]))
                 addIssue(nm, "No igniter actuator configured - timed light-up has no ignition output", false);
+        }
+        else if (strcmp(nm, "IgniterOff") == 0) {
+            if (!ignitionTargetAvailable(hw.startupIgnitionTarget[i]))
+                addIssue(nm, "Selected ignition output is not configured - off command has no physical output", false);
         }
         else if (strcmp(nm, "FuelOpen") == 0) {
             if (!hw.hasFuelSol)

@@ -514,9 +514,11 @@ bool sequenceBlockAvailable(const char* name) {
         return HardwareConfig::hasThrottle;
     if (strcmp(name, "FuelOpen") == 0 || strcmp(name, "FuelSolClose") == 0 || strcmp(name, "FuelPulse") == 0)
         return HardwareConfig::hasFuelSol;
-    if (strcmp(name, "PreIgnSpark") == 0 || strcmp(name, "PreHeat") == 0 ||
-        strcmp(name, "IgniterOn") == 0 || strcmp(name, "IgniterOff") == 0)
+    if (strcmp(name, "PreIgnSpark") == 0)
         return HardwareConfig::hasIgniter;
+    if (strcmp(name, "PreHeat") == 0 ||
+        strcmp(name, "IgniterOn") == 0 || strcmp(name, "IgniterOff") == 0)
+        return HardwareConfig::hasIgniter || HardwareConfig::hasIgniter2 || HardwareConfig::hasGlowPlug;
     if (strcmp(name, "FlameConfirm") == 0) return HardwareConfig::hasFlame;
     if (strcmp(name, "TempConfirm") == 0 || strcmp(name, "WaitTOTCool") == 0)
         return HardwareConfig::hasTot || HardwareConfig::hasTit;
@@ -538,6 +540,7 @@ bool sequenceBlockAvailable(const char* name) {
 
 void sanitizeSequenceBlocks(
     char seq[HardwareConfig::MAX_SEQ_BLOCKS][24], int& len, int delays[HardwareConfig::MAX_SEQ_BLOCKS],
+    uint8_t ignitionTargets[HardwareConfig::MAX_SEQ_BLOCKS],
     HardwareConfig::SeqSideAction enterActions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS],
     HardwareConfig::SeqSideAction exitActions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
     int out = 0;
@@ -547,6 +550,7 @@ void sanitizeSequenceBlocks(
             strncpy(seq[out], seq[i], sizeof(seq[out]) - 1);
             seq[out][sizeof(seq[out]) - 1] = '\0';
             delays[out] = delays[i];
+            ignitionTargets[out] = constrain(ignitionTargets[i], 0, 2);
             memcpy(enterActions[out], enterActions[i], sizeof(enterActions[out]));
             memcpy(exitActions[out], exitActions[i], sizeof(exitActions[out]));
         }
@@ -555,6 +559,7 @@ void sanitizeSequenceBlocks(
     for (int i = out; i < HardwareConfig::MAX_SEQ_BLOCKS; i++) {
         seq[i][0] = '\0';
         delays[i] = 0;
+        ignitionTargets[i] = 0;
         memset(enterActions[i], 0, sizeof(enterActions[i]));
         memset(exitActions[i], 0, sizeof(exitActions[i]));
     }
@@ -566,6 +571,14 @@ bool intRange(JsonVariantConst object, const char* field, long minValue, long ma
     if (!object[field].is<int>() && !object[field].is<long>() &&
         !object[field].is<unsigned int>() && !object[field].is<unsigned long>()) return false;
     long value = object[field].as<long>();
+    return value >= minValue && value <= maxValue;
+}
+
+bool numberRange(JsonVariantConst object, const char* field, float minValue, float maxValue) {
+    if (object[field].isNull()) return true;
+    if (!object[field].is<float>() && !object[field].is<double>() &&
+        !object[field].is<int>() && !object[field].is<long>()) return false;
+    float value = object[field].as<float>();
     return value >= minValue && value <= maxValue;
 }
 
@@ -693,6 +706,23 @@ bool validatePlatformPins(const JsonDocument& doc) {
             }
             if (pin < 0 || !outputGpioAllowed(pin) ||
                 (pin >= 0 && (pin == stopPin || pin == startPin))) return false;
+            if (strcmp(key, "glow_plug") == 0) {
+                const int glowType = item["type"] | 0;
+                if (glowType < 0 || glowType > 2) return false;
+                if (glowType == 2) {
+                    const int fuelPin = item["fuel_pin"] | -1;
+                    const int fuelType = item["fuel_type"] | 0;
+                    if (fuelType < 0 || fuelType > 2) return false;
+                    if (fuelPin < 0 || !outputGpioAllowed(fuelPin) ||
+                        fuelPin == stopPin || fuelPin == startPin) return false;
+                    if (!intRange(item, "fuel_delay_ms", 0, 3600000) ||
+                        !intRange(item, "fuel_min_us", 500, 2500) ||
+                        !intRange(item, "fuel_max_us", 500, 2500) ||
+                        !intRange(item, "fuel_freq_hz", 1, 100000) ||
+                        !intRange(item, "fuel_res_bits", 1, 16) ||
+                        !numberRange(item, "fuel_demand_pct", 0.0f, 100.0f)) return false;
+                }
+            }
         }
     }
 
@@ -800,6 +830,8 @@ bool validatePlatformPins(const JsonDocument& doc) {
         if (!hasAfterburner &&
             (strcmp(key, "ab_sol") == 0 || strcmp(key, "ab_pump") == 0)) continue;
         if (enabled(item) && !addPin(jsonPin(item, "pin"))) return false;
+        if (strcmp(key, "glow_plug") == 0 && enabled(item) && ((item["type"] | 0) == 2) &&
+            !addPin(item["fuel_pin"] | -1)) return false;
     }
     for (const char* key : currentSensorOwners) {
         JsonVariantConst item = actuators[key];
@@ -965,9 +997,19 @@ int   HardwareConfig::propPitchMaxUs   = 2000;
 int   HardwareConfig::propPitchFreqHz  = 1000;
 int   HardwareConfig::propPitchResBits = 10;
 bool  HardwareConfig::propPitchActiveH = true;
+int   HardwareConfig::glowPlugType     = 0;
 int   HardwareConfig::glowPlugPin      = -1;
 int   HardwareConfig::glowPlugFreqHz   = 1000;
 int   HardwareConfig::glowPlugResBits  = 8;
+int   HardwareConfig::wetGlowFuelPin       = -1;
+int   HardwareConfig::wetGlowFuelType      = 0;
+bool  HardwareConfig::wetGlowFuelActiveH   = true;
+int   HardwareConfig::wetGlowFuelMinUs     = 1000;
+int   HardwareConfig::wetGlowFuelMaxUs     = 2000;
+int   HardwareConfig::wetGlowFuelFreqHz    = 1000;
+int   HardwareConfig::wetGlowFuelResBits   = 10;
+float HardwareConfig::wetGlowFuelDemandPct = 100.0f;
+int   HardwareConfig::wetGlowFuelDelayMs   = 8000;
 int   HardwareConfig::glowCurrentPin           = -1;
 float HardwareConfig::glowCurrentMvPerA        = 185.0f;
 float HardwareConfig::glowCurrentZeroV         = 1.65f;
@@ -1157,6 +1199,7 @@ char  HardwareConfig::startupSeq[MAX_SEQ_BLOCKS][24] = {
 };
 int   HardwareConfig::startupSeqLen    = 7;
 int   HardwareConfig::startupDelayMs[MAX_SEQ_BLOCKS] = {0, 15000, 0, 0, 10000, 0, 5000};
+uint8_t HardwareConfig::startupIgnitionTarget[MAX_SEQ_BLOCKS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::startupEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::startupExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 
@@ -1165,17 +1208,20 @@ char  HardwareConfig::shutdownSeq[MAX_SEQ_BLOCKS][24] = {
 };
 int   HardwareConfig::shutdownSeqLen   = 3;
 int   HardwareConfig::shutdownDelayMs[MAX_SEQ_BLOCKS] = {0, 15000, 0};
+uint8_t HardwareConfig::shutdownIgnitionTarget[MAX_SEQ_BLOCKS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::shutdownEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::shutdownExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 
 char  HardwareConfig::abSeq[MAX_SEQ_BLOCKS][24]    = {};
 int   HardwareConfig::abSeqLen                     = 0;
 int   HardwareConfig::abDelayMs[MAX_SEQ_BLOCKS]    = {};
+uint8_t HardwareConfig::abIgnitionTarget[MAX_SEQ_BLOCKS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::abEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::abExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 char  HardwareConfig::abShutSeq[MAX_SEQ_BLOCKS][24]= {};
 int   HardwareConfig::abShutSeqLen                 = 0;
 int   HardwareConfig::abShutDelayMs[MAX_SEQ_BLOCKS]= {};
+uint8_t HardwareConfig::abShutIgnitionTarget[MAX_SEQ_BLOCKS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::abShutEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 HardwareConfig::SeqSideAction HardwareConfig::abShutExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS] = {};
 HardwareConfig::CustomBlockDef HardwareConfig::customBlocks[MAX_CUSTOM_BLOCKS] = {};
@@ -1450,7 +1496,11 @@ void HardwareConfig::applyDefaults() {
     bleedValveMinUs = 1000; bleedValveMaxUs = 2000; bleedValveFreqHz = 1000; bleedValveResBits = 10;
     propPitchType = 0; propPitchPin = -1; propPitchMinUs = 1000; propPitchMaxUs = 2000;
     propPitchFreqHz = 1000; propPitchResBits = 10; propPitchActiveH = true;
-    glowPlugPin = -1; glowPlugFreqHz = 1000; glowPlugResBits = 8;
+    glowPlugType = 0; glowPlugPin = -1; glowPlugFreqHz = 1000; glowPlugResBits = 8;
+    wetGlowFuelPin = -1; wetGlowFuelType = 0; wetGlowFuelActiveH = true;
+    wetGlowFuelMinUs = 1000; wetGlowFuelMaxUs = 2000;
+    wetGlowFuelFreqHz = 1000; wetGlowFuelResBits = 10;
+    wetGlowFuelDemandPct = 100.0f; wetGlowFuelDelayMs = 8000;
     glowCurrentPin = -1; glowCurrentMvPerA = 185.0f; glowCurrentZeroV = 1.65f; glowCurrentReadyAmps = 3.0f;
     oilPumpCurrentPin = -1; oilPumpCurrentMvPerA = 100.0f; oilPumpCurrentZeroV = 1.65f; oilPumpCurrentMaxAmps = 0.0f;
     mavlinkTxPin = -1; mavlinkBaud = 57600; mavlinkIntervalMs = 100;
@@ -1576,6 +1626,7 @@ void HardwareConfig::applyDefaults() {
     };
     startupSeqLen = 7;
     memset(startupDelayMs, 0, sizeof(startupDelayMs));
+    memset(startupIgnitionTarget, 0, sizeof(startupIgnitionTarget));
     startupDelayMs[1] = 15000;
     startupDelayMs[4] = 10000;
     startupDelayMs[6] = 5000;
@@ -1587,6 +1638,7 @@ void HardwareConfig::applyDefaults() {
     const char* defStop[] = { "ImmediateCut","TimedDelay","OilPumpOff" };
     shutdownSeqLen = 3;
     memset(shutdownDelayMs, 0, sizeof(shutdownDelayMs));
+    memset(shutdownIgnitionTarget, 0, sizeof(shutdownIgnitionTarget));
     shutdownDelayMs[1] = 15000;
     clearSeqSideActions(shutdownEnterActions);
     clearSeqSideActions(shutdownExitActions);
@@ -1600,6 +1652,7 @@ void HardwareConfig::applyDefaults() {
     abSeqLen = 6;
     memset(abSeq, 0, sizeof(abSeq));
     memset(abDelayMs, 0, sizeof(abDelayMs));
+    memset(abIgnitionTarget, 0, sizeof(abIgnitionTarget));
     clearSeqSideActions(abEnterActions);
     clearSeqSideActions(abExitActions);
     for (int i = 0; i < abSeqLen; i++)
@@ -1610,6 +1663,7 @@ void HardwareConfig::applyDefaults() {
     abShutSeqLen = 2;
     memset(abShutSeq, 0, sizeof(abShutSeq));
     memset(abShutDelayMs, 0, sizeof(abShutDelayMs));
+    memset(abShutIgnitionTarget, 0, sizeof(abShutIgnitionTarget));
     clearSeqSideActions(abShutEnterActions);
     clearSeqSideActions(abShutExitActions);
     clearCustomBlocks();
@@ -1857,7 +1911,17 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto glw = acts["glow_plug"].to<JsonObject>();
     glw["enabled"] = hasGlowPlug; glw["pin"] = glowPlugPin;
+    glw["type"] = glowPlugType;
     glw["freq_hz"] = glowPlugFreqHz; glw["res_bits"] = glowPlugResBits;
+    glw["fuel_pin"] = wetGlowFuelPin;
+    glw["fuel_type"] = wetGlowFuelType;
+    glw["fuel_active_h"] = wetGlowFuelActiveH;
+    glw["fuel_min_us"] = wetGlowFuelMinUs;
+    glw["fuel_max_us"] = wetGlowFuelMaxUs;
+    glw["fuel_freq_hz"] = wetGlowFuelFreqHz;
+    glw["fuel_res_bits"] = wetGlowFuelResBits;
+    glw["fuel_demand_pct"] = wetGlowFuelDemandPct;
+    glw["fuel_delay_ms"] = wetGlowFuelDelayMs;
     glw["current_pin"]    = glowCurrentPin;
     glw["current_mv_a"]   = glowCurrentMvPerA;
     glw["current_zero_v"] = glowCurrentZeroV;
@@ -1908,6 +1972,8 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < startupSeqLen; i++) ss.add(startupSeq[i]);
     auto ssd = doc["startup_delay_ms"].to<JsonArray>();
     for (int i = 0; i < startupSeqLen; i++) ssd.add(startupDelayMs[i]);
+    auto ssit = doc["startup_ignition_target"].to<JsonArray>();
+    for (int i = 0; i < startupSeqLen; i++) ssit.add(startupIgnitionTarget[i]);
     writeSeqSideActions(doc, "startup_enter_actions", startupSeqLen, startupEnterActions);
     writeSeqSideActions(doc, "startup_exit_actions", startupSeqLen, startupExitActions);
 
@@ -1915,6 +1981,8 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < shutdownSeqLen; i++) ds.add(shutdownSeq[i]);
     auto dsd = doc["shutdown_delay_ms"].to<JsonArray>();
     for (int i = 0; i < shutdownSeqLen; i++) dsd.add(shutdownDelayMs[i]);
+    auto dsit = doc["shutdown_ignition_target"].to<JsonArray>();
+    for (int i = 0; i < shutdownSeqLen; i++) dsit.add(shutdownIgnitionTarget[i]);
     writeSeqSideActions(doc, "shutdown_enter_actions", shutdownSeqLen, shutdownEnterActions);
     writeSeqSideActions(doc, "shutdown_exit_actions", shutdownSeqLen, shutdownExitActions);
 
@@ -1940,6 +2008,8 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < abSeqLen; i++) as.add(abSeq[i]);
     auto asd = doc["ab_delay_ms"].to<JsonArray>();
     for (int i = 0; i < abSeqLen; i++) asd.add(abDelayMs[i]);
+    auto asit = doc["ab_ignition_target"].to<JsonArray>();
+    for (int i = 0; i < abSeqLen; i++) asit.add(abIgnitionTarget[i]);
     writeSeqSideActions(doc, "ab_enter_actions", abSeqLen, abEnterActions);
     writeSeqSideActions(doc, "ab_exit_actions", abSeqLen, abExitActions);
 
@@ -1947,6 +2017,8 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     for (int i = 0; i < abShutSeqLen; i++) ass.add(abShutSeq[i]);
     auto assd = doc["ab_shut_delay_ms"].to<JsonArray>();
     for (int i = 0; i < abShutSeqLen; i++) assd.add(abShutDelayMs[i]);
+    auto assit = doc["ab_shut_ignition_target"].to<JsonArray>();
+    for (int i = 0; i < abShutSeqLen; i++) assit.add(abShutIgnitionTarget[i]);
     writeSeqSideActions(doc, "ab_shut_enter_actions", abShutSeqLen, abShutEnterActions);
     writeSeqSideActions(doc, "ab_shut_exit_actions", abShutSeqLen, abShutExitActions);
     writeCustomBlocks(doc);
@@ -2262,14 +2334,37 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto glw = a["glow_plug"];
     if (!glw["enabled"].isNull()) hasGlowPlug  = glw["enabled"].as<bool>();
+    glowPlugType    = glw["type"]     | glowPlugType;
     glowPlugPin     = glw["pin"]      | glowPlugPin;
     glowPlugFreqHz  = glw["freq_hz"]  | glowPlugFreqHz;
     glowPlugResBits = glw["res_bits"] | glowPlugResBits;
+    wetGlowFuelPin       = glw["fuel_pin"]        | wetGlowFuelPin;
+    wetGlowFuelType      = glw["fuel_type"]       | wetGlowFuelType;
+    if (!glw["fuel_active_h"].isNull()) wetGlowFuelActiveH = glw["fuel_active_h"].as<bool>();
+    wetGlowFuelMinUs     = glw["fuel_min_us"]     | wetGlowFuelMinUs;
+    wetGlowFuelMaxUs     = glw["fuel_max_us"]     | wetGlowFuelMaxUs;
+    wetGlowFuelFreqHz    = glw["fuel_freq_hz"]    | wetGlowFuelFreqHz;
+    wetGlowFuelResBits   = glw["fuel_res_bits"]   | wetGlowFuelResBits;
+    wetGlowFuelDemandPct = glw["fuel_demand_pct"] | wetGlowFuelDemandPct;
+    wetGlowFuelDelayMs   = glw["fuel_delay_ms"]   | wetGlowFuelDelayMs;
     glowCurrentPin      = glw["current_pin"]     | glowCurrentPin;
     glowCurrentMvPerA   = glw["current_mv_a"]    | glowCurrentMvPerA;
     glowCurrentZeroV    = glw["current_zero_v"]  | glowCurrentZeroV;
     glowCurrentReadyAmps= glw["current_ready_a"] | glowCurrentReadyAmps;
     if (!glw["has_current"].isNull()) hasGlowCurrentSensor = hasGlowPlug && glw["has_current"].as<bool>();
+    glowPlugType = constrain(glowPlugType, 0, 2);
+    wetGlowFuelType = constrain(wetGlowFuelType, 0, 2);
+    wetGlowFuelMinUs = constrain(wetGlowFuelMinUs, 500, 2500);
+    wetGlowFuelMaxUs = constrain(wetGlowFuelMaxUs, 500, 2500);
+    if (wetGlowFuelMaxUs < wetGlowFuelMinUs) {
+        int tmp = wetGlowFuelMinUs;
+        wetGlowFuelMinUs = wetGlowFuelMaxUs;
+        wetGlowFuelMaxUs = tmp;
+    }
+    wetGlowFuelFreqHz = constrain(wetGlowFuelFreqHz, 1, 100000);
+    wetGlowFuelResBits = constrain(wetGlowFuelResBits, 1, 16);
+    wetGlowFuelDemandPct = constrain(wetGlowFuelDemandPct, 0.0f, 100.0f);
+    if (wetGlowFuelDelayMs < 0) wetGlowFuelDelayMs = 0;
 
     auto led = a["status_led"];
     const bool ledEnabledPresent = !led["enabled"].isNull();
@@ -2412,6 +2507,12 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         for (int i = 0; i < startupSeqLen && i < (int)d.size(); i++)
             startupDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
+    memset(startupIgnitionTarget, 0, sizeof(startupIgnitionTarget));
+    if (doc["startup_ignition_target"].is<JsonArrayConst>()) {
+        JsonArrayConst t = doc["startup_ignition_target"];
+        for (int i = 0; i < startupSeqLen && i < (int)t.size(); i++)
+            startupIgnitionTarget[i] = constrain(t[i] | 0, 0, 2);
+    }
     readSeqSideActions(doc, "startup_enter_actions", startupSeqLen, startupEnterActions);
     readSeqSideActions(doc, "startup_exit_actions", startupSeqLen, startupExitActions);
 
@@ -2430,6 +2531,12 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         JsonArrayConst d = doc["shutdown_delay_ms"];
         for (int i = 0; i < shutdownSeqLen && i < (int)d.size(); i++)
             shutdownDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
+    }
+    memset(shutdownIgnitionTarget, 0, sizeof(shutdownIgnitionTarget));
+    if (doc["shutdown_ignition_target"].is<JsonArrayConst>()) {
+        JsonArrayConst t = doc["shutdown_ignition_target"];
+        for (int i = 0; i < shutdownSeqLen && i < (int)t.size(); i++)
+            shutdownIgnitionTarget[i] = constrain(t[i] | 0, 0, 2);
     }
     readSeqSideActions(doc, "shutdown_enter_actions", shutdownSeqLen, shutdownEnterActions);
     readSeqSideActions(doc, "shutdown_exit_actions", shutdownSeqLen, shutdownExitActions);
@@ -2468,6 +2575,12 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         for (int i = 0; i < abSeqLen && i < (int)d.size(); i++)
             abDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
     }
+    memset(abIgnitionTarget, 0, sizeof(abIgnitionTarget));
+    if (doc["ab_ignition_target"].is<JsonArrayConst>()) {
+        JsonArrayConst t = doc["ab_ignition_target"];
+        for (int i = 0; i < abSeqLen && i < (int)t.size(); i++)
+            abIgnitionTarget[i] = constrain(t[i] | 0, 0, 2);
+    }
     readSeqSideActions(doc, "ab_enter_actions", abSeqLen, abEnterActions);
     readSeqSideActions(doc, "ab_exit_actions", abSeqLen, abExitActions);
 
@@ -2486,6 +2599,12 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         JsonArrayConst d = doc["ab_shut_delay_ms"];
         for (int i = 0; i < abShutSeqLen && i < (int)d.size(); i++)
             abShutDelayMs[i] = constrain(d[i] | 0, 0, 3600000);
+    }
+    memset(abShutIgnitionTarget, 0, sizeof(abShutIgnitionTarget));
+    if (doc["ab_shut_ignition_target"].is<JsonArrayConst>()) {
+        JsonArrayConst t = doc["ab_shut_ignition_target"];
+        for (int i = 0; i < abShutSeqLen && i < (int)t.size(); i++)
+            abShutIgnitionTarget[i] = constrain(t[i] | 0, 0, 2);
     }
     readSeqSideActions(doc, "ab_shut_enter_actions", abShutSeqLen, abShutEnterActions);
     readSeqSideActions(doc, "ab_shut_exit_actions", abShutSeqLen, abShutExitActions);
@@ -2516,10 +2635,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     migrateNamedDelays(shutdownSeq, shutdownDelayMs, shutdownSeqLen);
     migrateNamedDelays(abSeq, abDelayMs, abSeqLen);
     migrateNamedDelays(abShutSeq, abShutDelayMs, abShutSeqLen);
-    sanitizeSequenceBlocks(startupSeq, startupSeqLen, startupDelayMs, startupEnterActions, startupExitActions);
-    sanitizeSequenceBlocks(shutdownSeq, shutdownSeqLen, shutdownDelayMs, shutdownEnterActions, shutdownExitActions);
-    sanitizeSequenceBlocks(abSeq, abSeqLen, abDelayMs, abEnterActions, abExitActions);
-    sanitizeSequenceBlocks(abShutSeq, abShutSeqLen, abShutDelayMs, abShutEnterActions, abShutExitActions);
+    sanitizeSequenceBlocks(startupSeq, startupSeqLen, startupDelayMs, startupIgnitionTarget, startupEnterActions, startupExitActions);
+    sanitizeSequenceBlocks(shutdownSeq, shutdownSeqLen, shutdownDelayMs, shutdownIgnitionTarget, shutdownEnterActions, shutdownExitActions);
+    sanitizeSequenceBlocks(abSeq, abSeqLen, abDelayMs, abIgnitionTarget, abEnterActions, abExitActions);
+    sanitizeSequenceBlocks(abShutSeq, abShutSeqLen, abShutDelayMs, abShutIgnitionTarget, abShutEnterActions, abShutExitActions);
 
     if (doc["labels"].is<JsonObjectConst>()) {
         auto lbld = doc["labels"].as<JsonObjectConst>();

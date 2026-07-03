@@ -198,6 +198,10 @@
     RelayActuator  g_actPropPitchRelay(-1, true, "PROP_PITCH");                  \
     IActuator*     g_actPropPitch = nullptr;                                     \
     LEDCActuator   g_actGlowPlug(-1, 1000, 8, "GLOW_PLUG");                     \
+    RelayActuator  g_actWetGlowFuelRelay(-1, true, "WET_GLOW_FUEL");            \
+    LEDCActuator   g_actWetGlowFuelLedc(-1, 1000, 10, "WET_GLOW_FUEL_PWM");     \
+    ServoActuator  g_actWetGlowFuelServo(-1, 1000, 2000, "WET_GLOW_FUEL_SRV");  \
+    IActuator*     g_actWetGlowFuel = nullptr;                                  \
     /* ── Controllers ───────────────────────────────────────────────────────── */ \
     OilPressureLoop       g_ctrlOilLoop;                                          \
     ThrottleSlew          g_ctrlThrottleSlew;                                     \
@@ -341,6 +345,10 @@ extern LEDCActuator   g_actPropPitchLedc;
 extern RelayActuator  g_actPropPitchRelay;
 extern IActuator*     g_actPropPitch;
 extern LEDCActuator   g_actGlowPlug;
+extern RelayActuator  g_actWetGlowFuelRelay;
+extern LEDCActuator   g_actWetGlowFuelLedc;
+extern ServoActuator  g_actWetGlowFuelServo;
+extern IActuator*     g_actWetGlowFuel;
 
 extern OilPressureLoop      g_ctrlOilLoop;
 extern ThrottleSlew         g_ctrlThrottleSlew;
@@ -494,11 +502,18 @@ namespace Hardware {
         if (hw.hasThrottleSlew) {
             g_ctrlThrottleSlew.rampUpMs     = Config::throttleRampUpMs;
             g_ctrlThrottleSlew.rampDownMs   = Config::throttleRampDownMs;
-            g_ctrlThrottleSlew.rpmHardLimit = Config::rpmLimit;
-            g_ctrlThrottleSlew.rpmSoftLimit = Config::rpmLimit * 0.95f;
+            g_ctrlThrottleSlew.n1PullbackEnabled = Config::pullbackN1Enabled;
+            g_ctrlThrottleSlew.n2PullbackEnabled = Config::pullbackN2Enabled;
+            g_ctrlThrottleSlew.egtPullbackEnabled = Config::pullbackEgtEnabled;
+            g_ctrlThrottleSlew.rpmHardLimit = Config::pullbackN1HardRpm > 0.0f ? Config::pullbackN1HardRpm : Config::rpmLimit;
+            g_ctrlThrottleSlew.rpmSoftLimit = Config::pullbackN1SoftRpm > 0.0f ? Config::pullbackN1SoftRpm : (Config::rpmLimit * 0.95f);
+            g_ctrlThrottleSlew.n2HardLimit = Config::pullbackN2HardRpm;
+            g_ctrlThrottleSlew.n2SoftLimit = Config::pullbackN2SoftRpm;
             const float egtLimit = Config::primaryEgtLimitC();
-            g_ctrlThrottleSlew.totHardLimit = egtLimit;
-            g_ctrlThrottleSlew.totSoftLimit = egtLimit - Config::totSafeMargin;
+            g_ctrlThrottleSlew.totHardLimit = Config::pullbackEgtHardC > 0.0f ? Config::pullbackEgtHardC : egtLimit;
+            g_ctrlThrottleSlew.totSoftLimit = Config::pullbackEgtSoftC > 0.0f ? Config::pullbackEgtSoftC : (egtLimit - Config::totSafeMargin);
+            g_ctrlThrottleSlew.minPullbackThrottle = Config::pullbackMinThrottlePct / 100.0f;
+            g_ctrlThrottleSlew.pullbackStrength = Config::pullbackStrength;
         }
         if (hw.hasDynamicIdle) {
             g_ctrlDynamicIdle.targetRpm     = Config::idleTargetRpm;
@@ -1007,6 +1022,19 @@ namespace Hardware {
         if (hw.hasGlowPlug && hw.glowPlugPin >= 0)
             g_actGlowPlug.begin(hw.glowPlugPin, (uint32_t)hw.glowPlugFreqHz,
                                  (uint8_t)hw.glowPlugResBits);
+        if (hw.hasGlowPlug && hw.glowPlugType == 2 && hw.wetGlowFuelPin >= 0) {
+            if (hw.wetGlowFuelType == 2) {
+                g_actWetGlowFuelServo.begin(hw.wetGlowFuelPin, hw.wetGlowFuelMinUs, hw.wetGlowFuelMaxUs);
+                g_actWetGlowFuel = &g_actWetGlowFuelServo;
+            } else if (hw.wetGlowFuelType == 1) {
+                g_actWetGlowFuelLedc.begin(hw.wetGlowFuelPin, (uint32_t)hw.wetGlowFuelFreqHz,
+                                           (uint8_t)hw.wetGlowFuelResBits);
+                g_actWetGlowFuel = &g_actWetGlowFuelLedc;
+            } else {
+                g_actWetGlowFuelRelay.begin(hw.wetGlowFuelPin, hw.wetGlowFuelActiveH);
+                g_actWetGlowFuel = &g_actWetGlowFuelRelay;
+            }
+        }
     }
 
     // ── Actuator update: EngineData demands → physical signals ─
@@ -1129,8 +1157,29 @@ namespace Hardware {
             g_actBleedValve->set(ed.bleedValveOpen ? 1.0f : 0.0f);
         if (hw.hasPropPitch && g_actPropPitch)
             g_actPropPitch->set(ed.propPitchDemand);
-        if (hw.hasGlowPlug)
-            g_actGlowPlug.set(constrain(ed.glowPlugDemand, 0.0f, 1.0f));
+        if (hw.hasGlowPlug) {
+            float glowDemand = constrain(ed.glowPlugDemand, 0.0f, 1.0f);
+            g_actGlowPlug.set(glowDemand);
+            if (hw.glowPlugType == 2 && g_actWetGlowFuel) {
+                static bool s_wetGlowActive = false;
+                static unsigned long s_wetGlowOnMs = 0;
+                bool commandOn = glowDemand > 0.001f;
+                if (commandOn && !s_wetGlowActive) {
+                    s_wetGlowActive = true;
+                    s_wetGlowOnMs = millis();
+                    g_actWetGlowFuel->off();
+                } else if (!commandOn) {
+                    s_wetGlowActive = false;
+                    s_wetGlowOnMs = 0;
+                    g_actWetGlowFuel->off();
+                }
+                if (commandOn && s_wetGlowActive &&
+                    (millis() - s_wetGlowOnMs) >= (unsigned long)hw.wetGlowFuelDelayMs) {
+                    float fuelDemand = hw.wetGlowFuelType == 0 ? 1.0f : (hw.wetGlowFuelDemandPct / 100.0f);
+                    g_actWetGlowFuel->set(constrain(fuelDemand, 0.0f, 1.0f));
+                }
+            }
+        }
     }
 
     // ── Emergency all-off ─────────────────────────────────────
@@ -1152,6 +1201,7 @@ namespace Hardware {
         if (hw.hasBleedValve && g_actBleedValve)  g_actBleedValve->off();
         if (hw.hasPropPitch  && g_actPropPitch)   g_actPropPitch->set(0.0f);  // return to fine pitch
         if (hw.hasGlowPlug)    g_actGlowPlug.off();
+        if (hw.hasGlowPlug && hw.glowPlugType == 2 && g_actWetGlowFuel) g_actWetGlowFuel->off();
         auto& _ed = EngineData::instance();
         _ed.throttleDemand  = 0;
         _ed.fuelSolOpen     = false;

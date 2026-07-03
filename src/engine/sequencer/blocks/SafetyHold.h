@@ -58,7 +58,11 @@ public:
         auto& ed = EngineData::instance();
         if (turnOffStarterOnExit)   ed.starterDemand  = 0;
         if (turnOffStarterEnOnExit) ed.starterEnabled = false;
-        if (turnOffIgniterOnExit)   ed.igniterOn      = false;
+        if (turnOffIgniterOnExit) {
+            ed.igniterOn = false;
+            ed.igniter2On = false;
+            ed.glowPlugDemand = 0.0f;
+        }
     }
 
 private:

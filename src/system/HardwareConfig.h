@@ -263,9 +263,20 @@ public:
     static int   propPitchResBits;     // PWM resolution
     static bool  propPitchActiveH;     // on-off: active-high = coarse pitch
 
+    // glowPlugType: 0=plain PWM glow, 1=current-sensed glow, 2=wet glow
+    static int   glowPlugType;
     static int   glowPlugPin;          // LEDC PWM output to glow plug / pilot element
     static int   glowPlugFreqHz;       // PWM frequency (e.g. 1000 Hz)
     static int   glowPlugResBits;      // PWM resolution (default 8)
+    static int   wetGlowFuelPin;       // fuel output for wet glow plug (-1 = none)
+    static int   wetGlowFuelType;      // 0=relay, 1=LEDC PWM, 2=servo/ESC
+    static bool  wetGlowFuelActiveH;    // relay mode polarity
+    static int   wetGlowFuelMinUs;      // servo/ESC low pulse
+    static int   wetGlowFuelMaxUs;      // servo/ESC high pulse
+    static int   wetGlowFuelFreqHz;     // PWM frequency
+    static int   wetGlowFuelResBits;    // PWM resolution
+    static float wetGlowFuelDemandPct;  // active demand for PWM/servo
+    static int   wetGlowFuelDelayMs;    // delay after glow command before fuel starts
     static int   glowCurrentPin;            // ADC pin for glow plug current sensor (-1 = none)
     static float glowCurrentMvPerA;         // sensor sensitivity mV/A (e.g. 185 for ACS712-5A)
     static float glowCurrentZeroV;          // output voltage at 0A (default 1.65V)
@@ -401,21 +412,25 @@ public:
     static char  startupSeq[MAX_SEQ_BLOCKS][24];
     static int   startupSeqLen;
     static int   startupDelayMs[MAX_SEQ_BLOCKS];
+    static uint8_t startupIgnitionTarget[MAX_SEQ_BLOCKS]; // 0=igniter1, 1=igniter2, 2=glow plug
     static SeqSideAction startupEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static SeqSideAction startupExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static char  shutdownSeq[MAX_SEQ_BLOCKS][24];
     static int   shutdownSeqLen;
     static int   shutdownDelayMs[MAX_SEQ_BLOCKS];
+    static uint8_t shutdownIgnitionTarget[MAX_SEQ_BLOCKS];
     static SeqSideAction shutdownEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static SeqSideAction shutdownExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static char  abSeq[MAX_SEQ_BLOCKS][24];     // AB ignition sequence
     static int   abSeqLen;
     static int   abDelayMs[MAX_SEQ_BLOCKS];
+    static uint8_t abIgnitionTarget[MAX_SEQ_BLOCKS];
     static SeqSideAction abEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static SeqSideAction abExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static char  abShutSeq[MAX_SEQ_BLOCKS][24]; // AB shutdown sequence
     static int   abShutSeqLen;
     static int   abShutDelayMs[MAX_SEQ_BLOCKS];
+    static uint8_t abShutIgnitionTarget[MAX_SEQ_BLOCKS];
     static SeqSideAction abShutEnterActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
     static SeqSideAction abShutExitActions[MAX_SEQ_BLOCKS][MAX_SEQ_SIDE_ACTIONS];
 

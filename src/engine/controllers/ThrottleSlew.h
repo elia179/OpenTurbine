@@ -29,6 +29,13 @@ public:
     float rpmHardLimit      = 100000.0f;
     float totSoftLimit      = 700.0f;
     float totHardLimit      = 750.0f;
+    bool  n1PullbackEnabled = true;
+    bool  n2PullbackEnabled = false;
+    bool  egtPullbackEnabled = true;
+    float n2SoftLimit       = 0.0f;
+    float n2HardLimit       = 0.0f;
+    float minPullbackThrottle = 0.08f;
+    float pullbackStrength  = 1.0f;
 
     void begin() override {
         // Carry forward the current throttle demand so the physical actuator
@@ -58,15 +65,17 @@ public:
         // Safety pullback: approach overspeed
         // Guard: rpmHardLimit must be strictly above rpmSoftLimit — equal limits
         // would cause division by zero and NaN throttle demand.
-        if (ed.n1Healthy && ed.n1Rpm > rpmSoftLimit && rpmHardLimit > rpmSoftLimit) {
-            float over = (ed.n1Rpm - rpmSoftLimit) / (rpmHardLimit - rpmSoftLimit);
-            target = constrain(target - over * 0.30f, 0.0f, target);
-        }
-        // Safety pullback: approach overtemp
-        if (totHardLimit > 0.0f && Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) > totSoftLimit
-            && totHardLimit > totSoftLimit) {
-            float over = (Config::primaryEgtC(ed) - totSoftLimit) / (totHardLimit - totSoftLimit);
-            target = constrain(target - over * 0.20f, 0.0f, target);
+        auto applyPullback = [&](float value, float soft, float hard, float authority) {
+            if (hard <= soft || value <= soft) return;
+            float over = constrain((value - soft) / (hard - soft), 0.0f, 1.0f);
+            float floor = constrain(minPullbackThrottle, 0.0f, target);
+            float reduction = over * authority * pullbackStrength;
+            target = constrain(target - reduction, floor, target);
+        };
+        if (n1PullbackEnabled && ed.n1Healthy) applyPullback(ed.n1Rpm, rpmSoftLimit, rpmHardLimit, 0.30f);
+        if (n2PullbackEnabled && ed.n2Healthy) applyPullback(ed.n2Rpm, n2SoftLimit, n2HardLimit, 0.40f);
+        if (egtPullbackEnabled && Config::primaryEgtHealthy(ed)) {
+            applyPullback(Config::primaryEgtC(ed), totSoftLimit, totHardLimit, 0.20f);
         }
 
         // Guard: if rampMs is 0 (instant) or dt is 0 (same-millisecond tick),

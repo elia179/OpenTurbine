@@ -61,7 +61,10 @@ public:
         clearWaitReason();
         if (turnOffIgniterOnExit) {
             // Flame is confirmed self-sustaining — cut igniter
-            EngineData::instance().igniterOn = false;
+            auto& ed = EngineData::instance();
+            ed.igniterOn = false;
+            ed.igniter2On = false;
+            ed.glowPlugDemand = 0.0f;
         }
     }
 

@@ -1388,9 +1388,22 @@ function delaySeqKey(tab) {
   if (tab === 'ab-shut') return 'ab_shut_delay_ms';
   return 'ab_delay_ms';
 }
+function ignitionTargetSeqKey(tab) {
+  if (tab === 'startup') return 'startup_ignition_target';
+  if (tab === 'shutdown') return 'shutdown_ignition_target';
+  if (tab === 'ab-shut') return 'ab_shut_ignition_target';
+  return 'ab_ignition_target';
+}
 function ensureDelaySlots(tab) {
   const seq = hwCfg[seqKey(tab)] || [];
   const key = delaySeqKey(tab);
+  if (!Array.isArray(hwCfg[key])) hwCfg[key] = [];
+  while (hwCfg[key].length < seq.length) hwCfg[key].push(0);
+  if (hwCfg[key].length > seq.length) hwCfg[key].length = seq.length;
+}
+function ensureIgnitionTargetSlots(tab) {
+  const seq = hwCfg[seqKey(tab)] || [];
+  const key = ignitionTargetSeqKey(tab);
   if (!Array.isArray(hwCfg[key])) hwCfg[key] = [];
   while (hwCfg[key].length < seq.length) hwCfg[key].push(0);
   if (hwCfg[key].length > seq.length) hwCfg[key].length = seq.length;
@@ -1412,6 +1425,7 @@ function render(tab, idleRaw, openKeys = new Set()) {
   const key = seqKey(tab);
   const seq  = hwCfg[key] || [];
   ensureDelaySlots(tab);
+  ensureIgnitionTargetSlots(tab);
   ensureActionSlots(tab);
   const list = document.getElementById('list-' + tab);
   list.innerHTML = '';
@@ -1962,12 +1976,56 @@ function _buildHwWarningHtml(def) {
     .join('');
 }
 
+function isIgnitionBlock(bname) {
+  return bname === 'IgniterOn' || bname === 'IgniterOff' || bname === 'PreHeat';
+}
+
+function ignitionTargets() {
+  const a = hwCfg.actuators || {};
+  const out = [];
+  if (a.igniter?.enabled) out.push({v:0, l:'Igniter 1', info: a.igniter.coil ? 'coil igniter' : (a.igniter.pwm ? 'PWM igniter' : 'relay igniter')});
+  if (a.igniter2?.enabled) out.push({v:1, l:'Igniter 2', info: a.igniter2.coil ? 'coil igniter' : (a.igniter2.pwm ? 'PWM igniter' : 'relay igniter')});
+  if (a.glow_plug?.enabled) {
+    const wet = Number(a.glow_plug.type || 0) === 2;
+    const delayS = ((a.glow_plug.fuel_delay_ms ?? 8000) / 1000).toFixed(1);
+    out.push({v:2, l: wet ? 'Wet glow plug' : 'Glow plug',
+      info: wet ? `wet glow plug, pilot fuel starts ${delayS} s after ON` : 'glow plug'});
+  }
+  return out.length ? out : [{v:0, l:'Igniter 1', info:'igniter output is not configured'}];
+}
+
+function ignitionInfoForTarget(target) {
+  const found = ignitionTargets().find(t => Number(t.v) === Number(target));
+  return found?.info || 'igniter output is not configured';
+}
+
+function buildIgnitionTargetHtml(bname, idx, tab) {
+  if (!isIgnitionBlock(bname)) return '';
+  ensureIgnitionTargetSlots(tab);
+  const key = ignitionTargetSeqKey(tab);
+  const target = hwCfg[key]?.[idx] ?? 0;
+  const opts = ignitionTargets().map(t => `<option value="${t.v}" ${Number(target)===Number(t.v)?'selected':''}>${t.l}</option>`).join('');
+  const esc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return `<div class="param-field" style="margin-bottom:.55rem">
+    <span class="param-label">Igniter output</span>
+    <select class="param-input" onchange="setIgnitionTarget('${tab}',${idx},this.value)">${opts}</select>
+    <span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-top:.18rem">${esc(ignitionInfoForTarget(target))}</span>
+  </div>`;
+}
+
+function setIgnitionTarget(tab, idx, value) {
+  ensureIgnitionTargetSlots(tab);
+  hwCfg[ignitionTargetSeqKey(tab)][idx] = Math.max(0, Math.min(2, Number(value) || 0));
+  renderFast(tab);
+}
+
 function buildParamsHtml(bname, idx, tab) {
   const def = BLOCKS[bname] || customBlocks[bname];
   const warningHtml = _buildHwWarningHtml(def);
   const sideHtml = buildSideActionsHtml(tab, idx);
+  const ignitionHtml = buildIgnitionTargetHtml(bname, idx, tab);
   if (!def || def.params.length === 0) {
-    return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em>${sideHtml}</div>`;
+    return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}${ignitionHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em>${sideHtml}</div>`;
   }
   const inputs = def.params.map(p => {
     // visibleIf - skip this param if hw condition is false
@@ -2016,7 +2074,7 @@ function buildParamsHtml(bname, idx, tab) {
   }).join('');
   return `<div class="block-params">
     <div class="block-desc">${def.desc}</div>
-    ${warningHtml}<div class="param-grid">${inputs}</div>${sideHtml}
+    ${warningHtml}${ignitionHtml}<div class="param-grid">${inputs}</div>${sideHtml}
   </div>`;
 }
 
@@ -2102,8 +2160,11 @@ function moveBlock(tab, idx, dir) {
   [seq[idx], seq[ni]] = [seq[ni], seq[idx]];
   ensureDelaySlots(tab);
   ensureActionSlots(tab);
+  ensureIgnitionTargetSlots(tab);
   const delays = hwCfg[delaySeqKey(tab)];
   [delays[idx], delays[ni]] = [delays[ni], delays[idx]];
+  const targets = hwCfg[ignitionTargetSeqKey(tab)];
+  [targets[idx], targets[ni]] = [targets[ni], targets[idx]];
   for (const phase of ['enter','exit']) {
     const ak = actionKey(tab, phase);
     if (!ak || !hwCfg[ak]) continue;
@@ -2115,8 +2176,10 @@ function moveBlock(tab, idx, dir) {
 function removeBlock(tab, idx) {
   ensureDelaySlots(tab);
   ensureActionSlots(tab);
+  ensureIgnitionTargetSlots(tab);
   hwCfg[seqKey(tab)].splice(idx, 1);
   hwCfg[delaySeqKey(tab)].splice(idx, 1);
+  hwCfg[ignitionTargetSeqKey(tab)].splice(idx, 1);
   for (const phase of ['enter','exit']) {
     const ak = actionKey(tab, phase);
     if (ak && hwCfg[ak]) hwCfg[ak].splice(idx, 1);
@@ -2133,8 +2196,10 @@ function addBlock(tab) {
   hwCfg[key].push(bname);
   ensureDelaySlots(tab);
   ensureActionSlots(tab);
+  ensureIgnitionTargetSlots(tab);
   hwCfg[delaySeqKey(tab)][hwCfg[key].length - 1] =
     bname === 'TimedDelay' ? (cfg?.sequence?.startup?.timed_delay_ms || 1000) : 0;
+  hwCfg[ignitionTargetSeqKey(tab)][hwCfg[key].length - 1] = 0;
   renderFast(tab);
 }
 

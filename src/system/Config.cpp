@@ -44,6 +44,17 @@ float Config::throttleRampDownMs    = 800;
 float Config::throttleIdleMinPct    = 8;
 float Config::throttleIdleMaxPct    = 18;
 float Config::throttleExpo          = 0.0f;  // 0 = linear by default
+bool  Config::pullbackN1Enabled     = true;
+bool  Config::pullbackN2Enabled     = false;
+bool  Config::pullbackEgtEnabled    = true;
+float Config::pullbackN1SoftRpm     = 95000.0f;
+float Config::pullbackN1HardRpm     = 100000.0f;
+float Config::pullbackN2SoftRpm     = 0.0f;
+float Config::pullbackN2HardRpm     = 0.0f;
+float Config::pullbackEgtSoftC      = 700.0f;
+float Config::pullbackEgtHardC      = 750.0f;
+float Config::pullbackMinThrottlePct = 8.0f;
+float Config::pullbackStrength      = 1.0f;
 
 float Config::idleTargetRpm         = 44000;
 float Config::idleRampUpMs          = 10000;
@@ -432,8 +443,28 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(th["ramp_down_ms"], 0.0f, 3600000.0f) ||
         !validNumber(th["idle_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["idle_max_pct"], 0.0f, 100.0f) ||
-        !validNumber(th["expo"], 0.0f, 1.0f)) return false;
+        !validNumber(th["expo"], 0.0f, 1.0f) ||
+        !validBool(th["pullback_n1"]) ||
+        !validBool(th["pullback_n2"]) ||
+        !validBool(th["pullback_egt"]) ||
+        !validNumber(th["pullback_n1_soft_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(th["pullback_n1_hard_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(th["pullback_n2_soft_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(th["pullback_n2_hard_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(th["pullback_egt_soft_c"], 0.0f, 1400.0f) ||
+        !validNumber(th["pullback_egt_hard_c"], 0.0f, 1400.0f) ||
+        !validNumber(th["pullback_min_pct"], 0.0f, 100.0f) ||
+        !validNumber(th["pullback_strength"], 0.0f, 5.0f)) return false;
     if (present(th["idle_min_pct"]) && present(th["idle_max_pct"]) && th["idle_max_pct"].as<float>() < th["idle_min_pct"].as<float>()) return false;
+    if (present(th["pullback_n1_soft_rpm"]) && present(th["pullback_n1_hard_rpm"]) &&
+        th["pullback_n1_hard_rpm"].as<float>() > 0.0f &&
+        th["pullback_n1_hard_rpm"].as<float>() <= th["pullback_n1_soft_rpm"].as<float>()) return false;
+    if (present(th["pullback_n2_soft_rpm"]) && present(th["pullback_n2_hard_rpm"]) &&
+        th["pullback_n2_hard_rpm"].as<float>() > 0.0f &&
+        th["pullback_n2_hard_rpm"].as<float>() <= th["pullback_n2_soft_rpm"].as<float>()) return false;
+    if (present(th["pullback_egt_soft_c"]) && present(th["pullback_egt_hard_c"]) &&
+        th["pullback_egt_hard_c"].as<float>() > 0.0f &&
+        th["pullback_egt_hard_c"].as<float>() <= th["pullback_egt_soft_c"].as<float>()) return false;
 
     JsonVariantConst so = doc["standby_oil"];
     if (present(so) && (!so.is<JsonObjectConst>() ||
@@ -1074,6 +1105,11 @@ void Config::_applyDefaults() {
     cooldownStarterPct = 40.0f; cooldownOilPct = 30.0f; cooldownOilPressureTarget = 2.0f;
     throttleRampUpMs = 600; throttleRampDownMs = 800;
     throttleIdleMinPct = 8; throttleIdleMaxPct = 18; throttleExpo = 0.0f;
+    pullbackN1Enabled = true; pullbackN2Enabled = false; pullbackEgtEnabled = true;
+    pullbackN1SoftRpm = 95000.0f; pullbackN1HardRpm = 100000.0f;
+    pullbackN2SoftRpm = 0.0f; pullbackN2HardRpm = 0.0f;
+    pullbackEgtSoftC = 700.0f; pullbackEgtHardC = 750.0f;
+    pullbackMinThrottlePct = 8.0f; pullbackStrength = 1.0f;
     idleTargetRpm = 44000; idleRampUpMs = 10000; idleRampDownMs = 20000;
     idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f;
     idleUseN2 = false; idleIGain = 0.0f; idleIMax = 0.10f;
@@ -1221,6 +1257,17 @@ void Config::_fromDoc(const JsonDocument& doc) {
     throttleIdleMinPct  = th["idle_min_pct"] | throttleIdleMinPct;
     throttleIdleMaxPct  = th["idle_max_pct"] | throttleIdleMaxPct;
     throttleExpo        = th["expo"]         | throttleExpo;
+    if (!th["pullback_n1"].isNull()) pullbackN1Enabled = th["pullback_n1"].as<bool>();
+    if (!th["pullback_n2"].isNull()) pullbackN2Enabled = th["pullback_n2"].as<bool>();
+    if (!th["pullback_egt"].isNull()) pullbackEgtEnabled = th["pullback_egt"].as<bool>();
+    pullbackN1SoftRpm = th["pullback_n1_soft_rpm"] | pullbackN1SoftRpm;
+    pullbackN1HardRpm = th["pullback_n1_hard_rpm"] | pullbackN1HardRpm;
+    pullbackN2SoftRpm = th["pullback_n2_soft_rpm"] | pullbackN2SoftRpm;
+    pullbackN2HardRpm = th["pullback_n2_hard_rpm"] | pullbackN2HardRpm;
+    pullbackEgtSoftC = th["pullback_egt_soft_c"] | pullbackEgtSoftC;
+    pullbackEgtHardC = th["pullback_egt_hard_c"] | pullbackEgtHardC;
+    pullbackMinThrottlePct = th["pullback_min_pct"] | pullbackMinThrottlePct;
+    pullbackStrength = th["pullback_strength"] | pullbackStrength;
 
     auto di = doc["dynamic_idle"];
     idleTargetRpm    = di["target_rpm"]    | idleTargetRpm;
@@ -1523,6 +1570,17 @@ void Config::_fromDoc(const JsonDocument& doc) {
     throttleIdleMinPct = constrain(throttleIdleMinPct, 0.0f, 100.0f);
     throttleIdleMaxPct = constrain(throttleIdleMaxPct, throttleIdleMinPct, 100.0f);
     throttleExpo = constrain(throttleExpo, 0.0f, 1.0f);
+    pullbackN1SoftRpm = constrain(pullbackN1SoftRpm, 0.0f, 500000.0f);
+    pullbackN1HardRpm = constrain(pullbackN1HardRpm, 0.0f, 500000.0f);
+    if (pullbackN1HardRpm > 0.0f && pullbackN1HardRpm <= pullbackN1SoftRpm) pullbackN1HardRpm = pullbackN1SoftRpm + 1.0f;
+    pullbackN2SoftRpm = constrain(pullbackN2SoftRpm, 0.0f, 500000.0f);
+    pullbackN2HardRpm = constrain(pullbackN2HardRpm, 0.0f, 500000.0f);
+    if (pullbackN2HardRpm > 0.0f && pullbackN2HardRpm <= pullbackN2SoftRpm) pullbackN2HardRpm = pullbackN2SoftRpm + 1.0f;
+    pullbackEgtSoftC = constrain(pullbackEgtSoftC, 0.0f, 1400.0f);
+    pullbackEgtHardC = constrain(pullbackEgtHardC, 0.0f, 1400.0f);
+    if (pullbackEgtHardC > 0.0f && pullbackEgtHardC <= pullbackEgtSoftC) pullbackEgtHardC = pullbackEgtSoftC + 1.0f;
+    pullbackMinThrottlePct = constrain(pullbackMinThrottlePct, 0.0f, 100.0f);
+    pullbackStrength = constrain(pullbackStrength, 0.0f, 5.0f);
     if (idleTargetRpm < 0.0f) idleTargetRpm = 0.0f;
     if (idleDeadbandRpm < 0.0f) idleDeadbandRpm = 0.0f;
     if (idleRpmLimit < 0.0f) idleRpmLimit = 0.0f;
@@ -1681,6 +1739,17 @@ void Config::_toDoc(JsonDocument& doc) {
     th["idle_min_pct"] = throttleIdleMinPct;
     th["idle_max_pct"] = throttleIdleMaxPct;
     th["expo"]         = throttleExpo;
+    th["pullback_n1"] = pullbackN1Enabled;
+    th["pullback_n2"] = pullbackN2Enabled;
+    th["pullback_egt"] = pullbackEgtEnabled;
+    th["pullback_n1_soft_rpm"] = pullbackN1SoftRpm;
+    th["pullback_n1_hard_rpm"] = pullbackN1HardRpm;
+    th["pullback_n2_soft_rpm"] = pullbackN2SoftRpm;
+    th["pullback_n2_hard_rpm"] = pullbackN2HardRpm;
+    th["pullback_egt_soft_c"] = pullbackEgtSoftC;
+    th["pullback_egt_hard_c"] = pullbackEgtHardC;
+    th["pullback_min_pct"] = pullbackMinThrottlePct;
+    th["pullback_strength"] = pullbackStrength;
 
     auto di = doc["dynamic_idle"].to<JsonObject>();
     di["target_rpm"]    = idleTargetRpm;
