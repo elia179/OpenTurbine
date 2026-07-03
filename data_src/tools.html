@@ -61,20 +61,20 @@ const TOOLS = [
   { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100% - primes oil circuit. This is a direct bench command, not the controller minimum duty.', visibleIf: hw => !!hw?.actuators?.oil_pump?.enabled },
   { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 - verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter?.enabled },
   { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
-  { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at 30% - verify motor turns.', visibleIf: hw => !!hw?.actuators?.starter?.enabled },
+  { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at configured demand - verify motor turns.', visibleIf: hw => !!hw?.actuators?.starter?.enabled },
   { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse - audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
-  { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, desc:'Moves the throttle/fuel ESC output to its configured running idle floor - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
+  { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, configKey:'tools.idle_test_ms', desc:'Moves the throttle/fuel ESC output to its configured running idle floor - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
   // ── Conditionally visible actuator tests (shown only when hardware is fitted) ──
-  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, desc:'Energises starter enable relay for 1 s — audible click to confirm.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
-  { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, desc:'Runs oil scavenge pump for 2 s — confirm operation.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
-  { id:'COOL_FAN_TEST',    name:'Cool Fan Test',        durationMs:3000, desc:'Runs cooling fan for 3 s — verify motor and relay.', visibleIf: hw => !!hw?.actuators?.cool_fan?.enabled },
-  { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, desc:'Opens airstarter solenoid for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
-  { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, desc:'Opens bleed valve for 1 s — audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
-  { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:3000, desc:'Runs glow plug at 50 % for 3 s — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
-  { id:'FUEL_PUMP2_TEST',  name:'Auxiliary Fuel Pump 2 Test', durationMs:3000, desc:'Runs the independent auxiliary fuel pump at 30 % for 3 s; it does not follow throttle automatically.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
-  { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, desc:'Opens AB fuel solenoid for 1 s - audible click to confirm valve.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_sol?.enabled) },
-  { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, desc:'Runs AB pump at 30% for 2 s - confirm operation.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_pump?.enabled) },
-  { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, desc:'Moves prop pitch servo to mid-travel for 3 s — verify servo range and travel direction.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
+  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, configKey:'tools.starter_en_test_ms', desc:'Energises starter enable relay for configured duration.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
+  { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, configKey:'tools.oil_scav_test_ms', desc:'Runs oil scavenge pump for configured duration.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
+  { id:'COOL_FAN_TEST',    name:'Cool Fan Test',        durationMs:3000, configKey:'tools.cool_fan_test_ms', desc:'Runs cooling fan for configured duration.', visibleIf: hw => !!hw?.actuators?.cool_fan?.enabled },
+  { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, configKey:'tools.airstarter_test_ms', desc:'Opens airstarter solenoid for configured duration.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
+  { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, configKey:'tools.bleed_valve_test_ms', desc:'Opens bleed valve for configured duration.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
+  { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:10000, configKey:'tools.glow_test_ms', desc:'Runs glow plug at configured demand — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
+  { id:'FUEL_PUMP2_TEST',  name:'Auxiliary Fuel Pump 2 Test', durationMs:3000, configKey:'tools.fuel_pump2_test_ms', desc:'Runs the independent auxiliary fuel pump at configured demand.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
+  { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, configKey:'tools.ab_sol_test_ms', desc:'Opens AB fuel solenoid for configured duration.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_sol?.enabled) },
+  { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, configKey:'tools.ab_pump_test_ms', desc:'Runs AB pump at configured demand.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_pump?.enabled) },
+  { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, configKey:'tools.prop_pitch_test_ms', desc:'Moves prop pitch output to configured position.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
   // ── Toggle tools ─────────────────────────────────────────────
   { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, desc:'Turns closed-loop idle RPM hold on or off while running. Available only when it is enabled in Hardware and has throttle output plus RPM feedback.', toggleKey:'dynamic_idle_enabled',
     visibleIf: hw => !!(hw?.controllers?.dynamic_idle && hw?.actuators?.throttle?.enabled &&
@@ -622,6 +622,53 @@ function getNestedVal(obj, dotPath) {
   return dotPath.split('.').reduce((cur, k) => (cur && typeof cur === 'object' ? cur[k] : undefined), obj);
 }
 
+function syncDynamicToolText() {
+  const tools = cfgData?.tools || {};
+  const act = key => hwCfg?.actuators?.[key] || {};
+  const tool = id => TOOLS.find(t => t.id === id);
+  const sec = ms => (Number(ms || 0) / 1000).toFixed((Number(ms || 0) % 1000) ? 1 : 0);
+  const pctText = pct => {
+    const n = Number(pct ?? 0);
+    return n >= 99.5 ? 'ON / 100%' : `${n.toFixed(n % 1 ? 1 : 0)}%`;
+  };
+  const isRelay = key => Number(act(key).type ?? 1) === 2;
+  const outputText = (key, pct) => isRelay(key) ? 'ON' : pctText(pct);
+  const setDesc = (id, text) => { const t = tool(id); if (t) t.desc = text; };
+
+  setDesc('START_TEST', `Output: starter ${outputText('starter', tools.start_test_pct ?? 30)} for ${sec(tools.start_test_ms ?? 2000)} s.`);
+  setDesc('FUEL_SOL_TEST', `Output: fuel solenoid ON for ${sec(tools.fuel_sol_test_ms ?? 1000)} s.`);
+  setDesc('IDLE_TEST', `Output: throttle to configured idle floor for ${sec(tools.idle_test_ms ?? 3000)} s.`);
+  setDesc('STARTER_EN_TEST', `Output: starter enable relay ON for ${sec(tools.starter_en_test_ms ?? 1000)} s.`);
+  setDesc('OIL_SCAV_TEST', `Output: oil scavenge pump ON for ${sec(tools.oil_scav_test_ms ?? 2000)} s.`);
+  setDesc('COOL_FAN_TEST', `Output: cooling fan ON for ${sec(tools.cool_fan_test_ms ?? 3000)} s.`);
+  setDesc('AIRSTARTER_TEST', `Output: airstarter solenoid ON for ${sec(tools.airstarter_test_ms ?? 1000)} s.`);
+  setDesc('BLEED_VALVE_TEST', `Output: bleed valve ON for ${sec(tools.bleed_valve_test_ms ?? 1000)} s.`);
+  setDesc('FUEL_PUMP2_TEST', `Output: auxiliary fuel pump 2 ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
+  setDesc('AB_SOL_TEST', `Output: AB fuel solenoid ON for ${sec(tools.ab_sol_test_ms ?? 1000)} s.`);
+  setDesc('AB_PUMP_TEST', `Output: AB pump ${outputText('ab_pump', tools.ab_pump_test_pct ?? 30)} for ${sec(tools.ab_pump_test_ms ?? 2000)} s.`);
+  setDesc('PROP_PITCH_TEST', `Output: prop pitch ${outputText('prop_pitch', tools.prop_pitch_test_pct ?? 50)} for ${sec(tools.prop_pitch_test_ms ?? 3000)} s.`);
+
+  const glowTool = tool('GLOW_TEST');
+  if (!glowTool) return;
+  const glow = act('glow_plug');
+  const pct = Number(tools.glow_test_pct ?? 100);
+  const durationMs = Number(tools.glow_test_ms ?? glowTool.durationMs);
+  const durationS = sec(durationMs);
+  const demandText = outputText('glow_plug', pct);
+  if (Number(glow.type || 0) === 2) {
+    glowTool.name = 'Wet Glow Test';
+    const delayMs = Number(glow.fuel_delay_ms ?? 8000);
+    const delayS = sec(delayMs);
+    const fuelText = durationMs > delayMs
+      ? `pilot fuel starts after ${delayS} s`
+      : `pilot fuel will not start unless duration exceeds ${delayS} s`;
+    glowTool.desc = `Output: wet glow ${demandText} for ${durationS} s; ${fuelText}.`;
+  } else {
+    glowTool.name = 'Glow Plug Test';
+    glowTool.desc = `Output: glow plug ${demandText} for ${durationS} s.`;
+  }
+}
+
 loadToolConfig().then(({cfg, hw}) => {
   hwCfg = hw || {};
   cfgData = cfg || {};
@@ -630,6 +677,7 @@ loadToolConfig().then(({cfg, hw}) => {
     const v = getNestedVal(cfg, t.configKey);
     if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
   });
+  syncDynamicToolText();
   renderTools();
   startToolsTelemetry();
 });

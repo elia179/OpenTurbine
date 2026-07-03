@@ -116,8 +116,24 @@ public:
     static uint32_t toolFuelPrimeMs;
     static uint32_t toolOilPrimeMs;
     static uint32_t toolIgnTestMs;
+    static uint32_t toolGlowTestMs;
+    static float    toolGlowTestPct;
     static uint32_t toolStartTestMs;
+    static float    toolStartTestPct;
     static uint32_t toolFuelSolTestMs;
+    static uint32_t toolIdleTestMs;
+    static uint32_t toolOilScavTestMs;
+    static uint32_t toolCoolFanTestMs;
+    static uint32_t toolAirstarterTestMs;
+    static uint32_t toolBleedValveTestMs;
+    static uint32_t toolFuelPump2TestMs;
+    static float    toolFuelPump2TestPct;
+    static uint32_t toolAbSolTestMs;
+    static uint32_t toolAbPumpTestMs;
+    static float    toolAbPumpTestPct;
+    static uint32_t toolStarterEnTestMs;
+    static uint32_t toolPropPitchTestMs;
+    static float    toolPropPitchTestPct;
 
     // ── Telemetry intervals ───────────────────────────────────
     static uint32_t wsIntervalMs;        // Browser telemetry request interval (ms; >=333)

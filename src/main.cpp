@@ -1852,7 +1852,7 @@ static void handleCommand(const OTPacket& pkt) {
         case OTCommand::START_TEST:
             if (HardwareConfig::hasStarter && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.starterEnabled  = true;
-                ed.starterDemand   = 0.3f;
+                ed.starterDemand   = constrain(Config::toolStartTestPct / 100.0f, 0.0f, 1.0f);
                 _startTestUntilMs  = millis() + Config::toolStartTestMs;
             }
             break;
@@ -1866,10 +1866,10 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::IDLE_TEST:
-            // Move throttle servo to idle position for 3 s to verify mechanical travel
+            // Move throttle servo to idle position for the configured test duration.
             if (HardwareConfig::hasThrottle && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.throttleDemand = Config::throttleIdleMinPct / 100.0f;
-                _idleTestUntilMs  = millis() + 3000;
+                _idleTestUntilMs  = millis() + Config::toolIdleTestMs;
             }
             break;
 
@@ -1970,42 +1970,42 @@ static void handleCommand(const OTPacket& pkt) {
         case OTCommand::OIL_SCAV_TEST:
             if (HardwareConfig::hasOilScavengePump && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.oilScavengeOn    = true;
-                _oilScavTestUntilMs = millis() + 2000;
+                _oilScavTestUntilMs = millis() + Config::toolOilScavTestMs;
             }
             break;
 
         case OTCommand::COOL_FAN_TEST:
             if (HardwareConfig::hasCoolFan && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.coolFanOn         = true;
-                _coolFanTestUntilMs  = millis() + 3000;
+                _coolFanTestUntilMs  = millis() + Config::toolCoolFanTestMs;
             }
             break;
 
         case OTCommand::AIRSTARTER_TEST:
             if (HardwareConfig::hasAirstarterSol && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.airstarterOpen       = true;
-                _airstarterTestUntilMs  = millis() + 1000;
+                _airstarterTestUntilMs  = millis() + Config::toolAirstarterTestMs;
             }
             break;
 
         case OTCommand::BLEED_VALVE_TEST:
             if (HardwareConfig::hasBleedValve && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.bleedValveOpen       = true;
-                _bleedValveTestUntilMs  = millis() + 1000;
+                _bleedValveTestUntilMs  = millis() + Config::toolBleedValveTestMs;
             }
             break;
 
         case OTCommand::GLOW_TEST:
             if (HardwareConfig::hasGlowPlug && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
-                ed.glowPlugDemand = 0.5f;
-                _glowTestUntilMs  = millis() + 3000;
+                ed.glowPlugDemand = constrain(Config::toolGlowTestPct / 100.0f, 0.0f, 1.0f);
+                _glowTestUntilMs  = millis() + Config::toolGlowTestMs;
             }
             break;
 
         case OTCommand::FUEL_PUMP2_TEST:
             if (HardwareConfig::hasFuelPump2 && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
-                ed.fuelPump2Demand     = 0.3f;
-                _fuelPump2TestUntilMs  = millis() + 3000;
+                ed.fuelPump2Demand     = constrain(Config::toolFuelPump2TestPct / 100.0f, 0.0f, 1.0f);
+                _fuelPump2TestUntilMs  = millis() + Config::toolFuelPump2TestMs;
             }
             break;
 
@@ -2013,30 +2013,30 @@ static void handleCommand(const OTPacket& pkt) {
             if (HardwareConfig::hasAfterburner && HardwareConfig::hasAbSol &&
                 ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.abSolOpen      = true;
-                _abSolTestUntilMs = millis() + 1000;
+                _abSolTestUntilMs = millis() + Config::toolAbSolTestMs;
             }
             break;
 
         case OTCommand::AB_PUMP_TEST:
             if (HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump &&
                 ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
-                ed.abPumpDemand   = 0.3f;
-                _abPumpTestUntilMs  = millis() + 2000;
+                ed.abPumpDemand   = constrain(Config::toolAbPumpTestPct / 100.0f, 0.0f, 1.0f);
+                _abPumpTestUntilMs  = millis() + Config::toolAbPumpTestMs;
             }
             break;
 
         case OTCommand::STARTER_EN_TEST:
             if (HardwareConfig::hasStarterEn && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
                 ed.starterEnabled      = true;
-                _starterEnTestUntilMs  = millis() + 1000;
+                _starterEnTestUntilMs  = millis() + Config::toolStarterEnTestMs;
             }
             break;
 
         case OTCommand::PROP_PITCH_TEST:
             // Move prop pitch to mid-travel (0.5) for 3 s — verify servo range
             if (HardwareConfig::hasPropPitch && ed.mode == SysMode::STANDBY && !anyToolTimerActive()) {
-                ed.propPitchDemand     = 0.5f;
-                _propPitchTestUntilMs  = millis() + 3000;
+                ed.propPitchDemand     = constrain(Config::toolPropPitchTestPct / 100.0f, 0.0f, 1.0f);
+                _propPitchTestUntilMs  = millis() + Config::toolPropPitchTestMs;
             }
             break;
 

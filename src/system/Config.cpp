@@ -89,8 +89,24 @@ int      Config::relightTimeoutMs    = 10000;   // 10 s continuous ignition wind
 uint32_t Config::toolFuelPrimeMs    = 3000;
 uint32_t Config::toolOilPrimeMs     = 5000;
 uint32_t Config::toolIgnTestMs      = 2000;
+uint32_t Config::toolGlowTestMs     = 10000;
+float    Config::toolGlowTestPct    = 100.0f;
 uint32_t Config::toolStartTestMs    = 2000;
+float    Config::toolStartTestPct   = 30.0f;
 uint32_t Config::toolFuelSolTestMs  = 1000;
+uint32_t Config::toolIdleTestMs     = 3000;
+uint32_t Config::toolOilScavTestMs  = 2000;
+uint32_t Config::toolCoolFanTestMs  = 3000;
+uint32_t Config::toolAirstarterTestMs = 1000;
+uint32_t Config::toolBleedValveTestMs = 1000;
+uint32_t Config::toolFuelPump2TestMs = 3000;
+float    Config::toolFuelPump2TestPct = 30.0f;
+uint32_t Config::toolAbSolTestMs    = 1000;
+uint32_t Config::toolAbPumpTestMs   = 2000;
+float    Config::toolAbPumpTestPct  = 30.0f;
+uint32_t Config::toolStarterEnTestMs = 1000;
+uint32_t Config::toolPropPitchTestMs = 3000;
+float    Config::toolPropPitchTestPct = 50.0f;
 
 uint32_t Config::wsIntervalMs       = 333;
 uint32_t Config::snapshotIntervalMs = 10000;
@@ -465,6 +481,30 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (present(th["pullback_egt_soft_c"]) && present(th["pullback_egt_hard_c"]) &&
         th["pullback_egt_hard_c"].as<float>() > 0.0f &&
         th["pullback_egt_hard_c"].as<float>() <= th["pullback_egt_soft_c"].as<float>()) return false;
+
+    JsonVariantConst tools = doc["tools"];
+    if (present(tools) && (!tools.is<JsonObjectConst>() ||
+        !validInt(tools["fuel_prime_ms"], 0, 60000) ||
+        !validInt(tools["oil_prime_ms"], 0, 60000) ||
+        !validInt(tools["ign_test_ms"], 0, 60000) ||
+        !validInt(tools["glow_test_ms"], 0, 60000) ||
+        !validNumber(tools["glow_test_pct"], 0.0f, 100.0f) ||
+        !validInt(tools["start_test_ms"], 0, 60000) ||
+        !validNumber(tools["start_test_pct"], 0.0f, 100.0f) ||
+        !validInt(tools["fuel_sol_test_ms"], 0, 60000) ||
+        !validInt(tools["idle_test_ms"], 0, 60000) ||
+        !validInt(tools["oil_scav_test_ms"], 0, 60000) ||
+        !validInt(tools["cool_fan_test_ms"], 0, 60000) ||
+        !validInt(tools["airstarter_test_ms"], 0, 60000) ||
+        !validInt(tools["bleed_valve_test_ms"], 0, 60000) ||
+        !validInt(tools["fuel_pump2_test_ms"], 0, 60000) ||
+        !validNumber(tools["fuel_pump2_test_pct"], 0.0f, 100.0f) ||
+        !validInt(tools["ab_sol_test_ms"], 0, 60000) ||
+        !validInt(tools["ab_pump_test_ms"], 0, 60000) ||
+        !validNumber(tools["ab_pump_test_pct"], 0.0f, 100.0f) ||
+        !validInt(tools["starter_en_test_ms"], 0, 60000) ||
+        !validInt(tools["prop_pitch_test_ms"], 0, 60000) ||
+        !validNumber(tools["prop_pitch_test_pct"], 0.0f, 100.0f))) return false;
 
     JsonVariantConst so = doc["standby_oil"];
     if (present(so) && (!so.is<JsonObjectConst>() ||
@@ -1120,7 +1160,13 @@ void Config::_applyDefaults() {
     relightEnabled = false; relightConfirmSource = 0; relightMinRpm = 30000.0f;
     relightConfirmRpm = 0.0f; relightTotRiseC = 30.0f; relightTimeoutMs = 10000;
     toolFuelPrimeMs = 3000; toolOilPrimeMs = 5000; toolIgnTestMs = 2000;
-    toolStartTestMs = 2000; toolFuelSolTestMs = 1000;
+    toolGlowTestMs = 10000; toolGlowTestPct = 100.0f;
+    toolStartTestMs = 2000; toolStartTestPct = 30.0f; toolFuelSolTestMs = 1000;
+    toolIdleTestMs = 3000; toolOilScavTestMs = 2000; toolCoolFanTestMs = 3000;
+    toolAirstarterTestMs = 1000; toolBleedValveTestMs = 1000;
+    toolFuelPump2TestMs = 3000; toolFuelPump2TestPct = 30.0f;
+    toolAbSolTestMs = 1000; toolAbPumpTestMs = 2000; toolAbPumpTestPct = 30.0f;
+    toolStarterEnTestMs = 1000; toolPropPitchTestMs = 3000; toolPropPitchTestPct = 50.0f;
     wsIntervalMs = 333; snapshotIntervalMs = 10000; controlLoopHz = 400; logStandby = false;
     starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
@@ -1350,8 +1396,24 @@ void Config::_fromDoc(const JsonDocument& doc) {
     toolFuelPrimeMs   = tl["fuel_prime_ms"]   | toolFuelPrimeMs;
     toolOilPrimeMs    = tl["oil_prime_ms"]    | toolOilPrimeMs;
     toolIgnTestMs     = tl["ign_test_ms"]     | toolIgnTestMs;
+    toolGlowTestMs    = tl["glow_test_ms"]    | toolGlowTestMs;
+    toolGlowTestPct   = tl["glow_test_pct"]   | toolGlowTestPct;
     toolStartTestMs   = tl["start_test_ms"]   | toolStartTestMs;
+    toolStartTestPct  = tl["start_test_pct"]  | toolStartTestPct;
     toolFuelSolTestMs = tl["fuel_sol_test_ms"]| toolFuelSolTestMs;
+    toolIdleTestMs    = tl["idle_test_ms"]    | toolIdleTestMs;
+    toolOilScavTestMs = tl["oil_scav_test_ms"]| toolOilScavTestMs;
+    toolCoolFanTestMs = tl["cool_fan_test_ms"]| toolCoolFanTestMs;
+    toolAirstarterTestMs = tl["airstarter_test_ms"] | toolAirstarterTestMs;
+    toolBleedValveTestMs = tl["bleed_valve_test_ms"] | toolBleedValveTestMs;
+    toolFuelPump2TestMs = tl["fuel_pump2_test_ms"] | toolFuelPump2TestMs;
+    toolFuelPump2TestPct = tl["fuel_pump2_test_pct"] | toolFuelPump2TestPct;
+    toolAbSolTestMs = tl["ab_sol_test_ms"] | toolAbSolTestMs;
+    toolAbPumpTestMs = tl["ab_pump_test_ms"] | toolAbPumpTestMs;
+    toolAbPumpTestPct = tl["ab_pump_test_pct"] | toolAbPumpTestPct;
+    toolStarterEnTestMs = tl["starter_en_test_ms"] | toolStarterEnTestMs;
+    toolPropPitchTestMs = tl["prop_pitch_test_ms"] | toolPropPitchTestMs;
+    toolPropPitchTestPct = tl["prop_pitch_test_pct"] | toolPropPitchTestPct;
 
     auto tm = doc["telemetry"];
     wsIntervalMs       = tm["ws_interval_ms"]       | wsIntervalMs;
@@ -1553,8 +1615,24 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (toolFuelPrimeMs > 60000u) toolFuelPrimeMs = 3000u;
     if (toolOilPrimeMs > 60000u) toolOilPrimeMs = 5000u;
     if (toolIgnTestMs > 60000u) toolIgnTestMs = 2000u;
+    if (toolGlowTestMs > 60000u) toolGlowTestMs = 10000u;
+    toolGlowTestPct = constrain(toolGlowTestPct, 0.0f, 100.0f);
     if (toolStartTestMs > 60000u) toolStartTestMs = 2000u;
+    toolStartTestPct = constrain(toolStartTestPct, 0.0f, 100.0f);
     if (toolFuelSolTestMs > 60000u) toolFuelSolTestMs = 1000u;
+    if (toolIdleTestMs > 60000u) toolIdleTestMs = 3000u;
+    if (toolOilScavTestMs > 60000u) toolOilScavTestMs = 2000u;
+    if (toolCoolFanTestMs > 60000u) toolCoolFanTestMs = 3000u;
+    if (toolAirstarterTestMs > 60000u) toolAirstarterTestMs = 1000u;
+    if (toolBleedValveTestMs > 60000u) toolBleedValveTestMs = 1000u;
+    if (toolFuelPump2TestMs > 60000u) toolFuelPump2TestMs = 3000u;
+    toolFuelPump2TestPct = constrain(toolFuelPump2TestPct, 0.0f, 100.0f);
+    if (toolAbSolTestMs > 60000u) toolAbSolTestMs = 1000u;
+    if (toolAbPumpTestMs > 60000u) toolAbPumpTestMs = 2000u;
+    toolAbPumpTestPct = constrain(toolAbPumpTestPct, 0.0f, 100.0f);
+    if (toolStarterEnTestMs > 60000u) toolStarterEnTestMs = 1000u;
+    if (toolPropPitchTestMs > 60000u) toolPropPitchTestMs = 3000u;
+    toolPropPitchTestPct = constrain(toolPropPitchTestPct, 0.0f, 100.0f);
     if (wsIntervalMs < 333u || wsIntervalMs > 60000u) wsIntervalMs = 333u;
     if (snapshotIntervalMs < 500u || snapshotIntervalMs > 3600000u) snapshotIntervalMs = 10000u;
     if (controlLoopHz < 50u || controlLoopHz > 1000u) controlLoopHz = 400u;
@@ -1829,8 +1907,24 @@ void Config::_toDoc(JsonDocument& doc) {
     tl["fuel_prime_ms"]    = toolFuelPrimeMs;
     tl["oil_prime_ms"]     = toolOilPrimeMs;
     tl["ign_test_ms"]      = toolIgnTestMs;
+    tl["glow_test_ms"]     = toolGlowTestMs;
+    tl["glow_test_pct"]    = toolGlowTestPct;
     tl["start_test_ms"]    = toolStartTestMs;
+    tl["start_test_pct"]   = toolStartTestPct;
     tl["fuel_sol_test_ms"] = toolFuelSolTestMs;
+    tl["idle_test_ms"]     = toolIdleTestMs;
+    tl["oil_scav_test_ms"] = toolOilScavTestMs;
+    tl["cool_fan_test_ms"] = toolCoolFanTestMs;
+    tl["airstarter_test_ms"] = toolAirstarterTestMs;
+    tl["bleed_valve_test_ms"] = toolBleedValveTestMs;
+    tl["fuel_pump2_test_ms"] = toolFuelPump2TestMs;
+    tl["fuel_pump2_test_pct"] = toolFuelPump2TestPct;
+    tl["ab_sol_test_ms"] = toolAbSolTestMs;
+    tl["ab_pump_test_ms"] = toolAbPumpTestMs;
+    tl["ab_pump_test_pct"] = toolAbPumpTestPct;
+    tl["starter_en_test_ms"] = toolStarterEnTestMs;
+    tl["prop_pitch_test_ms"] = toolPropPitchTestMs;
+    tl["prop_pitch_test_pct"] = toolPropPitchTestPct;
 
     auto tm = doc["telemetry"].to<JsonObject>();
     tm["ws_interval_ms"]       = wsIntervalMs;

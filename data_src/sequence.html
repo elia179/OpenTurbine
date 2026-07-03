@@ -350,10 +350,10 @@ const BLOCKS = {
     ]
   },
   PreIgnSpark: {
-    label:'Pre-Ignition Spark', type:'action', badgeClass:'badge-action',
+    label:'Legacy Igniter 1 Spark', type:'action', badgeClass:'badge-action',
     visibleIf: hw => !!hw.actuators?.igniter?.enabled,
     condition: null, timeout_action:null,
-    desc:'Turns igniter ON and waits the configured spark duration. The igniter remains on when this block exits - place FuelOpen immediately after so fuel ignites on contact. Outputs: igniterOn=true (stays on after block).',
+    desc:'Legacy igniter-1-only block. For new setups, prefer Igniter On or Pre-Heat because those cards let you choose igniter 1, igniter 2, glow, or wet glow. This block turns igniter 1 ON and leaves it ON when it exits.',
     params:[
       {key:'pre_ign_spark_ms', label:'Spark duration', unit:'ms', type:'int', min:100, max:10000, step:100, def:1500, configKey:'pre_ign_spark_ms'},
     ]
@@ -370,7 +370,7 @@ const BLOCKS = {
     visibleIf: hw => !!hw.sensors?.flame?.enabled,
     condition: hw => `flame count < ${hw.flame_required_count ?? 3}`,
     timeout_action:'abort',
-    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout -> ABORT. On exit: optionally cuts igniter.',
+    desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout -> ABORT. On exit: optionally cuts all ignition outputs.',
     hwWarnings:[
       { check: hw => !!hw.sensors?.flame?.enabled,
         msg: 'Blocked: No flame sensor configured - flame count will never increment. This block will always timeout and ABORT. Use TempConfirm as a replacement if a temperature sensor is fitted.',
@@ -382,7 +382,7 @@ const BLOCKS = {
       {key:'flame_check_interval_ms', label:'Detection interval', unit:'ms', type:'int', min:50, max:2000, step:50, def:250, configKey:'flame_check_interval_ms',
         desc:'Time window for each required flame detection. Longer is more tolerant of slow/noisy sensors but delays startup.'},
       {key:'flame_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:1000, max:30000, step:500, def:5000, configKey:'flame_timeout_ms'},
-      {key:'flame_turn_off_igniter', label:'Turn off igniter on exit',           type:'bool', def:true, configKey:'flame_turn_off_igniter'},
+      {key:'flame_turn_off_igniter', label:'Turn off ignition outputs on exit', type:'bool', def:true, configKey:'flame_turn_off_igniter'},
     ]
   },
   TempConfirm: {
@@ -455,7 +455,7 @@ const BLOCKS = {
     label:'Safety Hold', type:'check', badgeClass:'badge-check',
     condition: hw => `${hw.safety_hold_ms ?? 1000} ms hold`,
     timeout_action:'fault',
-    desc:'Holds for the configured duration and verifies N1 >= target RPM and oil pressure >= minimum. If either check fails -> FAULT SHUTDOWN. On successful exit: optionally cuts starter demand, starter enable relay, and igniter (checkboxes below). After this block the engine enters RUNNING state.',
+    desc:'Holds for the configured duration and verifies N1 >= target RPM and oil pressure >= minimum. If either check fails -> FAULT SHUTDOWN. On successful exit: optionally cuts starter demand, starter enable relay, and all ignition outputs. After this block the engine enters RUNNING state.',
     hwWarnings:[
       { check: hw => (!!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm) || !!hw.sensors?.oil_press?.enabled,
         level: 'error',
@@ -472,7 +472,7 @@ const BLOCKS = {
       {key:'safety_turn_off_starter',    label:'Turn off starter on exit',             type:'bool', def:false, configKey:'safety_turn_off_starter'},
       {key:'safety_turn_off_starter_en', label:'Turn off starter enable relay on exit',type:'bool', def:false, configKey:'safety_turn_off_starter_en',
         visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
-      {key:'safety_turn_off_igniter',    label:'Turn off igniter on exit',             type:'bool', def:false, configKey:'safety_turn_off_igniter'},
+      {key:'safety_turn_off_igniter',    label:'Turn off ignition outputs on exit',    type:'bool', def:false, configKey:'safety_turn_off_igniter'},
     ]
   },
   AirstarterOn: {
@@ -505,17 +505,17 @@ const BLOCKS = {
   },
   // ------ Explicit actuator control blocks ------------------------------------------------------------------------------------------------------------
   IgniterOn: {
-    label:'Igniter On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.igniter?.enabled,
+    label:'Ignition Output On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => hasIgnitionOutput(hw),
     condition: null, timeout_action:null,
-    desc:'Switch igniter on. Use before FuelOpen for pre-heat, or during a relight attempt.',
+    desc:'Switch the selected ignition output on. Choose igniter 1, igniter 2, glow plug, or wet glow from this card.',
     params:[]
   },
   IgniterOff: {
-    label:'Igniter Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.igniter?.enabled,
+    label:'Ignition Output Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => hasIgnitionOutput(hw),
     condition: null, timeout_action:null,
-    desc:'Switch igniter off. Use after spool is established or after a failed attempt.',
+    desc:'Switch the selected ignition output off.',
     params:[]
   },
   FuelSolClose: {
@@ -713,10 +713,10 @@ const BLOCKS = {
   },
   PreHeat: {
     label:'Pre-Heat', type:'wait', badgeClass:'badge-wait',
-    visibleIf: hw => !!hw.actuators?.igniter?.enabled,
-    condition: hw => `igniter ${hw.preheat_ms ?? 3000}ms`,
+    visibleIf: hw => hasIgnitionOutput(hw),
+    condition: hw => `ignition ${hw.preheat_ms ?? 3000}ms`,
     timeout_action:null,
-    desc:'Fires the igniter for a fixed duration without opening fuel. Designed for glow-plug systems that need thermal pre-heat before fuel introduction. The igniter remains ON when the block exits - place FuelOpen immediately after so fuel ignites on contact.',
+    desc:'Turns the selected ignition output on for a fixed duration without opening main fuel. The output remains ON when this block exits - place FuelOpen or a later Ignition Output Off block intentionally.',
     params:[
       {key:'preheat_ms', label:'Pre-heat time',unit:'ms', type:'int', min:500, max:30000, step:500, def:3000, configKey:'preheat_ms'},
     ]
@@ -815,7 +815,7 @@ const BLOCKS = {
   GlowPreheat: {
     label:'Glow Preheat', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
-    desc:'Ramps glow plug power linearly from 0 to maxPct over preheatMs, then holds at holdPct. If a glow current sensor is fitted and "Wait until hot" is checked, the block keeps holding at holdPct until the current drops below the ready threshold (plug is thermally saturated) instead of completing immediately after the ramp. The plug stays at holdPct when this block exits.',
+    desc:'Ramps glow plug power linearly from 0 to maxPct over preheatMs, then holds at holdPct. Wet glow pilot fuel follows the hardware delay after glow ON. If a glow current sensor is fitted and "Wait until hot" is checked, the block keeps holding at holdPct until the current drops below the ready threshold. The plug stays at holdPct when this block exits.',
     params:[
       {key:'glow_preheat_ms',      label:'Preheat duration',  unit:'ms', type:'int',   min:500,  max:60000, step:500, def:10000, configKey:'glow_preheat_ms'},
       {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:10,   max:100,   step:5,   def:80,    configKey:'glow_preheat_max_pct',
@@ -1032,7 +1032,7 @@ const BLOCK_INFO = {
     links: []
   },
   PreIgnSpark: {
-    desc: 'Fires the igniter for the configured spark duration. Igniter stays ON when block exits - place FuelOpen immediately after.',
+    desc: 'Legacy igniter-1-only spark. Prefer target-selectable Igniter On or Pre-Heat for new setups.',
     links: []
   },
   FuelOpen: {
@@ -1040,7 +1040,7 @@ const BLOCK_INFO = {
     links: []
   },
   FlameConfirm: {
-    desc: 'Waits until the flame sensor fires N consecutive times within the check interval, confirming self-sustained combustion.',
+    desc: 'Waits until the flame sensor fires N consecutive times. Can turn off all ignition outputs on exit.',
     links: [
       { label: 'Flameout Delay (Safety Monitor)',   url: '/config.html#safety-monitor' },
     ]
@@ -1061,7 +1061,7 @@ const BLOCK_INFO = {
     ]
   },
   SafetyHold: {
-    desc: 'Holds for the configured duration and verifies N1 and oil pressure are above minimums before entering RUNNING.',
+    desc: 'Holds for the configured duration and verifies N1 and oil pressure before RUNNING. Optional exit action turns off all ignition outputs.',
     links: [
       { label: 'Min RPM',         url: '/config.html#engine-limits' },
       { label: 'Running Oil Min', url: '/config.html#oil' },
@@ -1084,7 +1084,7 @@ const BLOCK_INFO = {
     ]
   },
   ImmediateCut: {
-    desc: 'Emergency cut: zeros throttle, closes fuel solenoid, turns off igniter and starter instantly.',
+    desc: 'Emergency cut: zeros throttle, closes fuel solenoid, turns off ignition outputs and starter instantly.',
     links: []
   },
   FuelPumpIdle: {
@@ -1103,7 +1103,7 @@ const BLOCK_INFO = {
     links: []
   },
   PreHeat: {
-    desc: 'Fires the igniter for a fixed duration without opening fuel. For glow-plug systems needing thermal pre-heat.',
+    desc: 'Turns the selected ignition output on for a fixed duration without opening fuel.',
     links: [
       { label: 'Glow Plug Preheat', url: '/config.html#glow-cfg-section' },
     ]
@@ -1133,7 +1133,7 @@ const BLOCK_INFO = {
     ]
   },
   GlowPreheat: {
-    desc: 'Ramps glow plug power from 0 to maxPct over preheatMs, then holds at holdPct.',
+    desc: 'Ramps glow plug power, then holds. Wet glow pilot fuel follows the hardware fuel delay.',
     links: [
       { label: 'Glow Plug Preheat', url: '/config.html#glow-cfg-section' },
     ]
@@ -1215,6 +1215,10 @@ function actuatorIsRelay(key) {
 }
 function actuatorHasProportionalOutput(key) {
   return actuatorEnabled(key) && !actuatorIsRelay(key);
+}
+function hasIgnitionOutput(hw = hwCfg) {
+  const a = hw?.actuators || {};
+  return !!(a.igniter?.enabled || a.igniter2?.enabled || a.glow_plug?.enabled);
 }
 function demandText(key, pct, label = 'on') {
   return actuatorIsRelay(key) ? label : `${pct}%`;
@@ -1499,6 +1503,21 @@ function applySideActionsToState(tab, idx, phase, state) {
   }
 }
 
+function setIgnitionPreviewState(state, target, on) {
+  const val = on ? 'on' : 'off';
+  switch (Number(target) || 0) {
+    case 1: state.igniter2 = val; break;
+    case 2: state.glow = val; break;
+    default: state.igniter = val; break;
+  }
+}
+
+function clearIgnitionPreviewState(state) {
+  state.igniter = 'off';
+  state.igniter2 = 'off';
+  state.glow = 'off';
+}
+
 function buildFinalStateCard(tab, seq, idleRaw) {
   if (!seq || seq.length === 0) return null;
   const acts = hwCfg.actuators || {};
@@ -1531,8 +1550,10 @@ function buildFinalStateCard(tab, seq, idleRaw) {
       if (bname === 'PreIgnSpark')  state.igniter   = 'on';
       if (bname === 'FuelOpen')     state.fuelSol   = 'open';
       if (bname === 'FuelPulse')    state.fuelSol   = 'closed';
-      if (bname === 'IgniterOn')    state.igniter   = 'on';
-      if (bname === 'IgniterOff')   state.igniter   = 'off';
+      if (bname === 'IgniterOn' || bname === 'PreHeat')
+        setIgnitionPreviewState(state, hwCfg[ignitionTargetSeqKey(tab)]?.[i] ?? 0, true);
+      if (bname === 'IgniterOff')
+        setIgnitionPreviewState(state, hwCfg[ignitionTargetSeqKey(tab)]?.[i] ?? 0, false);
       if (bname === 'FuelSolClose') state.fuelSol   = 'closed';
       if (bname === 'StarterEnOn')  state.starterEn = 'on';
       if (bname === 'StarterEnOff') state.starterEn = 'off';
@@ -1572,12 +1593,12 @@ function buildFinalStateCard(tab, seq, idleRaw) {
         if (paramVals['Spool.spool_cut_starter_en_on_exit'] ?? true)  state.starterEn = 'off';
       }
       if (bname === 'FlameConfirm') {
-        if (paramVals['FlameConfirm.flame_turn_off_igniter'] ?? true) state.igniter = 'off';
+        if (paramVals['FlameConfirm.flame_turn_off_igniter'] ?? true) clearIgnitionPreviewState(state);
       }
       if (bname === 'SafetyHold') {
         if (paramVals['SafetyHold.safety_turn_off_starter']    ?? false) state.starter   = 'off';
         if (paramVals['SafetyHold.safety_turn_off_starter_en'] ?? false) state.starterEn = 'off';
-        if (paramVals['SafetyHold.safety_turn_off_igniter']    ?? false) state.igniter   = 'off';
+        if (paramVals['SafetyHold.safety_turn_off_igniter']    ?? false) clearIgnitionPreviewState(state);
       }
       applySideActionsToState(tab, i, 'exit', state);
     }
@@ -1991,12 +2012,31 @@ function ignitionTargets() {
     out.push({v:2, l: wet ? 'Wet glow plug' : 'Glow plug',
       info: wet ? `wet glow plug, pilot fuel starts ${delayS} s after ON` : 'glow plug'});
   }
-  return out.length ? out : [{v:0, l:'Igniter 1', info:'igniter output is not configured'}];
+  return out.length ? out : [{v:0, l:'Igniter 1', info:'ignition output is not configured'}];
 }
 
 function ignitionInfoForTarget(target) {
   const found = ignitionTargets().find(t => Number(t.v) === Number(target));
-  return found?.info || 'igniter output is not configured';
+  return found?.info || 'ignition output is not configured';
+}
+
+function wetGlowTimingWarning(bname, idx, tab, target) {
+  const glow = hwCfg.actuators?.glow_plug || {};
+  if (Number(target) !== 2 || Number(glow.type || 0) !== 2) return '';
+  const seq = hwCfg[seqKey(tab)] || [];
+  const delayMs = Number(glow.fuel_delay_ms ?? 8000);
+  let waitMs = bname === 'PreHeat' ? Number(paramVals['PreHeat.preheat_ms'] ?? 3000) : 0;
+  const fuelOrConfirm = new Set(['FuelOpen', 'FuelPumpIdle', 'FuelPulse', 'TempConfirm', 'FlameConfirm', 'Spool']);
+  for (let i = idx + 1; i < seq.length; i++) {
+    const nm = seq[i];
+    if (nm === 'TimedDelay') waitMs += Number(timedDelayValue(tab, i) || 0);
+    else if (nm === 'PreHeat') waitMs += Number(paramVals['PreHeat.preheat_ms'] ?? 3000);
+    if (fuelOrConfirm.has(nm)) break;
+  }
+  if (waitMs >= delayMs) return '';
+  const delayS = (delayMs / 1000).toFixed(delayMs % 1000 ? 1 : 0);
+  const waitS = (waitMs / 1000).toFixed(waitMs % 1000 ? 1 : 0);
+  return `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--yellow);line-height:1.35;margin-top:.22rem">Wet glow pilot fuel delay is ${delayS} s, but the next fuel/confirmation step is about ${waitS} s away. Add delay or increase Pre-Heat time if pilot fuel must be burning first.</span>`;
 }
 
 function buildIgnitionTargetHtml(bname, idx, tab) {
@@ -2006,10 +2046,12 @@ function buildIgnitionTargetHtml(bname, idx, tab) {
   const target = hwCfg[key]?.[idx] ?? 0;
   const opts = ignitionTargets().map(t => `<option value="${t.v}" ${Number(target)===Number(t.v)?'selected':''}>${t.l}</option>`).join('');
   const esc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const wetWarn = wetGlowTimingWarning(bname, idx, tab, target);
   return `<div class="param-field" style="margin-bottom:.55rem">
-    <span class="param-label">Igniter output</span>
+    <span class="param-label">Ignition output</span>
     <select class="param-input" onchange="setIgnitionTarget('${tab}',${idx},this.value)">${opts}</select>
     <span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-top:.18rem">${esc(ignitionInfoForTarget(target))}</span>
+    ${wetWarn}
   </div>`;
 }
 
@@ -2024,6 +2066,10 @@ function buildParamsHtml(bname, idx, tab) {
   const warningHtml = _buildHwWarningHtml(def);
   const sideHtml = buildSideActionsHtml(tab, idx);
   const ignitionHtml = buildIgnitionTargetHtml(bname, idx, tab);
+  const hasSharedParams = !!def?.params?.some(p => p.configKey && !(bname === 'TimedDelay' && p.key === 'timed_delay_ms'));
+  const sharedNoteHtml = hasSharedParams
+    ? `<div style="font-size:.65rem;color:var(--dim);line-height:1.35;margin:.35rem 0 .55rem">Shared setting: parameter changes here apply to every ${def.label || bname} block that uses this setting. Timed Delay values and Igniter output selection are per card.</div>`
+    : '';
   if (!def || def.params.length === 0) {
     return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}${ignitionHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em>${sideHtml}</div>`;
   }
@@ -2074,7 +2120,7 @@ function buildParamsHtml(bname, idx, tab) {
   }).join('');
   return `<div class="block-params">
     <div class="block-desc">${def.desc}</div>
-    ${warningHtml}${ignitionHtml}<div class="param-grid">${inputs}</div>${sideHtml}
+    ${warningHtml}${ignitionHtml}${sharedNoteHtml}<div class="param-grid">${inputs}</div>${sideHtml}
   </div>`;
 }
 

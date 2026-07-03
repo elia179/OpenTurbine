@@ -39,10 +39,10 @@ enum class OTCommand : uint8_t {
     COOL_FAN_TEST,        // run cooling fan briefly
     AIRSTARTER_TEST,      // pulse airstarter solenoid
     BLEED_VALVE_TEST,     // pulse bleed valve open
-    GLOW_TEST,            // run glow plug at 50 % briefly
-    FUEL_PUMP2_TEST,      // run secondary fuel pump at 30 % briefly
+    GLOW_TEST,            // run glow plug using configured tools.glow_test_* values
+    FUEL_PUMP2_TEST,      // run secondary fuel pump using configured test demand
     AB_SOL_TEST,          // pulse AB fuel solenoid
-    AB_PUMP_TEST,         // run AB pump at 30 % briefly
+    AB_PUMP_TEST,         // run AB pump using configured test demand
     STARTER_EN_TEST,      // energise starter enable relay briefly
     PROP_PITCH_TEST,      // move prop pitch servo to mid-travel briefly
     RESET_PEAKS,          // clear session peak values (maxN1, maxN2, maxTot, maxP1, maxP2)
