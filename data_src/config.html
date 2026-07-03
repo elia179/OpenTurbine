@@ -159,28 +159,32 @@ const SCHEMA = [
     { key:'rl_mr', path:['relight','min_rpm'],            label:'Min N1 for Relight (RPM)', desc:'Abort relight if N1 falls below this RPM - the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000-40,000 RPM.', step:1000, min:0, basic:true },
     { key:'rl_to', path:['relight','relight_timeout_ms'], label:'Relight Timeout (ms)',      desc:'How long to keep the igniter on trying to relight after a flameout. If flame is not restored within this window, the engine shuts down. 0 = no timeout (not recommended). Typical: 8,000-15,000 ms.', step:500, min:0, basic:true },
   ]},
-  { title: 'Tool Durations', fields: [
-    { key:'tl_fp', path:['tools','fuel_prime_ms'],     label:'Fuel Prime ms',      desc:'Fuel solenoid open time for FUEL_PRIME',   step:100, min:0 },
-    { key:'tl_op', path:['tools','oil_prime_ms'],      label:'Oil Prime ms',       desc:'Oil pump run time for OIL_PRIME',          step:100, min:0 },
-    { key:'tl_ig', path:['tools','ign_test_ms'],       label:'Igniter Test ms',    desc:'Igniter on time for IGN_TEST',             step:100, min:0 },
-    { key:'tl_gl', path:['tools','glow_test_ms'],      label:'Glow Test ms',       desc:'Glow plug test duration. For wet glow, set this longer than the configured pilot-fuel delay if you want fuel to start during the test.', step:100, min:0 },
-    { key:'tl_gp', path:['tools','glow_test_pct'],     label:'Glow Test %',        desc:'Glow plug test demand. 100% gives relay-style wiring a steady ON command.', step:5, min:0, max:100 },
-    { key:'tl_st', path:['tools','start_test_ms'],     label:'Starter Test ms',    desc:'Starter spin time for START_TEST',         step:100, min:0 },
-    { key:'tl_sp', path:['tools','start_test_pct'],    label:'Starter Test %',     desc:'Starter demand for START_TEST when the starter output is proportional.', step:5, min:0, max:100 },
-    { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief solenoid pulse for click test',      step:50,  min:0 },
-    { key:'tl_it', path:['tools','idle_test_ms'],      label:'Idle Test ms',       desc:'Throttle idle-output test duration.',      step:100, min:0 },
-    { key:'tl_os', path:['tools','oil_scav_test_ms'],  label:'Scavenge Test ms',   desc:'Oil scavenge pump test duration.',         step:100, min:0 },
-    { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:0 },
-    { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Airstarter Test ms', desc:'Airstarter solenoid pulse duration.',      step:50,  min:0 },
-    { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:0 },
-    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Aux Pump 2 Test ms', desc:'Auxiliary fuel pump 2 test duration.',     step:100, min:0 },
-    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Aux Pump 2 Test %', desc:'Auxiliary fuel pump 2 demand for proportional outputs.', step:5, min:0, max:100 },
-    { key:'tl_abs',path:['tools','ab_sol_test_ms'],    label:'AB Solenoid ms',     desc:'Afterburner solenoid pulse duration.',     step:50,  min:0 },
-    { key:'tl_abp',path:['tools','ab_pump_test_ms'],   label:'AB Pump Test ms',    desc:'Afterburner pump test duration.',          step:100, min:0 },
-    { key:'tl_abq',path:['tools','ab_pump_test_pct'],  label:'AB Pump Test %',     desc:'Afterburner pump demand for proportional outputs.', step:5, min:0, max:100 },
-    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable ms',  desc:'Starter enable relay pulse duration.',     step:50,  min:0 },
-    { key:'tl_pp', path:['tools','prop_pitch_test_ms'],label:'Prop Pitch Test ms', desc:'Prop pitch test duration.',                step:100, min:0 },
-    { key:'tl_pq', path:['tools','prop_pitch_test_pct'],label:'Prop Pitch Test %', desc:'Prop pitch test position/demand.',          step:5, min:0, max:100 },
+  { title: 'Tools - Primary Bench Tests', id:'tools-primary-section', sectionNote:'These values control the main Tools page test buttons. Durations are milliseconds. Demand % only matters on proportional outputs; relay/on-off outputs run ON for the configured duration.', fields: [
+    { key:'tl_fp', path:['tools','fuel_prime_ms'],     label:'Fuel Prime ms',      desc:'Fuel solenoid open time for Fuel Prime.',   step:100, min:0, basic:true },
+    { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief fuel-solenoid click-test pulse.',     step:50,  min:0, basic:true },
+    { key:'tl_op', path:['tools','oil_prime_ms'],      label:'Oil Prime ms',       desc:'Oil pump run time for Oil Prime.',          step:100, min:0, basic:true },
+    { key:'tl_ig', path:['tools','ign_test_ms'],       label:'Igniter Test ms',    desc:'Spark/igniter on time for Igniter Test.',   step:100, min:0, basic:true },
+    { key:'tl_gl', path:['tools','glow_test_ms'],      label:'Glow Test ms',       desc:'Glow plug test duration. For wet glow, set this longer than the configured pilot-fuel delay if you want fuel to start during the test.', step:100, min:0, basic:true },
+    { key:'tl_gp', path:['tools','glow_test_pct'],     label:'Glow Test %',        desc:'Glow plug test demand. Use 100% for relay-style wiring or a full-power heat test.', step:5, min:0, max:100, basic:true },
+    { key:'tl_st', path:['tools','start_test_ms'],     label:'Starter Test ms',    desc:'Starter spin time for Starter Test.',       step:100, min:0, basic:true },
+    { key:'tl_sp', path:['tools','start_test_pct'],    label:'Starter Test %',     desc:'Starter demand for proportional starter outputs.', step:5, min:0, max:100, basic:true },
+    { key:'tl_it', path:['tools','idle_test_ms'],      label:'Idle Test ms',       desc:'Throttle idle-output test duration.',      step:100, min:0, basic:true },
+  ]},
+  { title: 'Tools - Accessory Bench Tests', id:'tools-accessory-section', sectionNote:'Accessory outputs only affect the matching Tools page buttons when that hardware is fitted. Unused outputs are greyed out so the saved defaults stay visible without inviting edits.', fields: [
+    { key:'tl_os', path:['tools','oil_scav_test_ms'],  label:'Scavenge Test ms',   desc:'Oil scavenge pump test duration.',         step:100, min:0, basic:true },
+    { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:0, basic:true },
+    { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Airstarter Test ms', desc:'Airstarter solenoid pulse duration.',      step:50,  min:0, basic:true },
+    { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:0, basic:true },
+    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Aux Pump 2 Test ms', desc:'Auxiliary fuel pump 2 test duration.',     step:100, min:0, basic:true },
+    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Aux Pump 2 Test %', desc:'Auxiliary fuel pump 2 demand for proportional outputs.', step:5, min:0, max:100, basic:true },
+    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable ms',  desc:'Starter enable relay pulse duration.',     step:50,  min:0, basic:true },
+    { key:'tl_pp', path:['tools','prop_pitch_test_ms'],label:'Prop Pitch Test ms', desc:'Prop pitch test duration.',                step:100, min:0, basic:true },
+    { key:'tl_pq', path:['tools','prop_pitch_test_pct'],label:'Prop Pitch Test %', desc:'Prop pitch test position/demand for proportional outputs.', step:5, min:0, max:100, basic:true },
+  ]},
+  { title: 'Tools - Afterburner Bench Tests', id:'tools-ab-section', sectionNote:'Afterburner bench-test timing is shown separately because these buttons are only useful on AB builds. Demand % is ignored by relay-style AB pump outputs.', fields: [
+    { key:'tl_abs',path:['tools','ab_sol_test_ms'],    label:'AB Solenoid ms',     desc:'Afterburner solenoid pulse duration.',     step:50,  min:0, basic:true },
+    { key:'tl_abp',path:['tools','ab_pump_test_ms'],   label:'AB Pump Test ms',    desc:'Afterburner pump test duration.',          step:100, min:0, basic:true },
+    { key:'tl_abq',path:['tools','ab_pump_test_pct'],  label:'AB Pump Test %',     desc:'Afterburner pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
   ]},
   { title: 'Telemetry', fields: [
     { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic flight-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox', basic:true },
@@ -1298,6 +1302,14 @@ function applyHwConditions() {
   const hasStarter     = !!(a.starter?.enabled    || hwCfg.has_starter);
   const hasFuelSol     = !!(a.fuel_sol?.enabled   || hwCfg.has_fuel_sol);
   const hasPropPitch   = !!(a.prop_pitch?.enabled || hwCfg.has_prop_pitch);
+  const hasGlowPlug    = !!(a.glow_plug?.enabled  || hwCfg.has_glow_plug);
+  const hasFuelPump2   = !!(a.fuel_pump2?.enabled || hwCfg.has_fuel_pump2);
+  const hasCoolFan     = !!(a.cool_fan?.enabled   || hwCfg.has_cool_fan);
+  const hasAirstarter  = !!(a.airstarter_sol?.enabled || hwCfg.has_airstarter);
+  const hasOilScavenge = !!(a.oil_scavenge_pump?.enabled || hwCfg.has_oil_scavenge);
+  const hasBleedValve  = !!(a.bleed_valve?.enabled || hwCfg.has_bleed_valve);
+  const hasStarterEn   = !!(a.starter_en?.enabled || hwCfg.has_starter_en);
+  const hasAbSol       = !!(hasAB && (a.ab_sol?.enabled || hwCfg.has_ab_sol));
   const hasAbPump      = !!(hasAB && (a.ab_pump?.enabled || hwCfg.has_ab_pump));
   const hasClusterSerial = !!hwCfg.cluster_serial?.enabled;
   const hasDynamicIdle = !!((hwCfg.controllers?.dynamic_idle || hwCfg.has_dynamic_idle) &&
@@ -1305,6 +1317,11 @@ function applyHwConditions() {
   const hasGovernorRequested = !!(hwCfg.controllers?.governor || hwCfg.has_governor);
   const hasGovernorControl = hasThrottleOut || hasPropPitch;
   const hasGovernor = hasGovernorRequested && hasN2 && hasGovernorControl;
+  const actuatorType = key => {
+    const act = a[key] || {};
+    return Number(act.type ?? hwCfg[`${key}_type`] ?? NaN);
+  };
+  const isOnOffType = key => Number(actuatorType(key)) === 2;
 
   function showField(key, show) {
     setCfgFieldVisible(key, show);
@@ -1445,7 +1462,31 @@ function applyHwConditions() {
   ghostField('tl_fs', hasFuelSol, 'Solenoid Click duration requires a fuel solenoid output.');
   ghostField('tl_op', hasOilPump, 'Oil Prime duration requires an oil pump output.');
   ghostField('tl_ig', hasIgniter || hasIgniter2, 'Igniter Test duration requires Igniter 1 or Igniter 2 to be configured in Hardware.');
+  ghostField('tl_gl', hasGlowPlug, 'Glow Test duration requires a glow plug output.');
+  ghostField('tl_gp', hasGlowPlug, 'Glow Test demand requires a glow plug output.');
   ghostField('tl_st', hasStarter, 'Starter Test duration requires a starter output.');
+  ghostField('tl_sp', hasStarter && !isOnOffType('starter'), isOnOffType('starter')
+    ? 'Starter is configured as relay/on-off. Starter Test % is ignored; use Starter Test ms to control pulse length.'
+    : 'Starter Test demand requires a starter output.');
+  ghostField('tl_it', hasThrottleOut, 'Idle Test duration requires a throttle/fuel output.');
+  ghostField('tl_os', hasOilScavenge, 'Scavenge Test duration requires an oil scavenge pump output.');
+  ghostField('tl_cf', hasCoolFan, 'Fan Test duration requires a cooling fan output.');
+  ghostField('tl_as', hasAirstarter, 'Airstarter Test duration requires an airstarter solenoid output.');
+  ghostField('tl_bv', hasBleedValve, 'Bleed Test duration requires a bleed valve output.');
+  ghostField('tl_f2', hasFuelPump2, 'Aux Pump 2 Test duration requires Auxiliary Fuel Pump 2 in Hardware.');
+  ghostField('tl_f2p', hasFuelPump2 && !isOnOffType('fuel_pump2'), isOnOffType('fuel_pump2')
+    ? 'Auxiliary Fuel Pump 2 is configured as relay/on-off. Aux Pump 2 Test % is ignored; use Aux Pump 2 Test ms to control pulse length.'
+    : 'Aux Pump 2 Test demand requires Auxiliary Fuel Pump 2 in Hardware.');
+  ghostField('tl_se', hasStarterEn, 'Starter Enable Test duration requires a starter enable relay output.');
+  ghostField('tl_pp', hasPropPitch, 'Prop Pitch Test duration requires a prop-pitch actuator.');
+  ghostField('tl_pq', hasPropPitch && !isOnOffType('prop_pitch'), isOnOffType('prop_pitch')
+    ? 'Prop pitch is configured as relay/on-off. Prop Pitch Test % is ignored; use Prop Pitch Test ms to control pulse length.'
+    : 'Prop Pitch Test demand requires a prop-pitch actuator.');
+  ghostField('tl_abs', hasAbSol, 'AB Solenoid duration requires afterburner hardware and an AB solenoid output.');
+  ghostField('tl_abp', hasAbPump, 'AB Pump Test duration requires afterburner hardware and an AB pump output.');
+  ghostField('tl_abq', hasAbPump && !isOnOffType('ab_pump'), isOnOffType('ab_pump')
+    ? 'AB pump is configured as relay/on-off. AB Pump Test % is ignored; use AB Pump Test ms to control pulse length.'
+    : 'AB Pump Test demand requires afterburner hardware and an AB pump output.');
 
   ['di_tr','di_ru','di_rd','di_db','di_rl','di_mm','di_ig','di_im'].forEach(k =>
     ghostField(k, hasDynamicIdle, 'Dynamic Idle needs Hardware > Controllers > Dynamic Idle plus a throttle/fuel output and at least one fitted shaft RPM sensor.'));
@@ -1549,8 +1590,6 @@ function applyHwConditions() {
 
   // Other hardware-conditional log columns — ghost treatment
   const hasFuelFlow  = !!(s.fuel_flow?.enabled    || hwCfg.has_fuel_flow);
-  const hasGlowPlug  = !!(a.glow_plug?.enabled    || hwCfg.has_glow_plug);
-  const hasFuelPump2 = !!(a.fuel_pump2?.enabled   || hwCfg.has_fuel_pump2);
   ghostSlogField('sl_n1', hasN1,          'N1 RPM sensor');
   ghostSlogField('sl_n2', hasN2,          'N2 RPM sensor');
   ghostSlogField('sl_tt', hasTot,         'TOT sensor');

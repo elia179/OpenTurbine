@@ -950,6 +950,7 @@ function applyData(d) {
     const anyAdv = d.has_glow_plug || d.has_bleed_valve || d.has_prop_pitch || d.has_fuel_pump2
                 || d.has_cool_fan  || d.has_airstarter  || d.has_oil_scavenge;
     advActSection.style.display = anyAdv ? '' : 'none';
+    const actuatorIsRelay = type => Number(type) === 2;
 
     const advGlow = document.getElementById('adv-glow');
     if (advGlow) {
@@ -970,8 +971,11 @@ function applyData(d) {
     if (advPitch) {
       advPitch.style.display = d.has_prop_pitch ? '' : 'none';
       if (d.has_prop_pitch && d.prop_pitch_demand !== undefined) {
-        setText('pitch-pct', Math.round(d.prop_pitch_demand * 100));
-        setGaugeBar('pitch-gauge-bar', d.prop_pitch_demand * 100);
+        const pct = Math.round(d.prop_pitch_demand * 100);
+        const relay = actuatorIsRelay(d.prop_pitch_type);
+        setText('pitch-pct', relay ? (pct > 0 ? 'ON' : 'OFF') : pct);
+        setText('pitch-unit', relay ? '' : '%');
+        setGaugeBar('pitch-gauge-bar', relay ? (pct > 0 ? 100 : 0) : pct);
       }
     }
 
@@ -979,8 +983,11 @@ function applyData(d) {
     if (advFp2) {
       advFp2.style.display = d.has_fuel_pump2 ? '' : 'none';
       if (d.has_fuel_pump2 && d.fuel_pump2_demand !== undefined) {
-        setText('fp2-pct', Math.round(d.fuel_pump2_demand * 100));
-        setGaugeBar('fp2-gauge-bar', d.fuel_pump2_demand * 100);
+        const pct = Math.round(d.fuel_pump2_demand * 100);
+        const relay = actuatorIsRelay(d.fuel_pump2_type);
+        setText('fp2-pct', relay ? (pct > 0 ? 'ON' : 'OFF') : pct);
+        setText('fp2-unit', relay ? '' : '%');
+        setGaugeBar('fp2-gauge-bar', relay ? (pct > 0 ? 100 : 0) : pct);
       }
     }
 

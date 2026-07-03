@@ -803,7 +803,9 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_oil_pump_current"]  = HardwareConfig::hasOilPump && HardwareConfig::hasOilPumpCurrentSensor;
         doc["has_bleed_valve"]       = HardwareConfig::hasBleedValve;
         doc["has_prop_pitch"]        = HardwareConfig::hasPropPitch;
+        doc["prop_pitch_type"]       = HardwareConfig::propPitchType;
         doc["has_fuel_pump2"]        = HardwareConfig::hasFuelPump2;
+        doc["fuel_pump2_type"]       = HardwareConfig::fuelPump2Type;
         doc["has_cool_fan"]          = HardwareConfig::hasCoolFan;
         doc["has_airstarter"]        = HardwareConfig::hasAirstarterSol;
         doc["has_oil_scavenge"]      = HardwareConfig::hasOilScavengePump;
