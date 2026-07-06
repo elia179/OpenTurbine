@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Log</title>
-<link rel="stylesheet" href="/style.css?v=20260625a">
+<link rel="stylesheet" href="/style.css?v=20260705a">
 </head>
 <body>
 <nav>
@@ -32,6 +32,7 @@
   <div style="font-size:.74rem;color:var(--dim);padding:.55rem .75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);margin-bottom:.8rem;line-height:1.55">
     <strong style="color:var(--text)">How logging works:</strong>
     Flight Log records events and compact periodic snapshots for diagnosis. Session Data records selected values in a detailed CSV only for an engine run. Standby snapshots are disabled by default so an idle ECU does not fill the flight log with uneventful readings.
+    Viewing, downloading, and clearing the Flight Log require STANDBY (or FAULT) with Standby Snapshot Logging turned off — the ECU refuses flash-heavy reads that would contend with active logging.
   </div>
 
   <div class="tab-strip">
@@ -87,6 +88,7 @@
           <label class="slog-chk"><input type="checkbox" data-bit="n2">N2 RPM</label>
           <label class="slog-chk"><input type="checkbox" data-bit="tot">TOT °C</label>
           <label class="slog-chk"><input type="checkbox" data-bit="tit">TIT °C</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="oil_temp">Oil temp °C</label>
           <label class="slog-chk"><input type="checkbox" data-bit="oil">Oil bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="p1">P1 bar</label>
           <label class="slog-chk"><input type="checkbox" data-bit="p2">P2 bar</label>
@@ -95,9 +97,14 @@
           <label class="slog-chk"><input type="checkbox" data-bit="batt">Batt V</label>
           <label class="slog-chk"><input type="checkbox" data-bit="fuel_press">Fuel press</label>
           <label class="slog-chk"><input type="checkbox" data-bit="fuel_flow">Fuel flow</label>
-          <label class="slog-chk"><input type="checkbox" data-bit="glow">Glow %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="glow">Glow output</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="wet_glow">Wet glow fuel output</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="glow_current">Glow current A</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="ign_current">Igniter 1 current A</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="ign2_current">Igniter 2 current A</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="oil_current">Oil current A</label>
           <label class="slog-chk"><input type="checkbox" data-bit="fp2">Fuel pump 2 %</label>
-          <label class="slog-chk"><input type="checkbox" data-bit="ab">Afterburner</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="ab">Afterburner state/fuel</label>
           <label class="slog-chk"><input type="checkbox" data-bit="prop">Prop pitch %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
           <label class="slog-chk"><input type="checkbox" data-bit="loop">ECU loop timing</label>
@@ -106,8 +113,9 @@
         <label class="slog-chk" style="display:block;margin-top:.6rem" title="When off, Flight Log does not add periodic sensor snapshots while the ECU is in standby.">
           <input type="checkbox" id="log-standby"> Log periodic snapshots while in standby
         </label>
-        <button onclick="saveSessionCfg()" style="margin-top:.55rem">Save Selection</button>
+        <button id="session-save-btn" onclick="saveSessionCfg()" style="margin-top:.55rem">Save Selection</button>
         <span id="session-save-msg" style="font-size:.72rem;color:var(--green);margin-left:.5rem;display:none">Saved</span>
+        <span id="session-lock-msg" style="font-size:.72rem;color:var(--yellow);margin-left:.5rem;display:none">Settings locked until STANDBY</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:.4rem">
         <button onclick="downloadSessionLog()">Download CSV</button>
@@ -116,7 +124,7 @@
       </div>
     </div>
     <div style="font-size:.72rem;color:var(--dim);padding:.5rem 0">
-      Session log rate is configurable on the <a href="/config.html#tm_sl" style="color:var(--dim);text-decoration:underline">Config page</a> (default 2 Hz). File is kept until manually cleared.
+      Session log rate is configurable on the <a href="/config.html#cf-tm_sl" style="color:var(--dim);text-decoration:underline">Config page</a> (default 1 Hz). File is kept until manually cleared.
     </div>
 
     <!-- In-browser CSV preview -->
@@ -137,14 +145,26 @@
           <label id="chart-lbl-oil"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-oil"         onchange="redrawChart()"> <span style="color:#d9785e">Oil bar</span></label>
           <label id="chart-lbl-thr"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-thr"         onchange="redrawChart()"> <span style="color:#c97adb">Throttle %</span></label>
           <label id="chart-lbl-tit"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-tit"         onchange="redrawChart()"> <span style="color:#e8875a">TIT °C</span></label>
+          <label id="chart-lbl-oilt" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-oilt"        onchange="redrawChart()"> <span style="color:#9bd66f">Oil temp °C</span></label>
           <label id="chart-lbl-batt" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-batt"        onchange="redrawChart()"> <span style="color:#5ecdd9">Batt V</span></label>
           <label id="chart-lbl-fp"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp"          onchange="redrawChart()"> <span style="color:#b87fdb">Fuel press</span></label>
-          <label id="chart-lbl-glow" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-glow"        onchange="redrawChart()"> <span style="color:#f06060">Glow %</span></label>
+          <label id="chart-lbl-glow" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-glow"        onchange="redrawChart()"> <span style="color:#f06060">Glow output</span></label>
+          <label id="chart-lbl-wetg" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-wetg"        onchange="redrawChart()"> <span style="color:#e05f8a">Wet glow fuel output</span></label>
+          <label id="chart-lbl-gcur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-gcur"        onchange="redrawChart()"> <span style="color:#ff8b8b">Glow current</span></label>
+          <label id="chart-lbl-icur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-icur"        onchange="redrawChart()"> <span style="color:#ffb15c">Igniter 1 current</span></label>
+          <label id="chart-lbl-i2cur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-i2cur"      onchange="redrawChart()"> <span style="color:#ffce6b">Igniter 2 current</span></label>
+          <label id="chart-lbl-ocur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ocur"        onchange="redrawChart()"> <span style="color:#c7d96a">Oil current</span></label>
           <label id="chart-lbl-fp2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp2"         onchange="redrawChart()"> <span style="color:#68c97a">Fuel pump 2 %</span></label>
           <label id="chart-lbl-prop" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-prop"        onchange="redrawChart()"> <span style="color:#7ab3f0">Prop pitch %</span></label>
           <label id="chart-lbl-ff"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ff"          onchange="redrawChart()"> <span style="color:#f5c842">Fuel flow</span></label>
           <label id="chart-lbl-abm"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abm"         onchange="redrawChart()"> <span style="color:#e84040">AB mode</span></label>
           <label id="chart-lbl-abfl" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abfl"        onchange="redrawChart()"> <span style="color:#f07030">AB flame</span></label>
+          <label id="chart-lbl-abp"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abp"         onchange="redrawChart()"> <span style="color:#ff5a4f">AB pump %</span></label>
+          <label id="chart-lbl-abo"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abo"         onchange="redrawChart()"> <span style="color:#ff8a3a">AB offset %</span></label>
+          <label id="chart-lbl-opct" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-opct"        onchange="redrawChart()"> <span style="color:#8fd0b0">Oil pump %</span></label>
+          <label id="chart-lbl-lhz"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-lhz"         onchange="redrawChart()"> <span style="color:#a0a8ff">Loop Hz ÷10</span></label>
+          <label id="chart-lbl-lavg" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-lavg"        onchange="redrawChart()"> <span style="color:#c0b0ff">Loop avg ms ×10</span></label>
+          <label id="chart-lbl-lmax" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-lmax"        onchange="redrawChart()"> <span style="color:#e0a8ff">Loop max ms ×10</span></label>
         </div>
         <canvas id="session-chart" style="width:100%;height:200px;border:1px solid var(--border);border-radius:6px;background:var(--surface)"></canvas>
       </div>
@@ -169,7 +189,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260625a"></script>
+<script src="/app.js?v=20260705a"></script>
 <script>
 // ── Tab switching ─────────────────────────────────────────────
 function showTab(tab) {
@@ -199,14 +219,18 @@ function evBadge(ev) {
   return `<span class="ev-badge ${cls}">${escapeHtmlText(ev || '?')}</span>`;
 }
 
-function escapeHtmlText(value) {
-  return String(value)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escapeHtmlText() is shared from app.js (loaded above this inline script).
 
 function formatDetails(entry) {
+  // Boot load-warnings reuse the CONFIG_CHANGE record shape (field/old/new),
+  // but nothing was changed: "old" is the value loaded from the file and
+  // "new" is the normal cap. Render explicitly so it doesn't read like an
+  // edit that clamped the value (load+warn keeps it as loaded).
+  if (typeof entry.field === 'string' && entry.field.indexOf('load_warning:') === 0) {
+    const param = entry.field.slice('load_warning:'.length);
+    return `<span style="color:var(--yellow)">⚠ ${escapeHtmlText(param)} loaded outside the normal range: ` +
+           `${escapeHtmlText(entry.old)} (normal max ${escapeHtmlText(entry.new)}) — value kept as loaded</span>`;
+  }
   return Object.entries(entry)
     .filter(([k]) => k !== 't' && k !== 'ev')
     .map(([k, v]) => `<span style="color:var(--dim)">${escapeHtmlText(k)}:</span> ${escapeHtmlText(v)}`)
@@ -231,6 +255,7 @@ function numField(entry, keys) {
 }
 
 function eventN1(entry)  { return numField(entry, ['n1', 'n1Rpm', 'maxN1']); }
+function eventN2(entry)  { return numField(entry, ['n2', 'n2Rpm', 'maxN2']); }
 function eventTOT(entry) { return numField(entry, ['tot', 'totDegC', 'maxTot']); }
 function eventTIT(entry) { return numField(entry, ['tit', 'titDegC', 'maxTit']); }
 function eventOil(entry) { return numField(entry, ['oil', 'oilBar', 'minOil']); }
@@ -252,6 +277,7 @@ function parseRuns(events) {
         tStart:  e.t,
         tEnd:    null,
         peakN1:  eventN1(e)  || 0,
+        peakN2:  eventN2(e)  || 0,
         peakTOT: eventTOT(e) || 0,
         peakTIT: eventTIT(e) || 0,
         outcome: 'IN_PROGRESS',
@@ -260,8 +286,9 @@ function parseRuns(events) {
       };
     } else if (cur) {
       cur.events.push(e);
-      const n1 = eventN1(e), tot = eventTOT(e), tit = eventTIT(e);
+      const n1 = eventN1(e), n2 = eventN2(e), tot = eventTOT(e), tit = eventTIT(e);
       if (n1  !== undefined && n1  > cur.peakN1)  cur.peakN1  = n1;
+      if (n2  !== undefined && n2  > cur.peakN2)  cur.peakN2  = n2;
       if (tot !== undefined && tot > cur.peakTOT) cur.peakTOT = tot;
       if (tit !== undefined && tit > cur.peakTIT) cur.peakTIT = tit;
 
@@ -291,8 +318,9 @@ function renderSummary(runs) {
                      ? fmtDuration(r.tEnd - r.tStart)
                      : r.outcome === 'IN_PROGRESS' ? 'in progress' : '—';
     const n1Str  = r.peakN1  > 0 ? Math.round(r.peakN1).toLocaleString()  + ' RPM' : '—';
-    const totStr = r.peakTOT > 0 ? r.peakTOT.toFixed(1) + ' °C'                    : '—';
-    const titStr = r.peakTIT > 0 ? r.peakTIT.toFixed(1) + ' °C'                    : '—';
+    const n2Str  = r.peakN2  > 0 ? Math.round(r.peakN2).toLocaleString()  + ' RPM' : '—';
+    const totStr = r.peakTOT > 0 ? toDispTemp(r.peakTOT).toFixed(1) + ' ' + dispTempUnit() : '—';
+    const titStr = r.peakTIT > 0 ? toDispTemp(r.peakTIT).toFixed(1) + ' ' + dispTempUnit() : '—';
     const tStr   = r.tStart  !== undefined ? r.tStart + 's'                         : '—';
 
     let outClass, outLabel;
@@ -305,11 +333,12 @@ function renderSummary(runs) {
         let faultDetail = r.outCode || '?';
         if (faultEv) {
           const parts = [];
-          const n1 = eventN1(faultEv), tot = eventTOT(faultEv), tit = eventTIT(faultEv), oil = eventOil(faultEv);
+          const n1 = eventN1(faultEv), n2 = eventN2(faultEv), tot = eventTOT(faultEv), tit = eventTIT(faultEv), oil = eventOil(faultEv);
           if (n1  !== undefined) parts.push('N1 ' + Math.round(n1).toLocaleString() + ' RPM');
-          if (tot !== undefined) parts.push('TOT ' + Number(tot).toFixed(0) + ' °C');
-          if (tit !== undefined) parts.push('TIT ' + Number(tit).toFixed(0) + ' °C');
-          if (oil !== undefined) parts.push('Oil ' + Number(oil).toFixed(2) + ' bar');
+          if (n2  !== undefined) parts.push('N2 ' + Math.round(n2).toLocaleString() + ' RPM');
+          if (tot !== undefined) parts.push('TOT ' + toDispTemp(Number(tot)).toFixed(0) + ' ' + dispTempUnit());
+          if (tit !== undefined) parts.push('TIT ' + toDispTemp(Number(tit)).toFixed(0) + ' ' + dispTempUnit());
+          if (oil !== undefined) parts.push('Oil ' + toDispPress(Number(oil)).toFixed(2) + ' ' + dispPressUnit());
           if (parts.length) faultDetail += ' — ' + parts.join(', ');
         }
         outLabel = '✗ Fault: ' + faultDetail;
@@ -345,6 +374,10 @@ function renderSummary(runs) {
           <div class="run-stat">
             <div class="run-stat-label">Peak N1</div>
             <div class="run-stat-val">${n1Str}</div>
+          </div>
+          <div class="run-stat">
+            <div class="run-stat-label">Peak N2</div>
+            <div class="run-stat-val">${n2Str}</div>
           </div>
           <div class="run-stat">
             <div class="run-stat-label">Peak TOT</div>
@@ -508,17 +541,19 @@ function confirmClear() {
   } else if (_clearTarget === 'sessions') {
     fetch('/api/session/all', { method: 'DELETE' })
       .then(assertOkResponse)
-      .then(() => { loadSessionCfg(); loadSessionList(); })
+      .then(() => { clearSessionPreview('No session files found'); loadSessionCfg(); loadSessionList(); })
       .catch(e => alert('Clear session logs failed: ' + e.message));
   }
   _clearTarget = null;
 }
 
 // ── Session Data tab ──────────────────────────────────────────
-const SLOG_BITS = ['n1','n2','tot','tit','oil','p1','p2','throttle','oil_pct','batt','fuel_press','fuel_flow','glow','fp2','ab','prop','mode','loop'];
+const SLOG_BITS = ['n1','n2','tot','tit','oil_temp','oil','p1','p2','throttle','oil_pct','batt','fuel_press','fuel_flow','glow','wet_glow','glow_current','ign_current','ign2_current','oil_current','fp2','ab','prop','mode','loop'];
+let _sessionSettingsLocked = false;
 
 function loadSessionCfg() {
-  loadSessionCfgJson().then(({cfg, hw}) => {
+  loadSessionCfgJson().then(({cfg, hw, status}) => {
+    _sessionSettingsLocked = !!status?.locked;
     const sl = cfg.session_log || {};
     const sb = document.getElementById('log-standby');
     if (sb) sb.checked = !!cfg.telemetry?.log_standby;
@@ -527,6 +562,7 @@ function loadSessionCfg() {
       if (el) el.checked = !!sl[bit];
     });
     _applyLogHwVisibility(hw);
+    _applySessionSettingsLock();
   }).catch(() => {
     // Fallback: at least load the config without hardware filtering
     fetch('/api/config').then(r => r.json()).then(cfg => {
@@ -566,6 +602,7 @@ function _applyLogHwVisibility(hw) {
       case 'n2':         return s.n2_rpm       ? !!s.n2_rpm.enabled       : hwOn('has_n2_rpm');
       case 'tot':        return s.tot          ? !!s.tot.enabled          : hwOn('has_tot');
       case 'tit':        return s.tit          ? !!s.tit.enabled          : hwOn('has_tit');
+      case 'oil_temp':   return s.oil_temp     ? !!s.oil_temp.enabled     : hwOn('has_oil_temp');
       case 'oil':        return s.oil_press    ? !!s.oil_press.enabled    : hwOn('has_oil_press');
       case 'p1':         return s.p1           ? !!s.p1.enabled           : hwOn('has_p1');
       case 'p2':         return s.p2           ? !!s.p2.enabled           : hwOn('has_p2');
@@ -574,6 +611,11 @@ function _applyLogHwVisibility(hw) {
       case 'fuel_press': return s.fuel_press   ? !!s.fuel_press.enabled   : hwOn('has_fuel_press');
       case 'fuel_flow':  return s.fuel_flow    ? !!s.fuel_flow.enabled    : hwOn('has_fuel_flow');
       case 'glow':       return a.glow_plug    ? !!a.glow_plug.enabled    : hwOn('has_glow_plug');
+      case 'wet_glow':   return !!(a.glow_plug && a.glow_plug.enabled && Number(a.glow_plug.type || 0) === 2);
+      case 'glow_current': return !!(a.glow_plug && a.glow_plug.enabled && a.glow_plug.has_current);
+      case 'ign_current':  return !!(a.igniter && a.igniter.enabled && a.igniter.has_current);
+      case 'ign2_current': return !!(a.igniter2 && a.igniter2.enabled && a.igniter2.has_current);
+      case 'oil_current':  return !!(a.oil_pump && a.oil_pump.enabled && a.oil_pump.has_current);
       case 'fp2':        return a.fuel_pump2   ? !!a.fuel_pump2.enabled   : hwOn('has_fuel_pump2');
       case 'ab':         return !!(hw && hw.has_afterburner);
       case 'prop':       return a.prop_pitch   ? !!a.prop_pitch.enabled   : hwOn('has_prop_pitch');
@@ -585,10 +627,16 @@ function _applyLogHwVisibility(hw) {
   const hwLabel = {
     n1: 'N1 RPM sensor', n2: 'N2 RPM sensor',
     tot: 'TOT sensor', tit: 'TIT sensor',
+    oil_temp: 'Oil Temperature sensor',
     oil: 'Oil Pressure sensor', p1: 'P1 sensor', p2: 'P2 sensor',
     oil_pct: 'Oil pump output',
     batt: 'Battery Voltage sensor', fuel_press: 'Fuel Pressure sensor',
     fuel_flow: 'Fuel Flow sensor', glow: 'Glow Plug',
+    wet_glow: 'Wet Glow fuel output',
+    glow_current: 'Glow current sensor',
+    ign_current: 'Igniter 1 current sensor',
+    ign2_current: 'Igniter 2 current sensor',
+    oil_current: 'Oil pump current sensor',
     fp2: 'Fuel Pump 2', ab: 'Afterburner', prop: 'Prop Pitch',
   };
 
@@ -599,10 +647,10 @@ function _applyLogHwVisibility(hw) {
     const on = enabled(bit);
     if (on) {
       // Restore to normal
-      input.disabled    = false;
-      lbl.style.opacity = '';
-      lbl.style.cursor  = '';
-      lbl.title         = '';
+      input.disabled    = _sessionSettingsLocked;
+      lbl.style.opacity = _sessionSettingsLocked ? '0.55' : '';
+      lbl.style.cursor  = _sessionSettingsLocked ? 'not-allowed' : '';
+      lbl.title         = _sessionSettingsLocked ? 'Logging selection is locked while the engine is not in STANDBY.' : '';
     } else {
       // Ghost: visible but locked, checkbox unchecked and disabled.
       // pointer-events must stay ON so the title tooltip is reachable on hover.
@@ -613,6 +661,23 @@ function _applyLogHwVisibility(hw) {
       lbl.title         = (hwLabel[bit] || bit) + ' is not configured — enable it on the Hardware Config page to log this value';
     }
   });
+}
+
+function _applySessionSettingsLock() {
+  const sb = document.getElementById('log-standby');
+  if (sb) sb.disabled = _sessionSettingsLocked;
+  const sbLabel = sb ? sb.closest('label.slog-chk') : null;
+  if (sbLabel) {
+    sbLabel.style.opacity = _sessionSettingsLocked ? '0.55' : '';
+    sbLabel.style.cursor = _sessionSettingsLocked ? 'not-allowed' : '';
+    sbLabel.title = _sessionSettingsLocked
+      ? 'Standby snapshot logging is locked while the engine is not in STANDBY.'
+      : 'When off, Flight Log does not add periodic sensor snapshots while the ECU is in standby.';
+  }
+  const saveBtn = document.getElementById('session-save-btn');
+  if (saveBtn) saveBtn.disabled = _sessionSettingsLocked;
+  const lockMsg = document.getElementById('session-lock-msg');
+  if (lockMsg) lockMsg.style.display = _sessionSettingsLocked ? '' : 'none';
 }
 
 async function fetchJsonWithTimeout(url, ms = 8000) {
@@ -644,10 +709,15 @@ async function fetchJsonWithRetry(url, attempts = 3) {
 async function loadSessionCfgJson() {
   const cfg = await fetchJsonWithRetry('/api/config');
   const hw = await fetchJsonWithRetry('/api/hardware');
-  return { cfg, hw };
+  const status = await fetchJsonWithRetry('/api/status').catch(() => ({}));
+  return { cfg, hw, status };
 }
 
 function saveSessionCfg() {
+  if (_sessionSettingsLocked) {
+    alert('Logging settings are locked until the engine is back in STANDBY.');
+    return;
+  }
   fetch('/api/config').then(r => r.json()).then(cfg => {
     if (!cfg.session_log) cfg.session_log = {};
     if (!cfg.telemetry) cfg.telemetry = {};
@@ -686,11 +756,54 @@ function downloadSessionLog() {
 let _sessionHeaders = [];
 let _sessionRows    = [];
 
-function loadSessionPreview() {
+function clearSessionPreview(message = '') {
+  _sessionHeaders = [];
+  _sessionRows = [];
   const msg   = document.getElementById('session-preview-msg');
   const wrap  = document.getElementById('session-preview-wrap');
   const empty = document.getElementById('session-preview-empty');
   const table = document.getElementById('session-preview-table');
+  const chart = document.getElementById('session-chart-wrap');
+  if (table) table.innerHTML = '';
+  if (wrap) wrap.style.display = 'none';
+  if (chart) chart.style.display = 'none';
+  if (empty) empty.style.display = message ? '' : 'none';
+  if (msg) msg.textContent = message;
+}
+
+function renderSessionCsvPreview(csv, labelPrefix = '') {
+  const msg   = document.getElementById('session-preview-msg');
+  const wrap  = document.getElementById('session-preview-wrap');
+  const table = document.getElementById('session-preview-table');
+  const lines = csv.trim().split('\n').filter(l => l.trim());
+  if (lines.length < 2) return false;
+
+  _sessionHeaders = lines[0].split(',');
+  _sessionRows    = lines.slice(1).map(l => l.split(','));
+
+  const dataRows = _sessionRows.slice(-50);
+  let html = '<thead><tr style="background:var(--surface);position:sticky;top:0">';
+  _sessionHeaders.forEach(h => { html += '<th style="padding:.3rem .5rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + escapeHtmlText(h) + '</th>'; });
+  html += '</tr></thead><tbody>';
+  dataRows.forEach((cells, ri) => {
+    html += '<tr style="background:' + (ri % 2 ? 'var(--surface)' : 'var(--bg)') + '">';
+    cells.forEach(c => { html += '<td style="padding:.25rem .5rem;border-bottom:1px solid var(--border);white-space:nowrap">' + escapeHtmlText(c) + '</td>'; });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  if (table) table.innerHTML = html;
+  if (wrap)  wrap.style.display = '';
+  if (msg)   msg.textContent = (labelPrefix ? labelPrefix + ' - ' : '') + _sessionRows.length + ' rows';
+
+  _updateChartControls();
+  redrawChart();
+  return true;
+}
+
+function loadSessionPreview() {
+  const msg   = document.getElementById('session-preview-msg');
+  const wrap  = document.getElementById('session-preview-wrap');
+  const empty = document.getElementById('session-preview-empty');
   if (msg)   msg.textContent = 'Loading…';
   if (wrap)  wrap.style.display = 'none';
   if (empty) empty.style.display = 'none';
@@ -699,38 +812,13 @@ function loadSessionPreview() {
     if (!r.ok) throw new Error(await r.text() || 'no log');
     return r.text();
   }).then(csv => {
-    const lines = csv.trim().split('\n').filter(l => l.trim());
-    if (lines.length < 2) {
-      if (empty) empty.style.display = '';
-      if (msg)   msg.textContent = '';
-      document.getElementById('session-chart-wrap').style.display = 'none';
+    if (!renderSessionCsvPreview(csv)) {
+      clearSessionPreview('No session data yet');
       return;
     }
-    _sessionHeaders = lines[0].split(',');
-    _sessionRows    = lines.slice(1).map(l => l.split(','));
-
-    // Show last 50 data rows in table
-    const dataRows = _sessionRows.slice(-50);
-    let html = '<thead><tr style="background:var(--surface);position:sticky;top:0">';
-    _sessionHeaders.forEach(h => { html += '<th style="padding:.3rem .5rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>'; });
-    html += '</tr></thead><tbody>';
-    dataRows.forEach((cells, ri) => {
-      html += '<tr style="background:' + (ri % 2 ? 'var(--surface)' : 'var(--bg)') + '">';
-      cells.forEach(c => { html += '<td style="padding:.25rem .5rem;border-bottom:1px solid var(--border);white-space:nowrap">' + c + '</td>'; });
-      html += '</tr>';
-    });
-    html += '</tbody>';
-    if (table) table.innerHTML = html;
-    if (wrap)  wrap.style.display = '';
-    if (msg)   msg.textContent = _sessionRows.length + ' rows';
-
-    // Show chart if useful columns exist
-    _updateChartControls();
-    redrawChart();
   }).catch(e => {
-    if (empty) empty.style.display = '';
     const err = e && e.message ? e.message : '';
-    if (msg)   msg.textContent = err.includes('STANDBY') ? 'Session preview available after STANDBY' : '';
+    clearSessionPreview(err.includes('STANDBY') ? 'Session preview available after STANDBY' : '');
   });
 }
 
@@ -742,14 +830,26 @@ const CHART_COLS = [
   ['oil_bar',         'chart-cb-oil',  'chart-lbl-oil',  '#d9785e', v => v * 100],   // bar → ×100 for scale
   ['thr_pct',         'chart-cb-thr',  'chart-lbl-thr',  '#c97adb', v => v],
   ['tit_c',           'chart-cb-tit',  'chart-lbl-tit',  '#e8875a', v => v],
+  ['oil_temp_c',      'chart-cb-oilt', 'chart-lbl-oilt', '#9bd66f', v => v],
   ['batt_v',          'chart-cb-batt', 'chart-lbl-batt', '#5ecdd9', v => v * 10],    // V → ×10 for scale
   ['fuel_press_bar',  'chart-cb-fp',   'chart-lbl-fp',   '#b87fdb', v => v * 100],   // bar → ×100 for scale
   ['glow_pct',        'chart-cb-glow', 'chart-lbl-glow', '#f06060', v => v],
+  ['wet_glow_fuel_pct','chart-cb-wetg','chart-lbl-wetg', '#e05f8a', v => v],
+  ['glow_current_a',  'chart-cb-gcur', 'chart-lbl-gcur', '#ff8b8b', v => v * 10],
+  ['ign_current_a',   'chart-cb-icur', 'chart-lbl-icur', '#ffb15c', v => v * 10],
+  ['ign2_current_a',  'chart-cb-i2cur','chart-lbl-i2cur','#ffce6b', v => v * 10],
+  ['oil_current_a',   'chart-cb-ocur', 'chart-lbl-ocur', '#c7d96a', v => v * 10],
   ['fp2_pct',         'chart-cb-fp2',  'chart-lbl-fp2',  '#68c97a', v => v],
   ['prop_pct',        'chart-cb-prop', 'chart-lbl-prop', '#7ab3f0', v => v],
   ['fuel_flow',       'chart-cb-ff',   'chart-lbl-ff',   '#f5c842', v => v],
   ['ab_mode',         'chart-cb-abm',  'chart-lbl-abm',  '#e84040', v => v * 20],   // enum 0–5 → 0–100
   ['ab_flame',        'chart-cb-abfl', 'chart-lbl-abfl', '#f07030', v => v * 50],   // bool 0/1 → 0/50
+  ['ab_pump_pct',     'chart-cb-abp',  'chart-lbl-abp',  '#ff5a4f', v => v],
+  ['ab_offset_pct',   'chart-cb-abo',  'chart-lbl-abo',  '#ff8a3a', v => v],
+  ['oil_pump_pct',    'chart-cb-opct', 'chart-lbl-opct', '#8fd0b0', v => v],
+  ['loop_hz',         'chart-cb-lhz',  'chart-lbl-lhz',  '#a0a8ff', v => v / 10],   // Hz → ÷10 for scale
+  ['loop_exec_avg_ms','chart-cb-lavg', 'chart-lbl-lavg', '#c0b0ff', v => v * 10],   // ms → ×10 for scale
+  ['loop_exec_max_ms','chart-cb-lmax', 'chart-lbl-lmax', '#e0a8ff', v => v * 10],   // ms → ×10 for scale
 ];
 
 function _updateChartControls() {
@@ -866,6 +966,7 @@ function loadSessionList() {
     .then(list => {
       if (!Array.isArray(list) || list.length === 0) {
         wrap.innerHTML = '<div style="font-size:.78rem;color:var(--dim)">No session files found</div>';
+        clearSessionPreview('No session files found');
         return;
       }
       wrap.innerHTML = list.map(run => `
@@ -896,7 +997,6 @@ function previewSession(run) {
   const msg   = document.getElementById('session-preview-msg');
   const wrap  = document.getElementById('session-preview-wrap');
   const empty = document.getElementById('session-preview-empty');
-  const table = document.getElementById('session-preview-table');
   if (msg) msg.textContent = 'Loading run #' + run + '…';
   if (wrap)  wrap.style.display = 'none';
   if (empty) empty.style.display = 'none';
@@ -905,35 +1005,13 @@ function previewSession(run) {
     if (!r.ok) throw new Error(await r.text() || 'not found');
     return r.text();
   }).then(csv => {
-    const lines = csv.trim().split('\n').filter(l => l.trim());
-    if (lines.length < 2) {
-      if (empty) empty.style.display = '';
-      if (msg) msg.textContent = '';
-      document.getElementById('session-chart-wrap').style.display = 'none';
+    if (!renderSessionCsvPreview(csv, 'Run #' + run)) {
+      clearSessionPreview('No session data yet');
       return;
     }
-    _sessionHeaders = lines[0].split(',');
-    _sessionRows    = lines.slice(1).map(l => l.split(','));
-
-    const dataRows = _sessionRows.slice(-50);
-    let html = '<thead><tr style="background:var(--surface);position:sticky;top:0">';
-    _sessionHeaders.forEach(h => { html += '<th style="padding:.3rem .5rem;text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap">' + h + '</th>'; });
-    html += '</tr></thead><tbody>';
-    dataRows.forEach((cells, ri) => {
-      html += '<tr style="background:' + (ri % 2 ? 'var(--surface)' : 'var(--bg)') + '">';
-      cells.forEach(c => { html += '<td style="padding:.25rem .5rem;border-bottom:1px solid var(--border);white-space:nowrap">' + c + '</td>'; });
-      html += '</tr>';
-    });
-    html += '</tbody>';
-    if (table) table.innerHTML = html;
-    if (wrap)  wrap.style.display = '';
-    if (msg)   msg.textContent = 'Run #' + run + ' — ' + _sessionRows.length + ' rows';
-    _updateChartControls();
-    redrawChart();
   }).catch(e => {
     const err = e && e.message ? e.message : '';
-    if (msg) msg.textContent = err.includes('STANDBY') ? 'Run #' + run + ' available after STANDBY' : 'Run #' + run + ' not found';
-    if (empty) empty.style.display = '';
+    clearSessionPreview(err.includes('STANDBY') ? 'Run #' + run + ' available after STANDBY' : 'Run #' + run + ' not found');
   });
 }
 

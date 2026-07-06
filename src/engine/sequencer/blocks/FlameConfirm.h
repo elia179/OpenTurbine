@@ -37,7 +37,7 @@ public:
             clearWaitReason();
             // Log the specific reason so the user sees "no ignition" rather than a generic abort.
             FlightRecorder::logAbort("FlameConfirm", "no_ignition_timeout");
-            Serial.println("[FlameConfirm] Abort: flame not detected within timeout — check igniter, fuel nozzle, and fuel valve");
+            Serial.println("[FlameConfirm] Abort: flame not detected within timeout - check igniter, fuel nozzle, and fuel valve");
             return BlockResult::Abort;
         }
 

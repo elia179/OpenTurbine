@@ -332,11 +332,16 @@ public:
   void requestSchema() { sendLine("OTC:SCHEMA?"); }
   void subscribeDefault() { sendLine("OTC:SUB,DEFAULT"); }
   void subscribeAll() { sendLine("OTC:SUB,ALL"); }
-  void subscribe(const char* commaSeparatedFieldKeys) {
-    if (!_serial || !commaSeparatedFieldKeys) return;
+  // Returns false if the key list exceeds the ECU RX line limit
+  // ("OTC:SUB," + up to 159 chars of field keys) — the ECU would
+  // discard the line and NAK it with LINE_TOO_LONG.
+  bool subscribe(const char* commaSeparatedFieldKeys) {
+    if (!_serial || !commaSeparatedFieldKeys) return false;
+    if (strlen(commaSeparatedFieldKeys) > 159) return false;
     _serial->print("OTC:SUB,");
     _serial->print(commaSeparatedFieldKeys);
     _serial->print('\n');
+    return true;
   }
   void stop() { sendLine("OTC:CMD,STOP"); }
   void start() { sendLine("OTC:CMD,START"); }

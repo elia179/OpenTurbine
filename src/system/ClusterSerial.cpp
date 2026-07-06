@@ -14,10 +14,12 @@ bool          ClusterSerial::_totWarnActive   = false;
 bool          ClusterSerial::_oilWarnActive   = false;
 bool          ClusterSerial::_schemaDirty     = true;
 uint8_t       ClusterSerial::_seq             = 0;
-char          ClusterSerial::_rxLine[80]      = {};
+char          ClusterSerial::_rxLine[168]     = {};
 uint8_t       ClusterSerial::_rxLen           = 0;
+bool          ClusterSerial::_rxOverflow      = false;
 unsigned long ClusterSerial::_lastSchemaMs    = 0;
 unsigned long ClusterSerial::_nextSchemaMs    = 0;
+bool          ClusterSerial::_begun           = false;
 
 // Use UART1 for the cluster link. MAVLinkOutput owns its own UART2 object.
 static HardwareSerial _port(1);
@@ -210,7 +212,13 @@ bool hasIgniter2Current() { return HardwareConfig::hasIgniter2CurrentSensor; }
 bool hasOilPumpCurrent() { return HardwareConfig::hasOilPumpCurrentSensor; }
 bool hasThrottleInput() { return HardwareConfig::hasThrottleInput; }
 bool hasIdleInput() { return HardwareConfig::hasIdleInput; }
-bool hasAbInput() { return HardwareConfig::hasAfterburner && HardwareConfig::abTriggerSource == 3; }
+// AB input is live when it is the trigger source OR the pump command source
+// (Config::abPumpControlMode == 2) — matching Hardware::updateSensors' gate,
+// so a cluster can always see the signal the operator is modulating with.
+bool hasAbInput() {
+    return HardwareConfig::hasAfterburner && HardwareConfig::abInputPin >= 0 &&
+           (HardwareConfig::abTriggerSource == 3 || Config::abPumpControlMode == 2);
+}
 bool hasDI1() { return HardwareConfig::diCh[0].pin >= 0; }
 bool hasDI2() { return HardwareConfig::diCh[1].pin >= 0; }
 bool hasDI3() { return HardwareConfig::diCh[2].pin >= 0; }
@@ -520,10 +528,17 @@ void ClusterSerial::begin() {
     uint32_t baud = (uint32_t)HardwareConfig::clusterBaud;
     if (baud == 0) baud = OT_CLUSTER_BAUD;
     const int rxPin = HardwareConfig::clusterRxPin >= 0 ? HardwareConfig::clusterRxPin : -1;
+    // A full schema burst (HELLO + STATUS_DEFs + FIELD_DEFs + LIMITS +
+    // SCHEMA_END) is ~3 KB with every field subscribed; without a TX ring
+    // buffer availableForWrite() caps at the 128-byte HW FIFO, sendFrame()
+    // rejects most frames and the schema can never complete. Must be set
+    // before begin() (boot-time allocation only).
+    _port.setTxBufferSize(4096);
     _port.begin(baud, SERIAL_8N1, rxPin, HardwareConfig::clusterTxPin);
 
     _seq = 0;
     _rxLen = 0;
+    _rxOverflow = false;
     _schemaDirty = true;
     g_subscriptionActive = false;
     g_subscriptionMaskLo = 0;
@@ -540,6 +555,12 @@ void ClusterSerial::begin() {
 
     Serial.printf("[OT] Cluster OTC v1 on TX GPIO %d RX GPIO %d @ %lu baud\n",
                   HardwareConfig::clusterTxPin, rxPin, (unsigned long)baud);
+    _begun = true;
+}
+
+void ClusterSerial::beginIfNeeded() {
+    if (_begun) return;
+    begin();  // still early-returns if the feature is not enabled/pinned
 }
 
 void ClusterSerial::_sendSchema() {
@@ -652,8 +673,11 @@ void ClusterSerial::_sendTelemetry() {
     }
     payload[12] = count;
     payload[13] = startIndex;
-    g_telemetryCursor = (startIndex + count >= total) ? 0 : (uint8_t)(startIndex + count);
-    sendFrame(FT_TELEMETRY, _seq++, payload, (uint16_t)pos);
+    // Advance the chunk cursor only if the frame was actually accepted —
+    // otherwise retry the same block next interval instead of silently
+    // skipping it for the whole cycle.
+    if (sendFrame(FT_TELEMETRY, _seq++, payload, (uint16_t)pos))
+        g_telemetryCursor = (startIndex + count >= total) ? 0 : (uint8_t)(startIndex + count);
 }
 
 void ClusterSerial::_handleLine(const char* line) {
@@ -716,13 +740,21 @@ void ClusterSerial::_pollRx() {
         char c = (char)_port.read();
         if (c == '\r') continue;
         if (c == '\n') {
-            _rxLine[_rxLen] = '\0';
-            if (_rxLen) _handleLine(_rxLine);
+            if (_rxOverflow) {
+                // Line exceeded the buffer: discard it whole rather than
+                // re-parsing the tail as a bogus new command.
+                _rxOverflow = false;
+                sendAck(_seq++, 0, "LINE_TOO_LONG");
+            } else {
+                _rxLine[_rxLen] = '\0';
+                if (_rxLen) _handleLine(_rxLine);
+            }
             _rxLen = 0;
             continue;
         }
+        if (_rxOverflow) continue;
         if (_rxLen < sizeof(_rxLine) - 1) _rxLine[_rxLen++] = c;
-        else _rxLen = 0;
+        else _rxOverflow = true;
     }
 }
 

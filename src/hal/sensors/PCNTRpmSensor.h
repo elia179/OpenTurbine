@@ -11,6 +11,8 @@
 //  Hardware counting is interrupt-free and glitch-filtered.
 //  RPM computed from count delta every UPDATE_INTERVAL_MS.
 //  Reports RpmHealth fault bits (SATURATED / JUMP / ZERO_STUCK).
+//  Brief ZERO_GLITCH samples are tolerated (RpmHealth::isTrustworthy):
+//  the last real reading is held instead of publishing a healthy 0 RPM.
 // ============================================================
 
 class PCNTRpmSensor : public ISensor {
@@ -90,19 +92,29 @@ public:
 
         _updateHealth(newRpm, (int)delta, dt);
 
+        // ZERO_GLITCH is tolerable (Types.h isTrustworthy): hold the last real
+        // reading for the few glitch ticks instead of publishing a healthy
+        // 0 RPM, which would trip UNDERSPEED / latch limp mode instantly.
+        if (_health.faults & RpmHealth::ZERO_GLITCH) {
+            newRpm = _holdRpm;
+        } else if (newRpm >= 1.0f) {
+            _holdRpm = newRpm;
+        }
         _rpm       = newRpm;
         _lastMs    = now;
         _lastCount = (int64_t)rawInt;
     }
 
     float       getValue()  override { return _rpm; }
-    bool        isHealthy() override { return !_health.any(); }
+    // ZERO_GLITCH alone does not fail health — see RpmHealth::isTrustworthy().
+    bool        isHealthy() override { return _health.isTrustworthy(); }
     const char* name()      override { return _name; }
 
     void resetHealth() {
         _health.clear();
         _zeroCount = 0;
         _prevRpm   = 0;
+        _holdRpm   = 0;
     }
 
     // Configurable health thresholds — set from applyConfig() via Hardware.h
@@ -124,6 +136,7 @@ private:
     int64_t            _accumPulses = 0;   // total pulses since begin() — never overflows
     float              _rpm         = 0;
     float              _prevRpm  = 0;
+    float              _holdRpm  = 0;   // last real (non-glitch) reading, held during ZERO_GLITCH
     int                _zeroCount= 0;
     RpmHealth          _health;
 
@@ -148,8 +161,11 @@ private:
             }
         }
 
-        // Zero-stuck: engine clearly running but reading zero
-        if (_prevRpm > 2000.0f && rpm < 1.0f) {
+        // Zero-stuck: engine clearly running but reading zero.
+        // The streak continues while the reading stays zero (_zeroCount > 0):
+        // _prevRpm alone is 0 from the second zero tick onward and would
+        // reset the counter, making ZERO_STUCK unreachable.
+        if (rpm < 1.0f && (_prevRpm > 2000.0f || _zeroCount > 0)) {
             if (++_zeroCount >= requiredZeros) {
                 _health.set(RpmHealth::ZERO_STUCK);
             } else {

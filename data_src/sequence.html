@@ -4,18 +4,19 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine - Sequence</title>
-<link rel="stylesheet" href="/style.css?v=20260625a">
+<link rel="stylesheet" href="/style.css?v=20260705a">
 <style>
 #seq-validation-banner { margin-bottom: .6rem; }
 .seq-val-error, .seq-val-warn {
   display: flex; align-items: flex-start; gap: .55rem;
   padding: .45rem .7rem; border-radius: 6px; margin-bottom: .35rem;
-  font-size: .75rem; line-height: 1.45;
+  font-size: .75rem; line-height: 1.45; max-width: 100%; box-sizing: border-box;
 }
 .seq-val-error { background: rgba(220,50,50,.10); border: 1px solid rgba(220,50,50,.45); color: #f06060; }
 .seq-val-warn  { background: rgba(255,180,0,.08);  border: 1px solid rgba(255,180,0,.40);  color: #ffc840; }
 .seq-val-icon  { font-size: .85rem; flex-shrink: 0; margin-top: .05rem; }
 .seq-val-block { font-weight: 600; margin-right: .25rem; }
+.seq-val-text  { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: normal; white-space: normal; }
 .seq-val-start-blocked {
   background: rgba(220,50,50,.13); border: 1px solid rgba(220,50,50,.6);
   color: #f06060; border-radius: 7px; padding: .5rem .8rem;
@@ -63,9 +64,18 @@
     </p>
     <p style="font-size:.72rem;color:var(--dim);margin:0 0 .8rem">
       Inputs and outputs not enabled in Hardware are unavailable and cannot be selected.
-      Thresholds use canonical units: deg C, bar, RPM and V.
+      Thresholds always use canonical ECU units: deg C, bar, RPM and V — the deg F / PSI display preference on other pages does not apply here.
+      If a selected sensor is unhealthy (railed/disconnected), the rule leaves its output unchanged.
     </p>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin:0 0 .75rem">
+      <button onclick="addRulePreset('di_fault')" style="font-size:.72rem;padding:.22rem .55rem">DI fault preset</button>
+      <button onclick="addRulePreset('oil_temp_fan')" style="font-size:.72rem;padding:.22rem .55rem">Oil temp fan preset</button>
+      <button onclick="addRulePreset('fuel_press_fault')" style="font-size:.72rem;padding:.22rem .55rem">Fuel pressure fault preset</button>
+      <button onclick="addRulePreset('batt_fault')" style="font-size:.72rem;padding:.22rem .55rem">Battery fault preset</button>
+      <button onclick="addRulePreset('di_shutdown')" style="font-size:.72rem;padding:.22rem .55rem">DI shutdown preset</button>
+    </div>
     <div id="rules-list"></div>
+    <div id="rules-warnings" style="display:none;margin-top:.45rem;font-size:.72rem;color:var(--yellow);line-height:1.45"></div>
     <div style="margin-top:.5rem;display:flex;align-items:center;gap:.75rem">
       <button id="btn-add-rule" onclick="addRule()" class="add-btn">+ Add Rule</button>
       <span id="rules-count-label" style="font-size:.72rem;color:var(--dim)">0 / 8</span>
@@ -127,9 +137,9 @@
           oninput="setAbEntryNumber('max_n1', this.value)">
       </div>
       <div class="param-field" id="ab-edit-tot-wrap">
-        <span class="param-label">Maximum EGT To Light <span class="param-unit">(deg C, 0 = off)</span></span>
+        <span class="param-label">Maximum EGT To Light <span class="param-unit">(<span data-unit="temp">°C</span>, 0 = off)</span></span>
         <input class="param-input" id="ab-edit-max-tot" type="number" min="0" max="1000" step="10"
-          oninput="setAbEntryNumber('max_tot_for_light', this.value)">
+          oninput="setAbEntryTemp('max_tot_for_light', this.value)">
       </div>
     </div>
     <p id="ab-entry-gate-note" style="font-size:.68rem;color:var(--dim);margin:.55rem 0 0;line-height:1.45"></p>
@@ -221,7 +231,9 @@
 
     <!-- 3: Condition (WHILE only) -->
     <div class="cblk-section" id="cblk-cond-section" style="display:none">
-      <div class="cblk-section-title">Condition - wait while this is true</div>
+      <!-- Runtime releases the block when the condition BECOMES true
+           (RulesEngine::sensorConditionMet), i.e. "wait until", not "wait while". -->
+      <div class="cblk-section-title">Condition - wait until this becomes true</div>
       <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:.55rem;align-items:end">
         <div class="cblk-field">
           <label>Sensor</label>
@@ -350,10 +362,10 @@ const BLOCKS = {
     ]
   },
   PreIgnSpark: {
-    label:'Legacy Igniter 1 Spark', type:'action', badgeClass:'badge-action',
+    label:'Igniter 1 Spark', type:'action', badgeClass:'badge-action',
     visibleIf: hw => !!hw.actuators?.igniter?.enabled,
     condition: null, timeout_action:null,
-    desc:'Legacy igniter-1-only block. For new setups, prefer Igniter On or Pre-Heat because those cards let you choose igniter 1, igniter 2, glow, or wet glow. This block turns igniter 1 ON and leaves it ON when it exits.',
+    desc:'Igniter-1-only block. Prefer Igniter On or Pre-Heat when you want to choose igniter 1, igniter 2, glow, or wet glow from the block card. This block turns igniter 1 ON and leaves it ON when it exits.',
     params:[
       {key:'pre_ign_spark_ms', label:'Spark duration', unit:'ms', type:'int', min:100, max:10000, step:100, def:1500, configKey:'pre_ign_spark_ms'},
     ]
@@ -388,7 +400,7 @@ const BLOCKS = {
   TempConfirm: {
     label:'Temp Confirm', type:'while', badgeClass:'badge-while',
     visibleIf: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
-    condition: hw => `EGT < ${hw.temp_confirm_target ?? 200}deg C`,
+    condition: hw => `EGT < ${fmtSeqTemp(hw.temp_confirm_target ?? 200)}`,
     timeout_action:'abort',
     desc:'Waits until selected engine temperature (TOT or TIT) rises above the configured threshold. Use as an alternative to or alongside FlameConfirm when a flame sensor is not fitted. On timeout -> ABORT. Does NOT change any actuator state.',
     hwWarnings:[
@@ -397,7 +409,7 @@ const BLOCKS = {
         level: 'error' },
     ],
     params:[
-      {key:'temp_confirm_target',  label:'Target EGT',unit:'deg C', type:'float', min:0, max:1000, step:10, def:200,  configKey:'temp_confirm_target'},
+      {key:'temp_confirm_target',  label:'Target EGT', unitType:'temp', type:'float', min:0, max:1000, step:10, def:200,  configKey:'temp_confirm_target'},
       {key:'temp_confirm_timeout', label:'Timeout',   unit:'ms', type:'int',   min:1000, max:60000, step:1000, def:10000, configKey:'temp_confirm_timeout'},
     ]
   },
@@ -601,7 +613,7 @@ const BLOCKS = {
   },
   CooldownSpin: {
     label:'Cooldown', type:'while', badgeClass:'badge-while',
-    condition: hw => `EGT > ${hw.tot_cooldown_target ?? 150}deg C`,
+    condition: hw => `EGT > ${fmtSeqTemp(hw.tot_cooldown_target ?? 150)}`,
     timeout_action:'continue',
     desc:'Spin starter and/or run oil pump to cool EGT below target. Skipped if fuel was never opened. Proceeds on timeout. With oil pressure sensor: pump is regulated to target pressure; without: runs at fixed %.',
     hwWarnings:[
@@ -609,7 +621,7 @@ const BLOCKS = {
         msg: 'Warning: No temperature sensor - cooldown cannot verify EGT has dropped. Block will run for the full timeout then continue (safe).' },
     ],
     params:[
-      {key:'tot_cooldown_target',       label:'EGT target',              unit:'deg C', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
+      {key:'tot_cooldown_target',       label:'EGT target',              unitType:'temp', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
       {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:200000, configKey:'cooldown_timeout_ms'},
       {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
         visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
@@ -640,7 +652,7 @@ const BLOCKS = {
       {key:'rpm_zero_threshold',    label:'Stop threshold',   unit:'rpm',type:'float',min:0,   max:1000,  step:10,   def:100,
         visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
         configKey:'rpm_zero_threshold',
-        desc:'N1 below this is treated as "stopped". Without N1 sensor the block exits on timeout.'},
+        desc:'N1 below this is treated as "stopped". Without N1 sensor the block treats the rotor as stopped and moves directly to the optional scavenge phase.'},
       {key:'final_stop_timeout_ms', label:'Timeout',          unit:'ms', type:'int',  min:1000,max:60000, step:1000, def:10000, configKey:'final_stop_timeout_ms'},
       {key:'oil_scavenge_ms', label:'Scavenge pump run time', unit:'ms', type:'int',
         min:0, max:120000, step:1000, def:0, configKey:'oil_scavenge_ms',
@@ -661,11 +673,11 @@ const BLOCKS = {
   },
   WaitTOTCool: {
     label:'Wait EGT Cool', type:'while', badgeClass:'badge-while',
-    condition: hw => `EGT < ${hw.wait_tot_target ?? 150}deg C`,
+    condition: hw => `EGT < ${fmtSeqTemp(hw.wait_tot_target ?? 150)}`,
     timeout_action:'continue',
     desc:'Holds the sequence until selected EGT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout -> continues (does not abort). If the selected EGT sensor is unhealthy, completes immediately.',
     params:[
-      {key:'wait_tot_target',  label:'Target EGT', unit:'deg C', type:'float', min:0,    max:500,    step:10,   def:150,    configKey:'wait_tot_target'},
+      {key:'wait_tot_target',  label:'Target EGT', unitType:'temp', type:'float', min:0,    max:500,    step:10,   def:150,    configKey:'wait_tot_target'},
       {key:'wait_tot_timeout', label:'Timeout',    unit:'ms', type:'int',  min:5000, max:600000, step:5000, def:120000, configKey:'wait_tot_timeout'},
     ]
   },
@@ -681,7 +693,7 @@ const BLOCKS = {
   WaitForInput: {
     label:'Wait For Input', type:'while', badgeClass:'badge-while',
     visibleIf: hw => hw.di_channels?.some(ch => ch.pin >= 0),
-    condition: hw => `DI ch${hw.wait_for_input_ch ?? 0} ${hw.wait_for_input_state !== false ? '-> active' : '-> inactive'}`,
+    condition: hw => `DI-${(hw.wait_for_input_ch ?? 0) + 1} ${hw.wait_for_input_state !== false ? '-> active' : '-> inactive'}`,
     timeout_action:'abort',
     desc:'Holds the sequence until a digital input channel reaches the expected state. Useful for interlocks, limit switches, or external gate signals. On timeout -> ABORT. Set timeout to 0 to wait indefinitely (use with caution - sequence hangs if condition is never met). Note: all WaitForInput blocks in a session share the same channel/state config.',
     hwWarnings:[
@@ -690,8 +702,9 @@ const BLOCKS = {
         level: 'error' },
     ],
     params:[
-      {key:'wait_for_input_ch',      label:'Channel',       unit:'',   type:'int',  min:0, max:3, step:1,   def:0,    configKey:'wait_for_input_ch',
-        desc:'Digital input channel index (0-3). Must match a channel configured in Hardware -> Digital Inputs.'},
+      {key:'wait_for_input_ch',      label:'Channel',       type:'select', def:0,    configKey:'wait_for_input_ch',
+        options:[{v:0,l:'DI-1'},{v:1,l:'DI-2'},{v:2,l:'DI-3'},{v:3,l:'DI-4'}],
+        desc:'Digital input channel (DI-1..DI-4). Must match a channel configured in Hardware -> Digital Inputs.'},
       {key:'wait_for_input_state',   label:'Wait until active',        type:'bool', def:true, configKey:'wait_for_input_state',
         desc:'ON = hold until input goes active (high). OFF = hold until input goes inactive (low).'},
       {key:'wait_for_input_timeout', label:'Timeout',       unit:'ms', type:'int',  min:0, max:60000, step:500, def:0, configKey:'wait_for_input_timeout',
@@ -701,7 +714,7 @@ const BLOCKS = {
   WaitForInputOff: {
     label:'Wait For Input Off', type:'while', badgeClass:'badge-while',
     visibleIf: hw => hw.di_channels?.some(ch => ch.pin >= 0),
-    condition: hw => `DI ch${hw.wait_for_input_ch ?? 0} -> inactive`,
+    condition: hw => `DI-${(hw.wait_for_input_ch ?? 0) + 1} -> inactive`,
     timeout_action:'abort',
     desc:'Holds shutdown until the selected digital input is released. The stock shutdown uses this to wait for the fuel switch to turn off before stopping the oil pump.',
     hwWarnings:[
@@ -726,7 +739,7 @@ const BLOCKS = {
     label:'AB Pump On', type:'action', badgeClass:'badge-action',
     visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.ab_pump?.enabled),
     condition: null, timeout_action:null,
-    desc:'Enable the afterburner fuel pump.',
+    desc:'Enable the afterburner fuel pump at Config -> Afterburner -> Light-Up Pump %.',
     params:[]
   },
   ABPumpOff: {
@@ -793,7 +806,7 @@ const BLOCKS = {
     desc:'Hold after lighting. Monitors selected EGT - faults if too hot. On completion, sets AB state to Running.',
     params:[
       {key:'ab_stab_ms',        label:'Hold Time',       unit:'ms', type:'int',  min:100, max:10000,step:100,def:1000,configKey:'ab_stab_ms'},
-      {key:'ab_stab_max_tot',   label:'Max EGT (0=off)', unit:'deg C', type:'float',min:0,   max:1000, step:10, def:0,   configKey:'ab_stab_max_tot'},
+      {key:'ab_stab_max_tot',   label:'Max EGT (0=off)', unitType:'temp', zeroOff:true, type:'float',min:0,   max:1000, step:10, def:0,   configKey:'ab_stab_max_tot'},
     ]
   },
 
@@ -967,7 +980,6 @@ const CONFIG_SECTIONS = {
   ab_stab_max_tot:     {sec:'afterburner', key:'stabilize_max_tot'},
   ab_pump_min_pct:     {sec:'afterburner', key:'pump_min_pct'},
   ab_pump_max_pct:     {sec:'afterburner', key:'pump_max_pct'},
-  ab_pump_follow:      {sec:'afterburner', key:'pump_follow_throttle'},
   ab_main_offset:      {sec:'afterburner', key:'main_fuel_offset_pct'},
   // WaitForInput block params
   wait_for_input_ch:      {sec:'sequence.startup', key:'wait_for_input_ch'},
@@ -1032,7 +1044,7 @@ const BLOCK_INFO = {
     links: []
   },
   PreIgnSpark: {
-    desc: 'Legacy igniter-1-only spark. Prefer target-selectable Igniter On or Pre-Heat for new setups.',
+    desc: 'Igniter-1-only spark. Prefer target-selectable Igniter On or Pre-Heat when the block should choose between multiple ignition outputs.',
     links: []
   },
   FuelOpen: {
@@ -1057,14 +1069,14 @@ const BLOCK_INFO = {
     links: [
       { label: 'Throttle Idle Min %', url: '/config.html#throttle' },
       { label: 'Throttle Open Speed', url: '/config.html#throttle' },
-      { label: 'Running Oil Min',     url: '/config.html#oil' },
+      { label: 'Running Oil Min',     url: '/config.html#oil-config-section' },
     ]
   },
   SafetyHold: {
     desc: 'Holds for the configured duration and verifies N1 and oil pressure before RUNNING. Optional exit action turns off all ignition outputs.',
     links: [
       { label: 'Min RPM',         url: '/config.html#engine-limits' },
-      { label: 'Running Oil Min', url: '/config.html#oil' },
+      { label: 'Running Oil Min', url: '/config.html#oil-config-section' },
     ]
   },
   CooldownSpin: {
@@ -1211,6 +1223,7 @@ function actuatorEnabled(key) {
 }
 function actuatorIsRelay(key) {
   const act = hwCfg.actuators?.[key];
+  if (key === 'glow_plug') return !!act && Number(act.output_type || 0) === 1;
   return !!act && act.type === 2;
 }
 function actuatorHasProportionalOutput(key) {
@@ -1222,6 +1235,60 @@ function hasIgnitionOutput(hw = hwCfg) {
 }
 function demandText(key, pct, label = 'on') {
   return actuatorIsRelay(key) ? label : `${pct}%`;
+}
+
+// ── Display-unit helpers (this page does not load app.js) ────
+// Read-only mirror of app.js's unit preference: same localStorage key
+// ('ot_units'), same conversions, so seq temp params follow the site-wide
+// °C/°F preference. This page never CHANGES the preference.
+// These were referenced but never defined — the resulting ReferenceError
+// was swallowed by the boot try/catch and silently blanked the AB criteria
+// and Control Rules rendering.
+function tempUnit() {
+  try { return (JSON.parse(localStorage.getItem('ot_units') || '{}').temp) || 'C'; }
+  catch (e) { return 'C'; }
+}
+function toDispTemp(c)   { return tempUnit() === 'F' ? c * 9 / 5 + 32 : c; }
+function fromDispTemp(v) { return tempUnit() === 'F' ? (v - 32) * 5 / 9 : v; }
+function dispTempUnit()  { return tempUnit() === 'F' ? '°F' : '°C'; }
+
+function seqRound(value) {
+  return String(Math.round(Number(value) * 1000) / 1000);
+}
+
+function seqDisplayValue(p, value) {
+  if (p.zeroOff && Number(value) === 0) return '0';
+  if (p.unitType === 'temp') return seqRound(toDispTemp(Number(value ?? 0)));
+  return value;
+}
+
+function seqStoredValue(p, rawVal) {
+  const parsed = p.type === 'float' ? parseFloat(rawVal) : parseInt(rawVal);
+  if (!Number.isFinite(parsed)) return undefined;
+  if (p.zeroOff && parsed === 0) return 0;
+  return p.unitType === 'temp' ? fromDispTemp(parsed) : parsed;
+}
+
+function seqDisplayAttr(p, value) {
+  if (value === undefined) return '';
+  if (p.zeroOff && Number(value) === 0) return '0';
+  return p.unitType === 'temp' ? seqRound(toDispTemp(Number(value))) : String(value);
+}
+
+function seqDisplayStep(p) {
+  if (p.unitType === 'temp') {
+    return seqRound(tempUnit() === 'F' ? Number(p.step || 1) * 9 / 5 : Number(p.step || 1));
+  }
+  return String(p.step || 1);
+}
+
+function seqUnitLabel(p) {
+  if (p.unitType === 'temp') return dispTempUnit();
+  return p.unit || '';
+}
+
+function fmtSeqTemp(value, digits = 0) {
+  return toDispTemp(Number(value ?? 0)).toFixed(digits) + ' ' + dispTempUnit();
 }
 
 const SEQ_ACTION_KEYS = {
@@ -1422,7 +1489,7 @@ function _openBlockKeys(tab) {
   if (!list) return new Set();
   return new Set(Array.from(list.querySelectorAll('.block-card'))
     .filter(card => card.querySelector('.block-params.open'))
-    .map(card => `${card.dataset.block}:${card.dataset.index}`));
+    .map(card => `${card.dataset.block}:${card.dataset.idx}`));
 }
 
 function render(tab, idleRaw, openKeys = new Set()) {
@@ -1640,7 +1707,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     const ab = cfg?.afterburner ?? {};
     const minP = ab.pump_min_pct ?? 80;
     const maxP = ab.pump_max_pct ?? 100;
-    const pumpMode = ab.pump_control_mode ?? ((ab.pump_follow_throttle ?? false) ? 1 : 0);
+    const pumpMode = ab.pump_control_mode ?? 0;
     const pumpStr = actuatorIsRelay('ab_pump') ? 'on'
                   : pumpMode === 2 ? `${minP}-${maxP}%  (dedicated AB input)`
                   : pumpMode === 1 ? `${minP}-${maxP}%  (follows throttle)`
@@ -1735,7 +1802,14 @@ function buildAbCriteriaHtml() {
   setValue('ab-edit-input-pct', thresholdPct);
   setValue('ab-edit-min-n1', ab.min_n1 ?? 0);
   setValue('ab-edit-max-n1', ab.max_n1 ?? 0);
-  setValue('ab-edit-max-tot', ab.max_tot_for_light ?? 0);
+  const abMaxTot = Number(ab.max_tot_for_light ?? 0);
+  setValue('ab-edit-max-tot', abMaxTot === 0 ? '0' : seqRound(toDispTemp(abMaxTot)));
+  const maxTotInput = document.getElementById('ab-edit-max-tot');
+  if (maxTotInput) {
+    maxTotInput.min = '0';
+    maxTotInput.max = seqRound(toDispTemp(1000));
+    maxTotInput.step = seqRound(tempUnit() === 'F' ? 18 : 10);
+  }
   const throttleWrap = document.getElementById('ab-edit-throttle-wrap');
   const inputWrap = document.getElementById('ab-edit-input-wrap');
   const totWrap = document.getElementById('ab-edit-tot-wrap');
@@ -1764,7 +1838,7 @@ function buildAbCriteriaHtml() {
   if (src !== 0 && hwCfg.ab_trigger?.requires_arm) upLines.push('<strong>Arm:</strong> Arm switch must be active');
   if ((ab.min_n1 ?? 0) > 0)              upLines.push(`<strong>Min N1:</strong> ${ab.min_n1} rpm`);
   if ((ab.max_n1 ?? 0) > 0)              upLines.push(`<strong>Max N1:</strong> ${ab.max_n1} rpm`);
-  if ((ab.max_tot_for_light ?? 0) > 0)   upLines.push(`<strong>Max EGT to light:</strong> ${ab.max_tot_for_light}deg C`);
+  if ((ab.max_tot_for_light ?? 0) > 0)   upLines.push(`<strong>Max EGT to light:</strong> ${fmtSeqTemp(ab.max_tot_for_light)}`);
 
   const upBox = document.getElementById('ab-lightup-criteria');
   if (upBox) {
@@ -1805,6 +1879,17 @@ function setAbEntryNumber(key, rawVal) {
   setSaveStatus('Afterburner entry conditions edited - save to apply');
 }
 
+function setAbEntryTemp(key, rawVal) {
+  if (!cfg.afterburner) cfg.afterburner = {};
+  const val = Number(rawVal);
+  if (!Number.isFinite(val)) return;
+  cfg.afterburner[key] = val === 0 ? 0 : Math.max(0, fromDispTemp(val));
+  buildParamVals();
+  buildAbCriteriaHtml();
+  renderWithLiveIdle('afterburner');
+  setSaveStatus('Afterburner entry conditions edited - save to apply');
+}
+
 function setAbEntryPercent(key, rawVal) {
   if (!cfg.afterburner) cfg.afterburner = {};
   const pct = Math.max(0, Math.min(100, Number(rawVal) || 0));
@@ -1820,6 +1905,14 @@ function setAbInputEntryPercent(rawVal) {
   hwCfg.ab_trigger.input_threshold = Math.round(pct * 4095 / 100);
   buildAbCriteriaHtml();
   setSaveStatus('Afterburner entry conditions edited - save to apply');
+}
+
+// Shared HTML-escape for every card/params/selector renderer in this page.
+// (Was previously a local inside buildCard, which left buildParamsHtml's
+// uses unresolved — a ReferenceError that blanked the whole sequence list.)
+function esc(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function buildCard(bname, idx, tab, total) {
@@ -1841,9 +1934,8 @@ function buildCard(bname, idx, tab, total) {
   if (def?.timeout_action === 'fault')    toPill = `<span class="timeout-pill fault">timer FAULT</span>`;
   else if (def?.timeout_action === 'abort')   toPill = `<span class="timeout-pill abort">timer ABORT</span>`;
   else if (def?.timeout_action === 'continue')toPill = `<span class="timeout-pill cont">timer continue</span>`;
+  else if (def?.timeout_action === 'complete')toPill = `<span class="timeout-pill cont">timer completes</span>`;
 
-  const esc = value => String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   const badge = def ? `<span class="block-badge ${esc(def.badgeClass)}">${esc(def.type.toUpperCase())}</span>` : '';
   const condHtml = condText ? `<span class="block-cond">${esc(condText)}</span>` : '';
   const canMoveUp = idx > 0;
@@ -2043,8 +2135,17 @@ function buildIgnitionTargetHtml(bname, idx, tab) {
   if (!isIgnitionBlock(bname)) return '';
   ensureIgnitionTargetSlots(tab);
   const key = ignitionTargetSeqKey(tab);
-  const target = hwCfg[key]?.[idx] ?? 0;
-  const opts = ignitionTargets().map(t => `<option value="${t.v}" ${Number(target)===Number(t.v)?'selected':''}>${t.l}</option>`).join('');
+  const avail = ignitionTargets();
+  let target = hwCfg[key]?.[idx] ?? 0;
+  // A stored target that isn't fitted (e.g. the default 0 = Igniter 1 on a
+  // glow-only build) would render as the first visible option while the
+  // saved value silently stayed stale — snap the stored value to the option
+  // the user actually sees.
+  if (!avail.some(t => Number(t.v) === Number(target))) {
+    target = Number(avail[0].v);
+    if (hwCfg[key]) hwCfg[key][idx] = target;
+  }
+  const opts = avail.map(t => `<option value="${t.v}" ${Number(target)===Number(t.v)?'selected':''}>${t.l}</option>`).join('');
   const esc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const wetWarn = wetGlowTimingWarning(bname, idx, tab, target);
   return `<div class="param-field" style="margin-bottom:.55rem">
@@ -2071,7 +2172,7 @@ function buildParamsHtml(bname, idx, tab) {
     ? `<div style="font-size:.65rem;color:var(--dim);line-height:1.35;margin:.35rem 0 .55rem">Shared setting: parameter changes here apply to every ${def.label || bname} block that uses this setting. Timed Delay values and Igniter output selection are per card.</div>`
     : '';
   if (!def || def.params.length === 0) {
-    return `<div class="block-params"><div class="block-desc">${def?.desc ?? ''}</div>${warningHtml}${ignitionHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em>${sideHtml}</div>`;
+    return `<div class="block-params"><div class="block-desc">${esc(def?.desc ?? '')}</div>${warningHtml}${ignitionHtml}<em style="font-size:.72rem;color:var(--dim)">No configurable parameters.</em>${sideHtml}</div>`;
   }
   const inputs = def.params.map(p => {
     // visibleIf - skip this param if hw condition is false
@@ -2090,12 +2191,12 @@ function buildParamsHtml(bname, idx, tab) {
       const disabledAttr = starterOn ? 'disabled' : '';
       const displayVal   = starterOn ? 'Yes (required by starter)' : (val ? 'Yes' : 'No');
       const boolDescHtml = p.desc ? `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-bottom:.18rem">${p.desc}</span>` : '';
-      return `<div class="param-field" id="pf-${bname}-${p.key}"${hiddenStyle}>
+      return `<div class="param-field" id="pf-${tab}-${idx}-${bname}-${p.key}" data-bname="${bname}" data-pkey="${p.key}"${hiddenStyle}>
         <span class="param-label">${p.label}</span>
         ${boolDescHtml}<div style="display:flex;align-items:center;gap:.45rem;padding:.32rem 0">
-          <input type="checkbox" id="p-${bname}-${p.key}" ${checked} ${disabledAttr}
+          <input type="checkbox" id="p-${tab}-${idx}-${bname}-${p.key}" ${checked} ${disabledAttr}
             onchange="onParamChangeBool('${bname}','${p.key}','${p.configKey??''}',this.checked)">
-          <label for="p-${bname}-${p.key}" style="font-size:.78rem;color:var(--dim);cursor:pointer">${displayVal}</label>
+          <label for="p-${tab}-${idx}-${bname}-${p.key}" style="font-size:.78rem;color:var(--dim);cursor:pointer">${displayVal}</label>
         </div>
       </div>`;
     }
@@ -2104,22 +2205,24 @@ function buildParamsHtml(bname, idx, tab) {
         `<option value="${o.v}" ${val == o.v ? 'selected' : ''}>${o.l}</option>`
       ).join('');
       const selDescHtml = p.desc ? `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-bottom:.18rem">${p.desc}</span>` : '';
-      return `<div class="param-field" id="pf-${bname}-${p.key}"${hiddenStyle}>
+      return `<div class="param-field" id="pf-${tab}-${idx}-${bname}-${p.key}" data-bname="${bname}" data-pkey="${p.key}"${hiddenStyle}>
         <span class="param-label">${p.label}</span>
-        ${selDescHtml}<select class="param-input" id="p-${bname}-${p.key}"
+        ${selDescHtml}<select class="param-input" id="p-${tab}-${idx}-${bname}-${p.key}"
           onchange="onParamChangeSelect('${bname}','${p.key}','${p.configKey??''}',this.value)">${opts}</select>
       </div>`;
     }
     const descHtml = p.desc ? `<span class="param-desc" style="display:block;font-size:.65rem;color:var(--dim);line-height:1.35;margin-bottom:.18rem">${p.desc}</span>` : '';
-    return `<div class="param-field" id="pf-${bname}-${p.key}"${hiddenStyle}>
-      <span class="param-label">${p.label}${p.unit ? ` <span class="param-unit">(${p.unit})</span>` : ''}</span>
-      ${descHtml}<input class="param-input" type="number" id="p-${bname}-${p.key}"
-        min="${p.min}" max="${p.max}" step="${p.step}" value="${val}"
+    const displayVal = seqDisplayValue(p, val);
+    const unitLabel = seqUnitLabel(p);
+    return `<div class="param-field" id="pf-${tab}-${idx}-${bname}-${p.key}" data-bname="${bname}" data-pkey="${p.key}"${hiddenStyle}>
+      <span class="param-label">${p.label}${unitLabel ? ` <span class="param-unit">(${unitLabel})</span>` : ''}</span>
+      ${descHtml}<input class="param-input" type="number" id="p-${tab}-${idx}-${bname}-${p.key}"
+        min="${seqDisplayAttr(p, p.min)}" max="${seqDisplayAttr(p, p.max)}" step="${seqDisplayStep(p)}" value="${displayVal}"
         oninput="onParamChange('${bname}','${p.key}','${p.configKey??''}',this.value,'${tab}',${idx})">
     </div>`;
   }).join('');
   return `<div class="block-params">
-    <div class="block-desc">${def.desc}</div>
+    <div class="block-desc">${esc(def.desc ?? '')}</div>
     ${warningHtml}${ignitionHtml}${sharedNoteHtml}<div class="param-grid">${inputs}</div>${sideHtml}
   </div>`;
 }
@@ -2133,7 +2236,8 @@ function onParamChange(bname, pkey, configKey, rawVal, tab, idx) {
   const allBlocks = {...BLOCKS, ...customBlocks};
   const pdef = allBlocks[bname]?.params?.find(p => p.key === pkey);
   if (!pdef) return;
-  const val = pdef.type === 'float' ? parseFloat(rawVal) : parseInt(rawVal);
+  const val = seqStoredValue(pdef, rawVal);
+  if (val === undefined) return;
   if (bname === 'TimedDelay' && pkey === 'timed_delay_ms' && tab !== undefined) {
     ensureDelaySlots(tab);
     hwCfg[delaySeqKey(tab)][idx] = val;
@@ -2160,38 +2264,46 @@ function refreshParamVisibility(bname) {
   def.params.forEach(p => {
     if (!p.showWhen) return;
     const show = p.showWhen(paramVals, bname);
-    const el   = document.getElementById('pf-' + bname + '-' + p.key);
-    if (el) el.style.display = show ? '' : 'none';
+    document.querySelectorAll(`.param-field[data-bname="${bname}"][data-pkey="${p.key}"]`)
+      .forEach(el => { el.style.display = show ? '' : 'none'; });
   });
 }
 
 function onParamChangeBool(bname, pkey, configKey, checked) {
   const vk = bname + '.' + pkey;
   paramVals[vk] = checked;
-  // Update sibling label text
-  const lbl = document.querySelector(`label[for="p-${bname}-${pkey}"]`);
-  if (lbl) lbl.textContent = checked ? 'Yes' : 'No';
+  // Shared setting: sync checkbox + label in every card showing this param (ids are per tab+card)
+  document.querySelectorAll(`.param-field[data-bname="${bname}"][data-pkey="${pkey}"]`).forEach(pf => {
+    const cb  = pf.querySelector('input[type="checkbox"]');
+    const lbl = pf.querySelector('label');
+    if (cb)  cb.checked = checked;
+    if (lbl) lbl.textContent = checked ? 'Yes' : 'No';
+  });
   if (configKey) setConfigVal(configKey, checked);
 
   // CooldownSpin: when starter is toggled, ghost/force oil pump checkbox
   if (bname === 'CooldownSpin' && pkey === 'cooldown_use_starter') {
-    const oilCb  = document.getElementById('p-CooldownSpin-cooldown_use_oil_pump');
-    const oilLbl = document.querySelector('label[for="p-CooldownSpin-cooldown_use_oil_pump"]');
-    if (oilCb) {
+    if (checked) {
+      // Starter on -> force oil pump on
+      paramVals['CooldownSpin.cooldown_use_oil_pump'] = true;
+      setConfigVal('cooldown_use_oil', true);
+    }
+    const cur = paramVals['CooldownSpin.cooldown_use_oil_pump'] ?? true;
+    document.querySelectorAll('.param-field[data-bname="CooldownSpin"][data-pkey="cooldown_use_oil_pump"]').forEach(pf => {
+      const oilCb  = pf.querySelector('input[type="checkbox"]');
+      const oilLbl = pf.querySelector('label');
+      if (!oilCb) return;
       if (checked) {
         // Starter on -> force oil pump on and disable the checkbox
         oilCb.checked  = true;
         oilCb.disabled = true;
-        paramVals['CooldownSpin.cooldown_use_oil_pump'] = true;
-        setConfigVal('cooldown_use_oil', true);
         if (oilLbl) oilLbl.textContent = 'Yes (required by starter)';
       } else {
         // Starter off -> re-enable oil pump checkbox
         oilCb.disabled = false;
-        const cur = paramVals['CooldownSpin.cooldown_use_oil_pump'] ?? true;
         if (oilLbl) oilLbl.textContent = cur ? 'Yes' : 'No';
       }
-    }
+    });
   }
   refreshParamVisibility(bname);
 }
@@ -2295,11 +2407,6 @@ let _customDlgTab = 'startup';
 let _cblkSteps    = [];   // [{type:'set_act',act,val} | {type:'delay_ms',val}]
 let _editingKey   = null; // null = new block, string = editing existing
 
-// Migrate old outputs format -> steps format
-function _migrateOutputsToSteps(outputs) {
-  return (outputs || []).map(o => ({type:'set_act', act:o.act, val:o.val}));
-}
-
 // ------ Sensor / actuator lists from hwCfg ------------------------------------------------------------------------------------------------------------
 function getEnabledSensors() {
   const s  = hwCfg.sensors    || {};
@@ -2359,10 +2466,10 @@ function getEnabledActuators() {
   if (a.igniter?.enabled)        list.push({key:'igniter',        label:'Igniter 1',                    mode:'relay'});
   if (a.igniter2?.enabled)       list.push({key:'igniter2',       label: hasAB ? 'AB Igniter (Ign.2)' : 'Igniter 2', mode:'relay'});
   if (a.airstarter_sol?.enabled) list.push({key:'airstarter_sol', label:'Airstarter Solenoid',          mode:'relay'});
-  if (a.cool_fan?.enabled)       list.push({key:'cool_fan',       label:demandLabel(a.cool_fan, 'Cooling Fan %', 'Cooling Fan Relay'), mode: isOnOff(a.cool_fan) ? 'relay':'pct'});
+  if (a.cool_fan?.enabled)       list.push({key:'cool_fan',       label:'Cooling Fan',                  mode:'relay'});
   if (a.oil_scavenge_pump?.enabled) list.push({key:'oil_scavenge_pump', label:'Oil Scavenge Pump',      mode:'relay'});
   if (a.bleed_valve?.enabled)    list.push({key:'bleed_valve',    label:'Bleed Valve',                  mode:'relay'});
-  if (a.glow_plug?.enabled)      list.push({key:'glow_plug',      label:demandLabel(a.glow_plug, 'Glow Plug %', 'Glow Plug Relay'), mode: isOnOff(a.glow_plug) ? 'relay':'pct'});
+  if (a.glow_plug?.enabled)      list.push({key:'glow_plug',      label:actuatorIsRelay('glow_plug') ? 'Glow Plug Relay' : 'Glow Plug %', mode:actuatorIsRelay('glow_plug') ? 'relay':'pct'});
   if (a.fuel_pump2?.enabled)     list.push({key:'fuel_pump2',     label:demandLabel(a.fuel_pump2, 'Aux Fuel Pump 2 %', 'Aux Fuel Pump 2 Relay'), mode: isOnOff(a.fuel_pump2) ? 'relay':'pct'});
   if (a.prop_pitch?.enabled)     list.push({key:'prop_pitch',     label:demandLabel(a.prop_pitch, 'Prop Pitch %', 'Prop Pitch Relay'), mode: isOnOff(a.prop_pitch) ? 'relay':'pct'});
   // AB outputs
@@ -2399,10 +2506,7 @@ function editCustomBlock(key, tab) {
   const def = hwCfg.custom_blocks?.[key];
   if (!def) return;
   _customDlgTab = tab;
-  // Support old outputs format and new steps format
-  _cblkSteps = JSON.parse(JSON.stringify(
-    def.steps ? def.steps : _migrateOutputsToSteps(def.outputs)
-  ));
+  _cblkSteps = JSON.parse(JSON.stringify(def.steps || []));
   _editingKey   = key;
   document.getElementById('cblk-dlg-title').textContent = 'Edit Custom Block';
   document.getElementById('cblk-confirm-btn').textContent = 'Update Block';
@@ -2430,7 +2534,7 @@ function _buildCondSensorSelect(selectedKey) {
   const sel = document.getElementById('cblk-cond-sensor');
   const sensors = getEnabledSensors();
   sel.innerHTML = sensors.length
-    ? sensors.map(s => `<option value="${s.key}" ${s.key===selectedKey?'selected':''}>${s.label}</option>`).join('')
+    ? sensors.map(s => `<option value="${s.key}" ${s.key===selectedKey?'selected':''}>${esc(s.label)}</option>`).join('')
     : '<option value="">No sensors enabled</option>';
   updateCustomCondUI();
 }
@@ -2578,9 +2682,7 @@ function buildRuntimeBlockDef(key, def) {
   }
   const timerKey = def.type === 'while' ? 'timeout_ms' : 'duration_ms';
   const timerDef = def.type === 'while' ? (def.timeout_ms ?? 10000) : (def.duration_ms ?? 1000);
-  // Build step summary for description (supports new steps[] and legacy outputs[])
-  const rawSteps = def.type === 'wait' ? [] :
-    (def.steps ? def.steps : _migrateOutputsToSteps(def.outputs));
+  const rawSteps = def.type === 'wait' ? [] : (def.steps || []);
   const stepLines = rawSteps.map((s, idx) => {
     if (s.type === 'delay_ms') return `${idx+1}. DELAY ${s.val} ms`;
     const a = acts.find(a => a.key === s.act);
@@ -2761,8 +2863,30 @@ function ruleThresholdToStored(sensor, displayValue) {
   const v = Number(displayValue) || 0;
   return scale === 100 ? Math.max(0, Math.min(100, v)) / 100 : v;
 }
+function ruleDisplayHysteresis(rule) {
+  const scale = ruleSensorScale(rule.sensor);
+  const v = Number(rule.hysteresis ?? 0) * scale;
+  return Number.isFinite(v) ? +v.toFixed(scale === 100 ? 1 : 3) : 0;
+}
+function ruleHysteresisToStored(sensor, displayValue) {
+  const scale = ruleSensorScale(sensor);
+  const v = Math.max(0, Number(displayValue) || 0);
+  return scale === 100 ? Math.min(100, v) / 100 : v;
+}
+const RULE_ANALOG_ACTUATOR_KEYS = {
+  2:'fuel_pump2',
+  4:'throttle',
+  5:'starter',
+  7:'oil_pump',
+  12:'ab_pump',
+  17:'prop_pitch'
+};
 function ruleOutputIsAnalog(actuator) {
-  return [2,4,5,7,12,16,17].includes(+actuator);
+  const act = +actuator;
+  if (act === 16) return !actuatorIsRelay('glow_plug');
+  const key = RULE_ANALOG_ACTUATOR_KEYS[act];
+  if (!key) return false;
+  return Number(hwCfg.actuators?.[key]?.type ?? 0) !== 2;
 }
 function ruleDisplayOutput(actuator, value) {
   const v = Number(value ?? 0);
@@ -2777,14 +2901,22 @@ function ruleOutputToStored(actuator, value) {
 function updateRuleThreshold(index) {
   const sensor = document.getElementById('rule-sensor-' + index);
   const threshold = document.getElementById('rule-thresh-' + index);
+  const hysteresis = document.getElementById('rule-hyst-' + index);
   const unit = document.getElementById('rule-unit-' + index);
+  const hUnit = document.getElementById('rule-hyst-unit-' + index);
   if (!sensor || !threshold) return;
   const binary = ruleUnit(+sensor.value) === '0/1';
   if (unit) unit.textContent = ruleUnit(+sensor.value);
+  if (hUnit) hUnit.textContent = ruleUnit(+sensor.value);
   threshold.min = binary ? '0' : '';
   threshold.max = binary ? '1' : (ruleUnit(+sensor.value) === '%' ? '100' : '');
   threshold.step = binary ? '1' : (ruleUnit(+sensor.value) === '%' ? '1' : 'any');
   if (binary) threshold.value = (+threshold.value < 0.5) ? '0' : '1';
+  if (hysteresis) {
+    hysteresis.disabled = binary;
+    hysteresis.value = binary ? '0' : hysteresis.value;
+    hysteresis.max = ruleUnit(+sensor.value) === '%' ? '100' : '';
+  }
   markRulesEdited();
 }
 function updateRuleOutput(index) {
@@ -2814,6 +2946,8 @@ function buildRuleRow(rule, index) {
   const sensors = RULE_SENSORS.map(s => ruleOption(s, rule.sensor)).join('');
   const outputs = RULE_OUTPUTS.map(a => ruleOption(a, rule.actuator)).join('');
   const ops = RULE_OPS.map(o => `<option value="${o.v}"${o.v === rule.op ? ' selected' : ''}>${o.l}</option>`).join('');
+  const modeMask = rule.mode_mask ?? 6;
+  const hystDisabled = binary ? ' disabled' : '';
   return `<div class="rules-row">
     <input type="checkbox" id="rule-en-${index}" ${rule.enabled ? 'checked' : ''} onchange="markRulesEdited()">
     <input type="text" id="rule-name-${index}" maxlength="23" value="${ruleEsc(rule.name || '')}" placeholder="Name" oninput="markRulesEdited()" style="width:7rem">
@@ -2821,9 +2955,13 @@ function buildRuleRow(rule, index) {
     <select id="rule-op-${index}" onchange="markRulesEdited()">${ops}</select>
     <input type="number" id="rule-thresh-${index}" value="${ruleDisplayThreshold(rule)}" ${binary ? 'min="0" max="1" step="1"' : (pctSensor ? 'min="0" max="100" step="1"' : 'step="any"')} oninput="markRulesEdited()" style="width:4.5rem;text-align:right">
     <span class="rule-dim" id="rule-unit-${index}">${ruleUnit(rule.sensor)}</span>
+    <span class="rule-dim">HYS</span><input type="number" id="rule-hyst-${index}" value="${ruleDisplayHysteresis(rule)}" min="0" ${pctSensor ? 'max="100"' : ''} step="${pctSensor ? '1' : 'any'}"${hystDisabled} oninput="markRulesEdited()" style="width:3.8rem;text-align:right">
+    <span class="rule-dim" id="rule-hyst-unit-${index}">${ruleUnit(rule.sensor)}</span>
     <span class="rule-dim">SET</span><select id="rule-act-${index}" onchange="updateRuleOutput(${index})">${outputs}</select>
     <span class="rule-dim" id="rule-on-label-${index}">TRUE</span><input type="number" id="rule-on-${index}" value="${ruleDisplayOutput(rule.actuator, rule.on_value ?? 1)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" oninput="markRulesEdited()" style="width:3.2rem"><span class="rule-dim" id="rule-on-unit-${index}">${analogOut ? '%' : '0/1'}</span>
     <span class="rule-dim" id="rule-off-label-${index}">FALSE/ELSE</span><input type="number" id="rule-off-${index}" value="${ruleDisplayOutput(rule.actuator, rule.off_value ?? 0)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" placeholder="no change" oninput="markRulesEdited()" style="width:4.2rem"><span class="rule-dim" id="rule-off-unit-${index}">${analogOut ? '%' : '0/1'}</span>
+    <label class="rule-dim" title="Rule is evaluated during startup"><input type="checkbox" id="rule-mode-startup-${index}" ${(modeMask & 2) ? 'checked' : ''} onchange="markRulesEdited()">START</label>
+    <label class="rule-dim" title="Rule is evaluated while running"><input type="checkbox" id="rule-mode-running-${index}" ${(modeMask & 4) ? 'checked' : ''} onchange="markRulesEdited()">RUN</label>
     <button class="blk-btn del" onclick="removeRule(${index})">x</button>
   </div>`;
 }
@@ -2836,6 +2974,7 @@ function renderRules() {
   document.getElementById('rules-count-label').textContent = `${rules.length} / 8`;
   const addBtn = document.getElementById('btn-add-rule');
   if (addBtn) addBtn.disabled = rules.length >= 8 || !hasAvailableRuleSensor() || !hasAvailableRuleOutput();
+  renderRuleWarnings();
 }
 function hasAvailableRuleSensor() { return RULE_SENSORS.some(item => item.ok()); }
 function hasAvailableRuleOutput() { return RULE_OUTPUTS.some(item => item.ok()); }
@@ -2858,8 +2997,41 @@ function addRule() {
     return;
   }
   cfg.rules.push({enabled:true,name:'',sensor,op:0,threshold:0,
-                  actuator,on_value:1,off_value:0});
+                  actuator,on_value:1,off_value:0,hysteresis:0,mode_mask:6});
   renderRules(); markRulesEdited();
+}
+function addRulePreset(kind) {
+  collectRules();
+  cfg.rules = cfg.rules || [];
+  if (cfg.rules.length >= 8) return;
+  const diSensor = [7,8,9,10].find(v => RULE_SENSORS.find(s => s.v === v)?.ok());
+  const add = rule => {
+    cfg.rules.push(Object.assign({enabled:true,hysteresis:0,mode_mask:6,on_value:1,off_value:-1}, rule));
+    renderRules(); markRulesEdited();
+  };
+  if (kind === 'di_fault') {
+    if (diSensor === undefined) return alert('No configured digital input channel is available.');
+    const idx = diSensor - 7;
+    const label = hwCfg.di_channels?.[idx]?.label || `DI Channel ${idx + 1}`;
+    return add({name:'DI fault',sensor:diSensor,op:0,threshold:0.5,actuator:14,on_value:1,off_value:-1,mode_mask:6});
+  }
+  if (kind === 'di_shutdown') {
+    if (diSensor === undefined) return alert('No configured digital input channel is available.');
+    return add({name:'DI shutdown',sensor:diSensor,op:0,threshold:0.5,actuator:13,on_value:1,off_value:-1,mode_mask:6});
+  }
+  if (kind === 'oil_temp_fan') {
+    if (!RULE_SENSORS.find(s => s.v === 0)?.ok()) return alert('Oil temperature sensor is not configured.');
+    if (!RULE_OUTPUTS.find(o => o.v === 0)?.ok()) return alert('Cooling fan output is not configured.');
+    return add({name:'Oil temp fan',sensor:0,op:0,threshold:100,actuator:0,on_value:1,off_value:0,hysteresis:5,mode_mask:6});
+  }
+  if (kind === 'fuel_press_fault') {
+    if (!RULE_SENSORS.find(s => s.v === 11)?.ok()) return alert('Fuel pressure sensor is not configured.');
+    return add({name:'Fuel pressure low',sensor:11,op:1,threshold:1.0,actuator:14,on_value:1,off_value:-1,hysteresis:0.2,mode_mask:4});
+  }
+  if (kind === 'batt_fault') {
+    if (!RULE_SENSORS.find(s => s.v === 5)?.ok()) return alert('Battery voltage sensor is not configured.');
+    return add({name:'Battery low',sensor:5,op:1,threshold:10.5,actuator:14,on_value:1,off_value:-1,hysteresis:0.5,mode_mask:6});
+  }
 }
 function removeRule(index) {
   collectRules();
@@ -2872,19 +3044,52 @@ function collectRules() {
   cfg.rules = Array.from(rows).map((_, i) => {
     const sensor = +document.getElementById('rule-sensor-' + i).value;
     const actuator = +document.getElementById('rule-act-' + i).value;
+    const startMode = document.getElementById('rule-mode-startup-' + i)?.checked ? 2 : 0;
+    const runMode = document.getElementById('rule-mode-running-' + i)?.checked ? 4 : 0;
     return {
       enabled: document.getElementById('rule-en-' + i).checked,
       name: document.getElementById('rule-name-' + i).value.substring(0, 23),
       sensor,
       op: +document.getElementById('rule-op-' + i).value,
       threshold: ruleThresholdToStored(sensor, document.getElementById('rule-thresh-' + i).value),
+      hysteresis: ruleHysteresisToStored(sensor, document.getElementById('rule-hyst-' + i)?.value),
       actuator,
       on_value: ruleOutputToStored(actuator, document.getElementById('rule-on-' + i).value),
-      off_value: ruleOutputToStored(actuator, document.getElementById('rule-off-' + i).value)
+      off_value: ruleOutputToStored(actuator, document.getElementById('rule-off-' + i).value),
+      mode_mask: startMode | runMode
     };
   });
 }
-function markRulesEdited() { collectRules(); setSaveStatus('Control rules edited - save to apply'); }
+function ruleWarnings(rules) {
+  const warnings = [];
+  const byAct = new Map();
+  rules.forEach((rule, index) => {
+    if (!rule.enabled) return;
+    const list = byAct.get(rule.actuator) || [];
+    list.push(index + 1);
+    byAct.set(rule.actuator, list);
+    if (!rule.mode_mask) warnings.push(`Rule ${rule.name || '#' + (index + 1)} has no active mode selected.`);
+  });
+  byAct.forEach((list, act) => {
+    if (list.length > 1) {
+      const out = RULE_OUTPUTS.find(o => o.v === Number(act))?.l || ('output ' + act);
+      warnings.push(`${list.length} enabled rules drive ${out}; lower rules override earlier rules.`);
+    }
+  });
+  return warnings;
+}
+function renderRuleWarnings() {
+  const box = document.getElementById('rules-warnings');
+  if (!box) return;
+  const warnings = ruleWarnings(Array.isArray(cfg.rules) ? cfg.rules : []);
+  box.style.display = warnings.length ? '' : 'none';
+  box.innerHTML = warnings.map(w => 'Warning: ' + ruleEsc(w)).join('<br>');
+}
+function markRulesEdited() {
+  collectRules();
+  renderRuleWarnings();
+  setSaveStatus('Control rules edited - save to apply');
+}
 
 function validateRulesForSave() {
   const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
@@ -2896,6 +3101,7 @@ function validateRulesForSave() {
     const name = rule.name ? `"${rule.name}"` : `#${index + 1}`;
     if (!sensor || !sensor.ok()) errors.push(`Rule ${name}: selected sensor is not configured.`);
     if (!output || !output.ok()) errors.push(`Rule ${name}: selected output is not configured.`);
+    if (!Number(rule.mode_mask || 0)) errors.push(`Rule ${name}: select Startup, Running, or both.`);
   });
   return errors;
 }
@@ -2920,7 +3126,7 @@ function validateCustomBlockLimits() {
     if ((def?.desc || '').length > MAX_CUSTOM_DESC_LEN) {
       errors.push(`${label}: description is longer than ${MAX_CUSTOM_DESC_LEN} characters.`);
     }
-    const steps = Array.isArray(def?.steps) ? def.steps : _migrateOutputsToSteps(def?.outputs);
+    const steps = Array.isArray(def?.steps) ? def.steps : [];
     if (steps.length > MAX_CUSTOM_STEPS) {
       errors.push(`${label}: ${steps.length}/${MAX_CUSTOM_STEPS} steps. Remove ${steps.length - MAX_CUSTOM_STEPS} step(s).`);
     }
@@ -3049,13 +3255,20 @@ function updateEngineMode(mode) {
 async function refreshEngineStatus() {
   try {
     const r = await fetch('/api/status', { cache: 'no-store' });
-    if (!r.ok) return;
+    if (!r.ok) { setSeqConnectionState(false, 'Disconnected'); return; }
     const d = await r.json();
+    setSeqConnectionState(true, 'Connected');
     if (d.mode !== undefined) updateEngineMode(d.mode);
-  } catch (_) {}
+  } catch (_) { setSeqConnectionState(false, 'Disconnected'); }
 }
 
 let statusPollTimer = null;
+function setSeqConnectionState(ok, text) {
+  const dot = document.getElementById('conn');
+  const lbl = document.getElementById('conn-label');
+  if (dot) dot.className = 'conn-dot ' + (ok ? 'connected' : 'disconnected');
+  if (lbl) lbl.textContent = text || (ok ? 'Connected' : 'Disconnected');
+}
 function startStatusPoll() {
   if (statusPollTimer) return;
   refreshEngineStatus();
@@ -3073,6 +3286,7 @@ function startWS() {
   let pullTimer = null;
   const pull = () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('p'); };
   ws.onopen = () => {
+    setSeqConnectionState(true, 'Connected');
     stopStatusPoll();
     pull();
     pullTimer = setInterval(pull, 1000);
@@ -3086,6 +3300,7 @@ function startWS() {
   };
   ws.onclose = () => {
     if (pullTimer) clearInterval(pullTimer);
+    setSeqConnectionState(false, 'Reconnecting');
     startStatusPoll();
     setTimeout(startWS, 3000);
   };
@@ -3118,7 +3333,7 @@ function _applySeqValidation(d) {
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     html += `<div class="${cls}">` +
       `<span class="seq-val-icon">${icon}</span>` +
-      `<span><span class="seq-val-block">${block}:</span>${msg}</span>` +
+      `<span class="seq-val-text"><span class="seq-val-block">${block}:</span>${msg}</span>` +
       `</div>`;
   }
   banner.innerHTML = html;

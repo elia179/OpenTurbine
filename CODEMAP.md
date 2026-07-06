@@ -56,7 +56,8 @@ src/
     StatusLED.h                              — millis-based blink FSM
 data/                — gzipped HTML/CSS/JS UI (served by WebServer)
 hardware_profile.h   — compile-time defaults for pins/features (overridden at runtime by HardwareConfig)
-partitions.csv       — 4 MB OTA layout (nvs / otadata / app0 0x180000 / app1 0x180000 / littlefs 0xE0000)
+partitions.csv       — 4 MB OTA layout for esp32dev (nvs / otadata / app0 0x180000 / app1 0x180000 / littlefs 0xE0000)
+partitions_16mb.csv  — 16 MB OTA layout for esp32s3dev (3 MB app slots, ~9.9 MB littlefs)
 platformio.ini       — esp32dev + esp32s3dev; -DCONFIG_ASYNC_TCP_USE_WDT=0 (workaround)
 ```
 

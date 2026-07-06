@@ -271,7 +271,7 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
   font-family: var(--font-ui);
   margin: 0.8rem 0 0.42rem;
 }
-.legacy-card-bin:empty { display: none !important; margin: 0; }
+.telemetry-card-bin:empty { display: none !important; margin: 0; }
 .gs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
 .gs-title  { font-weight: 700; font-size: 0.9rem; color: #fff; }
 .gs-dismiss { font-size: 0.75rem; color: var(--dim); background: none; border: 1px solid var(--border); cursor: pointer; padding: 0.2rem 0.7rem; border-radius: var(--r-sm); min-height: 32px; text-transform: none; letter-spacing: 0; }
@@ -287,8 +287,16 @@ button.primary:hover { background: #00d48e; border-color: #00d48e; }
   margin-top: 0.3rem;
   letter-spacing: 0.02em;
 }
-/* Turns yellow when value is approaching the limit */
-.gauge-approach-warn .gauge-abs-label { color: var(--yellow); }
+/* Approach-to-limit warning shown under the gauge bar (sibling of the
+   abs label, not its parent — style the warn span itself). */
+.gauge-approach-warn {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--yellow);
+  font-family: var(--font-mono);
+  margin-top: 0.2rem;
+  letter-spacing: 0.02em;
+}
 
 /* Profile mismatch — keep id selectors for JS compat */
 #profile-mismatch-banner {
@@ -651,7 +659,7 @@ textarea.field-changed {
   border-top: 1px solid var(--border);
 }
 /* #lock-warn and #standby-warn use .error-banner for visual treatment;
-   display:none here is removed — JS controls visibility via style.display */
+   JS controls visibility with style.display on each page. */
 
 /* ── Tools page ─────────────────────────────────────────────── */
 .tool-card {

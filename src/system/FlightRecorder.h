@@ -17,8 +17,12 @@
 //  records covers ~10 complete runs.  Eviction drops the oldest 20 %
 //  (~2 runs) so at least 8 full runs are always retained.
 //
-//  Written by ECU loop only. Web server reads for display/download.
-//  Each write is synchronous (LittleFS open/append/close per event).
+//  Producers (Core 1 ECU loop, plus Core-0 config-change logging) only
+//  format events into a static ring buffer guarded by a spinlock —
+//  no LittleFS access on the ECU core. Core 0 (web task tick →
+//  runEviction()) drains the ring to flash and runs eviction. If the
+//  ring overflows, drops are counted and an EVENTS_DROPPED marker is
+//  written when space frees. Web server reads for display/download.
 // ============================================================
 
 class FlightRecorder {
@@ -54,26 +58,24 @@ public:
     static size_t toJson(char* buf, size_t len);
 
     // Bracket direct file access (e.g. CSV handler) with these to prevent
-    // racing against _append()'s ring-buffer eviction (remove + rename).
+    // racing against runEviction()'s file eviction (remove + rename).
     static void lockLog();
     static void unlockLog();
     static void beginRawDownload();
     static void endRawDownload();
 
-    // Called from Core 0 (web task tick) to offload ring-buffer eviction off Core 1.
-    // No-op unless a previous _append() set the eviction-pending flag.
+    // Called from Core 0 (web task tick): drains the Core-1 event ring to
+    // flash, evicts when the log is full, and performs deferred clear().
     static void runEviction();
 
 private:
     static void   _append(const char* eventJson);
     static uint32_t _uptimeSec();
 
-    // Mutex guards file access between Core 1 (_append) and Core 0 (toJson/runEviction).
-    // Protects the remove+rename sequence in ring-buffer eviction.
+    // Mutex guards file access between Core 0 writers (runEviction/clear)
+    // and readers (toJson, CSV/raw download handlers).
+    // Protects the remove+rename sequence in log eviction.
     static SemaphoreHandle_t _mutex;
-
-    // Set by Core 1 when the ring buffer is full; cleared by Core 0 after eviction.
-    static volatile bool _evictionPending;
 
     // SNAP timing
     static unsigned long _lastSnapshotMs;

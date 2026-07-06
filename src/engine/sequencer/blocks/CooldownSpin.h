@@ -54,9 +54,16 @@ public:
 
         // Pressure-fed oil system: regulate pump to target pressure
         if (HardwareConfig::hasOilPump && HardwareConfig::hasOilPress && Config::cooldownUseOilPump) {
-            float err = oilPressureTarget - ed.oilPressure;
-            float adj = constrain(err * 0.15f, -5.0f, 5.0f);
-            ed.oilPumpPct = constrain(ed.oilPumpPct + adj, 5.0f, 100.0f);
+            if (ed.oilHealthy) {
+                float err = oilPressureTarget - ed.oilPressure;
+                float adj = constrain(err * 0.15f, -5.0f, 5.0f);
+                ed.oilPumpPct = constrain(ed.oilPumpPct + adj, 5.0f, 100.0f);
+            } else {
+                // Sensor unhealthy: fall back to the fixed no-sensor duty rather
+                // than regulating on a bad reading — a failed-high sensor would
+                // drive the pump to the 5% clamp during hot spindown.
+                ed.oilPumpPct = oilCoolPct;
+            }
         }
 
         // Oil pump fail-check: if oil is near zero while pump is supposed to be running,
@@ -66,7 +73,7 @@ public:
             && !_oilWarnLogged)
         {
             FlightRecorder::logAbort("CooldownSpin", "oil_pressure_zero_during_cooldown");
-            Serial.println("[CooldownSpin] WARNING: oil pressure near zero — check oil pump");
+            Serial.println("[CooldownSpin] WARNING: oil pressure near zero - check oil pump");
             _oilWarnLogged = true;
         }
 

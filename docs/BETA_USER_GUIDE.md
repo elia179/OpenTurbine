@@ -202,11 +202,22 @@ After the run:
 Use Tools:
 
 - Download full engine file: saves the complete `ecu_config.json`.
+  The backup is complete by design and includes the Wi-Fi AP password when one
+  is set — remove or change it before sharing the file with anyone.
 - Restore full engine file: restores hardware and settings together.
-- Factory reset: restores shipped defaults and forces hardware review again.
+- Factory reset: erases the saved config and regenerates the built-in defaults —
+  identical to a brand-new device. The default is a deliberately minimal simple
+  turbojet (throttle/idle inputs, fuel-pump ESC, oil pump, one igniter, START/STOP,
+  timed start; no sensors, no automated safety), so review the Hardware page and
+  add your engine's sensors/actuators afterward.
 
 Do not mix hardware from one engine file with settings from another. Profile ID
 mismatch locks engine operations because mixed engine data is unsafe.
+
+Note on restores: over-long text fields in a hand-edited engine file (labels,
+profile description, custom block names/descriptions) are silently truncated to
+their field limits when the file loads — re-check visible names after restoring
+an edited file.
 
 ## 10. Firmware And Web UI Updates
 
@@ -255,6 +266,7 @@ Report:
 - firmware/UI version shown on Dashboard
 - exact page and action
 - screenshot of warning/error
-- downloaded `ecu_config.json` if safe to share
+- downloaded `ecu_config.json` if safe to share (it contains your Wi-Fi AP
+  password — delete or replace `hardware.wifi_password` before attaching it)
 - log/session file when the issue involves a run
 - whether the issue is repeatable after refresh/reboot

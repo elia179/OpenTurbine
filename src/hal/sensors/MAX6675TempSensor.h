@@ -49,11 +49,13 @@ public:
         if (now - _lastMs < READ_INTERVAL_MS) return;
         _lastMs = now;
         float t = _tc->readCelsius();
-        // MAX6675 returns NAN on open circuit; also treat 0 °C as fault —
-        // a disconnected chip frequently returns exactly 0.0 before NAN.
-        // MAX6675 physical range: 0 to 1023.75 °C (10-bit + sign, 0.25°C/LSB)
-        // NaN = open circuit; 0 = often returned on disconnect; >1023.75 = impossible
-        if (isnan(t) || t <= 0.0f || t > 1023.75f) {
+        // NaN = the chip's open-thermocouple bit (D2) — the reliable fault
+        // indication (a disconnected converter reads all-1s via the MISO
+        // pull-up, which also sets D2).  0 °C is the range floor and a
+        // legitimate reading at freezing ambient, so it is NOT a fault.
+        // MAX6675 physical range: 0 to 1023.75 °C (0.25 °C/LSB); anything
+        // outside is impossible.
+        if (isnan(t) || t < 0.0f || t > 1023.75f) {
             _healthy = false;
             // Retain the last value but reset filter history after a fault.
             _filled = 0;

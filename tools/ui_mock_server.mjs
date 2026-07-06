@@ -121,7 +121,6 @@ function makeSettings() {
     fuel_pump: { idle_min_pct: 10, idle_max_pct: 25 },
     rpm_health: { jump_threshold: 15000, zero_stuck_ticks: 20 },
     cluster: { n1_warn_rpm: 85000, n2_warn_rpm: 25000, tot_warn_c: 680, oil_warn_bar: 1.2, enabled: true },
-    display: { pressure_sensors: true },
     rc_input: { min_us: 1000, max_us: 2000, failsafe_ms: 500 },
     afterburner: { min_n1: 45000, max_n1: 92000, max_tot_for_light: 650, throttle_threshold: 0.8, use_torch: true, use_igniter: true, torch_spike_pct: 20, torch_duration_ms: 250, torch_tot_limit: 780, flame_mode: 0, tot_rise_deg_c: 30, tot_rise_window_ms: 1000, assume_ignited_ms: 1500, flame_timeout_ms: 4000, pump_min_pct: 20, pump_max_pct: 80, pump_control_mode: 1, pump_follow_throttle: true, main_fuel_offset_pct: 0, stabilize_ms: 1000, stabilize_max_tot: 750 },
     session_log: { n1: true, n2: true, tot: true, oil: true, p1: true, p2: true, throttle: true, mode: true, tit: true, batt: true, fuel_press: true, fuel_flow: true, glow: true, fp2: true, ab: true, prop: true, loop: false, interval_ms: 500 },
@@ -336,7 +335,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
   try {
     if (req.method === 'GET' && url.pathname === '/api/data') return sendJson(res, 200, state.data);
-    if (req.method === 'GET' && url.pathname === '/api/status') return sendJson(res, 200, { ok: true, mode: state.data.mode });
+    if (req.method === 'GET' && url.pathname === '/api/status') return sendJson(res, 200, { ok: true, mode: state.data.mode, locked: !!state.data.config_locked });
     if (req.method === 'GET' && url.pathname === '/api/config') return sendJson(res, 200, state.settings);
     if (req.method === 'GET' && url.pathname === '/api/hardware') return sendJson(res, 200, state.hardware);
     if (req.method === 'GET' && url.pathname === '/api/ecu_config') return sendJson(res, 200, { hardware: state.hardware, settings: state.settings });

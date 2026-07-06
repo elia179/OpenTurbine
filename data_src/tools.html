@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260625a">
+<link rel="stylesheet" href="/style.css?v=20260705a">
 </head>
 <body>
 <nav>
@@ -50,7 +50,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260625a"></script>
+<script src="/app.js?v=20260705a"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -60,7 +60,7 @@ const TOOLS = [
   { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid - primes fuel lines.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100% - primes oil circuit. This is a direct bench command, not the controller minimum duty.', visibleIf: hw => !!hw?.actuators?.oil_pump?.enabled },
   { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 - verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter?.enabled },
-  { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
+  { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign2_test_ms',     desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
   { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at configured demand - verify motor turns.', visibleIf: hw => !!hw?.actuators?.starter?.enabled },
   { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse - audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, configKey:'tools.idle_test_ms', desc:'Moves the throttle/fuel ESC output to its configured running idle floor - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
@@ -76,11 +76,13 @@ const TOOLS = [
   { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, configKey:'tools.ab_pump_test_ms', desc:'Runs AB pump at configured demand.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_pump?.enabled) },
   { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, configKey:'tools.prop_pitch_test_ms', desc:'Moves prop pitch output to configured position.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
   // ── Toggle tools ─────────────────────────────────────────────
-  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, desc:'Turns closed-loop idle RPM hold on or off while running. Available only when it is enabled in Hardware and has throttle output plus RPM feedback.', toggleKey:'dynamic_idle_enabled',
+  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, modes:['STANDBY','RUNNING'], desc:'Turns closed-loop idle RPM hold on or off for the next/current run. Available only when it is enabled in Hardware and has throttle output plus RPM feedback.', toggleKey:'dynamic_idle_enabled',
     visibleIf: hw => !!(hw?.controllers?.dynamic_idle && hw?.actuators?.throttle?.enabled &&
       (hw?.sensors?.n1_rpm?.enabled || (hw?.has_two_shaft && hw?.sensors?.n2_rpm?.enabled))) },
-  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, desc:'Restricts throttle range — limp-home safety envelope.', toggleKey:'limp_mode',
+  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, modes:['STANDBY','RUNNING'], desc:'Restricts throttle range for the next/current run — limp-home safety envelope.', toggleKey:'limp_mode',
     visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
+  { id:'STARTER_ASSIST',      name:'Starter Idle Assist', durationMs:0, modes:['RUNNING'], desc:'Arms idle-stall assist for the current run: while RUNNING, the starter engages at the configured duty whenever N1 falls below the exit RPM (Config > Starter Assist). Can only be armed while RUNNING; disarms automatically on shutdown.', toggleKey:'starter_assist_active',
+    visibleIf: hw => !!(hw?.actuators?.starter?.enabled && hw?.actuators?.starter?.assist_enabled && hw?.sensors?.n1_rpm?.enabled) },
 ];
 
 let activeId    = null;
@@ -183,6 +185,8 @@ function renderTools() {
       <div class="tool-desc" style="flex:1;min-width:140px">
         Download a full backup of hardware + settings as <code>ecu_config.json</code>,
         or restore from a previously saved file. Engine must be in STANDBY to restore.
+        <br><span style="color:var(--yellow)">Note: the backup is complete by design —
+        it includes the Wi-Fi AP password. Review before sharing the file.</span>
       </div>
       <button id="cfg-backup-btn" onclick="backupConfig()">Backup</button>
       <label style="cursor:pointer">
@@ -277,7 +281,9 @@ function renderTools() {
     </div>
     <div class="tool-footer">
       <div class="tool-desc" style="color:var(--dim)">
-        Erases all config, hardware settings, and flight logs, then reboots to factory defaults.
+        Erases all config, hardware settings, and flight logs, then reboots to the
+        built-in defaults — identical to a brand-new device (the minimal profile).
+        Review the Hardware page afterward to re-add your engine's hardware.
         Use if config is corrupted or you want to start fresh. <b style="color:var(--red)">Cannot be undone.</b>
       </div>
       <button onclick="factoryReset()" class="danger" id="btn-factory-reset">Factory Reset</button>
@@ -339,14 +345,19 @@ function runTool(id) {
   const tool = TOOLS.find(t => t.id === id);
   if (!tool) return;
 
-  postToolCommand({ cmd: id }).then(d => {
+  const payload = { cmd: id };
+  // STARTER_ASSIST is a stateful arm/disarm, not a firmware-side toggle:
+  // iParam carries the DESIRED state (1 = arm, 0 = disarm).
+  if (id === 'STARTER_ASSIST') payload.iParam = liveData?.starter_assist_active ? 0 : 1;
+
+  postToolCommand(payload).then(d => {
     if (tool.durationMs === 0) {
       setState(id, 'Toggled', 'done');
       setTimeout(() => refreshToggleState(tool), 800);
       return;
     }
     startProgress(tool);
-  }).catch(e => alert('Network error: ' + e));
+  }).catch(e => alert('Tool command failed: ' + (e && e.message ? e.message : e)));
 }
 
 // ── Extra Cooldown start / stop ───────────────────────────────
@@ -439,19 +450,28 @@ function setState(id, text, cls) {
   if (el) { el.textContent = text; el.className = 'tool-state' + (cls ? ' ' + cls : ''); }
 }
 
+// FAULT is standby-like for tools/maintenance: firmware treats it as a repair
+// state where everything except START works (mirrors _isStandbyLike / the
+// Core-1 standbyLike gate). Buttons must match, or a config-fault ECU can't
+// be diagnosed or fixed from this page.
+function isStandbyLike(m) { return m === 'STANDBY' || m === 'FAULT'; }
+
 function setAllButtons(forcedOff) {
-  const inStandby = engineMode === 'STANDBY';
+  const inStandby = isStandbyLike(engineMode);
   TOOLS.forEach(t => {
     const btn = document.getElementById('btn-' + t.id);
     if (!btn) return;
     const isToggle = t.durationMs === 0;
-    btn.disabled = forcedOff || (!inStandby && !isToggle);
+    // FAULT counts as STANDBY for per-tool mode lists.
+    const effMode = engineMode === 'FAULT' ? 'STANDBY' : engineMode;
+    const modeOk = t.modes ? t.modes.includes(effMode) : (isToggle || inStandby);
+    btn.disabled = forcedOff || !modeOk;
   });
-  // Cooldown start button — only in STANDBY and not already running
+  // Cooldown start button — only standby-like and not already running
   const ecBtn = document.getElementById('btn-EXTRA_COOLDOWN');
   const ecActive = !!(liveData && liveData.extra_cooldown_active);
   if (ecBtn) ecBtn.disabled = forcedOff || !inStandby || ecActive || !extraCooldownAvailable();
-  // Factory reset — standby only (card label says so; enforce it here)
+  // Factory reset — standby-like only (card label says so; enforce it here)
   const frBtn = document.getElementById('btn-factory-reset');
   if (frBtn) frBtn.disabled = forcedOff || !inStandby;
 }
@@ -471,7 +491,7 @@ window.applyData = function(d) {
   const mb = document.getElementById('mode-badge');
   if (mb) { mb.textContent = d.mode; mb.className = 'mode-badge ' + d.mode; }
   const lw = document.getElementById('lock-warn');
-  if (lw) lw.style.display = (d.mode !== 'STANDBY') ? '' : 'none';
+  if (lw) lw.style.display = !isStandbyLike(d.mode) ? '' : 'none';
   if (!activeTick) setAllButtons(false);
   updateLoopDiagnostics(d);
 
@@ -500,8 +520,8 @@ window.applyData = function(d) {
   const devBtn = document.getElementById('btn-dev-mode');
   if (devBtn) {
     devBtn.textContent = devOn ? 'Disable Dev Mode' : 'Enable Dev Mode';
-    devBtn.disabled = d.mode !== 'STANDBY';
-    devBtn.title = d.mode === 'STANDBY' ? '' : 'Developer mode can only be changed in STANDBY.';
+    devBtn.disabled = !isStandbyLike(d.mode);
+    devBtn.title = isStandbyLike(d.mode) ? '' : 'Developer mode can only be changed in STANDBY (or FAULT).';
   }
 
   // Safety checks state badge
@@ -525,14 +545,20 @@ window.applyData = function(d) {
   const benchBtn = document.getElementById('btn-TOGGLE_BENCH_MODE');
   if (benchBtn) {
     benchBtn.textContent = benchOn ? 'Disable Bench Mode' : 'Enable Bench Mode';
-    benchBtn.disabled = (!devOn || d.mode !== 'STANDBY');
+    benchBtn.disabled = (!devOn || !isStandbyLike(d.mode));
     benchBtn.title = !devOn ? 'Enable Developer Mode first.' :
-                     (d.mode !== 'STANDBY' ? 'Bench mode can only be changed in STANDBY.' : '');
+                     (!isStandbyLike(d.mode) ? 'Bench mode can only be changed in STANDBY (or FAULT).' : '');
   }
 
-  // Config restore button — standby only
+  // Safety-bypass card: firmware allows TOGGLE_SAFETY_CHECKS once Dev Mode
+  // and Bench Mode are both on — the card was created hidden and nothing
+  // ever showed it, so the control was unreachable from the UI.
+  const scCard = document.getElementById('card-TOGGLE_SAFETY_CHECKS');
+  if (scCard) scCard.style.display = (devOn && benchOn) ? '' : 'none';
+
+  // Config restore button — standby-like (FAULT is the repair path)
   const cfgRestoreBtn = document.getElementById('cfg-restore-btn');
-  if (cfgRestoreBtn) cfgRestoreBtn.disabled = (d.mode !== 'STANDBY');
+  if (cfgRestoreBtn) cfgRestoreBtn.disabled = !isStandbyLike(d.mode);
 
   // Config schema mismatch banner: missing or unsupported fields may need review.
   let cvmBanner = document.getElementById('cfg-version-mismatch-banner');
@@ -574,8 +600,8 @@ window.applyData = function(d) {
 // ── Dev mode toggle ───────────────────────────────────────────
 function toggleDevMode() {
   const on = !!(liveData && liveData.dev_mode);
-  if (liveData && liveData.mode !== 'STANDBY') {
-    alert('Developer mode can only be changed in STANDBY.');
+  if (liveData && !isStandbyLike(liveData.mode)) {
+    alert('Developer mode can only be changed in STANDBY (or FAULT).');
     return;
   }
   const msg = on
@@ -590,8 +616,8 @@ function toggleDevMode() {
 // ── Safety checks bypass (dev mode only) ─────────────────────
 function toggleSafetyChecks() {
   const on  = !!(liveData && liveData.skip_safety_checks);
-  if (!(liveData && liveData.dev_mode && liveData.bench_mode && liveData.mode === 'STANDBY')) {
-    alert('Safety bypass requires Developer Mode and Bench Mode while in STANDBY.');
+  if (!(liveData && liveData.dev_mode && liveData.bench_mode && isStandbyLike(liveData.mode))) {
+    alert('Safety bypass requires Developer Mode and Bench Mode while in STANDBY (or FAULT).');
     return;
   }
   const msg = on
@@ -607,7 +633,7 @@ function toggleSafetyChecks() {
 function toggleBenchMode() {
   const on   = !!(liveData && liveData.bench_mode);
   const mode = liveData && liveData.mode;
-  if (mode !== 'STANDBY') { alert('Bench mode can only be changed in STANDBY.'); return; }
+  if (!isStandbyLike(mode)) { alert('Bench mode can only be changed in STANDBY (or FAULT).'); return; }
   const msg = on
     ? 'Disable bench mode and return to normal operation?'
     : 'Enable BENCH MODE?\n\nAll sequencer blocks will complete on their configured timeout with NO sensor verification.\n\nSafety faults are bypassed. The engine will NOT protect itself.\n\nUse only to test actuator wiring and sequence timing — NEVER with fuel or a running engine.\n\nAre you sure?';
@@ -631,7 +657,9 @@ function syncDynamicToolText() {
     const n = Number(pct ?? 0);
     return n >= 99.5 ? 'ON / 100%' : `${n.toFixed(n % 1 ? 1 : 0)}%`;
   };
-  const isRelay = key => Number(act(key).type ?? 1) === 2;
+  const isRelay = key => key === 'glow_plug'
+    ? Number(act(key).output_type ?? 0) === 1
+    : Number(act(key).type ?? 1) === 2;
   const outputText = (key, pct) => isRelay(key) ? 'ON' : pctText(pct);
   const setDesc = (id, text) => { const t = tool(id); if (t) t.desc = text; };
 
@@ -639,10 +667,14 @@ function syncDynamicToolText() {
   setDesc('FUEL_SOL_TEST', `Output: fuel solenoid ON for ${sec(tools.fuel_sol_test_ms ?? 1000)} s.`);
   setDesc('IDLE_TEST', `Output: throttle to configured idle floor for ${sec(tools.idle_test_ms ?? 3000)} s.`);
   setDesc('STARTER_EN_TEST', `Output: starter enable relay ON for ${sec(tools.starter_en_test_ms ?? 1000)} s.`);
-  setDesc('OIL_SCAV_TEST', `Output: oil scavenge pump ON for ${sec(tools.oil_scav_test_ms ?? 2000)} s.`);
-  setDesc('COOL_FAN_TEST', `Output: cooling fan ON for ${sec(tools.cool_fan_test_ms ?? 3000)} s.`);
+  // These accessories can be configured as PWM/servo outputs, but their
+  // bench tests set a boolean → the actuator drives to FULL output. Say so
+  // instead of implying a partial-demand test.
+  const fullOut = key => isRelay(key) ? 'ON' : 'to FULL output';
+  setDesc('OIL_SCAV_TEST', `Output: oil scavenge pump ${fullOut('oil_scavenge_pump')} for ${sec(tools.oil_scav_test_ms ?? 2000)} s.`);
+  setDesc('COOL_FAN_TEST', `Output: cooling fan ${fullOut('cool_fan')} for ${sec(tools.cool_fan_test_ms ?? 3000)} s.`);
   setDesc('AIRSTARTER_TEST', `Output: airstarter solenoid ON for ${sec(tools.airstarter_test_ms ?? 1000)} s.`);
-  setDesc('BLEED_VALVE_TEST', `Output: bleed valve ON for ${sec(tools.bleed_valve_test_ms ?? 1000)} s.`);
+  setDesc('BLEED_VALVE_TEST', `Output: bleed valve ${fullOut('bleed_valve')} for ${sec(tools.bleed_valve_test_ms ?? 1000)} s.`);
   setDesc('FUEL_PUMP2_TEST', `Output: auxiliary fuel pump 2 ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
   setDesc('AB_SOL_TEST', `Output: AB fuel solenoid ON for ${sec(tools.ab_sol_test_ms ?? 1000)} s.`);
   setDesc('AB_PUMP_TEST', `Output: AB pump ${outputText('ab_pump', tools.ab_pump_test_pct ?? 30)} for ${sec(tools.ab_pump_test_ms ?? 2000)} s.`);
@@ -654,7 +686,7 @@ function syncDynamicToolText() {
   const pct = Number(tools.glow_test_pct ?? 100);
   const durationMs = Number(tools.glow_test_ms ?? glowTool.durationMs);
   const durationS = sec(durationMs);
-  const demandText = outputText('glow_plug', pct);
+  const demandText = isRelay('glow_plug') ? 'ON' : pctText(pct);
   if (Number(glow.type || 0) === 2) {
     glowTool.name = 'Wet Glow Test';
     const delayMs = Number(glow.fuel_delay_ms ?? 8000);
@@ -718,6 +750,9 @@ async function pollToolsTelemetry() {
   try {
     const d = await fetchJsonWithTimeout('/api/data', 3000);
     window.applyData(d);
+    // This poll owns the conn indicator here — app.js's /api/status heartbeat
+    // is disabled on pages with local telemetry (hasPageLocalTelemetry).
+    setConnectionState(true, 'Connected');
   } catch (_) {
     setConnectionState(false, 'Disconnected');
   }
@@ -801,8 +836,8 @@ function restoreConfig(input) {
   if (!file) return;
   const msg = document.getElementById('cfg-backup-msg');
   const btn = document.getElementById('cfg-restore-btn');
-  if (engineMode !== 'STANDBY') {
-    alert('Engine must be in STANDBY to restore config.');
+  if (!isStandbyLike(engineMode)) {
+    alert('Engine must be in STANDBY (or FAULT) to restore config.');
     input.value = '';
     return;
   }
@@ -848,8 +883,8 @@ function restoreConfig(input) {
 function startOTA(input) {
   const file = input.files[0];
   if (!file) return;
-  if (engineMode !== 'STANDBY') {
-    alert('Engine must be in STANDBY before flashing firmware.\nStop the engine first.');
+  if (!isStandbyLike(engineMode)) {
+    alert('Engine must be in STANDBY (or FAULT) before flashing firmware.\nStop the engine first.');
     input.value = '';
     return;
   }
@@ -901,13 +936,14 @@ function startOTA(input) {
     btn.disabled = false;
   };
   xhr.send(form);
+  input.value = '';
 }
 
 function startWebAssetsUpdate(input) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
-  if (engineMode !== 'STANDBY') {
-    alert('Engine must be in STANDBY before updating web assets.\nStop the engine first.');
+  if (!isStandbyLike(engineMode)) {
+    alert('Engine must be in STANDBY (or FAULT) before updating web assets.\nStop the engine first.');
     input.value = '';
     return;
   }

@@ -66,6 +66,13 @@ struct EngineData {
     volatile bool     fuelPressHealthy= true;    // unfitted → not a fault
     volatile bool     battHealthy     = true;    // unfitted → not a fault
     volatile bool     torqueHealthy   = true;    // unfitted → not a fault
+    volatile bool     p1Healthy       = true;    // unfitted → not a fault
+    volatile bool     p2Healthy       = true;    // unfitted → not a fault
+    volatile bool     fuelFlowHealthy = true;    // unfitted → not a fault
+    // Rail-check on the flame threshold sensor's ADC. Display/rules hint
+    // only — flameout safety logic keeps using flameDetected directly (a
+    // strong flame can legitimately saturate the sensor while RUNNING).
+    volatile bool     flameHealthy    = true;
     volatile bool     flameDetected   = false;
 
     // ── Actuator demands (written by controllers/sequencer) ───
@@ -87,6 +94,7 @@ struct EngineData {
     // ── Safety / diagnostics ───────────────────────────────────
     volatile bool     surgeDetected   = false;  // compressor surge detected (N1 oscillation)
     volatile float    glowPlugDemand  = 0;      // 0.0–1.0 heat level for glow-plug ramp
+    volatile float    wetGlowFuelDemand = 0;    // 0.0-1.0 wet-glow fuel output demand
     volatile float    glowCurrentAmps    = 0.0f;   // glow plug current (A), 0 if no sensor
     volatile bool     glowPlugHot        = false;   // true when current dropped below ready threshold
     volatile float    igniterCurrentAmps  = 0.0f;   // igniter 1 coil current (A), 0 if no sensor
@@ -141,7 +149,7 @@ struct EngineData {
     // Written only while mode == STANDBY so no mutex required.
     struct SeqIssue {
         char blockName[24];
-        char reason[80];
+        char reason[192];
         bool isError;   // true = blocks START, false = warning only
     };
     static constexpr int MAX_SEQ_ISSUES = 10;

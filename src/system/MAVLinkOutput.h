@@ -66,6 +66,7 @@ public:
 private:
     HardwareSerial* _serial = nullptr;
     uint8_t  _seq           = 0;
+    uint8_t  _rrStart       = 0;   // round-robin start for NAMED_VALUE_FLOATs
     unsigned long _lastMs   = 0;
 
     // ── CRC-16/MCRF4XX (X25) ─────────────────────────────────
@@ -88,10 +89,11 @@ private:
         return crc;
     }
 
-    void _sendPacket(uint8_t msgId, uint8_t crcExtra,
+    // Returns false when the TX buffer could not take the packet.
+    bool _sendPacket(uint8_t msgId, uint8_t crcExtra,
                      const uint8_t* payload, uint8_t payLen) {
         size_t packetLen = (size_t)payLen + 8;
-        if (_serial->availableForWrite() < (int)packetLen) return;
+        if (_serial->availableForWrite() < (int)packetLen) return false;
 
         uint8_t hdr[6] = {
             0xFE,    // magic
@@ -130,6 +132,7 @@ private:
         _serial->write(payload, payLen);
         _serial->write((uint8_t)(crc & 0xFF));
         _serial->write((uint8_t)(crc >> 8));
+        return true;
     }
 
     void _sendHeartbeat() {
@@ -155,7 +158,7 @@ private:
 
     // Send one NAMED_VALUE_FLOAT message (msg_id=251, CRC_EXTRA=170)
     // payload: time_boot_ms(4) + value(4) + name(10) = 18 bytes
-    void _sendNamedFloat(const char* name, float value) {
+    bool _sendNamedFloat(const char* name, float value) {
         uint8_t payload[18] = {};
         uint32_t t = millis();
         payload[0] = t & 0xFF; payload[1] = (t>>8)&0xFF;
@@ -164,22 +167,39 @@ private:
         memcpy(payload + 4, &value, 4);
         // name: 10 bytes, null-padded
         strncpy((char*)(payload + 8), name, 10);
-        _sendPacket(251, 170, payload, 18);
+        return _sendPacket(251, 170, payload, 18);
     }
 
     void _sendEngineData() {
         const auto& ed = EngineData::instance();
-        if (HardwareConfig::hasN1Rpm && ed.n1Healthy)       _sendNamedFloat("N1_RPM",   ed.n1Rpm);
-        if (HardwareConfig::hasTot && ed.totHealthy)        _sendNamedFloat("TOT_C",    ed.tot);
-        if (HardwareConfig::hasOilPress && ed.oilHealthy)   _sendNamedFloat("OIL_BAR",  ed.oilPressure);
-        if (HardwareConfig::hasN2Rpm && ed.n2Healthy)       _sendNamedFloat("N2_RPM",   ed.n2Rpm);
-        if (HardwareConfig::hasOilTemp && ed.oilTempHealthy) _sendNamedFloat("OIL_T_C",  ed.oilTemp);
-        if (HardwareConfig::hasBattVoltage && ed.battHealthy) _sendNamedFloat("BATT_V",   ed.battVoltage);
-        if (HardwareConfig::hasFuelPress && ed.fuelPressHealthy) _sendNamedFloat("FUEL_BAR", ed.fuelPressure);
-        if (HardwareConfig::hasTorque && ed.torqueHealthy)  _sendNamedFloat("TORQ_NM",  ed.torque);
-        if (HardwareConfig::hasTit && ed.titHealthy)        _sendNamedFloat("TIT_C",    ed.tit);
-        if (HardwareConfig::hasFuelFlow) _sendNamedFloat("FUEL_FLOW", ed.fuelFlow);
-        if (HardwareConfig::hasThrottle) _sendNamedFloat("THR_PCT",  ed.throttleDemand * 100.0f);
+        struct Item { const char* name; float value; };
+        Item items[11];
+        uint8_t n = 0;
+        if (HardwareConfig::hasN1Rpm && ed.n1Healthy)       items[n++] = { "N1_RPM",   ed.n1Rpm };
+        if (HardwareConfig::hasTot && ed.totHealthy)        items[n++] = { "TOT_C",    ed.tot };
+        if (HardwareConfig::hasOilPress && ed.oilHealthy)   items[n++] = { "OIL_BAR",  ed.oilPressure };
+        if (HardwareConfig::hasN2Rpm && ed.n2Healthy)       items[n++] = { "N2_RPM",   ed.n2Rpm };
+        if (HardwareConfig::hasOilTemp && ed.oilTempHealthy) items[n++] = { "OIL_T_C",  ed.oilTemp };
+        if (HardwareConfig::hasBattVoltage && ed.battHealthy) items[n++] = { "BATT_V",   ed.battVoltage };
+        if (HardwareConfig::hasFuelPress && ed.fuelPressHealthy) items[n++] = { "FUEL_BAR", ed.fuelPressure };
+        if (HardwareConfig::hasTorque && ed.torqueHealthy)  items[n++] = { "TORQ_NM",  ed.torque };
+        if (HardwareConfig::hasTit && ed.titHealthy)        items[n++] = { "TIT_C",    ed.tit };
+        if (HardwareConfig::hasFuelFlow) items[n++] = { "FUEL_FLOW", ed.fuelFlow };
+        if (HardwareConfig::hasThrottle) items[n++] = { "THR_PCT",  ed.throttleDemand * 100.0f };
+        if (!n) return;
+
+        // Rotate the start channel: with no TX ring buffer only ~4 messages
+        // fit in the 128-byte HW FIFO per tick, and a fixed order would
+        // starve the tail channels forever. On a full buffer, remember the
+        // first unsent channel and resume there next tick.
+        if (_rrStart >= n) _rrStart = 0;
+        for (uint8_t i = 0; i < n; i++) {
+            uint8_t idx = (uint8_t)((_rrStart + i) % n);
+            if (!_sendNamedFloat(items[idx].name, items[idx].value)) {
+                _rrStart = idx;
+                return;
+            }
+        }
     }
 
     void _sendStatusText(const char* text) {

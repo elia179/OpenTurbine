@@ -45,7 +45,7 @@ public:
 
     static void applyActuatorDemand(uint8_t act, float dem) {
         if (!_actuatorUsable(act)) return;
-        _applyActuator(act, constrain(dem, 0.0f, 1.0f), EngineData::instance());
+        _applyActuator(act, constrain(dem, 0.0f, 1.0f), EngineData::instance(), nullptr);
     }
 
     static bool sensorUsable(uint8_t sensor) {
@@ -57,6 +57,13 @@ public:
         return _sensorUsable(sensor, ed) && _evalOp(_readSensor(sensor, ed), op, threshold, sensor);
     }
 
+    // Clear per-rule hysteresis latches. Called after the rules array is
+    // reloaded or compacted so a previous rule's latched state cannot apply
+    // to a different rule that now occupies the same index.
+    static void resetLatches() {
+        for (int i = 0; i < Config::MAX_RULES; i++) _ruleLatched[i] = false;
+    }
+
     // Called once per control tick (Core 1, ~10 ms cycle)
     static void evaluate() {
         auto& ed = EngineData::instance();
@@ -66,14 +73,17 @@ public:
         for (int i = 0; i < Config::ruleCount; i++) {
             const Config::Rule& r = Config::rules[i];
             if (!r.enabled) continue;
+            const uint8_t modeBit = (uint8_t)(1u << (int)ed.mode);
+            if ((r.modeMask & modeBit) == 0) continue;
+            if (!_sensorUsable(r.sensor, ed)) continue;
 
             float sval = _readSensor(r.sensor, ed);
-            bool  met  = _sensorUsable(r.sensor, ed) && _evalOp(sval, r.op, r.threshold, r.sensor);
+            bool  met  = _evalRuleState(i, sval, r.op, r.threshold, r.hysteresis, r.sensor);
             float dem  = met ? r.onValue : r.offValue;
 
             if (dem < 0.0f) continue;  // negative value = leave current output unchanged
             if (_actuatorUsable(r.actuator))
-                _applyActuator(r.actuator, dem, ed);
+                _applyActuator(r.actuator, dem, ed, r.name);
             if (ed.mode == SysMode::SHUTDOWN) return;
         }
     }
@@ -93,9 +103,9 @@ private:
             case DI_CH2:          return HardwareConfig::diCh[2].pin >= 0;
             case DI_CH3:          return HardwareConfig::diCh[3].pin >= 0;
             case FUEL_PRESS:      return HardwareConfig::hasFuelPress && ed.fuelPressHealthy;
-            case FUEL_FLOW:       return HardwareConfig::hasFuelFlow;
-            case P1:              return HardwareConfig::hasP1;
-            case P2:              return HardwareConfig::hasP2;
+            case FUEL_FLOW:       return HardwareConfig::hasFuelFlow && ed.fuelFlowHealthy;
+            case P1:              return HardwareConfig::hasP1 && ed.p1Healthy;
+            case P2:              return HardwareConfig::hasP2 && ed.p2Healthy;
             case TORQUE:          return HardwareConfig::hasTorque && ed.torqueHealthy;
             case FLAME:           return HardwareConfig::hasFlame;
             case THROTTLE_INPUT:  return HardwareConfig::hasThrottleInput &&
@@ -153,7 +163,7 @@ private:
             case IGNITER_CURRENT: return ed.igniterCurrentAmps;
             case IGNITER2_CURRENT: return ed.igniter2CurrentAmps;
             case OIL_PUMP_CURRENT: return ed.oilPumpCurrentAmps;
-            case AB_INPUT:   return constrain(ed.abInputRaw / 4095.0f, 0.0f, 1.0f);
+            case AB_INPUT:   return ed.abInputValid ? constrain(ed.abInputNorm, 0.0f, 1.0f) : 0.0f;
             case START_SWITCH:return ed.startSwitchActive ? 1.0f : 0.0f;
             case STOP_SWITCH: return ed.stopSwitchActive ? 1.0f : 0.0f;
             default:        return 0.0f;
@@ -219,7 +229,34 @@ private:
         }
     }
 
-    static void _applyActuator(uint8_t act, float dem, EngineData& ed) {
+    static bool _evalRuleState(int idx, float val, uint8_t op, float threshold, float hysteresis, uint8_t sensor) {
+        if (idx < 0 || idx >= Config::MAX_RULES) return _evalOp(val, op, threshold, sensor);
+        hysteresis = max(0.0f, hysteresis);
+        bool& latched = _ruleLatched[idx];
+        switch (op) {
+            case GT:
+            case GTE:
+                if (latched) {
+                    if (val <= threshold - hysteresis) latched = false;
+                } else if (_evalOp(val, op, threshold, sensor)) {
+                    latched = true;
+                }
+                return latched;
+            case LT:
+            case LTE:
+                if (latched) {
+                    if (val >= threshold + hysteresis) latched = false;
+                } else if (_evalOp(val, op, threshold, sensor)) {
+                    latched = true;
+                }
+                return latched;
+            default:
+                latched = _evalOp(val, op, threshold, sensor);
+                return latched;
+        }
+    }
+
+    static void _applyActuator(uint8_t act, float dem, EngineData& ed, const char* ruleName) {
         switch (act) {
             case COOL_FAN:    ed.coolFanOn      = (dem >= 0.5f); break;
             case BLEED_VALVE: ed.bleedValveOpen = (dem >= 0.5f); break;
@@ -238,7 +275,16 @@ private:
                 if (dem >= 0.5f && _shutdownCb) _shutdownCb();
                 break;
             case REQUEST_FAULT:
-                if (dem >= 0.5f && _faultCb) _faultCb("CONTROL_RULE");
+                if (dem >= 0.5f && _faultCb) {
+                    if (ruleName && ruleName[0]) {
+                        snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                                 "Control rule fault: %s", ruleName);
+                    } else {
+                        snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                                 "Control rule requested a fault shutdown.");
+                    }
+                    _faultCb("CONTROL_RULE");
+                }
                 break;
             case AIRSTARTER: ed.airstarterOpen = (dem >= 0.5f); break;
             case GLOW_PLUG:  ed.glowPlugDemand = constrain(dem, 0.0f, 1.0f); break;
@@ -249,4 +295,5 @@ private:
 
     static inline ShutdownCallback _shutdownCb = nullptr;
     static inline FaultCallback _faultCb = nullptr;
+    static inline bool _ruleLatched[Config::MAX_RULES] = {};
 };

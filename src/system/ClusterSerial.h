@@ -58,11 +58,16 @@ namespace ClCode {
 class ClusterSerial {
 public:
     static void begin();
+    // Late-start path for APPLY_CONFIG: if cluster serial was disabled at
+    // boot (begin() early-returned) and Config now enables it, run begin().
+    // No-op once the port is up. Called from Core 1 in STANDBY only.
+    static void beginIfNeeded();
     static void tick();
     static void sendStatus(uint8_t code);
     static void sendEvent(uint8_t severity, const char* text);
 
 private:
+    static bool          _begun;
     static unsigned long _lastDataMs;
     static SysMode       _lastMode;
     static uint8_t       _lastClusterCode;
@@ -71,8 +76,10 @@ private:
     static bool          _oilWarnActive;
     static bool          _schemaDirty;
     static uint8_t       _seq;
-    static char          _rxLine[80];
+    // Sized for "OTC:CMD,"/"OTC:SUB," plus applySubscription's 160-byte spec.
+    static char          _rxLine[168];
     static uint8_t       _rxLen;
+    static bool          _rxOverflow;   // discard rest of over-long line until '\n'
     static unsigned long _lastSchemaMs;
     static unsigned long _nextSchemaMs;
 

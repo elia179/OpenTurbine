@@ -1,5 +1,6 @@
 #include "SessionLogger.h"
 #include "Config.h"
+#include "HardwareConfig.h"
 #include "../engine/EngineData.h"
 #include "../engine/Types.h"
 #include <LittleFS.h>
@@ -14,9 +15,12 @@
 struct SessionRow {
     uint32_t t_ms;
     uint32_t mask;
-    float    n1, n2, tot, tit, oilPressure, p1, p2;
+    float    n1, n2, tot, tit, oilTemp, oilPressure, p1, p2;
     float    throttleDemand, battVoltage, fuelPressure, fuelFlow;
     float    glowPlugDemand, fuelPump2Demand, propPitchDemand, oilPumpPct;
+    float    wetGlowFuelDemand;
+    float    glowCurrentAmps, igniterCurrentAmps, igniter2CurrentAmps, oilPumpCurrentAmps;
+    float    abPumpDemand, abFuelOffset;
     float    loopHz, loopExecAvgMs, loopExecMaxMs;
     int      abMode;
     bool     abFlameOn;
@@ -37,6 +41,8 @@ static constexpr size_t  SESSION_MIN_FREE_BYTES = 150 * 1024;
 static constexpr uint32_t SESSION_FREE_CHECK_MS = 5000;
 static uint32_t          _lastFreeCheckMs = 0;
 static bool              _lowSpaceDropActive = false;
+static constexpr uint32_t SESSION_FLUSH_MS = 5000;
+static uint32_t          _lastFlushMs = 0;
 
 const char* SessionLogger::currentPath() { return _currentPath; }
 
@@ -62,6 +68,7 @@ static uint8_t _csvColumnCount(uint32_t mask) {
     if (mask & Config::SLOG_N2)         count += 1;
     if (mask & Config::SLOG_TOT)        count += 1;
     if (mask & Config::SLOG_TIT)        count += 1;
+    if (mask & Config::SLOG_OIL_TEMP)   count += 1;
     if (mask & Config::SLOG_OIL)        count += 1;
     if (mask & Config::SLOG_P1)         count += 1;
     if (mask & Config::SLOG_P2)         count += 1;
@@ -70,8 +77,13 @@ static uint8_t _csvColumnCount(uint32_t mask) {
     if (mask & Config::SLOG_FUEL_PRESS) count += 1;
     if (mask & Config::SLOG_FUEL_FLOW)  count += 1;
     if (mask & Config::SLOG_GLOW)       count += 1;
+    if (mask & Config::SLOG_WET_GLOW)   count += 1;
+    if (mask & Config::SLOG_GLOW_CURRENT) count += 1;
+    if (mask & Config::SLOG_IGN_CURRENT)  count += 1;
+    if (mask & Config::SLOG_IGN2_CURRENT) count += 1;
+    if (mask & Config::SLOG_OIL_CURRENT)  count += 1;
     if (mask & Config::SLOG_FP2)        count += 1;
-    if (mask & Config::SLOG_AB)         count += 2;
+    if (mask & Config::SLOG_AB)         count += 4;
     if (mask & Config::SLOG_PROP)       count += 1;
     if (mask & Config::SLOG_OIL_PCT)    count += 1;
     if (mask & Config::SLOG_LOOP)       count += 3;
@@ -81,7 +93,7 @@ static uint8_t _csvColumnCount(uint32_t mask) {
 // ── Write one queued row to the open file (Core 0 only) ──────
 static void _writeRow(const SessionRow& row) {
     uint32_t mask = row.mask;
-    char r[320];
+    static char r[768];
     int n = snprintf(r, sizeof(r), "%lu", (unsigned long)row.t_ms);
 
     #define APPEND_ROW_FIELD(...) do { \
@@ -101,6 +113,7 @@ static void _writeRow(const SessionRow& row) {
     if (mask & Config::SLOG_N2)         APPEND_ROW_FIELD(",%.0f",(double)row.n2);
     if (mask & Config::SLOG_TOT)        APPEND_ROW_FIELD(",%.1f",(double)row.tot);
     if (mask & Config::SLOG_TIT)        APPEND_ROW_FIELD(",%.1f",(double)row.tit);
+    if (mask & Config::SLOG_OIL_TEMP)   APPEND_ROW_FIELD(",%.1f",(double)row.oilTemp);
     if (mask & Config::SLOG_OIL)        APPEND_ROW_FIELD(",%.2f",(double)row.oilPressure);
     if (mask & Config::SLOG_P1)         APPEND_ROW_FIELD(",%.2f",(double)row.p1);
     if (mask & Config::SLOG_P2)         APPEND_ROW_FIELD(",%.2f",(double)row.p2);
@@ -108,9 +121,23 @@ static void _writeRow(const SessionRow& row) {
     if (mask & Config::SLOG_BATT)       APPEND_ROW_FIELD(",%.2f",(double)row.battVoltage);
     if (mask & Config::SLOG_FUEL_PRESS) APPEND_ROW_FIELD(",%.2f",(double)row.fuelPressure);
     if (mask & Config::SLOG_FUEL_FLOW)  APPEND_ROW_FIELD(",%.3f",(double)row.fuelFlow);
-    if (mask & Config::SLOG_GLOW)       APPEND_ROW_FIELD(",%.0f",(double)(row.glowPlugDemand * 100.0f));
+    if (mask & Config::SLOG_GLOW) {
+        const float glowPct = (HardwareConfig::glowPlugOutputType == 1)
+            ? (row.glowPlugDemand > 0.001f ? 100.0f : 0.0f)
+            : (row.glowPlugDemand * 100.0f);
+        APPEND_ROW_FIELD(",%.0f", (double)glowPct);
+    }
+    if (mask & Config::SLOG_WET_GLOW)   APPEND_ROW_FIELD(",%.0f",(double)(row.wetGlowFuelDemand * 100.0f));
+    if (mask & Config::SLOG_GLOW_CURRENT) APPEND_ROW_FIELD(",%.2f",(double)row.glowCurrentAmps);
+    if (mask & Config::SLOG_IGN_CURRENT)  APPEND_ROW_FIELD(",%.2f",(double)row.igniterCurrentAmps);
+    if (mask & Config::SLOG_IGN2_CURRENT) APPEND_ROW_FIELD(",%.2f",(double)row.igniter2CurrentAmps);
+    if (mask & Config::SLOG_OIL_CURRENT)  APPEND_ROW_FIELD(",%.2f",(double)row.oilPumpCurrentAmps);
     if (mask & Config::SLOG_FP2)        APPEND_ROW_FIELD(",%.1f",(double)(row.fuelPump2Demand * 100.0f));
-    if (mask & Config::SLOG_AB)         APPEND_ROW_FIELD(",%d,%d", row.abMode, row.abFlameOn ? 1 : 0);
+    if (mask & Config::SLOG_AB)         APPEND_ROW_FIELD(",%d,%d,%.1f,%.1f",
+                                                         row.abMode,
+                                                         row.abFlameOn ? 1 : 0,
+                                                         (double)(row.abPumpDemand * 100.0f),
+                                                         (double)(row.abFuelOffset * 100.0f));
     if (mask & Config::SLOG_PROP)       APPEND_ROW_FIELD(",%.1f",(double)(row.propPitchDemand * 100.0f));
     if (mask & Config::SLOG_OIL_PCT)    APPEND_ROW_FIELD(",%.1f",(double)row.oilPumpPct);
     if (mask & Config::SLOG_LOOP)       APPEND_ROW_FIELD(",%.1f,%.3f,%.3f",
@@ -187,8 +214,15 @@ static void _evictOldSessions() {
             if (sawCurrent) Serial.println("[SessionLogger] Flash low - current session is the only log left");
             break;
         }
-        LittleFS.remove(oldestPath);
-        Serial.printf("[SessionLogger] Evicted %s — flash low\n", oldestPath);
+        if (!LittleFS.remove(oldestPath)) {
+            // remove() fails while the file is held open (e.g. an active
+            // /api/session/log download) — bail out instead of re-selecting
+            // the same file forever; rows are dropped and counted until the
+            // next eviction attempt succeeds.
+            Serial.printf("[SessionLogger] Could not evict %s (in use?) - will retry\n", oldestPath);
+            break;
+        }
+        Serial.printf("[SessionLogger] Evicted %s - flash low\n", oldestPath);
     }
 }
 
@@ -222,6 +256,7 @@ static void _openSession() {
     if (mask & Config::SLOG_N2)         _file.print(",n2_rpm");
     if (mask & Config::SLOG_TOT)        _file.print(",tot_c");
     if (mask & Config::SLOG_TIT)        _file.print(",tit_c");
+    if (mask & Config::SLOG_OIL_TEMP)   _file.print(",oil_temp_c");
     if (mask & Config::SLOG_OIL)        _file.print(",oil_bar");
     if (mask & Config::SLOG_P1)         _file.print(",p1_bar");
     if (mask & Config::SLOG_P2)         _file.print(",p2_bar");
@@ -230,8 +265,13 @@ static void _openSession() {
     if (mask & Config::SLOG_FUEL_PRESS) _file.print(",fuel_press_bar");
     if (mask & Config::SLOG_FUEL_FLOW)  _file.print(",fuel_flow");
     if (mask & Config::SLOG_GLOW)       _file.print(",glow_pct");
+    if (mask & Config::SLOG_WET_GLOW)   _file.print(",wet_glow_fuel_pct");
+    if (mask & Config::SLOG_GLOW_CURRENT) _file.print(",glow_current_a");
+    if (mask & Config::SLOG_IGN_CURRENT)  _file.print(",ign_current_a");
+    if (mask & Config::SLOG_IGN2_CURRENT) _file.print(",ign2_current_a");
+    if (mask & Config::SLOG_OIL_CURRENT)  _file.print(",oil_current_a");
     if (mask & Config::SLOG_FP2)        _file.print(",fp2_pct");
-    if (mask & Config::SLOG_AB)         _file.print(",ab_mode,ab_flame");
+    if (mask & Config::SLOG_AB)         _file.print(",ab_mode,ab_flame,ab_pump_pct,ab_offset_pct");
     if (mask & Config::SLOG_PROP)       _file.print(",prop_pct");
     if (mask & Config::SLOG_OIL_PCT)    _file.print(",oil_pump_pct");
     if (mask & Config::SLOG_LOOP)       _file.print(",loop_hz,loop_exec_avg_ms,loop_exec_max_ms");
@@ -247,9 +287,10 @@ static void _openSession() {
     _lastMs   = 0;
     _lastFreeCheckMs = 0;
     _lowSpaceDropActive = false;
+    _lastFlushMs = millis();
     _open     = true;
     _acceptRows = true;
-    Serial.printf("[SessionLogger] Session started — %u columns → %s\n",
+    Serial.printf("[SessionLogger] Session started - %u columns -> %s\n",
         (unsigned)_csvColumnCount(mask), _currentPath);
 }
 
@@ -268,7 +309,7 @@ static void _closeSession() {
     _open = false;
     _file.flush();
     _file.close();
-    Serial.printf("[SessionLogger] Session ended — %u rows\n", (unsigned)_rowCount);
+    Serial.printf("[SessionLogger] Session ended - %u rows\n", (unsigned)_rowCount);
 }
 
 // ── Core 1: snapshot sensor state → queue (no file I/O) ──────
@@ -301,6 +342,7 @@ void SessionLogger::tick() {
     row.n2              = ed.n2Rpm;
     row.tot             = ed.tot;
     row.tit             = ed.tit;
+    row.oilTemp         = ed.oilTemp;
     row.oilPressure     = ed.oilPressure;
     row.p1              = ed.p1;
     row.p2              = ed.p2;
@@ -309,9 +351,16 @@ void SessionLogger::tick() {
     row.fuelPressure    = ed.fuelPressure;
     row.fuelFlow        = ed.fuelFlow;
     row.glowPlugDemand  = ed.glowPlugDemand;
+    row.wetGlowFuelDemand = ed.wetGlowFuelDemand;
+    row.glowCurrentAmps = ed.glowCurrentAmps;
+    row.igniterCurrentAmps = ed.igniterCurrentAmps;
+    row.igniter2CurrentAmps = ed.igniter2CurrentAmps;
+    row.oilPumpCurrentAmps = ed.oilPumpCurrentAmps;
     row.fuelPump2Demand = ed.fuelPump2Demand;
     row.propPitchDemand = ed.propPitchDemand;
     row.oilPumpPct      = ed.oilPumpPct;
+    row.abPumpDemand    = ed.abPumpDemand;
+    row.abFuelOffset    = ed.abFuelOffset;
     row.loopHz          = ed.loopHz;
     row.loopExecAvgMs   = ed.loopExecAvgMs;
     row.loopExecMaxMs   = ed.loopExecMaxMs;
@@ -344,6 +393,12 @@ void SessionLogger::drainQueue() {
         _writeRow(row);
         drained++;
     }
-    // Finalise storage on session close. Mid-run LittleFS flushes can block
-    // network servicing for seconds while the ECU is being monitored.
+    // Periodic sync bounds mid-run data loss to ~5 s on a power cut —
+    // LittleFS only commits file data/metadata on flush or close, so an
+    // unflushed session would otherwise be lost entirely (exactly the run
+    // where the log matters most). Runs on Core 0, off the ECU loop.
+    if (_open && millis() - _lastFlushMs >= SESSION_FLUSH_MS) {
+        _lastFlushMs = millis();
+        _file.flush();
+    }
 }

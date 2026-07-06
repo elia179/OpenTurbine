@@ -429,13 +429,19 @@ async function optionDisabled(page, selector, value) {
     await reset(page);
     await goto(page, 'config.html', '#cf-tot_limit');
     const firstTotLimit = await value(page, '#cf-tot_limit');
+    const firstRiseRate = await value(page, '#cf-sf_rr');
     assert.ok(['720', '1328'].includes(firstTotLimit), `unexpected displayed TOT limit ${firstTotLimit}`);
+    assert.equal(firstRiseRate, '80');
     await page.locator('#unit-temp-btn').click();
     const secondTotLimit = await value(page, '#cf-tot_limit');
+    const secondRiseRate = await value(page, '#cf-sf_rr');
     assert.ok(['720', '1328'].includes(secondTotLimit), `unexpected toggled TOT limit ${secondTotLimit}`);
     assert.notEqual(secondTotLimit, firstTotLimit);
+    assert.equal(secondRiseRate, '144');
+    assert.equal(await page.locator('#cf-tot_limit').getAttribute('min'), '0');
     await page.locator('#unit-temp-btn').click();
     assert.equal(await value(page, '#cf-tot_limit'), firstTotLimit);
+    assert.equal(await value(page, '#cf-sf_rr'), firstRiseRate);
     await page.locator('#unit-press-btn').click();
     const firstOilMin = await value(page, '#cf-oil_rm');
     assert.ok(['1.2', '17.405'].includes(firstOilMin), `unexpected displayed oil min ${firstOilMin}`);
@@ -711,16 +717,17 @@ async function optionDisabled(page, selector, value) {
       ruleAbInput: document.querySelector('#rule-sensor-0 option[value="24"]')?.disabled,
       ruleAbSol: document.querySelector('#rule-act-0 option[value="11"]')?.disabled
     }));
-    for (const absent of ['FuelPulse', 'PreHeat', 'WaitForInput', 'OilScavengeOn', 'AirstarterOn', 'CoolFanOn', 'BleedOpen', 'GlowPreheat', 'FuelPumpRamp', 'FuelPump2Set', 'GovernorHold']) {
+    assert.ok(sequenceHidden.startup.some(o => o.value === 'PreHeat' && !o.disabled), 'PreHeat should remain available when Igniter 2 is fitted');
+    for (const absent of ['FuelPulse', 'WaitForInput', 'OilScavengeOn', 'AirstarterOn', 'CoolFanOn', 'BleedOpen', 'GlowPreheat', 'FuelPumpRamp', 'FuelPump2Set', 'GovernorHold']) {
       const opt = sequenceHidden.startup.find(o => o.value === absent);
       assert.ok(!opt || opt.disabled, `${absent} should be absent/disabled`);
     }
     assert.equal(sequenceHidden.afterburnerCount, 0);
     assert.equal(sequenceHidden.sensors.includes('n2_rpm'), false);
     assert.equal(sequenceHidden.actuators.some(a => a.startsWith('ab_')), false);
-    assert.equal(sequenceHidden.ruleN2, true);
-    assert.equal(sequenceHidden.ruleAbInput, true);
-    assert.equal(sequenceHidden.ruleAbSol, true);
+    assert.notEqual(sequenceHidden.ruleN2, false);
+    assert.notEqual(sequenceHidden.ruleAbInput, false);
+    assert.notEqual(sequenceHidden.ruleAbSol, false);
     results.push('sequence editor filters blocks, sensors, actuators, and rules by fitted hardware and master features');
 
     await reset(page);

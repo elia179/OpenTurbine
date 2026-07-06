@@ -34,8 +34,34 @@ public:
     // Useful for active-low motor controllers or inverted ESC signal conventions.
     void setInverted(bool inv) { _inverted = inv; }
 
+    void setOutputRange(float minPct, float maxPct) {
+        minPct = constrain(minPct, 0.0f, 100.0f);
+        maxPct = constrain(maxPct, 0.0f, 100.0f);
+        if (maxPct < minPct) {
+            float t = minPct;
+            minPct = maxPct;
+            maxPct = t;
+        }
+        _minOutput = minPct / 100.0f;
+        _maxOutput = maxPct / 100.0f;
+    }
+
     void begin() override {
+        // A given (frequency, resolution) pair is only achievable if the LEDC
+        // timer clock can divide finely enough: resolution_bits must satisfy
+        // 2^bits <= clk/freq. The ESP32-S3 selects a lower LEDC clock than the
+        // classic ESP32, so e.g. 10 kHz @ 12-bit (needs a >4096 divider) fails
+        // there with "div_param=0" while the classic's 80 MHz clock succeeds.
+        // Retry at progressively lower resolution so the output still works
+        // with slightly coarser duty steps instead of not attaching at all.
+        // _maxDuty and the P-controller's maxDuty() track the resolution
+        // actually used, so duty scaling stays correct.
         bool ok = ledcAttach(_pin, _freqHz, _resBits);
+        while (!ok && _resBits > MIN_RES_BITS) {
+            _resBits--;
+            _maxDuty = (1u << _resBits) - 1;
+            ok = ledcAttach(_pin, _freqHz, _resBits);
+        }
         Serial.printf("[%s] LEDC attach pin=%d freq=%luHz bits=%u %s\n",
                       _name, _pin, (unsigned long)_freqHz, (unsigned)_resBits,
                       ok ? "OK" : "FAILED");
@@ -45,6 +71,11 @@ public:
 
     void set(float value) override {
         value = constrain(value, 0.0f, 1.0f);
+        if (value <= 0.0f) {
+            off();
+            return;
+        }
+        value = _minOutput + value * (_maxOutput - _minOutput);
         if (_inverted) value = 1.0f - value;
         uint32_t duty = (uint32_t)(value * _maxDuty);
         writeDuty(duty);
@@ -65,6 +96,9 @@ public:
 
 private:
     static constexpr uint32_t NO_DUTY = UINT32_MAX;
+    // Floor for the attach-retry: 8-bit (256 steps) still gives usable motor
+    // control; below this a PWM output isn't worth keeping.
+    static constexpr uint8_t  MIN_RES_BITS = 8;
 
     void writeDuty(uint32_t duty) {
         duty = (uint32_t)constrain((int)duty, 0, (int)_maxDuty);
@@ -91,4 +125,6 @@ private:
     uint32_t    _maxDuty;
     uint32_t    _lastDuty = NO_DUTY;
     bool        _inverted = false;
+    float       _minOutput = 0.0f;
+    float       _maxOutput = 1.0f;
 };

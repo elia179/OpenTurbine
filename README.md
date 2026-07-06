@@ -61,7 +61,7 @@ broader feature and build reference.
 OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/OTC_CLUSTER_PROTOCOL.md).
 
 ### Data logging
-- **FlightRecorder** — mutex-protected persistent ring-buffer event log (BOOT, START_ATTEMPT, block transitions, RUNNING_ENTRY, FAULT, ABORT, RELIGHT_ATTEMPT, SNAP sensor snapshots)
+- **FlightRecorder** — persistent event log (BOOT, START_ATTEMPT, block transitions, RUNNING_ENTRY, FAULT, ABORT, RELIGHT_ATTEMPT, SNAP sensor snapshots); events queue in RAM on the ECU core and are written to flash from Core 0, so logging never stalls the control loop
 - **SessionLogger** — per-run CSV stream with configurable channel mask at configurable interval; deferred Core 0 write path; automatic oldest-session eviction when flash is low
 
 ### Developer / diagnostic
@@ -76,6 +76,12 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 ---
 
 ## Hardware requirements
+
+> **Out of the box**, a freshly flashed board is a deliberately minimal template —
+> throttle + idle inputs, throttle/fuel-pump ESC, oil pump, one igniter, START/STOP
+> buttons, and a timed startup (external air/leaf-blower start). No sensors and no
+> automated safety are enabled by default. The tables below are what to **add on the
+> Hardware page** for a real, protected engine — start with an EGT probe.
 
 ### Minimum for a real running engine
 
@@ -156,7 +162,7 @@ beta users should treat this as the starting default only: normal setup is done
 from the Hardware page and saved into `ecu_config.json`.
 
 ```cpp
-#define OT_PROFILE_ID   "my_turbine_v1"   // default ID used when creating a new engine file
+#define OT_PROFILE_ID   "OpenTurbine"   // default ID used when creating a new engine file
 #define OT_PROFILE_DESC "My turbine, rev 1"
 
 // Pin defaults (all overridable at runtime via Hardware web page)

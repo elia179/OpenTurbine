@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260625a">
+<link rel="stylesheet" href="/style.css?v=20260705a">
 </head>
 <body data-page="dashboard">
 <nav>
@@ -30,7 +30,7 @@
        5-20 s intervals. Users need Safari/Chrome for live data. -->
   <div id="captive-banner" style="display:none;background:rgba(255,160,0,.10);border:1px solid rgba(255,160,0,.5);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.84rem;color:#ffa040;align-items:center;justify-content:space-between">
     <span>&#9888; Live updates need a real browser &mdash; open <strong>Safari</strong> or <strong>Chrome</strong> and go to <strong>192.168.4.1</strong></span>
-    <button onclick="this.parentElement.style.display='none';try{localStorage.setItem('cpBannerDismissed','1')}catch(e){}" style="background:none;border:none;color:#ffa040;font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
+  <button onclick="dismissCaptiveBanner()" style="background:none;border:none;color:#ffa040;font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
   </div>
 
   <!-- Getting Started banner (shown on first run, STANDBY, not yet dismissed) -->
@@ -49,7 +49,7 @@
   </div>
 
   <div id="dev-banner" class="dev-banner" style="display:none">
-    ⚠ DEV MODE — safety locks disabled &nbsp;
+    ⚠ DEV MODE — dev controls &amp; live config editing unlocked (safety checks stay active unless bypassed via Bench Mode) &nbsp;
     <a href="/config.html" style="color:var(--yellow);text-decoration:underline">→ Live Config Edit</a>
   </div>
   <!-- Empty startup sequence warning -->
@@ -77,6 +77,15 @@
     <strong>⚠ Config schema mismatch</strong> — this engine file was written for a different firmware settings schema.
     Missing or unsupported settings may use built-in defaults and may not match your engine.<br>
     <b>Recommended:</b> Go to <a href="/calibration.html" style="color:var(--yellow);text-decoration:underline">Calibration</a> and re-run sensor calibration, then verify all settings on the <a href="/config.html" style="color:var(--yellow);text-decoration:underline">Config</a> page before starting the engine.
+  </div>
+
+  <!-- Config load warning — boot config carried out-of-normal-range safety limits.
+       Load+warn philosophy: values are applied as-is, the user is informed.
+       Dismiss lasts this page load only; reappears on reload while the warning persists. -->
+  <div id="config-load-warn-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);align-items:center;justify-content:space-between">
+    <span>&#9888; <span id="config-load-warn-text"></span>
+      <a href="/config.html" style="color:var(--yellow);text-decoration:underline;margin-left:.5rem">Review limits →</a></span>
+    <button onclick="this.parentElement.style.display='none';window._cfgLoadWarnDismissed=true" style="background:none;border:none;color:var(--yellow);font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
   </div>
 
   <!-- Profile ID mismatch banner -->
@@ -130,6 +139,8 @@
       style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">°F</button>
     <button id="unit-press-btn" onclick="setPressUnit(pressUnit()==='bar'?'psi':'bar')"
       style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
+    <button id="reset-peaks-btn" onclick="resetPeaks()" title="Clear session max values (after a bench spike or sensor glitch)"
+      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Reset peaks</button>
   </div>
 
   <section class="telemetry-group" id="temperature-group" style="display:none">
@@ -154,7 +165,7 @@
   </section>
 
   <!-- Card definitions are moved into the grouped panels by app.js. -->
-  <section class="grid-2 legacy-card-bin">
+  <section class="grid-2 telemetry-card-bin">
     <div class="card big" id="n1-card" style="display:none" title="Gas generator spool speed. N1 is the primary thrust control variable — the ECU drives throttle to maintain target N1 during running.">
       <div class="label"><span id="lbl-n1">N1 RPM</span> <span id="n1-health" class="dot"></span></div>
       <div class="value" id="n1">—</div>
@@ -176,7 +187,7 @@
   </section>
 
   <!-- N2 + Oil + Flame row -->
-  <section class="grid-3 legacy-card-bin">
+  <section class="grid-3 telemetry-card-bin">
     <div class="card" id="n2-card" style="display:none" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
       <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
       <div class="value small" id="n2">—</div>
@@ -208,8 +219,8 @@
     </div>
   </section>
 
-  <!-- P1 / P2 pressure sensors (hidden until enabled in Config → Display) -->
-  <section id="legacy-pressure-cards" class="grid-2 legacy-card-bin" style="display:none">
+  <!-- P1 / P2 pressure sensors (shown only when fitted in Hardware) -->
+  <section id="pressure-card-bin" class="grid-2 telemetry-card-bin" style="display:none">
     <div class="card" id="p1-card" style="display:none">
       <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span></div>
       <div class="value small" id="p1">—</div>
@@ -223,7 +234,7 @@
   </section>
 
   <!-- Extended sensors: Oil Temp / Battery Voltage / Torque + Power (shown only when fitted) -->
-  <section id="legacy-ext-cards" class="grid-3 legacy-card-bin" style="display:none">
+  <section id="extra-sensor-card-bin" class="grid-3 telemetry-card-bin" style="display:none">
     <div class="card" id="oil-temp-card" style="display:none">
       <div class="label"><span id="lbl-oil-temp">Oil Temp</span> <span data-unit="temp">°C</span> <span id="oil-temp-health" class="dot"></span></div>
       <div class="value small" id="oil-temp">—</div>
@@ -234,7 +245,7 @@
     <div class="card" id="batt-card" style="display:none">
       <div class="label">Battery V <span id="batt-health" class="dot"></span></div>
       <div class="value small" id="batt-voltage">—</div>
-      <div class="peak-val">min limit: <span id="batt-volt-min">—</span> V</div>
+      <div class="peak-val">max <span id="max-batt-voltage">—</span> · min limit: <span id="batt-volt-min">—</span> V</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="batt-gauge-bar" style="width:0%"></div></div>
       <canvas class="sparkline" id="batt-sparkline"></canvas>
     </div>
@@ -302,13 +313,32 @@
     </div>
   </section>
 
-  <!-- Advanced actuator status row (glow, bleed, prop pitch, fuel pump 2) -->
+  <!-- Actuator status row -->
   <section id="adv-act-section" style="display:none;margin-bottom:.5rem">
     <div class="card small" style="gap:.45rem">
-      <div class="label">Advanced Actuators</div>
+      <div class="label">Actuator Outputs</div>
       <div style="display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.78rem;color:var(--dim)">
+        <div id="adv-starter" style="display:none">
+          Starter <span id="starter-pct" style="color:var(--text);font-weight:600">0</span><span id="starter-unit">%</span>
+          <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
+            <div class="gauge-bar" id="starter-gauge-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div id="adv-starter-en" style="display:none">
+          Starter enable <span id="starter-en-state" style="font-weight:600">OFF</span>
+        </div>
+        <div id="adv-fuel-sol" style="display:none">
+          Fuel solenoid <span id="fuel-sol-state" style="font-weight:600">CLOSED</span>
+        </div>
+        <div id="adv-igniter" style="display:none">
+          Igniter 1 <span id="igniter-state" style="font-weight:600">OFF</span>
+        </div>
+        <div id="adv-igniter2" style="display:none">
+          Igniter 2 <span id="igniter2-state" style="font-weight:600">OFF</span>
+        </div>
         <div id="adv-glow" style="display:none">
-          Glow plug <span id="glow-pct" style="color:var(--text);font-weight:600">0</span>%
+          Glow plug <span id="glow-pct" style="color:var(--text);font-weight:600">0</span><span id="glow-unit">%</span>
+          <span id="wet-glow-fuel-wrap" style="display:none"> &middot; wet fuel <span id="wet-glow-fuel-pct" style="color:var(--text);font-weight:600">0</span><span id="wet-glow-fuel-unit">%</span></span>
           <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
             <div class="gauge-bar" id="glow-gauge-bar" style="width:0%;background:var(--yellow)"></div>
           </div>
@@ -350,6 +380,7 @@
         <button id="btn-stop"  onclick="sendCmd('/api/stop')" class="danger">STOP</button>
       </div>
       <div id="stop-switch-warn" class="stop-warn">⚠ stop switch active</div>
+      <div id="start-block-reason" class="stop-warn" style="display:none"></div>
     </div>
   </section>
 
@@ -363,8 +394,10 @@
         <div class="ab-ind"><span id="ab-flame-dot" class="dot" title="AB flame sensor"></span> FLAME</div>
         <div class="ab-ind"><span id="ab-trig-dot" class="dot" title="Trigger active"></span> TRIG</div>
       </div>
+      <div class="oil-sub">pump: <span id="ab-pump-demand">—</span>%</div>
+      <div class="oil-sub" id="ab-fuel-offset-row" style="display:none">main fuel offset: <span id="ab-fuel-offset">—</span>%</div>
       <div class="ab-controls">
-        <button id="btn-ab-fire" class="ab-fire-btn" onclick="sendAbCmd('AB_FIRE')" disabled>FIRE</button>
+        <button id="btn-ab-fire" class="ab-fire-btn" onclick="sendAbCmd('AB_FIRE')" disabled title="Manual fire is available when Hardware AB trigger source is Manual command only.">MANUAL FIRE</button>
         <button id="btn-ab-stop" class="ab-stop-btn" onclick="sendAbCmd('AB_STOP')" disabled>AB STOP</button>
       </div>
     </div>
@@ -476,10 +509,23 @@
 
 <script>
 const BETA_ACK_KEY = 'ot_beta_notice_ack_v1';
+const GS_DISMISS_KEY = 'ot_gs_dismissed';
+const CP_BANNER_KEY = 'cpBannerDismissed';
 let betaAckSession = false;
+function hasStoredFlag(key) {
+  try { if (localStorage.getItem(key) === '1') return true; } catch(e) {}
+  try { if (sessionStorage.getItem(key) === '1') return true; } catch(e) {}
+  try { if (document.cookie.split(';').some(c => c.trim() === key + '=1')) return true; } catch(e) {}
+  return false;
+}
+function setStoredFlag(key) {
+  try { localStorage.setItem(key, '1'); } catch(e) {}
+  try { sessionStorage.setItem(key, '1'); } catch(e) {}
+  try { document.cookie = key + '=1; Max-Age=31536000; Path=/; SameSite=Lax'; } catch(e) {}
+}
 function hasBetaNoticeAck() {
   if (betaAckSession) return true;
-  try { return localStorage.getItem(BETA_ACK_KEY) === '1'; } catch(e) { return false; }
+  return hasStoredFlag(BETA_ACK_KEY);
 }
 function showBetaNotice() {
   const overlay = document.getElementById('beta-ack-overlay');
@@ -497,7 +543,7 @@ function acceptBetaNotice() {
   const check = document.getElementById('beta-ack-check');
   if (!check || !check.checked) return;
   betaAckSession = true;
-  try { localStorage.setItem(BETA_ACK_KEY, '1'); } catch(e) {}
+  setStoredFlag(BETA_ACK_KEY);
   const overlay = document.getElementById('beta-ack-overlay');
   if (overlay) overlay.style.display = 'none';
 }
@@ -575,7 +621,7 @@ document.getElementById('start-confirm-overlay').addEventListener('click', funct
 // Getting Started banner — show on first visit, hide once dismissed
 (function() {
   try {
-    if (!localStorage.getItem('ot_gs_dismissed')) {
+    if (!hasStoredFlag(GS_DISMISS_KEY)) {
       const banner = document.getElementById('getting-started-banner');
       if (banner) banner.style.display = '';
     }
@@ -583,12 +629,38 @@ document.getElementById('start-confirm-overlay').addEventListener('click', funct
 })();
 
 function dismissGettingStarted() {
-  try { localStorage.setItem('ot_gs_dismissed', '1'); } catch(e) {}
+  setStoredFlag(GS_DISMISS_KEY);
   const banner = document.getElementById('getting-started-banner');
   if (banner) banner.style.display = 'none';
 }
+
+function dismissCaptiveBanner() {
+  setStoredFlag(CP_BANNER_KEY);
+  const banner = document.getElementById('captive-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+// Captive-portal warning — show when opened inside the OS captive popup
+// (iOS/macOS CNA has no "Safari" UA token; Android captive WebView carries
+// the "; wv)" token). Those WebViews throttle WS frames to 5-20 s.
+(function() {
+  if (hasStoredFlag(CP_BANNER_KEY)) return;
+  const ua = navigator.userAgent || '';
+  // Home-screen PWAs / standalone WKWebView apps also lack the "Safari" UA
+  // token but get full-rate WS frames — don't flag them as captive.
+  const standalone = navigator.standalone === true
+    || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  const iosCna = !standalone
+    && /iPhone|iPad|iPod|Macintosh/.test(ua) && /AppleWebKit/.test(ua)
+    && !/Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+  const androidWv = /Android/.test(ua) && /; ?wv\)/.test(ua);
+  if (iosCna || androidWv) {
+    const banner = document.getElementById('captive-banner');
+    if (banner) banner.style.display = 'flex';
+  }
+})();
 </script>
 
-<script src="/app.js?v=20260625a"></script>
+<script src="/app.js?v=20260705a"></script>
 </body>
 </html>

@@ -46,7 +46,7 @@ public:
                 return BlockResult::Complete;
             }
             char buf[80];
-            snprintf(buf, sizeof(buf), "%sOil pump %.0f%% — %lu ms remaining",
+            snprintf(buf, sizeof(buf), "%sOil pump %.0f%% - %lu ms remaining",
                      ed.benchMode ? "[BENCH] " : "",
                      HardwareConfig::hasOilPress ? (float)100 : startupOilPct,
                      timeoutMs - elapsed);

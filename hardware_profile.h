@@ -1,19 +1,34 @@
 #pragma once
 // ============================================================
-//  hardware_profile.h — OpenTurbine hardware topology
+//  hardware_profile.h — OpenTurbine hardware topology DEFAULTS
 //
-//  THIS IS THE ONLY FILE YOU EDIT FOR A NEW BUILD.
-//  Define what hardware is physically present.
-//  Pin assignments, sensor types, sequence blocks.
+//  THIS FILE SEEDS THE RUNTIME CONFIGURATION (ecu_config.json):
+//   - First boot with no ecu_config.json generates the file from
+//     the values defined here.
+//   - Keys missing from an existing ecu_config.json (e.g. a feature
+//     added after the file was saved) fall back to these defaults.
+//   - Once saved, ecu_config.json is the source of truth: values in
+//     the file are NEVER overridden by this header. Change hardware
+//     at runtime on the web Hardware page instead.
+//  Define what hardware is physically present for a new build:
+//  pin assignments, sensor types, safety enables, sequence blocks.
 //  Comment / uncomment to enable/disable features.
-//  Everything else adapts automatically at compile time.
+//
+//  DEFAULT = minimal simple turbojet, no sensors, external (air/leaf-blower)
+//  start. Enabled out of the box: throttle input, idle input, throttle/fuel
+//  pump ESC, oil pump, one igniter, throttle rate-limiter, and the START/STOP
+//  buttons. Startup/shutdown run on TIMERS only. NO sensors and therefore NO
+//  automated overspeed/overtemp/oil/flameout protection — those switch on
+//  automatically as you fit the matching sensor. Add your real hardware here
+//  or on the web Hardware page.
 // ============================================================
 
 // ── Profile identity ─────────────────────────────────────────
 // Initial profile_id used when creating a new ecu_config.json engine file.
-// A mismatch at boot locks out all engine operations.
-#define OT_PROFILE_ID     "my_turbine_v1"
-#define OT_PROFILE_DESC   "Example turbine build — edit me"
+// A mismatch at boot inhibits START until repaired — the web UI, config
+// upload, and tools stay available so the mismatch can be fixed in place.
+#define OT_PROFILE_ID     "OpenTurbine"
+#define OT_PROFILE_DESC   "OpenTurbine minimal turbojet — edit for your build"
 
 // ── Platform ─────────────────────────────────────────────────
 // Auto-detected from the IDF build target — no manual setting needed.
@@ -84,18 +99,22 @@
 #define OT_N1_RPM_PIN    14    // hall sensor signal
 #define OT_N1_RPM_PPR    1.0f  // pulses per revolution
 
-// EGT / TOT via MAX6675 thermocouple SPI
-#define OT_HAS_TOT
+// EGT / TOT via MAX6675 thermocouple SPI.
+// OFF in the default minimal profile (no sensors). Uncomment when a
+// thermocouple is fitted — this also unlocks overtemp + EGT flameout safety.
+// #define OT_HAS_TOT
 #define OT_TOT_CLK       OT_SPI_CLK_DEFAULT   // ESP32: 5 / S3: 36
 #define OT_TOT_CS        18
 #define OT_TOT_MISO      OT_SPI_MISO_DEFAULT  // ESP32: 19 / S3: 37 (19=USB D− on S3)
 
-// Oil pressure via analog (ADC1, polynomial calibrated)
-#define OT_HAS_OIL_PRESS
+// Oil pressure via analog (ADC1, polynomial calibrated).
+// OFF by default — the minimal engine runs the oil pump open-loop.
+// #define OT_HAS_OIL_PRESS
 #define OT_OIL_PRESS_PIN OT_ADC_1   // ESP32: 34 / S3: 1
 
-// Flame / ignition confirmation via analog threshold
-#define OT_HAS_FLAME
+// Flame / ignition confirmation via analog threshold.
+// OFF by default — light-up is timed (no combustion sensor).
+// #define OT_HAS_FLAME
 #define OT_FLAME_PIN     OT_ADC_2   // ESP32: 35 / S3: 2
 
 // Optional — uncomment if fitted:
@@ -146,7 +165,9 @@
 // Signal range — choose to match your ESC type:
 //   Standard unidirectional ESC : 1000–2000 µs  (armed=1000, full=2000)
 //   Bidirectional ESC           : 1500–2000 µs  (neutral=1500, full forward=2000)
-#define OT_HAS_STARTER
+// OFF by default — the minimal profile assumes external air/leaf-blower start.
+// Uncomment when an electric/air starter ESC is fitted.
+// #define OT_HAS_STARTER
 #ifdef OT_PLATFORM_ESP32S3
   #define OT_STARTER_MOTOR_PIN   17
 #else
@@ -179,8 +200,11 @@
 // #define OT_OIL_PUMP_ONOFF
 // #define OT_OIL_PUMP_ONOFF_ACTIVE_H  true    // true = relay energised = pump ON
 
-// Fuel solenoid (relay/MOSFET)
-#define OT_HAS_FUEL_SOL
+// Fuel solenoid (relay/MOSFET) — positive fuel shutoff valve.
+// OFF by default: minimal setup meters fuel with the pump alone (throttle
+// output). Uncomment if a shutoff solenoid is fitted, and add a FuelOpen
+// block to the startup sequence.
+// #define OT_HAS_FUEL_SOL
 #define OT_FUEL_SOL_PIN       12
 #define OT_FUEL_SOL_ACTIVE_H  true
 
@@ -197,8 +221,8 @@
 // #define OT_IGNITER_DWELL_MS  6    // coil charge time per cycle (default 6 ms)
 // #define OT_IGNITER_REST_MS   3    // spark / discharge time per cycle (default 3 ms)
 
-// Starter enable relay (powers ESC)
-#define OT_HAS_STARTER_EN
+// Starter enable relay (powers ESC) — OFF by default (no starter).
+// #define OT_HAS_STARTER_EN
 #ifdef OT_PLATFORM_ESP32S3
   #define OT_STARTER_EN_PIN   39
 #else
@@ -233,8 +257,8 @@
 
 // ── Controllers ──────────────────────────────────────────────
 // All require matching hardware above to be defined.
-#define OT_HAS_OIL_LOOP           // P-controller: OIL_PRESS → OIL_PUMP
-#define OT_HAS_THROTTLE_SLEW      // Rate-limiter on throttle output
+// #define OT_HAS_OIL_LOOP        // P-controller: OIL_PRESS → OIL_PUMP (needs oil-pressure sensor)
+#define OT_HAS_THROTTLE_SLEW      // Rate-limiter on throttle output (no sensor needed)
 // #define OT_HAS_DYNAMIC_IDLE    // Closed-loop idle RPM hold; requires N1 or N2 RPM feedback
 
 // Use N2 as idle control source instead of N1 (requires OT_HAS_N2_RPM):
@@ -242,11 +266,15 @@
 
 // ── Safety sources ───────────────────────────────────────────
 // Each requires the corresponding sensor to be defined above.
+// Sensor-based safety shutdowns. ALL OFF in the minimal default because it has
+// no sensors — each auto-enables when you fit the matching sensor above. With
+// no protection configured the only shutdowns are the STOP button and block
+// timeouts, so fit sensors before running anything you care about.
 // #define OT_SAFETY_OVERSPEED    // N1 > RPM_LIMIT -> immediate shutdown; requires N1 RPM feedback
-#define OT_SAFETY_OVERTEMP        // TOT > TOT_LIMIT → shutdown
-#define OT_SAFETY_LOW_OIL         // oil < min bar → shutdown
-#define OT_SAFETY_OIL_ZERO        // oil near-zero during RUNNING → catastrophic loss fault
-#define OT_SAFETY_FLAMEOUT        // configured combustion source lost sustained → shutdown
+// #define OT_SAFETY_OVERTEMP     // TOT > TOT_LIMIT → shutdown; requires a TOT/TIT thermocouple
+// #define OT_SAFETY_LOW_OIL      // oil < min bar → shutdown; requires oil-pressure sensor
+// #define OT_SAFETY_OIL_ZERO     // oil near-zero during RUNNING → catastrophic loss fault; requires oil-pressure sensor
+// #define OT_SAFETY_FLAMEOUT     // combustion source lost sustained → shutdown; requires TOT/N1/flame source
 
 // Optional:
 // Low-fuel safety is not implemented as a built-in monitor. Use a Control Rule
@@ -266,11 +294,17 @@
     OT_BLOCK(IgniterOff)     \
     OT_BLOCK(TimedDelay)
 
+// Default per-block delay (ms), one entry per block above, in order.
+// Only TimedDelay blocks consume it; keep 0 for the others.
+#define OT_STARTUP_DELAY_MS  {0, 15000, 0, 0, 10000, 0, 5000}
+
 // ── Shutdown sequence ─────────────────────────────────────────
 #define OT_SHUTDOWN_SEQ \
     OT_BLOCK(ImmediateCut)   \
     OT_BLOCK(TimedDelay)     \
     OT_BLOCK(OilPumpOff)
+
+#define OT_SHUTDOWN_DELAY_MS {0, 15000, 0}
 
 // ── Optional feature blocks ──────────────────────────────────
 // #define OT_HAS_AFTERBURNER

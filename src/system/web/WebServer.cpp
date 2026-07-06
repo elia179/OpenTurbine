@@ -35,6 +35,7 @@ static volatile bool _otaPendingRestart      = false;
 static volatile bool _otaInProgress          = false;
 static bool          _otaError               = false;
 static AsyncWebServerRequest* _otaUploadOwner = nullptr;
+static unsigned long _otaUploadLastMs        = 0;
 static volatile bool _assetUploadInProgress  = false;
 static bool          _assetUploadError       = false;
 static AsyncWebServerRequest* _assetUploadOwner = nullptr;
@@ -133,6 +134,14 @@ static bool _maintenanceUploadInProgress() {
     return _otaInProgress || _assetUploadInProgress || (_configRestoreOwner != nullptr);
 }
 
+// FAULT is the boot-time config-integrity state (profile mismatch / config load
+// failure): a light lockout where only START is blocked. Every other STANDBY
+// gate treats FAULT as standby-like so the user can repair the ECU — mirrors
+// handleCommand()'s standbyLike in main.cpp.
+static bool _isStandbyLike(SysMode mode) {
+    return mode == SysMode::STANDBY || mode == SysMode::FAULT;
+}
+
 static bool _isStandbyToolCommand(OTCommand cmd) {
     switch (cmd) {
         case OTCommand::FUEL_PRIME:
@@ -211,9 +220,11 @@ static const char* _missingHardwareForCommand(OTCommand cmd) {
         case OTCommand::AB_PUMP_TEST:
             return (HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump) ? nullptr : "Afterburner pump is not configured";
         case OTCommand::STARTER_EN_TEST: return HardwareConfig::hasStarterEn ? nullptr : "Starter enable relay is not configured";
-        case OTCommand::PROP_PITCH_TEST: return HardwareConfig::hasPropPitch ? nullptr : "Prop pitch servo is not configured";
+        case OTCommand::PROP_PITCH_TEST: return HardwareConfig::hasPropPitch ? nullptr : "Prop pitch actuator is not configured";
         case OTCommand::TOGGLE_DYNAMIC_IDLE:
             return HardwareConfig::hasDynamicIdle ? nullptr : "Dynamic Idle is not enabled in hardware";
+        case OTCommand::TOGGLE_LIMP_MODE:
+            return HardwareConfig::hasThrottle ? nullptr : "Limp Mode requires a throttle output";
         case OTCommand::STARTER_ASSIST:
             return (HardwareConfig::hasStarter && HardwareConfig::starterAssistEnabled && HardwareConfig::hasN1Rpm) ? nullptr : "Starter assist requires starter output and N1 RPM feedback";
         case OTCommand::AB_FIRE:
@@ -226,8 +237,14 @@ static const char* _missingHardwareForCommand(OTCommand cmd) {
 
 static const char* _commandPreflightRejectReason(const OTPacket& pkt) {
     const auto& ed = EngineData::instance();
+    // tick() will call ESP.restart() unconditionally once the window elapses —
+    // never begin a new actuator action that a reboot would interrupt mid-stream.
+    // AB_STOP stays allowed: it only de-energizes outputs.
+    if (_hwRebootPending && pkt.cmd != OTCommand::AB_STOP) {
+        return "ECU is rebooting to apply a saved configuration. Reconnect and retry.";
+    }
     if (const char* hw = _missingHardwareForCommand(pkt.cmd)) return hw;
-    if (_isStandbyToolCommand(pkt.cmd) && ed.mode != SysMode::STANDBY) {
+    if (_isStandbyToolCommand(pkt.cmd) && !_isStandbyLike(ed.mode)) {
         return "Command is only available in STANDBY";
     }
     if (_startsTimedActuatorTest(pkt) && _outputsActiveForOta()) {
@@ -241,25 +258,101 @@ static const char* _commandPreflightRejectReason(const OTPacket& pkt) {
             return "No fitted cooldown actuator is enabled";
         }
     }
-    if (pkt.cmd == OTCommand::TOGGLE_DEV_MODE && ed.mode != SysMode::STANDBY) {
+    if (pkt.cmd == OTCommand::TOGGLE_DEV_MODE && !_isStandbyLike(ed.mode)) {
         return "Developer Mode can only be changed in STANDBY";
     }
     if (pkt.cmd == OTCommand::TOGGLE_BENCH_MODE) {
-        if (ed.mode != SysMode::STANDBY) return "Bench Mode can only be changed in STANDBY";
+        if (!_isStandbyLike(ed.mode)) return "Bench Mode can only be changed in STANDBY";
         if (!ed.devMode) return "Enable Developer Mode before Bench Mode";
     }
     if (pkt.cmd == OTCommand::TOGGLE_SAFETY_CHECKS) {
-        if (ed.mode != SysMode::STANDBY) return "Safety bypass can only be changed in STANDBY";
+        if (!_isStandbyLike(ed.mode)) return "Safety bypass can only be changed in STANDBY";
         if (!ed.devMode || !ed.benchMode) return "Enable Developer Mode and Bench Mode before safety bypass";
     }
     if (pkt.cmd == OTCommand::STARTER_ASSIST && pkt.iParam != 0 && ed.mode != SysMode::RUNNING) {
         return "Starter assist can only be enabled while RUNNING";
     }
+    if ((pkt.cmd == OTCommand::TOGGLE_DYNAMIC_IDLE || pkt.cmd == OTCommand::TOGGLE_LIMP_MODE)
+        && !(_isStandbyLike(ed.mode) || ed.mode == SysMode::RUNNING)) {
+        return "Command is only available in STANDBY or RUNNING";
+    }
     if (pkt.cmd == OTCommand::AB_FIRE) {
         if (ed.mode != SysMode::RUNNING) return "Afterburner can only be fired while RUNNING";
+        if (HardwareConfig::abTriggerSource != 0) {
+            return "Manual FIRE is only available when AB trigger source is Manual command only";
+        }
+        if (!HardwareConfig::hasAbSol && !HardwareConfig::hasAbPump) {
+            return "Afterburner fuel output is not configured";
+        }
         if (!(ed.abMode == ABMode::Off || ed.abMode == ABMode::Fault)) {
             return "Afterburner is already active or shutting down";
         }
+    }
+    return nullptr;
+}
+
+static bool _outputActiveBlocksStart() {
+    const auto& ed = EngineData::instance();
+    const bool standbyOilOnly = ed.standbyOilFeedActive &&
+                                ed.oilPumpPct > 0.01f &&
+                                ed.oilPumpPct <= (Config::standbyOilFeedPct + 0.5f);
+    return ed.throttleDemand > 0.001f || ed.fuelPump2Demand > 0.001f ||
+           (ed.oilPumpPct > 0.01f && !standbyOilOnly) ||
+           ed.starterDemand > 0.001f || ed.abPumpDemand > 0.001f ||
+           ed.propPitchDemand > 0.001f || ed.glowPlugDemand > 0.001f ||
+           ed.fuelSolOpen || ed.igniterOn || ed.igniter2On ||
+           ed.starterEnabled || ed.coolFanOn || ed.airstarterOpen ||
+           ed.oilScavengeOn || ed.bleedValveOpen || ed.abSolOpen;
+}
+
+static bool _startInhibitActive() {
+    const auto& ed = EngineData::instance();
+    auto& hw = HardwareConfig::instance();
+    for (int i = 0; i < HardwareConfig::MAX_DI; i++) {
+        if (hw.diCh[i].pin >= 0 &&
+            strcmp(hw.diCh[i].role, "inhibit_start") == 0 &&
+            ed.diState[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const char* _startPreflightRejectReason() {
+    const auto& ed = EngineData::instance();
+    // A reboot scheduled by hardware save / factory reset / config restore fires
+    // unconditionally in tick() — starting now would reboot mid-startup with the
+    // fuel solenoid and igniter energized.
+    if (_hwRebootPending) {
+        return "ECU is rebooting to apply a saved configuration. Reconnect and retry.";
+    }
+    if (ed.mode == SysMode::FAULT) {
+        return "ECU is in FAULT mode: hardware config or profile ID failed boot validation. "
+               "Everything except START still works - fix and save the configuration to reboot into STANDBY.";
+    }
+    if (ed.mode != SysMode::STANDBY) {
+        return "Engine is not in STANDBY";
+    }
+    if (!Config::profileMatch || ed.configLocked) {
+        return "Configuration is locked or profile ID does not match";
+    }
+    if (ed.stopSwitchActive) {
+        return "STOP switch is active. Release STOP before pressing START.";
+    }
+    if (_startInhibitActive()) {
+        return "Start inhibit digital input is active";
+    }
+    if (ed.extraCooldownActive) {
+        return "Extra Cooldown is running. Stop it on the Tools page or wait for it to finish.";
+    }
+    if (_outputActiveBlocksStart()) {
+        return "An actuator test or prime output is still active. Wait for Tools actions to finish.";
+    }
+    if (ed.seqHasStructuralErrors) {
+        return "Startup sequence contains unknown or unavailable block names. Open Sequence, fix red errors, and save.";
+    }
+    if (ed.seqHasErrors && !ed.benchMode) {
+        return "Startup sequence requires hardware that is not configured. Check Sequence, or enable Bench Mode for dry testing.";
     }
     return nullptr;
 }
@@ -407,6 +500,20 @@ private:
     AsyncWebServerRequest* _req;
 };
 
+// Serializes maintenance-upload state (Update handle, _assetTempFile,
+// _configRestoreFile and their owner/flag variables) between the async_tcp
+// upload handlers and the webTask tick() idle-timeout cleanup.  Without it a
+// chunk arriving exactly at the 30 s timeout boundary can write a File object
+// that tick() is concurrently closing.  Statically allocated in begin().
+static StaticSemaphore_t _uploadMuxBuf;
+static SemaphoreHandle_t _uploadMux = nullptr;
+
+class UploadLock {
+public:
+    UploadLock()  { if (_uploadMux) xSemaphoreTake(_uploadMux, portMAX_DELAY); }
+    ~UploadLock() { if (_uploadMux) xSemaphoreGive(_uploadMux); }
+};
+
 static AsyncWebServer  _server(80);
 static AsyncWebSocket  _ws("/ws");
 static DNSServer       _dns;                 // captive portal DNS
@@ -473,7 +580,21 @@ static void _startWiFi() {
     const IPAddress apGateway(192, 168, 4, 1);
     const IPAddress apSubnet(255, 255, 255, 0);
     WiFi.softAPConfig(apIP, apGateway, apSubnet);
-    const char* ssid = HardwareConfig::profileId[0] ? HardwareConfig::profileId : "OpenTurbine";
+    const char* ssidFull = HardwareConfig::profileId[0] ? HardwareConfig::profileId : "OpenTurbine";
+    // IEEE 802.11 SSID max is 32 bytes — clamp an over-long profile_id at
+    // use only (the stored profile_id keeps its full value; the Hardware
+    // page warns above 32 bytes but never blocks the save).
+    char ssid[33];
+    strncpy(ssid, ssidFull, sizeof(ssid) - 1);
+    ssid[sizeof(ssid) - 1] = '\0';
+    if (strlen(ssidFull) > 32) {
+        // don't end on a UTF-8 character split by the byte clamp
+        int i = 31;
+        while (i > 0 && ((unsigned char)ssid[i] & 0xC0) == 0x80) i--;
+        unsigned char lead = (unsigned char)ssid[i];
+        int expect = lead >= 0xF0 ? 4 : (lead >= 0xE0 ? 3 : (lead >= 0xC0 ? 2 : 1));
+        if (i + expect > 32) ssid[i] = '\0';
+    }
     const char* pwd  = HardwareConfig::wifiPassword[0] ? HardwareConfig::wifiPassword : nullptr;
     bool apOk = WiFi.softAP(ssid, pwd);  // SSID = hardware profile_id; password optional
     int8_t txPowerQdbm = (int8_t)constrain(HardwareConfig::wifiTxPowerDbm, 2, 20) * 4;
@@ -553,14 +674,17 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["p2"]                    = (float)(int)(std::max(0.0f, p2Bar) * 100) / 100.0f;
     doc["p1_raw"]                = g_sensorP1.rawCounts();
     doc["p2_raw"]                = g_sensorP2.rawCounts();
+    doc["p1_healthy"]            = ed.p1Healthy;
+    doc["p2_healthy"]            = ed.p2Healthy;
+    doc["flame_healthy"]         = ed.flameHealthy;
     doc["max_p1"]                = (float)(int)(std::max(0.0f, maxP1Bar) * 100) / 100.0f;
     doc["max_p2"]                = (float)(int)(std::max(0.0f, maxP2Bar) * 100) / 100.0f;
     float fuelPressBar           = (float)(int)(ed.fuelPressure * 100) / 100.0f;
     doc["fuel_press"]            = fuelPressBar;
-    doc["fuel_pressure"]         = fuelPressBar; // legacy alias
     doc["fuel_press_raw"]        = ed.fuelPressRaw;
     doc["fuel_press_healthy"]    = ed.fuelPressHealthy;
     doc["max_fuel_press"]        = (float)(int)(ed.maxFuelPressure * 100) / 100.0f;
+    doc["fuel_flow_healthy"]     = ed.fuelFlowHealthy;
     doc["fuel_flow"]             = (float)(int)(ed.fuelFlow * 100) / 100.0f;
     doc["fuel_flow_type"]        = HardwareConfig::fuelFlowType;
     doc["fuel_flow_raw"]         = (HardwareConfig::fuelFlowType == 0)
@@ -588,6 +712,11 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["throttle_effective"]    = (float)(int)(
         constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f) * 1000) / 1000.0f;
     doc["ab_fuel_offset"]        = (float)(int)(ed.abFuelOffset * 1000) / 1000.0f;
+    doc["starter_demand"]        = (float)(int)(ed.starterDemand * 1000) / 1000.0f;
+    doc["starter_enabled"]       = ed.starterEnabled;
+    doc["fuel_sol_open"]         = ed.fuelSolOpen;
+    doc["igniter_on"]            = ed.igniterOn;
+    doc["igniter2_on"]           = ed.igniter2On;
     doc["idle_input_raw"]        = ed.idleInputRaw;
     doc["throttle_input_type"]   = !HardwareConfig::hasThrottleInput ? "none" :
                                    (HardwareConfig::throttleInputRcPwm ? "servo" : "adc");
@@ -669,10 +798,12 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["ab_mode"]           = abStr;
     }
     doc["ab_trigger_active"]     = ed.abTriggerActive;
+    doc["ab_trigger_source"]     = HardwareConfig::abTriggerSource;
     doc["ab_arm_switch_on"]      = ed.abArmSwitchOn;
     doc["ab_flame_on"]           = ed.abFlameOn;
     doc["ab_flame_raw"]          = HardwareConfig::hasAbFlame ? g_sensorAbFlame.rawCounts() : 0;
     doc["ab_sol_open"]           = ed.abSolOpen;
+    doc["ab_pump_demand"]        = (float)(int)(ed.abPumpDemand * 1000) / 1000.0f;
     // ── Sequence progress + fault ─────────────────────────────────────────
     doc["current_block"]         = ed.currentBlock;
     doc["seq_block_idx"]         = (int)ed.seqBlockIdx;
@@ -698,6 +829,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["fuel_press_healthy"]    = ed.fuelPressHealthy;
     doc["max_fuel_press"]        = (float)(int)(ed.maxFuelPressure * 100) / 100.0f;
     doc["glow_plug_pct"]         = (int)(ed.glowPlugDemand * 100.0f);
+    doc["wet_glow_fuel_pct"]     = (int)(ed.wetGlowFuelDemand * 100.0f);
     doc["glow_plug_hot"]         = ed.glowPlugHot;
     doc["glow_current_amps"]     = (float)(int)(ed.glowCurrentAmps * 10) / 10.0f;
     doc["igniter_current_amps"]  = (float)(int)(ed.igniterCurrentAmps  * 10) / 10.0f;
@@ -727,7 +859,6 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     // boot/session stats.  These never change during normal engine operation.
     if (full) {
         doc["has_fuel_flow"]         = HardwareConfig::hasFuelFlow;
-        doc["pressure_sensors_enabled"] = Config::pressureSensorsEnabled;
         doc["flame_threshold"]       = Config::flameThreshold;
         // Input type strings (hardware topology — doesn't change at runtime)
         doc["rc_pwm_active"]         = HardwareConfig::throttleInputRcPwm
@@ -739,16 +870,29 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["fuel_idle_max_pct"]     = Config::fuelPumpIdleMaxPct;
         doc["oil_pump_on_pct"]       = Config::oilPumpOnPct;
         doc["has_throttle"]          = HardwareConfig::hasThrottle;
+        doc["has_starter"]           = HardwareConfig::hasStarter;
+        doc["starter_type"]          = HardwareConfig::starterType;
+        doc["has_starter_en"]        = HardwareConfig::hasStarterEn;
+        doc["has_fuel_sol"]          = HardwareConfig::hasFuelSol;
+        doc["has_igniter"]           = HardwareConfig::hasIgniter;
+        doc["has_igniter2"]          = HardwareConfig::hasIgniter2;
         doc["has_oil_pump"]          = HardwareConfig::hasOilPump;
         doc["has_dynamic_idle"]      = HardwareConfig::hasDynamicIdle;
         doc["ws_interval_ms"]        = Config::wsIntervalMs;
         doc["has_oil_loop"]          = HardwareConfig::instance().hasOilLoop;
+        bool relightIgnitionOk = false;
+        switch (Config::relightIgnitionTarget) {
+            case 1: relightIgnitionOk = HardwareConfig::hasIgniter2; break;
+            case 2: relightIgnitionOk = HardwareConfig::hasGlowPlug; break;
+            default: relightIgnitionOk = HardwareConfig::hasIgniter; break;
+        }
         doc["relight_enabled"]       = Config::relightEnabled
                                        && HardwareConfig::hasN1Rpm
-                                       && HardwareConfig::hasIgniter;
+                                       && relightIgnitionOk;
         doc["flameout_source"]       = Config::flameoutSource;
         doc["flameout_n1_min_rpm"]   = Config::flameoutN1MinRpm;
         doc["flameout_tot_drop_c"]   = Config::flameoutTotDropC;
+        doc["relight_ignition_target"] = Config::relightIgnitionTarget;
         doc["relight_confirm_source"] = Config::relightConfirmSource;
         doc["relight_min_rpm"]       = Config::relightMinRpm;
         doc["relight_confirm_rpm"]   = Config::relightConfirmRpm;
@@ -756,6 +900,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["dev_mode_fw"]           = true;
         doc["config_locked"]         = Config::isLocked();
         doc["config_storage_fault"]  = ed.configStorageFault;
+        // Boot-load accept+warn notice (out-of-cap safety limits etc.)
+        doc["config_load_warning"]   = Config::loadWarning[0] ? Config::loadWarning : nullptr;
         doc["config_version_firmware"] = Config::CONFIG_VERSION;
         doc["hardware_profile"]      = HardwareConfig::profileId;
         doc["hw_json_loaded"]        = true;
@@ -797,6 +943,10 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_fuel_press"]        = HardwareConfig::hasFuelPress;
         doc["has_governor"]          = HardwareConfig::hasGovernor;
         doc["has_glow_plug"]         = HardwareConfig::hasGlowPlug;
+        doc["glow_plug_type"]        = HardwareConfig::glowPlugType;
+        doc["glow_plug_output_type"] = HardwareConfig::glowPlugOutputType;
+        doc["has_wet_glow"]          = HardwareConfig::hasGlowPlug && HardwareConfig::glowPlugType == 2;
+        doc["wet_glow_fuel_type"]    = HardwareConfig::wetGlowFuelType;
         doc["has_glow_current"]      = HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor;
         doc["has_igniter_current"]   = HardwareConfig::hasIgniter && HardwareConfig::hasIgniterCurrentSensor;
         doc["has_igniter2_current"]  = HardwareConfig::hasIgniter2 && HardwareConfig::hasIgniter2CurrentSensor;
@@ -981,12 +1131,24 @@ void WebServer::_setupRoutes() {
         req->send(resp);
     });
 
-    // GET /api/config — expose the settings section for page editors
+    // GET /api/config — expose the settings section for page editors.
+    // Serialize into the static TX buffer and send with a fixed
+    // Content-Length (same path as /api/data). AsyncResponseStream silently
+    // truncates a large JSON under AP heap pressure — serializeJson ignores
+    // the stream's short writes — which the editor pages saw as
+    // "Unterminated string in JSON".
     _server.on("/api/config", HTTP_GET, [](AsyncWebServerRequest* req) {
         JsonDocument doc;
         Config::toJson(doc);
-        AsyncResponseStream* resp = req->beginResponseStream("application/json");
-        serializeJson(doc, *resp);
+        if (measureJson(doc) + 1 > sizeof(g_webTxBuf)) {
+            AsyncWebServerResponse* resp = req->beginResponse(
+                500, "application/json", "{\"error\":\"config response too large\"}");
+            _finalizeJsonResponse(resp);
+            req->send(resp);
+            return;
+        }
+        serializeJson(doc, g_webTxBuf, sizeof(g_webTxBuf));
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
         _finalizeJsonResponse(resp);
         req->send(resp);
     });
@@ -1103,7 +1265,7 @@ void WebServer::_setupRoutes() {
     // Capped so AsyncResponseStream stays bounded regardless of log size.
     // For a full download use /api/log/raw (served directly from flash, zero heap buffer).
     _server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* req) {
-        if (EngineData::instance().mode != SysMode::STANDBY || Config::logStandby) {
+        if (!_isStandbyLike(EngineData::instance().mode) || Config::logStandby) {
             req->send(423, "application/json",
                 "{\"error\":\"Log viewing requires STANDBY with standby logging disabled\"}");
             return;
@@ -1141,7 +1303,7 @@ void WebServer::_setupRoutes() {
     // GET /api/log/raw — full flight log download as NDJSON (one JSON object per line).
     // Uses AsyncFileResponse: reads LittleFS in 1460-byte TCP chunks without heap buffering.
     _server.on("/api/log/raw", HTTP_GET, [](AsyncWebServerRequest* req) {
-        if (EngineData::instance().mode != SysMode::STANDBY || Config::logStandby) {
+        if (!_isStandbyLike(EngineData::instance().mode) || Config::logStandby) {
             req->send(423, "application/json",
                 "{\"error\":\"Raw log download requires STANDBY with standby logging disabled\"}");
             return;
@@ -1164,7 +1326,7 @@ void WebServer::_setupRoutes() {
     // AsyncResponseStream is heap-buffered, so keep this bounded like /api/log.
     // Use /api/log/raw for the complete zero-copy NDJSON download.
     _server.on("/api/log/csv", HTTP_GET, [](AsyncWebServerRequest* req) {
-        if (EngineData::instance().mode != SysMode::STANDBY || Config::logStandby) {
+        if (!_isStandbyLike(EngineData::instance().mode) || Config::logStandby) {
             req->send(423, "application/json",
                 "{\"error\":\"Log download requires STANDBY with standby logging disabled\"}");
             return;
@@ -1222,13 +1384,11 @@ void WebServer::_setupRoutes() {
             req->send(423, "application/json", "{\"ok\":false,\"error\":\"Maintenance upload in progress\"}");
             return;
         }
-        auto& ed = EngineData::instance();
-        if (ed.stopSwitchActive) {
-            snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: stop switch active");
-            snprintf(ed.faultDescription, sizeof(ed.faultDescription),
-                     "Cannot start: STOP switch is active. Release STOP before pressing START.");
-            req->send(409, "application/json",
-                      "{\"ok\":false,\"error\":\"STOP switch is active. Release STOP before pressing START.\"}");
+        // Report the reject reason via the HTTP response only.  EngineData
+        // strings are Core-1-owned; writing them from async_tcp (Core 0) races
+        // the ECU loop's own fault/event writes (CommandQueue-only rule).
+        if (const char* reject = _startPreflightRejectReason()) {
+            _sendCommandReject(req, 409, reject);
             return;
         }
         if (CommandQueue::push({ OTCommand::START })) {
@@ -1325,7 +1485,7 @@ void WebServer::_setupRoutes() {
             req->send(423, "application/json", "{\"error\":\"maintenance upload in progress\"}");
             return;
         }
-        if (EngineData::instance().mode != SysMode::STANDBY) {
+        if (!_isStandbyLike(EngineData::instance().mode)) {
             req->send(423, "application/json",
                 "{\"error\":\"Engine must be in STANDBY to delete session logs\"}");
             return;
@@ -1355,19 +1515,38 @@ void WebServer::_setupRoutes() {
         req->send(200, "application/json", "{\"ok\":true}");
     });
 
-    // POST /api/factory_reset - restore shipped factory config, erase logs, reboot.
+    // POST /api/factory_reset - reset to defaults, erase logs, reboot.
+    // Removes ecu_config.json so the next boot regenerates from the compiled
+    // hardware_profile.h defaults (identical to a fresh device). If an optional
+    // /factory_config.json override is present it is restored instead; none
+    // ships by default, so factory reset == first boot.
     _server.on("/api/factory_reset", HTTP_POST, [](AsyncWebServerRequest* req) {
         if (_maintenanceUploadInProgress()) {
             req->send(423, "application/json", "{\"error\":\"maintenance upload in progress\"}");
             return;
         }
-        if (EngineData::instance().mode != SysMode::STANDBY) {
+        if (!_isStandbyLike(EngineData::instance().mode)) {
             req->send(423, "application/json",
                 "{\"error\":\"Engine must be in STANDBY to perform factory reset\"}");
             return;
         }
+        // Same idle-outputs rule as OTA/restore: this path reboots, and a
+        // standby tool (glow, oil prime, starter test, extra cooldown) must
+        // not be left mid-action when ESP.restart() fires.
+        if (_outputsActiveForOta()) {
+            req->send(423, "application/json",
+                "{\"error\":\"Stop active actuator tools/cooldown before factory reset\"}");
+            return;
+        }
+        // Consume any Core-1 deferred save (e.g. hour meter) before wiping the
+        // config, so a stale _savePending cannot make tick() rewrite the old
+        // in-memory settings over it.  Writes the old config, which is removed next.
+        Config::flushPendingSave();
         LittleFS.remove(Config::PATH);
         LittleFS.remove(HardwareConfig::PATH);
+        // Optional override: if a curated /factory_config.json is present, restore
+        // it; otherwise leave the config removed so the reboot regenerates from
+        // the compiled hardware_profile.h defaults (the normal case).
         if (LittleFS.exists(FACTORY_CONFIG_PATH)) {
             if (!_copyLittleFsFile(FACTORY_CONFIG_PATH, Config::PATH)) {
                 req->send(500, "application/json",
@@ -1394,7 +1573,7 @@ void WebServer::_setupRoutes() {
             }
             dir.close();
         }
-        Serial.println("[WebServer] Factory reset - restored factory config, erased logs, rebooting");
+        Serial.println("[WebServer] Factory reset - regenerating defaults, erased logs, rebooting");
         req->send(200, "application/json", "{\"ok\":true}");
         _scheduleRestart("factory reset");
     });
@@ -1440,7 +1619,7 @@ void WebServer::_setupRoutes() {
     // GET /api/session/log?run=N — download a specific session CSV
     // Without ?run=N serves the most recent (current) session.
     _server.on("/api/session/log", HTTP_GET, [](AsyncWebServerRequest* req) {
-        if (EngineData::instance().mode != SysMode::STANDBY) {
+        if (!_isStandbyLike(EngineData::instance().mode)) {
             req->send(423, "application/json",
                 "{\"error\":\"Session logs are available after the engine returns to STANDBY\"}");
             return;
@@ -1480,6 +1659,7 @@ void WebServer::_setupRoutes() {
     _server.on("/update", HTTP_POST,
         // Response callback — runs after all upload chunks received
         [](AsyncWebServerRequest* req) {
+            UploadLock lock;
             if (_otaUploadOwner != req) {
                 req->send(409, "application/json",
                     "{\"ok\":false,\"error\":\"Another OTA upload is in progress\"}");
@@ -1497,17 +1677,20 @@ void WebServer::_setupRoutes() {
         // Upload handler — called per chunk
         [](AsyncWebServerRequest* req, String filename, size_t index,
            uint8_t* data, size_t len, bool final) {
+            UploadLock lock;
             if (!index) {
                 if (_otaUploadOwner && _otaUploadOwner != req) return;
                 _otaUploadOwner = req;
                 _otaError = false;
+                _otaUploadLastMs = millis();
                 if (_assetUploadInProgress || _configRestoreOwner) {
                     Serial.println("[OTA] Rejected: another maintenance upload is in progress");
                     _otaError = true;
                     return;
                 }
-                // Guard: never flash firmware while the engine is running
-                if (EngineData::instance().mode != SysMode::STANDBY) {
+                // Guard: never flash firmware while the engine is running.
+                // FAULT is accepted — OTA is a legitimate repair path.
+                if (!_isStandbyLike(EngineData::instance().mode)) {
                     Serial.println("[OTA] Rejected: engine must be in STANDBY for OTA update");
                     _otaError = true;
                     return;
@@ -1530,7 +1713,8 @@ void WebServer::_setupRoutes() {
                 }
             }
             if (_otaUploadOwner != req) return;
-            if (!_otaError && EngineData::instance().mode != SysMode::STANDBY) {
+            _otaUploadLastMs = millis();
+            if (!_otaError && !_isStandbyLike(EngineData::instance().mode)) {
                 Serial.println("[OTA] Aborted: engine left STANDBY during upload");
                 Update.abort();
                 _otaInProgress = false;
@@ -1546,7 +1730,7 @@ void WebServer::_setupRoutes() {
             }
             if (final) {
                 if (!_otaError && Update.end(true)) {
-                    Serial.printf("[OTA] Success: %u bytes — rebooting\n", index + len);
+                    Serial.printf("[OTA] Success: %u bytes - rebooting\n", index + len);
                 } else if (!_otaError) {
                     Update.printError(Serial);
                     _otaInProgress = false;
@@ -1560,6 +1744,7 @@ void WebServer::_setupRoutes() {
     // also contains configuration and logs that must survive a web update.
     _server.on("/api/web_assets", HTTP_POST,
         [](AsyncWebServerRequest* req) {
+            UploadLock lock;
             if (_assetUploadOwner != req) {
                 req->send(409, "application/json",
                     "{\"ok\":false,\"error\":\"Another web asset upload is in progress\"}");
@@ -1609,13 +1794,14 @@ void WebServer::_setupRoutes() {
         },
         [](AsyncWebServerRequest* req, String filename, size_t index,
            uint8_t* data, size_t len, bool final) {
+            UploadLock lock;
             if (!_assetUploadOwner) {
                 _assetUploadOwner = req;
                 _assetUploadError = false;
                 _assetUploadMask = 0;
                 _assetUploadInProgress = true;
                 _assetUploadLastMs = millis();
-                if (EngineData::instance().mode != SysMode::STANDBY ||
+                if (!_isStandbyLike(EngineData::instance().mode) ||
                     _otaInProgress || _configRestoreOwner || _outputsActiveForOta()) {
                     Serial.println("[WebAssets] Rejected: idle STANDBY required");
                     _assetUploadError = true;
@@ -1623,7 +1809,7 @@ void WebServer::_setupRoutes() {
             }
             if (_assetUploadOwner != req || _assetUploadError) return;
             _assetUploadLastMs = millis();
-            if (EngineData::instance().mode != SysMode::STANDBY || _outputsActiveForOta()) {
+            if (!_isStandbyLike(EngineData::instance().mode) || _outputsActiveForOta()) {
                 Serial.println("[WebAssets] Aborted: ECU no longer idle");
                 _assetUploadError = true;
                 _discardAssetTemps();
@@ -1657,18 +1843,28 @@ void WebServer::_setupRoutes() {
             }
         });
 
-    // GET /api/hardware — return the hardware section of ecu_config.json
+    // GET /api/hardware — return the hardware section of ecu_config.json.
+    // Buffered send with fixed Content-Length (see GET /api/config): the
+    // larger hardware JSON is exactly what streaming truncated on the
+    // Sequence/Hardware pages.
     _server.on("/api/hardware", HTTP_GET, [](AsyncWebServerRequest* req) {
         JsonDocument doc;
         HardwareConfig::toJson(doc, true);
-        AsyncResponseStream* resp = req->beginResponseStream("application/json");
-        serializeJson(doc, *resp);
+        if (measureJson(doc) + 1 > sizeof(g_webTxBuf)) {
+            AsyncWebServerResponse* resp = req->beginResponse(
+                500, "application/json", "{\"error\":\"hardware response too large\"}");
+            _finalizeJsonResponse(resp);
+            req->send(resp);
+            return;
+        }
+        serializeJson(doc, g_webTxBuf, sizeof(g_webTxBuf));
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
         _finalizeJsonResponse(resp);
         req->send(resp);
     });
 
     // POST /api/hardware — validate + replace the hardware section, schedule reboot
-    // Engine must be in STANDBY. Changes take effect after reboot.
+    // Engine must be in STANDBY (or FAULT). Changes take effect after reboot.
     _server.on("/api/hardware", HTTP_POST,
         [](AsyncWebServerRequest* req) {},
         nullptr,
@@ -1691,10 +1887,17 @@ void WebServer::_setupRoutes() {
                 return;
             }
 
-            // Only allow hardware changes in STANDBY
-            if (EngineData::instance().mode != SysMode::STANDBY) {
+            // Only allow hardware changes in STANDBY (or FAULT — the repair path)
+            if (!_isStandbyLike(EngineData::instance().mode)) {
                 req->send(423, "application/json",
                     "{\"error\":\"Engine must be in STANDBY to change hardware config\"}");
+                return;
+            }
+            // Hardware save schedules a reboot — same idle-outputs rule as
+            // OTA/restore so a running standby tool isn't cut mid-action.
+            if (_outputsActiveForOta()) {
+                req->send(423, "application/json",
+                    "{\"error\":\"Stop active actuator tools/cooldown before saving hardware config\"}");
                 return;
             }
             size_t previousLen = HardwareConfig::toJson(g_webTxBuf, sizeof(g_webTxBuf));
@@ -1726,7 +1929,7 @@ void WebServer::_setupRoutes() {
                     "{\"ok\":false,\"error\":\"Failed to synchronize settings after hardware dependency cleanup\"}");
                 return;
             }
-            Serial.printf("[WebServer] POST /api/hardware: saved (%u bytes) — reboot in 1s\n",
+            Serial.printf("[WebServer] POST /api/hardware: saved (%u bytes) - reboot in 1s\n",
                           (unsigned)g_webRxLen);
             req->send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
             _scheduleRestart("hardware config save");
@@ -1742,9 +1945,11 @@ void WebServer::_setupRoutes() {
                 return;
             }
             // Hardware config changes take effect immediately on the live control loop
-            // (HardwareConfig static fields are read every tick).  Reject unless STANDBY.
-            if (EngineData::instance().mode != SysMode::STANDBY) {
-                _releaseWebRx(req);
+            // (HardwareConfig static fields are read every tick).  Reject unless
+            // STANDBY (or FAULT — the control loop is equally idle there).
+            // Gate on index == 0 so a multi-chunk body cannot req->send(409) once per
+            // chunk (double send corrupts ESPAsyncWebServer response state).
+            if (index == 0 && !_isStandbyLike(EngineData::instance().mode)) {
                 req->send(409, "application/json",
                     "{\"ok\":false,\"error\":\"engine not in STANDBY\"}");
                 return;
@@ -1760,6 +1965,12 @@ void WebServer::_setupRoutes() {
             WebRxRelease release(req);
             if (g_webRxOverflow) {
                 req->send(400, "application/json", "{\"error\":\"request body too large\"}");
+                return;
+            }
+            // Re-check on completion: the engine may have left STANDBY between chunks.
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                req->send(409, "application/json",
+                    "{\"ok\":false,\"error\":\"engine not in STANDBY\"}");
                 return;
             }
             JsonDocument patch;
@@ -1858,10 +2069,19 @@ void WebServer::_setupRoutes() {
                 req->send(500, "application/json", "{\"error\":\"failed to write hardware config\"}");
                 return;
             }
-            req->send(200, "application/json", "{\"ok\":true}");
+            bool applyQueued = CommandQueue::push({ OTCommand::APPLY_CONFIG });
+            FlightRecorder::logConfigChange("hardware.patch", 0, 0);
+            if (!applyQueued) {
+                req->send(200, "application/json",
+                    "{\"ok\":true,\"warn\":\"hardware calibration saved, but live reload queue was full; restart or re-save before testing\"}");
+            } else {
+                req->send(200, "application/json", "{\"ok\":true}");
+            }
         });
 
     // GET /api/ecu_config — download full unified config (hardware + settings)
+    // Deliberately serves the file verbatim incl. plaintext wifi_password: the JSON
+    // must restore 1:1 on another ESP32 (portability by design — do not redact here).
     _server.on("/api/ecu_config", HTTP_GET, [](AsyncWebServerRequest* req) {
         if (!LittleFS.exists(Config::PATH)) {
             req->send(404, "application/json", "{\"error\":\"ecu_config.json not found\"}");
@@ -1880,6 +2100,7 @@ void WebServer::_setupRoutes() {
         [](AsyncWebServerRequest* req) {},
         nullptr,
         [](AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t index, size_t total) {
+            UploadLock lock;
             if (index == 0) {
                 if (_configRestoreOwner) {
                     req->send(409, "application/json",
@@ -1891,7 +2112,7 @@ void WebServer::_setupRoutes() {
                         "{\"error\":\"Another maintenance upload is in progress\"}");
                     return;
                 }
-                if (EngineData::instance().mode != SysMode::STANDBY || _outputsActiveForOta()) {
+                if (!_isStandbyLike(EngineData::instance().mode) || _outputsActiveForOta()) {
                     req->send(423, "application/json",
                         "{\"error\":\"Engine must be idle in STANDBY to upload config\"}");
                     return;
@@ -1917,7 +2138,7 @@ void WebServer::_setupRoutes() {
                 return;
             }
 
-            if (EngineData::instance().mode != SysMode::STANDBY) {
+            if (!_isStandbyLike(EngineData::instance().mode)) {
                 req->send(423, "application/json",
                     "{\"error\":\"Engine must be in STANDBY to upload config\"}");
                 _finishConfigRestore();
@@ -2011,7 +2232,7 @@ void WebServer::_setupRoutes() {
                 return;
             }
 
-            Serial.printf("[WebServer] POST /api/ecu_config: %u bytes — reboot in 1s\n", (unsigned)total);
+            Serial.printf("[WebServer] POST /api/ecu_config: %u bytes - reboot in 1s\n", (unsigned)total);
             _finishConfigRestore(false);
             req->send(200, "application/json", "{\"ok\":true,\"reboot\":true}");
             _scheduleRestart("engine config restore");
@@ -2098,6 +2319,7 @@ void WebServer::_setupRoutes() {
 
 // ── Public API ────────────────────────────────────────────────
 void WebServer::begin() {
+    _uploadMux = xSemaphoreCreateMutexStatic(&_uploadMuxBuf);
     _recoverInterruptedAssetUpdate();
     _startWiFi();
     _setupRoutes();
@@ -2113,7 +2335,10 @@ void WebServer::tick() {
     unsigned long _t2 = millis();
     SessionLogger::drainQueue();
     unsigned long _t3 = millis();
-    Config::flushPendingSave();
+    // Skip while a reboot is pending: factory reset / config restore just replaced
+    // the on-disk file, and a deferred save would overwrite it with the old
+    // in-memory settings during the 5 s pre-reboot window.
+    if (!_hwRebootPending) Config::flushPendingSave();
     unsigned long _t4 = millis();
     Config::flushPendingRuntimeStats();
     unsigned long _t5 = millis();
@@ -2153,14 +2378,36 @@ void WebServer::tick() {
     if (_otaPendingRestart) {
         _restartCleanly("firmware OTA");
     }
+    // Interrupted OTA upload: if the client disconnects mid-upload no further
+    // chunk or completion callback ever runs, so without this timeout the
+    // maintenance lock (423 on start/command/save) persists until power cycle
+    // and _otaUploadOwner dangles.  Idle-timeout pattern matches the asset and
+    // config-restore cleanups below; re-check under the lock closes the race
+    // against a chunk arriving exactly at the boundary.
+    if (_otaUploadOwner && !_otaPendingRestart && (millis() - _otaUploadLastMs) > 30000) {
+        UploadLock lock;
+        if (_otaUploadOwner && !_otaPendingRestart && (millis() - _otaUploadLastMs) > 30000) {
+            Serial.println("[OTA] Timed out - aborting interrupted firmware upload");
+            if (Update.isRunning()) Update.abort();
+            _otaError = true;
+            _otaInProgress = false;
+            _otaUploadOwner = nullptr;
+        }
+    }
     if (_assetUploadInProgress && (millis() - _assetUploadLastMs) > 30000) {
-        Serial.println("[WebAssets] Timed out - discarding staged upload");
-        _assetUploadError = true;
-        _finishAssetUpload();
+        UploadLock lock;
+        if (_assetUploadInProgress && (millis() - _assetUploadLastMs) > 30000) {
+            Serial.println("[WebAssets] Timed out - discarding staged upload");
+            _assetUploadError = true;
+            _finishAssetUpload();
+        }
     }
     if (_configRestoreOwner && (millis() - _configRestoreLastMs) > 30000) {
-        Serial.println("[Config] Timed out - discarding staged full restore");
-        _finishConfigRestore();
+        UploadLock lock;
+        if (_configRestoreOwner && (millis() - _configRestoreLastMs) > 30000) {
+            Serial.println("[Config] Timed out - discarding staged full restore");
+            _finishConfigRestore();
+        }
     }
     // Reboot only after the HTTP response has had time to leave and network
     // clients have seen the AP disappear cleanly.
@@ -2181,4 +2428,8 @@ void WebServer::tick() {
 
 bool WebServer::otaInProgress() {
     return _maintenanceUploadInProgress();
+}
+
+bool WebServer::rebootPending() {
+    return _hwRebootPending;
 }

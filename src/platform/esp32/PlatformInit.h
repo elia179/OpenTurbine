@@ -33,7 +33,7 @@ public:
 
         Serial.begin(115200);
         delay(100);
-        Serial.println("\n[OT] OpenTurbine booting — default profile: " OT_PROFILE_ID);
+        Serial.println("\n[OT] OpenTurbine booting - default profile: " OT_PROFILE_ID);
 
         // LittleFS
         // Never format automatically on a control-system boot: a transient

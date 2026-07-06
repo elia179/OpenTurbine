@@ -40,6 +40,10 @@ public:
         if (useTorch && torchTotLimit == 0.0f) {
             Serial.println("[AB] Ignite: torch skipped - torchTotLimit is 0 (no EGT safety cap configured)");
         }
+        _hasIgnitionAction = _doTorch || useIgniter;
+        if (!_hasIgnitionAction) {
+            Serial.println("[AB] Ignite fault: no active ignition method");
+        }
 
         // Torch: temporarily boost main fuel via ed.abFuelOffset.
         // The offset is applied at the throttle actuator write in
@@ -62,6 +66,10 @@ public:
 
     BlockResult tick() override {
         if (_done) return BlockResult::Complete;
+        if (!_hasIgnitionAction) {
+            _done = true;
+            return BlockResult::Fault;
+        }
 
         auto& ed = EngineData::instance();
         unsigned long elapsed = millis() - _startMs;
@@ -99,6 +107,7 @@ public:
     }
 
 private:
+    bool          _hasIgnitionAction = false;
     unsigned long _startMs  = 0;
     bool          _done     = false;
     bool          _doTorch  = false;  // runtime copy of useTorch — never mutates the config member

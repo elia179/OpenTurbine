@@ -240,11 +240,19 @@ function enumNames(source, marker) {
     results.push('cluster example field ids and documented commands match the ECU protocol enum');
 
     const throttleSlew = fs.readFileSync(path.join('src', 'engine', 'controllers', 'ThrottleSlew.h'), 'utf8');
-    assert.match(throttleSlew, /totHardLimit > 0\.0f/);
+    // Zero-disabled limits must not produce pullback: the guard now lives
+    // centrally inside applyPullback (hard<=soft covers hard==0 disabled).
+    assert.match(throttleSlew, /if \(hard <= soft \|\| value <= soft\) return;/);
     const safetyMonitor = fs.readFileSync(path.join('src', 'engine', 'SafetyMonitor.h'), 'utf8');
-    assert.match(safetyMonitor, /HardwareConfig::hasIgniter && n1Ok/);
+    // Relight needs a viable N1 AND the CONFIGURED ignition target fitted
+    // (igniter / igniter2 / glow — no longer hardcoded to igniter 1).
+    assert.match(safetyMonitor, /relightIgnitionOk && n1Ok/);
+    assert.match(safetyMonitor, /case 1: relightIgnitionOk = HardwareConfig::hasIgniter2/);
     const configSource = fs.readFileSync(path.join('src', 'system', 'Config.cpp'), 'utf8');
-    assert.match(configSource, /!HardwareConfig::hasN1Rpm \|\| !HardwareConfig::hasIgniter[\s\S]*relightEnabled = false/);
+    // Relight sanitization is target-aware: disabled when N1 is missing or
+    // the SELECTED ignition output (igniter/igniter2/glow) is not fitted.
+    assert.match(configSource, /case 1: relightTargetAvailable = HardwareConfig::hasIgniter2/);
+    assert.match(configSource, /\(!HardwareConfig::hasN1Rpm \|\| !relightTargetAvailable\) && relightEnabled[\s\S]{0,80}relightEnabled = false/);
     assert.match(configSource, /case 6:\s+return HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm/);
     assert.match(configSource, /case 19:\s+return HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame/);
     assert.match(configSource, /case 20:\s+return HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor/);
@@ -311,8 +319,8 @@ function enumNames(source, marker) {
     results.push('runtime safety guards cover zero limits, inactive EGT flameout, and stale auto-relight prerequisites');
 
     const indexHtml = fs.readFileSync(path.join('data_src', 'index.html'), 'utf8');
-    assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|Primary thermal limit/);
-    assert.match(indexHtml, /20260625a/);
+    assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|20260625a|Primary thermal limit/);
+    assert.match(indexHtml, /20260705a/);
     assert.match(indexHtml, /<body data-page="dashboard">/);
     assert.match(indexHtml, /id="profile-mismatch-banner" style="display:none"/);
     const appSource = fs.readFileSync(path.join('data_src', 'app.js'), 'utf8');
@@ -341,9 +349,11 @@ function enumNames(source, marker) {
     results.push('captive portal dashboard entry starts the same 3 Hz telemetry pull as /index.html');
 
     const webServer = fs.readFileSync(path.join('src', 'system', 'web', 'WebServer.cpp'), 'utf8');
-    assert.match(webServer, /VERSIONED_ASSET_CACHE[\s\S]*max-age=31536000, immutable/);
-    assert.match(webServer, /app\.js\.gz", "application\/javascript", VERSIONED_ASSET_CACHE/);
-    assert.match(webServer, /style\.css\.gz", "text\/css", VERSIONED_ASSET_CACHE/);
+    // Current strategy: shared assets served with no-cache (query-string
+    // ?v= keys bust stale copies; the server does not use immutable caching).
+    assert.match(webServer, /SHARED_ASSET_CACHE = "no-cache"/);
+    assert.match(webServer, /app\.js\.gz", "application\/javascript", SHARED_ASSET_CACHE/);
+    assert.match(webServer, /style\.css\.gz", "text\/css", SHARED_ASSET_CACHE/);
     assert.match(webServer, /static void _mergeJsonObject\(JsonObject dst, JsonObjectConst patch\)/);
     assert.equal((webServer.match(/_mergeJsonObject\(current\.as<JsonObject>\(\), patch\.as<JsonObjectConst>\(\)\)/g) || []).length, 2);
     assert.doesNotMatch(webServer, /2-level deep merge/);

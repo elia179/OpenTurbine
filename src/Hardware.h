@@ -8,8 +8,8 @@
 //  instead of compile-time #ifdef OT_HAS_* guards.
 //
 //  hardware_profile.h is still included for compile-time defaults
-//  (used by HardwareConfig::applyDefaults()) and legacy #defines
-//  (OT_STOP_PIN, OT_START_PIN, etc.) still referenced in main.cpp.
+//  used by HardwareConfig::applyDefaults() and boot-control defines
+//  such as OT_STOP_PIN and OT_START_PIN.
 //
 //  Pin assignments pass through Hardware::initSensors/initActuators
 //  at boot time; changing the hardware section and rebooting applies new pins.
@@ -198,6 +198,7 @@
     RelayActuator  g_actPropPitchRelay(-1, true, "PROP_PITCH");                  \
     IActuator*     g_actPropPitch = nullptr;                                     \
     LEDCActuator   g_actGlowPlug(-1, 1000, 8, "GLOW_PLUG");                     \
+    RelayActuator  g_actGlowPlugRelay(-1, true, "GLOW_PLUG_RELAY");             \
     RelayActuator  g_actWetGlowFuelRelay(-1, true, "WET_GLOW_FUEL");            \
     LEDCActuator   g_actWetGlowFuelLedc(-1, 1000, 10, "WET_GLOW_FUEL_PWM");     \
     ServoActuator  g_actWetGlowFuelServo(-1, 1000, 2000, "WET_GLOW_FUEL_SRV");  \
@@ -345,6 +346,7 @@ extern LEDCActuator   g_actPropPitchLedc;
 extern RelayActuator  g_actPropPitchRelay;
 extern IActuator*     g_actPropPitch;
 extern LEDCActuator   g_actGlowPlug;
+extern RelayActuator  g_actGlowPlugRelay;
 extern RelayActuator  g_actWetGlowFuelRelay;
 extern LEDCActuator   g_actWetGlowFuelLedc;
 extern ServoActuator  g_actWetGlowFuelServo;
@@ -409,6 +411,14 @@ extern SafetyMonitor  g_safety;
 // ============================================================
 
 namespace Hardware {
+
+    inline void applyCurrentSensorCal(AnalogLinearSensor& sensor, float zeroV, float mvPerA) {
+        float safeZeroV = constrain(zeroV, 0.0f, 3.3f);
+        float safeMvPerA = mvPerA > 0.0f ? mvPerA : 100.0f;
+        float zeroAdc = (safeZeroV / 3.3f) * 4095.0f;
+        float adcPerAmp = safeMvPerA / (3300.0f / 4095.0f);
+        sensor.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+    }
 
     // ── Apply config values to block/controller instances ────
     inline void applyConfig() {
@@ -483,6 +493,7 @@ namespace Hardware {
         g_blkABIgnite.torchSpikePct       = Config::abTorchSpikePct;
         g_blkABIgnite.torchDurationMs     = Config::abTorchDurationMs;
         g_blkABIgnite.torchTotLimit       = Config::abTorchTotLimit;
+        g_blkABPumpOn.demandPct           = Config::abLightupPumpPct;
         g_blkABFlameConfirm.flameMode     = Config::abFlameMode;
         g_blkABFlameConfirm.totRiseDegC   = Config::abTotRiseDegC;
         g_blkABFlameConfirm.totRiseWindowMs= Config::abTotRiseWindowMs;
@@ -531,6 +542,29 @@ namespace Hardware {
             g_sensorOilPress.setCal(pc);
         }
         if (hw.hasFlame)  g_sensorFlame.setThreshold(Config::flameThreshold);
+        if (hw.hasAbFlame && hw.abFlamePin >= 0) g_sensorAbFlame.setThreshold(hw.abFlameThreshold);
+        if (hw.hasOilTemp && hw.oilTempPin >= 0 && strcmp(hw.oilTempChip, "ntc") == 0) {
+            g_sensorOilTempNtc.setCal({ hw.ntcRFixed, hw.ntcR0, 25.0f, hw.ntcBeta });
+        }
+        if (hw.hasBattVoltage && hw.battVoltPin >= 0) {
+            g_sensorBattVolt.setCal({ 0.0f, 4095.0f, 0.0f, hw.battVoltDivider * 3.3f });
+        }
+        if (hw.hasTorque && !hw.torqueHx711 && hw.torquePin >= 0) {
+            g_sensorTorque.setCal({ 0.0f, 4095.0f, -hw.torqueOffset,
+                                    hw.torqueScale * 3.3f - hw.torqueOffset });
+        }
+        if (hw.hasGlowCurrentSensor && hw.glowCurrentPin >= 0) {
+            applyCurrentSensorCal(g_sensorGlowCurrent, hw.glowCurrentZeroV, hw.glowCurrentMvPerA);
+        }
+        if (hw.hasIgniterCurrentSensor && hw.igniterCurrentPin >= 0) {
+            applyCurrentSensorCal(g_sensorIgniterCurrent, hw.igniterCurrentZeroV, hw.igniterCurrentMvPerA);
+        }
+        if (hw.hasIgniter2CurrentSensor && hw.igniter2CurrentPin >= 0) {
+            applyCurrentSensorCal(g_sensorIgniter2Current, hw.igniter2CurrentZeroV, hw.igniter2CurrentMvPerA);
+        }
+        if (hw.hasOilPumpCurrentSensor && hw.oilPumpCurrentPin >= 0) {
+            applyCurrentSensorCal(g_sensorOilPumpCurrent, hw.oilPumpCurrentZeroV, hw.oilPumpCurrentMvPerA);
+        }
         if (hw.hasN1Rpm) { g_sensorN1Rpm.jumpThreshold  = Config::rpmJumpThreshold;
                            g_sensorN1Rpm.zeroStuckLimit = Config::rpmZeroStuckTicks;
                            g_sensorN1Rpm.rpmLimit       = Config::rpmLimit; }
@@ -557,7 +591,8 @@ namespace Hardware {
             g_ctrlGovernor.kp           = Config::governorKp;
             g_ctrlGovernor.pitchKp       = Config::governorPitchKp;
             g_ctrlGovernor.pitchRampSec  = Config::governorPitchRampSec;
-            g_ctrlGovernor.usePropPitch  = hw.hasPropPitch;
+            g_ctrlGovernor.usePropPitch  = hw.hasPropPitch && hw.propPitchType != 2 &&
+                                           Config::governorPitchKp > 0.0f;
         }
         // Advanced sequence block params
         g_blkFuelPumpRamp.startPct      = Config::fp2StartPct;
@@ -650,9 +685,9 @@ namespace Hardware {
                                       hw.torqueHxScale, (long)hw.torqueHxZero);
         } else if (hw.hasTorque && hw.torquePin >= 0) {
             g_sensorTorque.begin(hw.torquePin);
-            // torqueScale = Nm/V; torqueOffset = zero-point in Nm
-            g_sensorTorque.setCal({ 0.0f, 4095.0f, hw.torqueOffset,
-                                    hw.torqueOffset + hw.torqueScale * 3.3f });
+            // torqueOffset is the Nm-equivalent zero-load reading to subtract.
+            g_sensorTorque.setCal({ 0.0f, 4095.0f, -hw.torqueOffset,
+                                    hw.torqueScale * 3.3f - hw.torqueOffset });
         }
         if (hw.hasOilPress) g_sensorOilPress.begin(hw.oilPressPin);
         if (hw.hasFlame)   g_sensorFlame.begin(hw.flamePin);
@@ -701,27 +736,19 @@ namespace Hardware {
             pinMode(hw.abSwitchPin, hw.abSwitchActiveH ? INPUT : INPUT_PULLUP);
         if (hw.hasGlowCurrentSensor && hw.glowCurrentPin >= 0) {
             g_sensorGlowCurrent.begin(hw.glowCurrentPin);
-            float zeroAdc  = (hw.glowCurrentZeroV / 3.3f) * 4095.0f;
-            float adcPerAmp = hw.glowCurrentMvPerA / (3300.0f / 4095.0f);
-            g_sensorGlowCurrent.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+            applyCurrentSensorCal(g_sensorGlowCurrent, hw.glowCurrentZeroV, hw.glowCurrentMvPerA);
         }
         if (hw.hasIgniterCurrentSensor && hw.igniterCurrentPin >= 0) {
             g_sensorIgniterCurrent.begin(hw.igniterCurrentPin);
-            float zeroAdc  = (hw.igniterCurrentZeroV / 3.3f) * 4095.0f;
-            float adcPerAmp = hw.igniterCurrentMvPerA / (3300.0f / 4095.0f);
-            g_sensorIgniterCurrent.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+            applyCurrentSensorCal(g_sensorIgniterCurrent, hw.igniterCurrentZeroV, hw.igniterCurrentMvPerA);
         }
         if (hw.hasIgniter2CurrentSensor && hw.igniter2CurrentPin >= 0) {
             g_sensorIgniter2Current.begin(hw.igniter2CurrentPin);
-            float zeroAdc  = (hw.igniter2CurrentZeroV / 3.3f) * 4095.0f;
-            float adcPerAmp = hw.igniter2CurrentMvPerA / (3300.0f / 4095.0f);
-            g_sensorIgniter2Current.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+            applyCurrentSensorCal(g_sensorIgniter2Current, hw.igniter2CurrentZeroV, hw.igniter2CurrentMvPerA);
         }
         if (hw.hasOilPumpCurrentSensor && hw.oilPumpCurrentPin >= 0) {
             g_sensorOilPumpCurrent.begin(hw.oilPumpCurrentPin);
-            float zeroAdc  = (hw.oilPumpCurrentZeroV / 3.3f) * 4095.0f;
-            float adcPerAmp = hw.oilPumpCurrentMvPerA / (3300.0f / 4095.0f);
-            g_sensorOilPumpCurrent.setCal({ zeroAdc, zeroAdc + adcPerAmp * 50.0f, 0.0f, 50.0f });
+            applyCurrentSensorCal(g_sensorOilPumpCurrent, hw.oilPumpCurrentZeroV, hw.oilPumpCurrentMvPerA);
         }
     }
 
@@ -759,6 +786,8 @@ namespace Hardware {
             g_sensorFlame.update();
             ed.flameSensorRaw = g_sensorFlame.rawCounts();
             ed.flameDetected  = g_sensorFlame.getValue() > 0.5f;
+            // Wiring hint only — never gates flameDetected (see EngineData.h)
+            ed.flameHealthy   = g_sensorFlame.railHealthy();
         }
         if (hw.hasIdleInput && !hw.idleInputRcPwm) {
             g_sensorIdleInput.update();
@@ -827,18 +856,22 @@ namespace Hardware {
                 // RPM = pulses/min; divide by pulsesPerLitre → litres/min
                 float ppl = hw.fuelFlowPulsesPerLitre > 0 ? hw.fuelFlowPulsesPerLitre : 1.0f;
                 ed.fuelFlow = g_sensorFuelFlowPulse.getValue() / ppl;
+                ed.fuelFlowHealthy = g_sensorFuelFlowPulse.isHealthy();
             } else {
                 g_sensorFuelFlow.update();
                 ed.fuelFlow = g_sensorFuelFlow.getValue();
+                ed.fuelFlowHealthy = g_sensorFuelFlow.isHealthy();
             }
         }
         if (hw.hasP1) {
             g_sensorP1.update();
             ed.p1 = g_sensorP1.getValue();
+            ed.p1Healthy = g_sensorP1.isHealthy();
         }
         if (hw.hasP2) {
             g_sensorP2.update();
             ed.p2 = g_sensorP2.getValue();
+            ed.p2Healthy = g_sensorP2.isHealthy();
         }
         if (hw.hasFuelPress) {
             g_sensorFuelPress.update();
@@ -849,8 +882,13 @@ namespace Hardware {
         if (hw.hasGlowCurrentSensor) {
             g_sensorGlowCurrent.update();
             ed.glowCurrentAmps = g_sensorGlowCurrent.getValue();
-            // Plug is hot when current has dropped below threshold and plug is powered
-            ed.glowPlugHot = (ed.glowPlugDemand > 0.05f) && (ed.glowCurrentAmps <= hw.glowCurrentReadyAmps);
+            // Plug is hot when current has dropped below threshold and plug is
+            // powered.  Health gate: a disconnected/railed ADC reads ~0 A and
+            // would instantly flag a cold plug 'hot' (GlowPreheat has its own
+            // waitHotTimeout, so an unhealthy sensor cannot hang the sequence).
+            ed.glowPlugHot = g_sensorGlowCurrent.isHealthy() &&
+                             (ed.glowPlugDemand > 0.05f) &&
+                             (ed.glowCurrentAmps <= hw.glowCurrentReadyAmps);
         }
         if (hw.hasIgniterCurrentSensor) {
             g_sensorIgniterCurrent.update();
@@ -868,13 +906,39 @@ namespace Hardware {
         }
     }
 
+    // ── Boot-safe relay states ────────────────────────────────
+    // Drive the RUNTIME-configured fuel solenoid / igniter(s) / starter-enable
+    // pins to their inactive level.  PlatformInit::begin() parks the compile-time
+    // OT_* pins as the first line of defense, but the config may remap these
+    // outputs, leaving the real pin floating until initActuators().  Called from
+    // setup() immediately after HardwareConfig::load() succeeds.
+    inline void driveBootSafeStates() {
+        auto& hw = HardwareConfig::instance();
+        auto driveInactive = [](int pin, bool activeH) {
+            if (pin < 0) return;
+            pinMode(pin, OUTPUT);
+            digitalWrite(pin, activeH ? LOW : HIGH);
+        };
+        if (hw.hasFuelSol)   driveInactive(hw.fuelSolPin, hw.fuelSolActiveH);
+        // PWM igniter drive is active-high (LEDC duty 0 = pin LOW);
+        // igniterActiveH applies in relay/coil mode only.
+        if (hw.hasIgniter)   driveInactive(hw.igniterPin,
+                                           hw.igniterPwm ? true : hw.igniterActiveH);
+        if (hw.hasIgniter2)  driveInactive(hw.igniter2Pin,
+                                           hw.igniter2Pwm ? true : hw.igniter2ActiveH);
+        if (hw.hasGlowPlug)  driveInactive(hw.glowPlugPin,
+                                           hw.glowPlugOutputType == 1 ? hw.glowPlugActiveH : true);
+        if (hw.hasStarterEn) driveInactive(hw.starterEnPin, hw.starterEnActiveH);
+    }
+
     // ── Actuator init ─────────────────────────────────────────
     inline void initActuators() {
         auto& hw = HardwareConfig::instance();
         if (hw.hasThrottle) {
             if (hw.throttleType == 1) {
-                g_actThrottleLedc.begin(hw.throttlePin, (uint32_t)hw.throttleLedcFreqHz, (uint8_t)hw.throttleLedcBits);
                 g_actThrottleLedc.setInverted(hw.throttleInverted);
+                g_actThrottleLedc.setOutputRange(hw.throttlePwmMinPct, hw.throttlePwmMaxPct);
+                g_actThrottleLedc.begin(hw.throttlePin, (uint32_t)hw.throttleLedcFreqHz, (uint8_t)hw.throttleLedcBits);
                 g_actThrottle = &g_actThrottleLedc;
             } else if (hw.throttleType == 2) {
                 g_actThrottleOnOff.begin(hw.throttlePin, hw.throttleActiveH);
@@ -886,8 +950,9 @@ namespace Hardware {
         }
         if (hw.hasStarter) {
             if (hw.starterType == 1) {
-                g_actStarterLedc.begin(hw.starterPin, (uint32_t)hw.starterLedcFreqHz, (uint8_t)hw.starterLedcBits);
                 g_actStarterLedc.setInverted(hw.starterInverted);
+                g_actStarterLedc.setOutputRange(hw.starterPwmMinPct, hw.starterPwmMaxPct);
+                g_actStarterLedc.begin(hw.starterPin, (uint32_t)hw.starterLedcFreqHz, (uint8_t)hw.starterLedcBits);
                 g_actStarter = &g_actStarterLedc;
             } else if (hw.starterType == 2) {
                 g_actStarterOnOff.begin(hw.starterPin, hw.starterActiveH);
@@ -905,6 +970,7 @@ namespace Hardware {
                 g_actOilPumpServo.begin(hw.oilPumpPin, hw.oilPumpMinUs, hw.oilPumpMaxUs);
                 g_actOilPump = &g_actOilPumpServo;
             } else {
+                g_actOilPumpLedc.setOutputRange(hw.oilPumpPwmMinPct, hw.oilPumpPwmMaxPct);
                 g_actOilPumpLedc.begin(hw.oilPumpPin,
                                        (uint32_t)hw.oilPumpFreqHz,
                                        (uint8_t)hw.oilPumpResBits);
@@ -946,6 +1012,7 @@ namespace Hardware {
                 g_actCoolFanServo.begin(hw.coolFanPin, hw.coolFanMinUs, hw.coolFanMaxUs);
                 g_pActCoolFan = &g_actCoolFanServo;
             } else if (hw.coolFanType == 1) {
+                g_actCoolFanLedc.setOutputRange(hw.coolFanPwmMinPct, hw.coolFanPwmMaxPct);
                 g_actCoolFanLedc.begin(hw.coolFanPin, (uint32_t)hw.coolFanFreqHz, (uint8_t)hw.coolFanResBits);
                 g_pActCoolFan = &g_actCoolFanLedc;
             } else {
@@ -958,6 +1025,7 @@ namespace Hardware {
                 g_actAbPumpServo.begin(hw.abPumpPin, hw.abPumpMinUs, hw.abPumpMaxUs);
                 g_actAbPump = &g_actAbPumpServo;
             } else if (hw.abPumpType == 1) {
+                g_actAbPumpLedc.setOutputRange(hw.abPumpPwmMinPct, hw.abPumpPwmMaxPct);
                 g_actAbPumpLedc.begin(hw.abPumpPin, (uint32_t)hw.abPumpFreqHz, (uint8_t)hw.abPumpResBits);
                 g_actAbPump = &g_actAbPumpLedc;
             } else {
@@ -972,6 +1040,7 @@ namespace Hardware {
                                         hw.oilScavPumpMaxUs);
                 g_actOilScavPump = &g_actOilScavServo;
             } else if (hw.oilScavPumpType == 1) {
+                g_actOilScavLedc.setOutputRange(hw.oilScavPumpPwmMinPct, hw.oilScavPumpPwmMaxPct);
                 g_actOilScavLedc.begin(hw.oilScavPumpPin,
                                        (uint32_t)hw.oilScavPumpFreqHz,
                                        (uint8_t)hw.oilScavPumpResBits);
@@ -989,6 +1058,7 @@ namespace Hardware {
                 g_actFuelPump2Servo.begin(hw.fuelPump2Pin, hw.fuelPump2MinUs, hw.fuelPump2MaxUs);
                 g_actFuelPump2 = &g_actFuelPump2Servo;
             } else {
+                g_actFuelPump2Ledc.setOutputRange(hw.fuelPump2PwmMinPct, hw.fuelPump2PwmMaxPct);
                 g_actFuelPump2Ledc.begin(hw.fuelPump2Pin,
                                          (uint32_t)hw.fuelPump2FreqHz,
                                          (uint8_t)hw.fuelPump2ResBits);
@@ -1000,6 +1070,7 @@ namespace Hardware {
                 g_actBleedValveServo.begin(hw.bleedValvePin, hw.bleedValveMinUs, hw.bleedValveMaxUs);
                 g_actBleedValve = &g_actBleedValveServo;
             } else if (hw.bleedValveType == 2) {
+                g_actBleedValveLedc.setOutputRange(hw.bleedValvePwmMinPct, hw.bleedValvePwmMaxPct);
                 g_actBleedValveLedc.begin(hw.bleedValvePin, (uint32_t)hw.bleedValveFreqHz, (uint8_t)hw.bleedValveResBits);
                 g_actBleedValve = &g_actBleedValveLedc;
             } else {
@@ -1009,6 +1080,7 @@ namespace Hardware {
         }
         if (hw.hasPropPitch && hw.propPitchPin >= 0) {
             if (hw.propPitchType == 1) {
+                g_actPropPitchLedc.setOutputRange(hw.propPitchPwmMinPct, hw.propPitchPwmMaxPct);
                 g_actPropPitchLedc.begin(hw.propPitchPin, (uint32_t)hw.propPitchFreqHz, (uint8_t)hw.propPitchResBits);
                 g_actPropPitch = &g_actPropPitchLedc;
             } else if (hw.propPitchType == 2) {
@@ -1019,14 +1091,21 @@ namespace Hardware {
                 g_actPropPitch = &g_actPropPitchServo;
             }
         }
-        if (hw.hasGlowPlug && hw.glowPlugPin >= 0)
-            g_actGlowPlug.begin(hw.glowPlugPin, (uint32_t)hw.glowPlugFreqHz,
-                                 (uint8_t)hw.glowPlugResBits);
+        if (hw.hasGlowPlug && hw.glowPlugPin >= 0) {
+            if (hw.glowPlugOutputType == 1) {
+                g_actGlowPlugRelay.begin(hw.glowPlugPin, hw.glowPlugActiveH);
+            } else {
+                g_actGlowPlug.setOutputRange(hw.glowPlugPwmMinPct, hw.glowPlugPwmMaxPct);
+                g_actGlowPlug.begin(hw.glowPlugPin, (uint32_t)hw.glowPlugFreqHz,
+                                    (uint8_t)hw.glowPlugResBits);
+            }
+        }
         if (hw.hasGlowPlug && hw.glowPlugType == 2 && hw.wetGlowFuelPin >= 0) {
             if (hw.wetGlowFuelType == 2) {
                 g_actWetGlowFuelServo.begin(hw.wetGlowFuelPin, hw.wetGlowFuelMinUs, hw.wetGlowFuelMaxUs);
                 g_actWetGlowFuel = &g_actWetGlowFuelServo;
             } else if (hw.wetGlowFuelType == 1) {
+                g_actWetGlowFuelLedc.setOutputRange(hw.wetGlowFuelPwmMinPct, hw.wetGlowFuelPwmMaxPct);
                 g_actWetGlowFuelLedc.begin(hw.wetGlowFuelPin, (uint32_t)hw.wetGlowFuelFreqHz,
                                            (uint8_t)hw.wetGlowFuelResBits);
                 g_actWetGlowFuel = &g_actWetGlowFuelLedc;
@@ -1050,15 +1129,17 @@ namespace Hardware {
         if (hw.hasStarterEn) {
             g_actStarterEn.set(ed.starterEnabled ? 1.0f : 0.0f);
         }
-        // Only allow starter to spin after the enable relay delay has elapsed
+        // Only allow starter to spin once the enable relay is on and its
+        // delay has elapsed — with the relay off, the demand must not reach
+        // the ESC/motor (the relay may not be the sole power gate).
         if (hw.hasStarter && g_actStarter) {
             static bool  _prevEn2 = false;
             static unsigned long _enMs2 = 0;
             if (ed.starterEnabled && !_prevEn2) _enMs2 = millis();
             _prevEn2 = ed.starterEnabled;
             bool delayOk = !hw.hasStarterEn ||
-                           !ed.starterEnabled ||
-                           ((millis() - _enMs2) >= (unsigned long)hw.starterEnDelayMs);
+                           (ed.starterEnabled &&
+                            ((millis() - _enMs2) >= (unsigned long)hw.starterEnDelayMs));
             g_actStarter->set(delayOk ? ed.starterDemand : 0.0f);
         }
         if (hw.hasAbPump      && g_actAbPump)      g_actAbPump->set(ed.abPumpDemand);
@@ -1080,9 +1161,15 @@ namespace Hardware {
                 static uint32_t s_coilPhaseStart = 0;
                 if (ed.igniterOn) {
                     uint32_t now = millis();
-                    bool endCharge = hw.hasIgniterCurrentSensor
-                        ? (ed.igniterCurrentAmps >= hw.igniterCoilSatAmps)
-                        : ((now - s_coilPhaseStart) >= (uint32_t)hw.igniterDwellMs);
+                    // Dwell time is always the hard cap on charge duration;
+                    // the current sensor only ends the charge early at coil
+                    // saturation.  Without the cap, a failed-low sensor (or a
+                    // weak supply never reaching satAmps) would leave the coil
+                    // energized continuously, overheating coil and driver.
+                    bool endCharge = (now - s_coilPhaseStart) >= (uint32_t)hw.igniterDwellMs;
+                    if (hw.hasIgniterCurrentSensor &&
+                        ed.igniterCurrentAmps >= hw.igniterCoilSatAmps)
+                        endCharge = true;
                     if (s_coilCharging) {
                         if (endCharge) {
                             s_coilCharging   = false;
@@ -1121,9 +1208,12 @@ namespace Hardware {
                 static uint32_t s_coil2PhaseStart = 0;
                 if (ed.igniter2On) {
                     uint32_t now = millis();
-                    bool endCharge = hw.hasIgniter2CurrentSensor
-                        ? (ed.igniter2CurrentAmps >= hw.igniter2CoilSatAmps)
-                        : ((now - s_coil2PhaseStart) >= (uint32_t)hw.igniter2DwellMs);
+                    // Same dwell hard cap as igniter 1 — current sensing only
+                    // ends the charge early, never extends it.
+                    bool endCharge = (now - s_coil2PhaseStart) >= (uint32_t)hw.igniter2DwellMs;
+                    if (hw.hasIgniter2CurrentSensor &&
+                        ed.igniter2CurrentAmps >= hw.igniter2CoilSatAmps)
+                        endCharge = true;
                     if (s_coil2Charging) {
                         if (endCharge) {
                             s_coil2Charging   = false;
@@ -1159,7 +1249,10 @@ namespace Hardware {
             g_actPropPitch->set(ed.propPitchDemand);
         if (hw.hasGlowPlug) {
             float glowDemand = constrain(ed.glowPlugDemand, 0.0f, 1.0f);
-            g_actGlowPlug.set(glowDemand);
+            if (hw.glowPlugOutputType == 1)
+                g_actGlowPlugRelay.setOn(glowDemand > 0.001f);
+            else
+                g_actGlowPlug.set(glowDemand);
             if (hw.glowPlugType == 2 && g_actWetGlowFuel) {
                 static bool s_wetGlowActive = false;
                 static unsigned long s_wetGlowOnMs = 0;
@@ -1167,17 +1260,22 @@ namespace Hardware {
                 if (commandOn && !s_wetGlowActive) {
                     s_wetGlowActive = true;
                     s_wetGlowOnMs = millis();
+                    ed.wetGlowFuelDemand = 0.0f;
                     g_actWetGlowFuel->off();
                 } else if (!commandOn) {
                     s_wetGlowActive = false;
                     s_wetGlowOnMs = 0;
+                    ed.wetGlowFuelDemand = 0.0f;
                     g_actWetGlowFuel->off();
                 }
                 if (commandOn && s_wetGlowActive &&
                     (millis() - s_wetGlowOnMs) >= (unsigned long)hw.wetGlowFuelDelayMs) {
                     float fuelDemand = hw.wetGlowFuelType == 0 ? 1.0f : (hw.wetGlowFuelDemandPct / 100.0f);
-                    g_actWetGlowFuel->set(constrain(fuelDemand, 0.0f, 1.0f));
+                    ed.wetGlowFuelDemand = constrain(fuelDemand, 0.0f, 1.0f);
+                    g_actWetGlowFuel->set(ed.wetGlowFuelDemand);
                 }
+            } else {
+                ed.wetGlowFuelDemand = 0.0f;
             }
         }
     }
@@ -1200,7 +1298,10 @@ namespace Hardware {
         if (hw.hasFuelPump2 && g_actFuelPump2) g_actFuelPump2->off();
         if (hw.hasBleedValve && g_actBleedValve)  g_actBleedValve->off();
         if (hw.hasPropPitch  && g_actPropPitch)   g_actPropPitch->set(0.0f);  // return to fine pitch
-        if (hw.hasGlowPlug)    g_actGlowPlug.off();
+        if (hw.hasGlowPlug) {
+            if (hw.glowPlugOutputType == 1) g_actGlowPlugRelay.off();
+            else g_actGlowPlug.off();
+        }
         if (hw.hasGlowPlug && hw.glowPlugType == 2 && g_actWetGlowFuel) g_actWetGlowFuel->off();
         auto& _ed = EngineData::instance();
         _ed.throttleDemand  = 0;
@@ -1217,6 +1318,7 @@ namespace Hardware {
         _ed.abFuelOffset     = 0.0f;
         _ed.bleedValveOpen   = false;
         _ed.glowPlugDemand   = 0;
+        _ed.wetGlowFuelDemand = 0;
         _ed.surgeDetected    = false;
         _ed.igniter2On      = false;
         _ed.abMode          = ABMode::Off;

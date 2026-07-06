@@ -36,6 +36,10 @@ public:
     static void begin();
     static void tick();
     static bool otaInProgress();
+    // True while a hardware/config save has scheduled the apply-reboot.
+    // Core-1 command handling must reject START in this window too — the
+    // physical button and cluster serial bypass the web preflight.
+    static bool rebootPending();
 
 private:
     static void _setupRoutes();

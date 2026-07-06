@@ -18,7 +18,10 @@ public:
 
     void begin() override {
         if (_doutPin < 0 || _clockPin < 0) return;
-        pinMode(_doutPin, INPUT);
+        // Pull-up: a real HX711 drives DOUT push-pull (idle HIGH between
+        // samples); without a converter the pin would float and could read
+        // LOW, clocking in 24 bits of noise as a healthy torque reading.
+        pinMode(_doutPin, INPUT_PULLUP);
         pinMode(_clockPin, OUTPUT);
         digitalWrite(_clockPin, LOW);
         _healthy = false;

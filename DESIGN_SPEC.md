@@ -34,7 +34,8 @@ Non-engineers can configure and operate it; engineers can extend it without touc
 OpenTurbine/
 ├── platformio.ini
 ├── hardware_profile.h          ← compile-time factory defaults / profile identity
-├── partitions.csv              ← dual OTA slots + LittleFS
+├── partitions.csv              ← 4 MB OTA layout (esp32dev)
+├── partitions_16mb.csv         ← 16 MB OTA layout (esp32s3dev)
 ├── README.md
 ├── DESIGN_SPEC.md
 │
@@ -116,9 +117,16 @@ OpenTurbine/
 
 ## 3. hardware_profile.h
 
-Factory defaults for a new build. Normal beta-user setup is done in the web UI
-and saved into `ecu_config.json`; `hardware_profile.h` only supplies the first
-profile identity and fallback pins/features when no engine file exists yet.
+`hardware_profile.h` supplies the compile-time default topology used to generate
+`ecu_config.json` on first boot and factory reset; after that the saved engine
+file is the source of truth and normal setup is done on the web Hardware page.
+
+The **shipped default** is a deliberately minimal simple turbojet — throttle and
+idle inputs, throttle/fuel-pump ESC, oil pump, one igniter, START/STOP buttons,
+and a timed startup (external air/leaf-blower start); no sensors and no automated
+safety. The annotated block below is a **fuller example** that shows the available
+options (N1, EGT, oil pressure, starter, safety monitors, a sensor-verified
+sequence) — it is illustrative, not the default.
 
 ```cpp
 // ── Profile identity ──────────────────────────────────────────

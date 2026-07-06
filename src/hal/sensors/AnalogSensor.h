@@ -56,6 +56,9 @@ public:
     }
 
     void update() override {
+        // No pin assigned (begin() was pin-gated) — analogRead(-1) would
+        // spam core error logs every sample and feed 0 counts into the avg.
+        if (_pin < 0) return;
         unsigned long now = millis();
         if (now - _lastMs < SAMPLE_INTERVAL_MS) return;
         _lastMs = now;
@@ -119,6 +122,10 @@ public:
     float getValue() override {
         float raw = _avg.avg();
         if (_cal.rawMax <= _cal.rawMin) return 0;
+        // Clamp to the calibrated electrical range — outside it the line is
+        // extrapolation, not measurement, so a railed or drifted input would
+        // read as a plausible physical value. Matches AnalogPolySensor.
+        raw = constrain(raw, _cal.rawMin, _cal.rawMax);
         float t = (raw - _cal.rawMin) / (_cal.rawMax - _cal.rawMin);
         return _cal.valMin + t * (_cal.valMax - _cal.valMin);
     }
@@ -141,6 +148,12 @@ public:
         return (_avg.avg() > _threshold) ? 1.0f : 0.0f;
     }
     bool isHealthy() override { return true; }
+
+    // Rail check exposed separately: railed/disconnected wiring is worth
+    // surfacing on the dashboard, but a strong flame can legitimately
+    // saturate the ADC, so this must not gate the safety-side
+    // flameDetected logic (isHealthy stays unconditionally true).
+    bool railHealthy() const { return _railCheck(); }
 
     int rawCounts() const { return (int)_avg.avg(); }
 

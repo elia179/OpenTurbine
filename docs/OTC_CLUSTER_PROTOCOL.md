@@ -101,6 +101,11 @@ All numeric values are sent in canonical ECU units:
 | 6 | watt |
 | 7 | percent |
 | 8 | flow units configured by calibration |
+| 9 | raw counts (uncalibrated ADC/input value) |
+| 10 | boolean (0 or 1) |
+| 11 | milliseconds |
+| 12 | count |
+| 13 | ampere |
 
 Clusters may convert to imperial or local display units after parsing.
 
@@ -165,6 +170,10 @@ OTC:CMD,DYNAMIC_IDLE_TOGGLE
 The ECU replies with an ACK frame. Commands are queued through the same command
 path as the web UI, so the normal mode and safety gates still apply. STOP uses
 the emergency-stop queue path.
+
+Command lines are limited to 167 characters. An over-long line is discarded
+whole and NAK'd with `LINE_TOO_LONG`. This bounds `OTC:SUB,...` to about 159
+characters of field keys per request.
 
 `SUB,DEFAULT` returns to the compact default stream. `SUB,ALL` sends every
 currently fitted/available field and intentionally omits empty hardware to avoid

@@ -52,6 +52,15 @@ function installedBrowser() {
     await page.evaluate(() => localStorage.clear());
     await page.reload();
     await waitShown(page, '#n1-card', true);
+
+    // Fresh profile → the beta safety notice must appear and gate clicks;
+    // acknowledge it the way a tester would, then continue the smoke run.
+    await waitShown(page, '#beta-ack-overlay', true);
+    await page.locator('#beta-ack-check').check();
+    await page.locator('#beta-ack-btn').click();
+    await waitShown(page, '#beta-ack-overlay', false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('ot_beta_notice_ack_v1')), '1');
+    results.push('beta safety notice gates a fresh profile and is dismissible via checkbox + continue');
     assert.equal(await text(page, '#fw-version'), 'vsim-1.0.0');
     assert.equal(await text(page, '#throttle-input-pct'), '50.0');
     assert.equal(await page.evaluate(() =>
@@ -148,7 +157,9 @@ function installedBrowser() {
     await page.waitForSelector('#cf-tot_limit');
     assert.equal(await page.locator('#cf-tot_limit').inputValue(), '1328');
     assert.equal(await page.locator('#cf-tot_safe_margin').inputValue(), '72');
-    assert.equal(await page.locator('#cf-tot_limit').getAttribute('min'), '32');
+    // tot_limit is zeroOff ("0 = disabled"): the raw 0 sentinel must remain
+    // enterable in every display unit, so min stays 0 even in °F mode.
+    assert.equal(await page.locator('#cf-tot_limit').getAttribute('min'), '0');
     assert.equal(await page.locator('text=Automation Rules').count(), 0);
     results.push('config loads converted values without duplicating control-rule editing');
 
@@ -397,6 +408,9 @@ function installedBrowser() {
     assert.equal(saved.hardware.profile_id, saved.settings.profile_id);
     results.push('full engine-file restore accepts matching identities and rejects crossed sections');
 
+    // The log page now follows the site-wide unit preference; earlier steps
+    // in this run left °F/PSI active, so pin to canonical units first.
+    await page.evaluate(() => localStorage.setItem('ot_units', JSON.stringify({ temp: 'C', press: 'bar' })));
     await page.goto(`${base}/log.html`);
     await page.waitForFunction(() => document.body.textContent.includes('Run #'));
     const logText = await page.locator('body').textContent();
@@ -404,7 +418,12 @@ function installedBrowser() {
     assert.match(logText, /Peak TIT/);
     assert.match(logText, /TIT 840/);
     assert.match(logText, /Oil 0\.55 bar/);
-    results.push('flight log renders firmware event keys, TIT peaks, and fault summaries');
+    // And the same summaries convert when the preference is imperial.
+    await page.evaluate(() => localStorage.setItem('ot_units', JSON.stringify({ temp: 'F', press: 'psi' })));
+    await page.reload();
+    await page.waitForFunction(() => document.body.textContent.includes('Run #'));
+    assert.match(await page.locator('body').textContent(), /TIT 1544/);
+    results.push('flight log renders firmware event keys, TIT peaks, and follows the unit preference');
 
     console.log(`UI smoke test passed (${results.length} checks):`);
     results.forEach(result => console.log(`- ${result}`));

@@ -30,6 +30,7 @@ public:
     float deadbandRpm   = 300.0f;
     float rpmLimit      = 60000.0f;  // disengage above this
     float minMultiplier = 0.75f;     // floor = configured idle throttle * multiplier
+    float maxMultiplier = 1.50f;     // ceiling = configured idle max throttle * multiplier
 
     void begin() override {
         reset();
@@ -94,7 +95,14 @@ public:
         // minimum (for example 54% instead of an intended 7.2%).
         float minFloor = constrain((Config::throttleIdleMinPct / 100.0f) * minMultiplier,
                                    0.0f, 1.0f);
-        _idleFloor = constrain(_idleFloor + rampStep, minFloor, 1.0f);
+        // Ceiling near the calibrated idle max: a healthy-but-underreading N1
+        // (e.g. wrong pulses-per-rev) keeps error positive forever and would
+        // otherwise wind the floor to 100% throttle that the pilot cannot
+        // override. The multiplier leaves headroom for load steps (oil pump,
+        // cold oil) without giving the loop full-throttle authority.
+        float maxFloor = constrain((Config::throttleIdleMaxPct / 100.0f) * maxMultiplier,
+                                   minFloor, 1.0f);
+        _idleFloor = constrain(_idleFloor + rampStep, minFloor, maxFloor);
 
         // ── Integral path (optional — off when idleIGain = 0) ──
         // Accumulates persistent steady-state error and adds an offset to
@@ -111,7 +119,7 @@ public:
         }
 
         // Final demand = ramp floor + integral correction
-        float demand = constrain(_idleFloor + _integrator, minFloor, 1.0f);
+        float demand = constrain(_idleFloor + _integrator, minFloor, maxFloor);
 
         // Apply as minimum floor on throttleDemand
         if (ed.throttleDemand < demand) {

@@ -40,8 +40,10 @@ public:
         // onExit() cleanup runs (e.g. ABIgnite restores pre-torch throttle).
         // Without this, interrupting mid-sequence (e.g. fault during AB ignition)
         // leaves actuators in whatever state the block had set them.
+        // Configured exit side-actions run too — same pairing as the Complete path.
         if (_running && _blocks && _idx < _count) {
             _blocks[_idx]->onExit();
+            _applyActions(_exitActions, _idx);
         }
         _blocks  = blocks;
         _count   = count;
@@ -58,6 +60,7 @@ public:
     void stopSequence() {
         if (_running && _idx < _count) {
             _blocks[_idx]->onExit();
+            _applyActions(_exitActions, _idx);
         }
         _running = false;
         _blocks  = nullptr;
@@ -107,6 +110,7 @@ public:
                 }
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "abort");
                 _blocks[_idx]->onExit();
+                _applyActions(_exitActions, _idx);
                 _running = false;
                 if (_abort) _abort();
                 break;
@@ -124,6 +128,7 @@ public:
                 }
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "fault");
                 _blocks[_idx]->onExit();
+                _applyActions(_exitActions, _idx);
                 _running = false;
                 if (_fault) _fault();
                 break;

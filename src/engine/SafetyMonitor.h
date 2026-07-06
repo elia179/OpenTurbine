@@ -9,7 +9,8 @@
 // ============================================================
 //  SafetyMonitor — reads EngineData, triggers shutdowns on fault
 //
-//  Overspeed is always immediate (no interval gate).
+//  Overspeed runs every tick (no interval gate) with a short
+//  raw-reading confirmation (OVERSPEED_CONFIRM_MS).
 //  All other checks run at checkIntervalMs (default 100 ms).
 //  All checks bypassable with skipSafetyChecks in DEV_MODE.
 //
@@ -45,7 +46,11 @@ public:
         _relightStartMs   = 0;
         _relightStartEgt  = 0.0f;
         _runningEgtRef    = -1.0f;
+        _refDemand        = 0.0f;
         _startupSpooled   = false;
+        _overspeedPending = false;
+        _resetEgtRing();
+        _refWindowOpen    = false;
     }
 
     // Allow external callers (e.g. DI fault handler) to inject a fault code
@@ -56,8 +61,12 @@ public:
 
     void check() {
         auto& ed = EngineData::instance();
-        if (ed.skipSafetyChecks || ed.benchMode) return;
 
+        // Mode bookkeeping runs BEFORE the skip/bench gate: mode transitions
+        // must reset detection state even while checks are skipped, otherwise
+        // a stale _flameoutMs/_runningEgtRef from a previous run survives into
+        // the next one and the first un-skipped tick trips instantly (stale
+        // absolute timestamp = zero confirmation time).
         SysMode m = ed.mode;
         bool inOp = (m == SysMode::STARTUP || m == SysMode::RUNNING);
         if (!inOp) {
@@ -65,6 +74,10 @@ public:
             _relightStartMs = 0;
             _relightStartEgt = 0.0f;
             _runningEgtRef   = -1.0f;
+            _refDemand       = 0.0f;
+            _resetEgtRing();
+            _refWindowOpen   = false;
+            _overspeedPending = false;
             _lastEgt        = -1.0f;
             _lastEgtMs      = 0;
             ed.totRiseRate  = 0.0f;
@@ -79,6 +92,8 @@ public:
             return;
         }
 
+        if (ed.skipSafetyChecks || ed.benchMode) return;
+
         // Hot start aborts if the configured engine temperature source is still too high.
         const bool hotStartEgt = Config::primaryEgtHealthy(ed)
                               && Config::primaryEgtC(ed) > Config::hotStartTotThreshold;
@@ -89,16 +104,44 @@ public:
             return;
         }
 
-        // ── Overspeed — always immediate ─────────────────────
+        // ── Overspeed — every tick, short raw-reading confirmation ──
+        // Deliberately ignores n1Healthy: a genuine fast runaway raises the
+        // JUMP health flag on every 100 ms sample (rate > jumpThreshold ×
+        // rpmLimit/s), which would suppress this exact protection. Instead
+        // the raw reading must stay above the limit for OVERSPEED_CONFIRM_MS
+        // (≥2, typically 3 sensor samples at the 100 ms sensor update rate),
+        // so a single noise spike still cannot trip it.
         if (HardwareConfig::safetyOverspeed && HardwareConfig::hasN1Rpm &&
-            ed.n1Healthy && ed.n1Rpm > rpmLimit) {
-            _trigger("OVERSPEED");
-            return;
+            ed.n1Rpm > rpmLimit) {
+            unsigned long nowOs = millis();
+            if (!_overspeedPending) {
+                _overspeedPending = true;
+                _overspeedSinceMs = nowOs;
+            } else if (nowOs - _overspeedSinceMs >= OVERSPEED_CONFIRM_MS) {
+                _trigger("OVERSPEED");
+                return;
+            }
+        } else {
+            _overspeedPending = false;
         }
 
         // ── Interval checks ──────────────────────────────────
         unsigned long now = millis();
         if (now - _lastCheckMs < checkIntervalMs) return;
+        // Gap guard: a hole in monitoring (skip-safety toggled off mid-run,
+        // scheduler stall) makes all EGT history stale — reset it so old
+        // snapshots can't fake 2 s of stability, and clear any in-progress
+        // flameout timer so a stale absolute timestamp can't trip with zero
+        // fresh confirmation time.
+        if (_lastCheckMs != 0 && now - _lastCheckMs > CHECK_GAP_RESET_MS) {
+            _resetEgtRing();
+            _lastEgt         = -1.0f;
+            _lastEgtMs       = 0;
+            ed.totRiseRate   = 0.0f;
+            _flameoutMs      = 0;
+            _relightStartMs  = 0;
+            _relightStartEgt = 0.0f;
+        }
         _lastCheckMs = now;
 
         // EGT rate-of-rise.
@@ -158,7 +201,13 @@ public:
                     // Relight path: enabled, armed, N1 still viable
                     bool n1Ok = HardwareConfig::hasN1Rpm && ed.n1Healthy
                              && ed.n1Rpm >= Config::relightMinRpm;
-                    if (Config::relightEnabled && ed.relightArmed && HardwareConfig::hasIgniter && n1Ok && _relight) {
+                    bool relightIgnitionOk = false;
+                    switch (Config::relightIgnitionTarget) {
+                        case 1: relightIgnitionOk = HardwareConfig::hasIgniter2; break;
+                        case 2: relightIgnitionOk = HardwareConfig::hasGlowPlug; break;
+                        default: relightIgnitionOk = HardwareConfig::hasIgniter; break;
+                    }
+                    if (Config::relightEnabled && ed.relightArmed && relightIgnitionOk && n1Ok && _relight) {
                         if (_relightStartMs == 0) {
                             // First trigger — start continuous ignition
                             _relight();
@@ -270,6 +319,9 @@ public:
                 return;
             }
             if (!ed.n1Healthy && !ed.limpMode) {
+                // Brief ZERO_GLITCH samples are tolerated at the sensor
+                // (RpmHealth::isTrustworthy — PCNTRpmSensor holds the last real
+                // reading), so this only latches on persistent sensor faults.
                 ed.limpMode = true;  // RPM sensor lost → limp
             }
         }
@@ -288,6 +340,29 @@ public:
 
 private:
     static constexpr uint8_t SURGE_BUF = 10; // ~1 s of N1 samples at 100 ms interval
+    // ≥2 (typically 3) fresh 100 ms RPM sensor samples must confirm overspeed.
+    static constexpr unsigned long OVERSPEED_CONFIRM_MS = 250;
+    // Flameout EGT-reference follow-down (source 3): the reference may only
+    // follow EGT to a lower operating point when commanded power has dropped
+    // by DEMAND_DROP CUMULATIVELY since the reference was last baselined
+    // (_refDemand) — the physical discriminator between a throttle-back
+    // (EGT settles lower, demand dropped) and a flameout at constant power
+    // (EGT decays, demand unchanged). Cumulative-since-baseline catches
+    // arbitrarily slow ramps (a windowed rate test cannot); DEMAND_DROP
+    // stays above governor dither.
+    static constexpr float         DEMAND_DROP      = 0.10f; // fraction of full-scale demand
+    // EGT stability is judged over honest wall time — |ΔEGT| across a ~2 s
+    // snapshot ring — never per-tick rates: the default MAX6675 updates every
+    // 250 ms while checks run at 100 ms, so consecutive ticks can read the
+    // identical value and any rate test would call moving EGT "settled".
+    // 2.0 °C over ~2 s ≈ 1 °C/s, and is comfortably above the 0.25 °C
+    // quantization of the thermocouple converters.
+    static constexpr uint8_t       EGT_RING_SLOTS     = 4;
+    static constexpr unsigned long EGT_RING_SAMPLE_MS = 500;  // 4 × 500 ms ≈ 2 s baseline
+    static constexpr float         EGT_STABLE_BAND    = 2.0f; // °C over the ring span
+    // A hole in monitoring longer than this (skip-safety toggle, stall)
+    // invalidates EGT history and any in-progress detection timestamps.
+    static constexpr unsigned long CHECK_GAP_RESET_MS = 1500;
 
     ShutdownFn    _enterShutdown  = nullptr;
     ShutdownFn    _enterFault     = nullptr;
@@ -300,10 +375,24 @@ private:
     float         _lastEgt        = -1.0f;   // for dEGT/dt calculation
     unsigned long _lastEgtMs      = 0;
     float         _runningEgtRef  = -1.0f;
+    float         _refDemand      = 0.0f;    // throttleDemand captured when the ref was (re)baselined
+    bool          _refWindowOpen  = false;   // follow-down window latched open until EGT re-stabilizes
+    float         _egtRing[EGT_RING_SLOTS] = {}; // rolling ~2 s EGT snapshots for the stability test
+    uint8_t       _egtRingIdx     = 0;
+    uint8_t       _egtRingCount   = 0;
+    unsigned long _egtRingLastMs  = 0;
+    bool          _overspeedPending = false; // raw reading above rpmLimit, confirming
+    unsigned long _overspeedSinceMs = 0;     // millis() when the overspeed reading began
     bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
     uint8_t       _n1BufIdx       = 0;
     uint8_t       _n1BufCount     = 0;
+
+    void _resetEgtRing() {
+        _egtRingIdx    = 0;
+        _egtRingCount  = 0;
+        _egtRingLastMs = 0;
+    }
 
     int _effectiveFlameoutSource() const {
         if (flameoutSource >= 1 && flameoutSource <= 3) return flameoutSource;
@@ -327,9 +416,110 @@ private:
             _runningEgtRef = -1.0f;
             return;
         }
-        if (!Config::primaryEgtHealthy(ed)) return;
+        // Reference is only meaningful in RUNNING — the startup EGT spike
+        // would otherwise poison it and read normal post-start EGT as a drop.
+        // Resetting the ring here also means it starts filling at RUNNING
+        // entry, so the first stability verdict is ≥ 2 s into the run.
+        if (ed.mode != SysMode::RUNNING) {
+            _runningEgtRef = -1.0f;
+            _refDemand     = 0.0f;
+            _refWindowOpen = false;
+            _resetEgtRing();
+            return;
+        }
+
+        if (!Config::primaryEgtHealthy(ed)) {
+            // Snapshots from before a sensor dropout must not fake stability
+            // once it recovers.
+            _resetEgtRing();
+            return;
+        }
         float egt = Config::primaryEgtC(ed);
-        if (_runningEgtRef < 0.0f || egt > _runningEgtRef) _runningEgtRef = egt;
+
+        // Rolling ~2 s snapshot ring; "stable" = the reading moved less than
+        // EGT_STABLE_BAND across the whole span. Two-sided by construction,
+        // immune to duplicate sensor reads and converter quantization.
+        unsigned long now = millis();
+        if (_egtRingLastMs == 0 || now - _egtRingLastMs >= EGT_RING_SAMPLE_MS) {
+            _egtRing[_egtRingIdx] = egt;
+            _egtRingIdx = (uint8_t)((_egtRingIdx + 1) % EGT_RING_SLOTS);
+            if (_egtRingCount < EGT_RING_SLOTS) _egtRingCount++;
+            _egtRingLastMs = now;
+        }
+        // Once full, _egtRingIdx points at the oldest slot (~2 s ago).
+        const bool stable = (_egtRingCount >= EGT_RING_SLOTS)
+                         && fabsf(egt - _egtRing[_egtRingIdx]) < EGT_STABLE_BAND;
+
+        // First seed after RUNNING entry: only from truly settled EGT. The
+        // handoff can arrive mid-spike — on the rising side as easily as the
+        // decaying tail (Spool completes on N1, not EGT) — and seeding or
+        // ratcheting on a transient peak would read the settle to steady
+        // idle EGT as a flameout drop. Until seeded, source 3 is
+        // deliberately blind (_flameoutLost needs _runningEgtRef >= 0);
+        // UNDERSPEED / a flame sensor cover that window when fitted.
+        if (_runningEgtRef < 0.0f) {
+            if (stable) {
+                _runningEgtRef = egt;
+                _refDemand     = ed.throttleDemand;
+            }
+            return;
+        }
+
+        // Follow-down window: opens when commanded power has dropped
+        // DEMAND_DROP below the demand captured at the last baseline —
+        // CUMULATIVE since baseline, so an arbitrarily slow ramp qualifies
+        // once it has travelled 0.10 in total. This is the physical
+        // discriminator: a throttle-back lowers EGT with lowered demand, a
+        // flameout lowers EGT with demand unchanged. The window latches open
+        // until EGT is stable again (a lagged probe settles long after the
+        // demand change, and demand wiggle after a chop must not strand a
+        // high reference against a still-falling probe); it also un-freezes
+        // an in-progress detection — if the operator really pulled power,
+        // the drop is not a flameout. KNOWN, DOCUMENTED LIMITATION: a
+        // flameout during/shortly after an acknowledged throttle reduction
+        // is masked while the window is open (long for heavily lagged
+        // probes). With N1 fitted, UNDERSPEED is the backstop; in an
+        // EGT-only build nothing detects that case — config validation
+        // emits a warning saying exactly that.
+        if (!_refWindowOpen && ed.throttleDemand < _refDemand - DEMAND_DROP) {
+            _refWindowOpen = true;
+        }
+        if (_refWindowOpen) {
+            if (egt < _runningEgtRef) _runningEgtRef = egt;
+            if (stable) {
+                // Re-baseline at the new operating point: close the window
+                // and re-arm detection.
+                _runningEgtRef = egt;
+                _refDemand     = ed.throttleDemand;
+                _refWindowOpen = false;
+            }
+            return;
+        }
+
+        // Ratchet up — but only to a SETTLED higher operating point. An
+        // acceleration overshoot peak is transient (never stable) and must
+        // not be captured: against a peak-ratcheted reference, the settle
+        // back to steady EGT at held demand would read as a flameout drop.
+        // While EGT is above the reference, _flameoutLost is false anyway.
+        if (egt > _runningEgtRef) {
+            if (stable) {
+                _runningEgtRef = egt;
+                _refDemand     = ed.throttleDemand;
+            }
+            return;
+        }
+
+        // Constant commanded power, EGT at or below the reference: stay
+        // frozen so a genuine flameout accumulates the full drop regardless
+        // of probe lag (any real flameout falls far faster than the
+        // stability band of ~1 °C/s until the drop is essentially
+        // complete). Slow thermal/ambient drift is absorbed only while no
+        // detection is in progress — a constant-power detection can never
+        // be re-baselined away.
+        if (stable && _flameoutMs == 0) {
+            _runningEgtRef = egt;
+            _refDemand     = ed.throttleDemand;
+        }
     }
 
     bool _flameoutLost(const EngineData& ed) const {
@@ -368,7 +558,7 @@ private:
             "What to do: Do not restart until you have checked the oil level, oil pump, "
             "oil lines, and fittings for leaks. Verify oil pressure sensor calibration.";
         else if (strcmp(code, "OIL_ZERO")   == 0) desc =
-            "Oil pressure read near zero — possible pump failure or broken fitting.\n"
+            "Oil pressure read near zero - possible pump failure or broken fitting.\n"
             "What to do: Inspect oil pump, lines, and fittings before any restart. "
             "Do not run the engine until oil supply is confirmed.";
         else if (strcmp(code, "FLAMEOUT")   == 0) desc =
@@ -400,7 +590,7 @@ private:
             "What to do: Check fuel tank level, fuel filter, pump, and lines. "
             "Inspect for leaks or blockages before attempting another run.";
         else if (strcmp(code, "BATT_LOW")      == 0) desc =
-            "Battery / bus voltage too low — risk of control system brownout.\n"
+            "Battery / bus voltage too low - risk of control system brownout.\n"
             "What to do: Charge or replace the battery. Check power wiring for resistance. "
             "Do not run the engine until the voltage is stable above the limit.";
         else if (strcmp(code, "SURGE")         == 0) desc =

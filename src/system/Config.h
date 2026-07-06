@@ -17,7 +17,6 @@
 class Config {
 public:
     static constexpr const char* PATH        = "/ecu_config.json";
-    static constexpr const char* LEGACY_PATH = "/config.json";
     static constexpr const char* SECTION     = "settings";
 
     // ── Engine parameters ─────────────────────────────────────
@@ -107,6 +106,7 @@ public:
     // ── Relight ───────────────────────────────────────────────
     static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
     static float    relightMinRpm;       // min N1 to attempt relight (falls below → fault)
+    static int      relightIgnitionTarget; // 0=Igniter 1, 1=Igniter 2, 2=Glow/Wet Glow
     static int      relightConfirmSource; // 0=auto, 1=flame, 2=N1 recovered, 3=selected EGT rise
     static float    relightConfirmRpm;
     static float    relightTotRiseC;
@@ -116,6 +116,7 @@ public:
     static uint32_t toolFuelPrimeMs;
     static uint32_t toolOilPrimeMs;
     static uint32_t toolIgnTestMs;
+    static uint32_t toolIgn2TestMs;
     static uint32_t toolGlowTestMs;
     static float    toolGlowTestPct;
     static uint32_t toolStartTestMs;
@@ -165,6 +166,7 @@ public:
 
     // ── Misc ──────────────────────────────────────────────────
     static bool  igniterOnStart;         // fire igniter while START held during RUNNING
+    static int   manualRelightIgnitionTarget; // 0=Igniter 1, 1=Igniter 2, 2=Glow/Wet Glow
 
     // ── Cooldown hardware selection ───────────────────────────
     static bool  cooldownUseStarter;          // spin starter motor during CooldownSpin block
@@ -238,10 +240,10 @@ public:
     static int   abAssumeIgnitedMs;    // timed mode: wait this long then assume lit
     static int   abFlameTimeoutMs;     // overall timeout to confirm flame before fault
     // Running
+    static float abLightupPumpPct;      // AB pump demand used by ABPumpOn during light-up
     static float abPumpMinPct;         // AB pump minimum % when running
     static float abPumpMaxPct;         // AB pump maximum % when running
     static int   abPumpControlMode;    // 0=fixed max, 1=main throttle, 2=dedicated AB input
-    static bool  abPumpFollowThrottle; // legacy compatibility mirror of mode == 1
     static float abMainFuelOffsetPct;  // add this to main throttle demand while AB running
     static int   abStabilizeMs;        // hold time in ABStabilize block
     static float abStabilizeMaxTot;    // TOT limit during stabilize; abort if exceeded
@@ -257,9 +259,6 @@ public:
     static float oilWarnBar;             // Oil pressure warning threshold for cluster (bar); 0 = use oilRunningMin
     static bool  clusterEnabled;         // Enable cluster serial output at runtime
 
-    // ── Display options ───────────────────────────────────────
-    static bool  pressureSensorsEnabled; // Show P1/P2 pressure sensors on dashboard
-
     static int   effectiveEgtSource();           // 0=none, 1=TOT, 2=TIT
     static bool  primaryEgtHealthy(const EngineData& ed);
     static float primaryEgtC(const EngineData& ed);
@@ -267,11 +266,8 @@ public:
     static const char* primaryEgtLabel();
 
     // ── RC PWM input calibration ──────────────────────────────
-    // GPIO pin selection is done at compile time in hardware_profile.h
-    // (OT_IDLE_INPUT_RC_PWM / OT_THROTTLE_INPUT_RC_PWM).
-    // These runtime values calibrate pulse width only.
-    static int   rcMinUs;          // pulse width = 0 % (typically 1000)
-    static int   rcMaxUs;          // pulse width = 100 % (typically 2000)
+    // GPIO pin and ADC/servo input type are selected in Hardware.
+    // Throttle/idle servo endpoints are calibrated independently on Calibration.
     static int   rcFailsafeMs;     // mark invalid if no pulse within this ms
 
     // ── Power turbine governor (turboshaft / APU) ─────────────
@@ -286,8 +282,6 @@ public:
     static float fp2EndPct;              // FuelPumpRamp end % (0–100)
     static int   fp2RampMs;              // FuelPumpRamp ramp duration (ms)
     static float fp2DemandPct;           // FuelPump2Set fixed demand % (0–100)
-    static float propPitchIdleDeg;       // prop pitch at idle (fine pitch, low drag)
-    static float propPitchMaxDeg;        // prop pitch at full power (coarse)
 
     // ── Glow plug preheating ──────────────────────────────────
     static int   glowPreheatMs;          // total preheat duration (ms)
@@ -317,6 +311,12 @@ public:
     static constexpr uint32_t SLOG_PROP       = 1u << 15;
     static constexpr uint32_t SLOG_OIL_PCT   = 1u << 16;  // oil pump duty %
     static constexpr uint32_t SLOG_LOOP       = 1u << 17;  // ECU loop speed/timing diagnostics
+    static constexpr uint32_t SLOG_GLOW_CURRENT = 1u << 18;
+    static constexpr uint32_t SLOG_IGN_CURRENT  = 1u << 19;
+    static constexpr uint32_t SLOG_IGN2_CURRENT = 1u << 20;
+    static constexpr uint32_t SLOG_OIL_CURRENT  = 1u << 21;
+    static constexpr uint32_t SLOG_WET_GLOW     = 1u << 22; // wet-glow fuel output %
+    static constexpr uint32_t SLOG_OIL_TEMP     = 1u << 23; // oil/gearbox/coolant temp C
     static constexpr uint32_t SLOG_DEFAULT = SLOG_N1 | SLOG_TOT | SLOG_OIL;
     static uint32_t sessionLogMask;
     static uint32_t sessionLogIntervalMs;  // session CSV row interval (default 1000 = 1 Hz)
@@ -356,6 +356,8 @@ public:
         uint8_t actuator;   // 0=cool_fan 1=bleed_valve 2=fuel_pump2
         float   onValue;    // when condition true: 1.0=ON for on/off, 0–1 for variable
         float   offValue;   // when condition false
+        float   hysteresis; // analog deadband in sensor units; 0 = exact threshold
+        uint8_t modeMask;   // SysMode bitmask: STARTUP=2, RUNNING=4
         char    name[24];   // display name (UI only)
     };
     static constexpr int MAX_RULES = 8;
@@ -365,6 +367,12 @@ public:
     // ── Profile ID (read-only after load) ─────────────────────
     static char    profileId[64];
     static bool    profileMatch;
+
+    // ── Boot-load warning (accept + warn, never block) ────────
+    // Set by _fromDoc when a loaded config carries safety-relevant values
+    // beyond the recommended caps. Empty string = no warning. Exposed in
+    // full telemetry frames as "config_load_warning" for the dashboard.
+    static char    loadWarning[192];
 
     // ── Config version ────────────────────────────────────────
     static constexpr uint8_t CONFIG_VERSION = 2;

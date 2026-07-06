@@ -6,10 +6,51 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [1.3.0] — 2026-07-05
+
+Beta-hardening release: two full review/fix passes over firmware and web UI
+(120+ verified findings resolved), plus a working browser-audit suite.
+
+### Changed (default profile)
+- The default `hardware_profile.h` is now a deliberately minimal simple turbojet so a fresh flash boots clean with no warnings: throttle + idle inputs, throttle/fuel-pump ESC, oil pump, one igniter, throttle rate-limiter, START/STOP buttons, and a purely timed startup/shutdown (external air/leaf-blower start). Removed from the default: TOT/oil-pressure/flame sensors, starter + starter-enable, fuel solenoid, oil P-loop, and all sensor-based safety (overspeed/overtemp/low-oil/oil-zero/flameout) — each auto-enables when you fit its sensor. Testers add their real hardware on the Hardware page. The "timed light-up doesn't confirm combustion" warning now only fires when a combustion sensor is actually fitted.
+- Factory reset now regenerates the built-in defaults (identical to first boot) instead of restoring a separate, more-enabled `factory_config.json` — `hardware_profile.h` is the single source of default topology. A curated `/factory_config.json` is still honored as an optional override if present, but none ships.
+
+### Added
+- FAULT is now a real boot state: profile mismatch or a failed config load shows a clear FAULT status and inhibits START while the entire web UI (config/hardware upload, OTA, tools, calibration, logs, Dev Mode) stays usable as the repair path. DI `active_modes` bit 4 (FAULT) and the status LED / cluster / MAVLink FAULT displays are live.
+- Load-and-warn config handling: out-of-range safety limits in `ecu_config.json` load as-is but raise a persistent dashboard banner (`config_load_warning`) and boot flight-log markers, instead of being silently clamped or rejected. Upload/restore accepts the same values with the same warning.
+- `hardware_profile.h` OT_* macros now seed the generated config on first boot and fill missing keys for newly added features; saved JSON always wins afterward. `hardware_profile.h` is the single source of default topology for both first boot and factory reset (see above).
+- Dashboard START button explains why it is disabled (profile mismatch, sequence errors, extra cooldown, inhibit-start input, stop switch, FAULT) instead of rejecting after the click.
+- Session chart can plot oil pump % and ECU loop timing; dashboard shows peak battery voltage; captive-portal browsers get a throttled-data warning banner.
+
+### Changed
+- Overspeed protection uses the raw N1 reading with a 250 ms confirmation window, so a fast runaway can no longer suppress its own trip through the RPM-health JUMP flag; brief zero-glitches no longer latch limp mode.
+- EGT-only flameout detection (source 3) redesigned: the reference is judged over a true 2 s stability window, seeds only from settled EGT, and follows down only after a cumulative 10 % commanded-power drop. Known, documented limitation (sequence validation now warns): EGT-only builds cannot detect a flameout during a throttle reduction — fit a flame or N1 sensor for full coverage.
+- DI Fault/E-Stop roles are level-sensitive while STARTUP/RUNNING: an input already held active trips immediately (previously edge-only, so a held trip was missed). Dedicated START/STOP switches gained a 30 ms debounce.
+- Empty startup/shutdown sequences are structural errors, and STOP or a fault with an empty shutdown sequence performs an immediate all-off to STANDBY instead of hanging in SHUTDOWN with outputs untouched. Shutdown-sequence block faults safe-stop to STANDBY instead of restarting the sequence forever.
+- FlightRecorder events queue on the ECU core and are written to flash from Core 0 (no more control-loop stalls); session CSVs flush every 5 s so a power cut loses seconds, not the whole run.
+- Cluster serial gained a real TX buffer (the schema burst now completes), overflow-safe RX, and telemetry retry; MAVLink sends all channels round-robin with a TX buffer; enabling Cluster Serial in Config now starts the UART without a reboot.
+- Hardware save and factory reset require idle outputs, and START from any source (web, physical button, cluster serial) is rejected during the save-reboot window.
+
+### Security
+- The full engine backup (`/api/ecu_config`) intentionally includes the Wi-Fi AP password so a file restores 1:1 on another ESP32 — the Tools card and beta guide now say so before you share the file. The Hardware page warns that an open AP gives anyone who joins command access. Over-long profile IDs are safely truncated for the broadcast SSID.
 
 ### Fixed
-- Bumped firmware/UI version to 1.2.0 for beta-test builds.
+- A generated config no longer seeds a full afterburner ignition/shutdown sequence when no afterburner is fitted — `applyDefaults()` gates the AB sequences on `hasAfterburner`, so a minimal (no-AB) profile gets `ab_ign=0`/`ab_shut=0` instead of an orphaned sequence for absent hardware.
+- Serial/debug output is now plain ASCII (converted em-dashes, arrows, °, µ, Ω, etc. inside string literals to `-`, `->`, plain text) so the boot log and diagnostics render correctly on the Arduino Serial Monitor and other non-UTF-8 terminals instead of showing `?`/garbage. Source comments are unchanged.
+- ESP32-S3: PWM outputs failed to initialize (`[OIL_PUMP] LEDC attach ... FAILED`, `div_param=0`) because the S3's LEDC timer clock can't achieve the default 10 kHz at 12-bit resolution (the classic ESP32's 80 MHz clock can). `LEDCActuator::begin()` now retries at progressively lower resolution (down to 8-bit) so the output attaches with slightly coarser duty steps instead of not at all; the classic keeps 12-bit.
+- ESP32-S3: the env used the 4 MB `partitions.csv` on a 16 MB DevKitC-1, so esptool erase/uploadfs and the firmware disagreed about the flash and a full clean flash left stale config and web UI behind. The S3 env now declares 16 MB flash and uses `partitions_16mb.csv` (3 MB app slots, ~9.9 MB littlefs) — clean flashes now clear correctly, and firmware dropped from 94% of a 1.5 MB slot to 46% of 3 MB.
+- Editor pages (Sequence/Hardware/Config/Calibration) failed to load with "Unterminated string in JSON" on configs with many features enabled: `GET /api/config` and `GET /api/hardware` streamed their response via `AsyncResponseStream`, which silently truncates large JSON under AP heap pressure. Both now serialize into the checked static TX buffer and send with a fixed Content-Length (the reliable path `/api/data` already used), with a `measureJson` guard that returns a clear 500 rather than truncating.
+- Sequence page: missing display-unit helpers (`toDispTemp`) threw during boot rendering and the error was silently swallowed — the Afterburner criteria panels and the Control Rules tab never rendered whenever the shutdown sequence contained a temperature-unit block. The page now carries a read-only mirror of the site-wide unit preference.
+- Optional sensors gained real health flags: railed/disconnected P1, P2, and fuel-flow sensors now read unhealthy (dash on the dashboard, rules leave outputs unchanged, peaks not corrupted) instead of feeding plausible extrapolated values everywhere; the flame sensor's ADC rail state is surfaced as a wiring hint at standby.
+- Calibration pages no longer show "Saved" before the ECU accepts the save (fuel pressure, oil wizard, throttle, idle, P1/P2, fuel flow, flame threshold).
+- Tools: Starter Idle Assist got a proper arm/disarm control, the dashboard got a peak-values reset button, wet-glow tests show the real demand percent, and PWM-configured accessory tests say they drive FULL output.
+- The Playwright browser-audit suite is runnable again (stale cache/scope assertions updated to current behavior); it now also covers the beta safety notice, the igniter 1/2 tool-timing split, and unit-preference-aware flight-log summaries.
+- First boot no longer fails GPIO validation and locks START (factory `di_channels` active-mode masks were out of the accepted range; masks are now accepted and clamped with a logged warning instead of rejected).
+- Thermocouples: MAX31856 open-circuit detection enabled, configuration readback-verified, and MOSI required at save; MAX6675 no longer flags 0.0 °C as a fault; DS18B20 reads no longer stall the ECU loop and a genuine 85.00 °C is accepted; analog linear sensors clamp to their calibrated range instead of extrapolating.
+- Igniter coil dwell is hard-capped even with a failed current sensor; starter demand is forced to 0 while the enable relay is off; glow "hot" requires a healthy current sensor; HX711 disconnect is detected instead of reading noise.
+- An interrupted OTA upload no longer locks maintenance actions until power-cycle, and a pending deferred save can no longer overwrite a fresh factory reset or restored config.
+- Web UI truth pass: role-aware DI badge colors, honest Dev Mode banner, normal inactive states no longer render as red sensor faults, the sequence editor no longer collapses open panels on every keystroke, Hardware save preflight covers every backend-required pin and names reversed PWM/servo ranges, user-entered sequencer text is escaped, and boot load-warnings in the flight log read as warnings rather than as edits.
+- Bumped firmware/UI version to 1.3.0 for beta-test builds.
 - Documented the current Config lock rule: Config is locked while the engine is active unless Dev Mode was enabled from STANDBY; Hardware, full restore, OTA, and reboot-required changes remain STANDBY-only.
 - Restored Hardware page controls for the passive buzzer so fitted buzzer pins can be assigned, validated, and included in GPIO conflict checks.
 - Replaced stale flashing instructions that referenced a missing helper script with the actual PlatformIO firmware and filesystem upload commands.

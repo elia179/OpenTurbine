@@ -161,10 +161,18 @@ async function sectionVisible(page, title) {
     });
     await gotoConfig(page);
     await page.locator('#btn-view-expert').click();
-    for (const selector of ['#cf-tl_fp', '#cf-tl_op', '#cf-tl_ig', '#cf-tl_st', '#cf-tl_fs']) {
+    for (const selector of ['#cf-tl_fp', '#cf-tl_op', '#cf-tl_st', '#cf-tl_fs']) {
       assert.equal(await disabled(page, selector), false, `${selector} should unlock when its tool actuator is fitted`);
     }
-    results.push('tool duration settings follow the same actuator availability as Tools page actions');
+    // Igniter tool timings are per-output: with only Igniter 2 fitted, the
+    // Igniter 1 duration stays ghosted and the Igniter 2 duration unlocks.
+    assert.equal(await disabled(page, '#cf-tl_ig'), true, '#cf-tl_ig must stay locked when only Igniter 2 is fitted');
+    assert.equal(await disabled(page, '#cf-tl_i2'), false, '#cf-tl_i2 should unlock when Igniter 2 is fitted');
+    await patchHardware(page, { actuators: { igniter: { enabled: true } } });
+    await gotoConfig(page);
+    await page.locator('#btn-view-expert').click();
+    assert.equal(await disabled(page, '#cf-tl_ig'), false, '#cf-tl_ig should unlock when Igniter 1 is fitted');
+    results.push('tool duration settings follow per-output actuator availability, including the igniter 1/2 split');
 
     await reset(page);
     console.log('super-audit: optional sections');
@@ -405,6 +413,7 @@ async function sectionVisible(page, title) {
     assert.equal(await disabled(page, '#cf-ab_tt'), false);
     assert.equal(await disabled(page, '#cf-ab_ui'), false);
     assert.equal(await disabled(page, '#cf-ab_pcm'), false);
+    assert.equal(await page.locator('#cf-ab_tt').inputValue(), '80');
     results.push('afterburner entry fields unlock when throttle trigger, N1, and AB hardware are fitted');
 
     console.log(`Config super audit passed (${results.length} groups):`);

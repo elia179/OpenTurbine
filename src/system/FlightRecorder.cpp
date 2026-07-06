@@ -7,20 +7,39 @@
 #include <esp_efuse.h>
 
 SemaphoreHandle_t FlightRecorder::_mutex          = nullptr;
-volatile bool     FlightRecorder::_evictionPending = false;
 static volatile bool s_clearPending = false;
 static volatile int  s_activeRawDownloads = 0;
 static volatile uint32_t s_droppedEvents = 0;
 unsigned long     FlightRecorder::_lastSnapshotMs  = 0;
 float             FlightRecorder::_runMaxN1        = 0.0f;
+static float      s_runMaxN2                        = 0.0f;
 float             FlightRecorder::_runMaxTot       = 0.0f;
 float             FlightRecorder::_runMaxTit       = 0.0f;
 float             FlightRecorder::_runMinOil       = 9999.0f;
 uint32_t          FlightRecorder::_runStartSec     = 0;
 
 // Tracked in-memory line count so we don't re-count the file on every append.
-// -1 means not yet initialised (counted on first _append call).
+// -1 means not yet initialised (counted on first drain after boot).
 static int s_lineCount = -1;
+
+// ── Producer → Core 0 append ring ────────────────────────────
+// _append() only queues formatted lines here; Core 0 (runEviction, called
+// from the web task tick every 5-20 ms) writes them to flash so LittleFS
+// never runs on the ECU core. Multi-producer: Core 1 (ECU loop) plus Core-0
+// callers (logConfigChange from the web task, Config::load warnings), so
+// slot write + head advance + drop counting are serialized with s_ringMux.
+// Single consumer: only Core 0's drain writes s_ringTail, and it reads
+// slots only behind a committed s_ringHead.
+static constexpr int    RING_SLOTS    = 16;
+static constexpr size_t RING_SLOT_LEN = 500;   // fits the largest (FAULT) record
+static char             s_ring[RING_SLOTS][RING_SLOT_LEN];
+static volatile uint8_t s_ringHead = 0;
+static volatile uint8_t s_ringTail = 0;
+static portMUX_TYPE     s_ringMux  = portMUX_INITIALIZER_UNLOCKED;
+// Drops already reported with an EVENTS_DROPPED marker (written by Core 0 only;
+// s_droppedEvents is only incremented under s_ringMux and snapshotted by the
+// drain, so neither counter is racy).
+static uint32_t         s_droppedMarked = 0;
 
 static void jsonSafeCopy(char* dst, size_t len, const char* src) {
     if (!dst || len == 0) return;
@@ -41,7 +60,7 @@ void FlightRecorder::begin() {
     if (!LittleFS.exists("/logs")) {
         LittleFS.mkdir("/logs");
     }
-    s_lineCount = -1;   // force recount on first write
+    s_lineCount = -1;   // force recount on first drain
     if (!_mutex) _mutex = xSemaphoreCreateMutex();
 }
 
@@ -53,6 +72,7 @@ void FlightRecorder::tick() {
 
     // Track run peaks (only meaningful during RUNNING, but harmless otherwise)
     if (ed.n1Rpm  > _runMaxN1)                              _runMaxN1 = ed.n1Rpm;
+    if (hw.hasTwoShaft && hw.hasN2Rpm && ed.n2Rpm > s_runMaxN2) s_runMaxN2 = ed.n2Rpm;
     if (ed.tot    > _runMaxTot)                             _runMaxTot = ed.tot;
     if (hw.hasTit && ed.tit > _runMaxTit)                    _runMaxTit = ed.tit;
     if (hw.hasOilPress && ed.oilPressure < _runMinOil)      _runMinOil = ed.oilPressure;
@@ -66,7 +86,7 @@ void FlightRecorder::tick() {
     // thr as 0-100 integer to save bytes
     int thrPct = (int)(ed.throttleDemand * 100.0f + 0.5f);
 
-    char buf[200];
+    char buf[260];
     int n = snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"SNAP\",\"n1\":%.0f,\"tot\":%.0f,\"thr\":%d",
         _uptimeSec(), ed.n1Rpm, ed.tot, thrPct);
@@ -85,8 +105,14 @@ void FlightRecorder::tick() {
 
     if (hw.hasOilPress)
         APPEND_EVENT_FIELD(",\"oil\":%.2f,\"oilP\":%d", ed.oilPressure, (int)ed.oilPumpPct);
+    if (hw.hasTwoShaft && hw.hasN2Rpm)
+        APPEND_EVENT_FIELD(",\"n2\":%.0f", ed.n2Rpm);
     if (hw.hasTit)
         APPEND_EVENT_FIELD(",\"tit\":%.0f", ed.tit);
+    if (hw.hasPropPitch)
+        APPEND_EVENT_FIELD(",\"prop\":%d", (int)(ed.propPitchDemand * 100.0f + 0.5f));
+    if (hw.hasAfterburner)
+        APPEND_EVENT_FIELD(",\"ab\":%d,\"abP\":%d", (int)ed.abMode, (int)(ed.abPumpDemand * 100.0f + 0.5f));
 
     APPEND_EVENT_FIELD("}");
     #undef APPEND_EVENT_FIELD
@@ -140,6 +166,7 @@ void FlightRecorder::logBlockExit(const char* blockName, const char* result) {
 void FlightRecorder::logRunningEntry() {
     // Reset run-peak accumulators for the new run
     _runMaxN1    = 0.0f;
+    s_runMaxN2   = 0.0f;
     _runMaxTot   = 0.0f;
     _runMaxTit   = 0.0f;
     _runMinOil   = 9999.0f;
@@ -179,7 +206,7 @@ void FlightRecorder::logRunSummary() {
     if (_runStartSec == 0) return;
 
     uint32_t runS = _uptimeSec() - _runStartSec;
-    char buf[190];
+    char buf[220];
     int n = snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"ev\":\"RUN_SUMMARY\",\"runS\":%lu,\"maxN1\":%.0f,\"maxTot\":%.0f",
         _uptimeSec(), (unsigned long)runS, _runMaxN1, _runMaxTot);
@@ -198,6 +225,8 @@ void FlightRecorder::logRunSummary() {
 
     if (HardwareConfig::hasTit)
         APPEND_SUMMARY_FIELD(",\"maxTit\":%.0f", _runMaxTit);
+    if (HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm)
+        APPEND_SUMMARY_FIELD(",\"maxN2\":%.0f", s_runMaxN2);
     if (_runMinOil < 9000.0f)
         APPEND_SUMMARY_FIELD(",\"minOil\":%.2f", _runMinOil);
     APPEND_SUMMARY_FIELD("}");
@@ -276,7 +305,7 @@ void FlightRecorder::requestClear() {
 size_t FlightRecorder::toJson(char* buf, size_t len) {
     if (len < 4) return 0;
 
-    // Take mutex so we don't read while _append() is mid-eviction (remove+rename).
+    // Take mutex so we don't read while runEviction() is mid-eviction (remove+rename).
     if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
 
     File f = LittleFS.open(PATH, "r");
@@ -330,11 +359,142 @@ void FlightRecorder::endRawDownload() {
     if (_mutex) xSemaphoreGive(_mutex);
 }
 
-// ── Core 0 eviction (offloaded from ECU loop) ─────────────────
+// ── Core 0 drain + eviction (offloaded from ECU loop) ─────────
+
+// Mutex held. Rewrite the log keeping only records after the first dropFirst.
+// Returns the new record count, or -1 if the copy could not be completed
+// (typically flash too full to hold the temporary copy).
+static int _copyTailLocked(int dropFirst) {
+    File fr = LittleFS.open(FlightRecorder::PATH, "r");
+    File fw = LittleFS.open("/logs/events.tmp", "w");
+    if (!fr || !fw) {
+        if (fr) fr.close();
+        if (fw) fw.close();
+        LittleFS.remove("/logs/events.tmp");
+        return -1;
+    }
+    int seen = 0;
+    int kept = 0;
+    bool writeOk = true;
+    while (fr.available()) {
+        String line = fr.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0 || line[0] != '{') continue;
+        seen++;
+        if (seen > dropFirst) {
+            if (fw.println(line.c_str()) == 0) {
+                writeOk = false;
+                break;
+            }
+            kept++;
+        }
+    }
+    fr.close();
+    fw.close();
+    if (!writeOk) {
+        LittleFS.remove("/logs/events.tmp");
+        return -1;
+    }
+    LittleFS.remove("/logs/events.bak");
+    bool hadOriginal = LittleFS.exists(FlightRecorder::PATH);
+    if (hadOriginal && !LittleFS.rename(FlightRecorder::PATH, "/logs/events.bak")) {
+        LittleFS.remove("/logs/events.tmp");
+        return -1;
+    }
+    if (!LittleFS.rename("/logs/events.tmp", FlightRecorder::PATH)) {
+        if (hadOriginal) LittleFS.rename("/logs/events.bak", FlightRecorder::PATH);
+        return -1;
+    }
+    if (hadOriginal) LittleFS.remove("/logs/events.bak");
+    return kept;
+}
+
+// Mutex held. Make room when the log is full. Tries the normal keep-newest-80%
+// eviction first; if flash is too full for that copy (~190 KB), falls back to
+// keeping only the newest 10%, and as a last resort starts a fresh log — the
+// black box must keep accepting FAULT events rather than dropping them forever.
+static void _makeRoomLocked() {
+    int before = s_lineCount;
+    int kept = _copyTailLocked(FlightRecorder::MAX_RECORDS / 5);
+    bool fallback = false;
+    if (kept < 0) {
+        fallback = true;
+        int dropFirst = before - FlightRecorder::MAX_RECORDS / 10;
+        if (dropFirst < 0) dropFirst = 0;
+        kept = _copyTailLocked(dropFirst);
+    }
+    if (kept < 0) {
+        LittleFS.remove(FlightRecorder::PATH);
+        kept = 0;
+    }
+    s_lineCount = kept;
+    if (fallback) {
+        // Leave a visible trace that history was cut harder than usual.
+        File fa = LittleFS.open(FlightRecorder::PATH, "a");
+        if (fa) {
+            char buf[96];
+            snprintf(buf, sizeof(buf),
+                "{\"t\":%lu,\"ev\":\"LOG_TRUNCATED\",\"kept\":%d}",
+                (unsigned long)(millis() / 1000), kept);
+            if (fa.println(buf) != 0) s_lineCount++;
+            fa.close();
+        }
+    }
+}
+
+// Mutex held. Write queued events (and any pending drop marker) to flash.
+static void _drainRingLocked() {
+    // Lazy-init: count existing lines on first drain after boot
+    if (s_lineCount < 0) {
+        s_lineCount = 0;
+        File fc = LittleFS.open(FlightRecorder::PATH, "r");
+        if (fc) {
+            while (fc.available()) {
+                String line = fc.readStringUntil('\n');
+                line.trim();
+                if (line.length() > 0 && line[0] == '{') s_lineCount++;
+            }
+            fc.close();
+        }
+    }
+
+    while (s_ringTail != s_ringHead || s_droppedEvents != s_droppedMarked) {
+        if (s_lineCount >= FlightRecorder::MAX_RECORDS) _makeRoomLocked();
+
+        File fa = LittleFS.open(FlightRecorder::PATH, "a");
+        if (!fa) return;   // FS unusable — leave events queued, retry next tick
+
+        // Record a marker for events dropped while the ring was full, so gaps
+        // in the black box are never silent. Snapshot the counter: Core 1 may
+        // increment it while we write.
+        uint32_t dropped = s_droppedEvents;
+        if (dropped != s_droppedMarked) {
+            char marker[80];
+            snprintf(marker, sizeof(marker),
+                "{\"t\":%lu,\"ev\":\"EVENTS_DROPPED\",\"n\":%lu}",
+                (unsigned long)(millis() / 1000),
+                (unsigned long)(dropped - s_droppedMarked));
+            if (fa.println(marker) == 0) { fa.close(); return; }   // retry next tick
+            s_droppedMarked = dropped;
+            s_lineCount++;
+        }
+
+        while (s_ringTail != s_ringHead && s_lineCount < FlightRecorder::MAX_RECORDS) {
+            if (fa.println(s_ring[s_ringTail]) == 0) {
+                fa.close();
+                return;   // write failed (flash full?) — keep event, retry next tick
+            }
+            s_lineCount++;
+            s_ringTail = (uint8_t)((s_ringTail + 1) % RING_SLOTS);
+        }
+        fa.close();
+    }
+}
 
 void FlightRecorder::runEviction() {
     if (s_activeRawDownloads > 0) return;
-    if (!s_clearPending && !_evictionPending) return;
+    bool ringPending = (s_ringTail != s_ringHead) || (s_droppedEvents != s_droppedMarked);
+    if (!s_clearPending && !ringPending) return;
 
     // portMAX_DELAY is safe — this runs on Core 0 (web task), not the ECU loop.
     if (_mutex && xSemaphoreTake(_mutex, portMAX_DELAY) != pdTRUE) return;
@@ -346,110 +506,36 @@ void FlightRecorder::runEviction() {
     if (s_clearPending) {
         LittleFS.remove(PATH);
         s_lineCount = 0;
-        _evictionPending = false;
         s_clearPending = false;
-        if (_mutex) xSemaphoreGive(_mutex);
-        return;
     }
 
-    // Re-check under mutex: Core 1 may have already cleared the flag.
-    if (!_evictionPending) { if (_mutex) xSemaphoreGive(_mutex); return; }
-
-    int keepFrom = MAX_RECORDS / 5;   // drop oldest 20%, keep newest 80%
-    File fr = LittleFS.open(PATH, "r");
-    File fw = LittleFS.open("/logs/events.tmp", "w");
-    if (!fr || !fw) {
-        if (fr) fr.close();
-        if (fw) fw.close();
-        LittleFS.remove("/logs/events.tmp");
-    } else {
-        int seen = 0;
-        int kept = 0;
-        bool writeOk = true;
-        while (fr.available()) {
-            String line = fr.readStringUntil('\n');
-            line.trim();
-            if (line.length() == 0 || line[0] != '{') continue;
-            seen++;
-            if (seen > keepFrom) {
-                if (fw.println(line.c_str()) == 0) {
-                    writeOk = false;
-                    break;
-                }
-                kept++;
-            }
-        }
-        fr.close();
-        fw.close();
-        if (!writeOk) {
-            s_droppedEvents = s_droppedEvents + 1;
-            LittleFS.remove("/logs/events.tmp");
-        } else {
-            LittleFS.remove("/logs/events.bak");
-            bool hadOriginal = LittleFS.exists(PATH);
-            if (hadOriginal && !LittleFS.rename(PATH, "/logs/events.bak")) {
-                LittleFS.remove("/logs/events.tmp");
-            } else if (!LittleFS.rename("/logs/events.tmp", PATH)) {
-                if (hadOriginal) LittleFS.rename("/logs/events.bak", PATH);
-            } else {
-                if (hadOriginal) LittleFS.remove("/logs/events.bak");
-                s_lineCount = kept;
-            }
-        }
-    }
-    _evictionPending = false;
+    _drainRingLocked();
     if (_mutex) xSemaphoreGive(_mutex);
 }
 
 // ── Private ───────────────────────────────────────────────────
 
 void FlightRecorder::_append(const char* eventJson) {
-    // Short timeout: _append runs on Core 1 (ECU loop). toJson() on Core 0 can hold
-    // the mutex for ~250 ms reading a full log. portMAX_DELAY would stall safety checks.
-    if (_mutex && xSemaphoreTake(_mutex, pdMS_TO_TICKS(8)) != pdTRUE) {
+    // Queue only — no LittleFS access here. Flash writes happen on Core 0 in
+    // runEviction(); a flash program/erase suspends cache and can stall 100+
+    // ms, which would delay safety checks on the ECU loop.
+    // Multiple producers reach this (Core 1 ECU loop, Core-0 config-change /
+    // load-warning logging), so slot claim + copy + head advance must be
+    // atomic. The bounded <500-byte copy keeps the critical section a few µs.
+    portENTER_CRITICAL(&s_ringMux);
+    uint8_t head = s_ringHead;
+    uint8_t next = (uint8_t)((head + 1) % RING_SLOTS);
+    if (next == s_ringTail) {
+        // Ring full (Core 0 stalled or paused for a raw download). Count the
+        // drop; the drain records an EVENTS_DROPPED marker when space frees.
         s_droppedEvents = s_droppedEvents + 1;
+        portEXIT_CRITICAL(&s_ringMux);
         return;
     }
-
-    // Lazy-init: count existing lines on first call after boot/clear
-    if (s_lineCount < 0) {
-        s_lineCount = 0;
-        File fc = LittleFS.open(PATH, "r");
-        if (fc) {
-            while (fc.available()) {
-                String line = fc.readStringUntil('\n');
-                line.trim();
-                if (line.length() > 0 && line[0] == '{') s_lineCount++;
-            }
-            fc.close();
-        }
-    }
-
-    // Ring buffer full — request eviction from Core 0 and drop this event.
-    // The 100–200 ms file-copy is too long to run on Core 1 (ECU loop).
-    if (s_lineCount >= MAX_RECORDS) {
-        _evictionPending = true;
-        if (_mutex) xSemaphoreGive(_mutex);
-        s_droppedEvents = s_droppedEvents + 1;
-        return;
-    }
-
-    // Append the new event
-    File fa = LittleFS.open(PATH, "a");
-    if (!fa) {
-        s_droppedEvents = s_droppedEvents + 1;
-        if (_mutex) xSemaphoreGive(_mutex);
-        return;
-    }
-    if (fa.println(eventJson) == 0) {
-        s_droppedEvents = s_droppedEvents + 1;
-        fa.close();
-        if (_mutex) xSemaphoreGive(_mutex);
-        return;
-    }
-    fa.close();
-    s_lineCount++;
-    if (_mutex) xSemaphoreGive(_mutex);
+    strncpy(s_ring[head], eventJson, RING_SLOT_LEN - 1);
+    s_ring[head][RING_SLOT_LEN - 1] = '\0';
+    s_ringHead = next;
+    portEXIT_CRITICAL(&s_ringMux);
 }
 
 uint32_t FlightRecorder::_uptimeSec() {

@@ -42,7 +42,7 @@ public:
         }
         char _buf[80];
         if (ed.benchMode)
-            snprintf(_buf, sizeof(_buf), "[BENCH] Spool sim — %lu ms remaining", timeoutMs - elapsed);
+            snprintf(_buf, sizeof(_buf), "[BENCH] Spool sim - %lu ms remaining", timeoutMs - elapsed);
         else
             snprintf(_buf, sizeof(_buf), "N1: %d / %d RPM", (int)ed.n1Rpm, (int)rpmTarget);
         setWaitReason(_buf);

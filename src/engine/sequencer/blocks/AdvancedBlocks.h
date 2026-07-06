@@ -91,7 +91,7 @@ public:
             if ((millis() - _startMs) < preheatMs + waitHotTimeout) {
                 return BlockResult::Running;
             }
-            Serial.println("[GlowPreheat] waitUntilHot timeout — proceeding anyway");
+            Serial.println("[GlowPreheat] waitUntilHot timeout - proceeding anyway");
         }
         return BlockResult::Complete;
     }
@@ -117,18 +117,23 @@ public:
     void onEnter() override {
         _startMs = millis();
         _completed = false;
-        EngineData::instance().fuelPump2Demand = startPct / 100.0f;
+        auto& ed = EngineData::instance();
+        ed.fuelPump2Demand = startPct / 100.0f;
+        if (ed.fuelPump2Demand > 0.001f) ed.fuelEverOpened = true;
     }
 
     BlockResult tick() override {
+        auto& ed = EngineData::instance();
         unsigned long elapsed = millis() - _startMs;
         if (elapsed >= rampMs) {
-            EngineData::instance().fuelPump2Demand = endPct / 100.0f;
+            ed.fuelPump2Demand = endPct / 100.0f;
+            if (ed.fuelPump2Demand > 0.001f) ed.fuelEverOpened = true;
             _completed = true;
             return BlockResult::Complete;
         }
         float frac = (float)elapsed / (float)rampMs;
-        EngineData::instance().fuelPump2Demand = (startPct + frac * (endPct - startPct)) / 100.0f;
+        ed.fuelPump2Demand = (startPct + frac * (endPct - startPct)) / 100.0f;
+        if (ed.fuelPump2Demand > 0.001f) ed.fuelEverOpened = true;
         return BlockResult::Running;
     }
 
@@ -150,7 +155,11 @@ public:
     float demandPct = 0.0f;  // target % (0–100)
 
     const char* name() override { return "FuelPump2Set"; }
-    void onEnter() override { EngineData::instance().fuelPump2Demand = demandPct / 100.0f; }
+    void onEnter() override {
+        auto& ed = EngineData::instance();
+        ed.fuelPump2Demand = demandPct / 100.0f;
+        if (ed.fuelPump2Demand > 0.001f) ed.fuelEverOpened = true;
+    }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -160,7 +169,11 @@ public:
 class FuelPump2On : public IBlock {
 public:
     const char* name() override { return "FuelPump2On"; }
-    void onEnter() override { EngineData::instance().fuelPump2Demand = 1.0f; }
+    void onEnter() override {
+        auto& ed = EngineData::instance();
+        ed.fuelPump2Demand = 1.0f;
+        ed.fuelEverOpened = true;
+    }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };

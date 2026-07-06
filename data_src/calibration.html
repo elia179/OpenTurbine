@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0e1120">
 <title>OpenTurbine — Calibration</title>
-<link rel="stylesheet" href="/style.css?v=20260625a">
+<link rel="stylesheet" href="/style.css?v=20260705a">
 </head>
 <body>
 <nav>
@@ -190,7 +190,7 @@
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.6rem">
         <button onclick="fpCapZero()">Capture Zero</button>
         <label style="font-size:.8rem;color:var(--dim)">Ref pressure:
-          <input type="number" id="fp-ref-bar" value="3" min="0.1" max="20" step="0.1" style="width:80px;margin-left:.3rem"> bar
+          <input type="number" id="fp-ref-bar" value="3" min="0.1" max="1000" step="0.1" style="width:80px;margin-left:.3rem"> bar
         </label>
         <button onclick="fpCapRef()">Capture Ref</button>
       </div>
@@ -232,11 +232,11 @@
       <!-- Factory spec mode -->
       <div id="p1-mode-factory-panel" style="display:none">
         <div class="wizard-steps">
-          Enter the sensor's voltage output range from the datasheet:<br>
+          Enter the sensor voltage at the ECU ADC pin after any divider or level shift:<br>
           Voltage at <b>0 bar</b>: <input type="number" id="p1-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
-          &nbsp; Voltage at max bar: <input type="number" id="p1-v-max" min="0" max="3.3" step="0.01" placeholder="4.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Voltage at max bar: <input type="number" id="p1-v-max" min="0" max="3.3" step="0.01" placeholder="3.0 V" style="width:5rem;margin:0 .3rem"> V
           &nbsp; Max bar value: <input type="number" id="p1-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10" style="width:5rem;margin:0 .3rem"> bar
-          <br><span style="font-size:.72rem;color:var(--dim)">Note: voltages > 3.3 V are clamped to ADC input range.</span>
+          <br><span style="font-size:.72rem;color:var(--dim)">For common 0.5-4.5 V automotive transducers, use a divider or 3.3 V-rated sensor and enter the scaled ADC-pin voltage here.</span>
         </div>
       </div>
       <div class="wiz-buttons">
@@ -274,11 +274,11 @@
       </div>
       <div id="p2-mode-factory-panel" style="display:none">
         <div class="wizard-steps">
-          Enter the sensor's voltage output range from the datasheet:<br>
+          Enter the sensor voltage at the ECU ADC pin after any divider or level shift:<br>
           Voltage at <b>0 bar</b>: <input type="number" id="p2-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
-          &nbsp; Voltage at max bar: <input type="number" id="p2-v-max" min="0" max="3.3" step="0.01" placeholder="4.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Voltage at max bar: <input type="number" id="p2-v-max" min="0" max="3.3" step="0.01" placeholder="3.0 V" style="width:5rem;margin:0 .3rem"> V
           &nbsp; Max bar value: <input type="number" id="p2-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10" style="width:5rem;margin:0 .3rem"> bar
-          <br><span style="font-size:.72rem;color:var(--dim)">Note: voltages > 3.3 V are clamped to ADC input range.</span>
+          <br><span style="font-size:.72rem;color:var(--dim)">For common 0.5-4.5 V automotive transducers, use a divider or 3.3 V-rated sensor and enter the scaled ADC-pin voltage here.</span>
         </div>
       </div>
       <div class="wiz-buttons">
@@ -323,6 +323,7 @@
       <div class="wizard-title">NTC Thermistor Calibration</div>
       <div class="wizard-steps">
         Enter your NTC thermistor datasheet values. These are physical constants of the thermistor — check your datasheet or measure with a multimeter.<br>
+        <span style="color:var(--dim)">This assumes 3.3 V to fixed pull-up resistor to ADC pin to NTC to ground. PTC, RTD/PT100/PT1000, and pull-down divider thermistors are not supported here.</span><br>
         <span style="color:var(--dim)">Beta and R0 are on the thermistor datasheet. R_Fixed is your pull-up resistor to 3.3 V.</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin:.5rem 0">
@@ -332,11 +333,11 @@
         </div>
         <div>
           <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">R₀ at 25 °C (Ω)</div>
-          <input type="number" id="ntc-r0" min="100" max="100000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+          <input type="number" id="ntc-r0" min="100" max="1000000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
         </div>
         <div>
           <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">Pull-up R (Ω)</div>
-          <input type="number" id="ntc-rfixed" min="100" max="100000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+          <input type="number" id="ntc-rfixed" min="100" max="1000000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
         </div>
       </div>
       <div class="wiz-buttons" style="margin-bottom:.4rem">
@@ -583,7 +584,7 @@
 
 </main>
 
-<script src="/app.js?v=20260625a"></script>
+<script src="/app.js?v=20260705a"></script>
 <script>
 let live = {};
 let oilPts = [];
@@ -943,7 +944,7 @@ window.applyData = function(d) {
     const idleRaw = d.idle_input_raw ?? 0;
     setText('cal-idle-raw', d.idle_input_raw !== undefined ? d.idle_input_raw : '—');
     const idlePosP = Math.round(((idleRaw - rcMin) / (rcMax - rcMin)) * 100);
-    setText('cal-idle-pct', idlePosP + '%');
+    setText('cal-idle-pct', Math.max(0, Math.min(100, idlePosP)) + '%');
     setText('idle-range-lo', String(rcMin));
     setText('idle-range-hi', String(rcMax));
     bar('bar-idle', idleRaw, rcMin, rcMax, true);
@@ -990,8 +991,9 @@ window.applyData = function(d) {
   if (hasFuelFlowAnalog) {
     setText('cal-ff-raw', d.fuel_flow_raw ?? '—');
     if (d.fuel_flow !== undefined) {
-      setText('cal-ff', Number(d.fuel_flow).toFixed(3) + ' L/min');
-      bar('bar-ff', d.fuel_flow, 0, 10, true);
+      const ffValMax = cfg.calibration?.fuel_flow_val_max ?? 10;
+      setText('cal-ff', Number(d.fuel_flow).toFixed(3) + ' units/min');
+      bar('bar-ff', d.fuel_flow, 0, ffValMax, true);
     }
   }
   if (hasAbFlame) {
@@ -1006,21 +1008,21 @@ window.applyData = function(d) {
     setText('cal-glow-raw', d.glow_current_raw ?? '—');
     if (d.glow_current_amps !== undefined) {
       setText('cal-glow-a', Number(d.glow_current_amps).toFixed(2) + ' A');
-      bar('bar-glow-cur', d.glow_current_amps, 0, 30, true);
+      bar('bar-glow-cur', d.glow_current_amps, 0, 50, true);
     }
   }
   if (hasIgnCurrent) {
     setText('cal-ign-raw', d.igniter_current_raw ?? '—');
     if (d.igniter_current_amps !== undefined) {
       setText('cal-ign-a', Number(d.igniter_current_amps).toFixed(2) + ' A');
-      bar('bar-ign-cur', d.igniter_current_amps, 0, 30, true);
+      bar('bar-ign-cur', d.igniter_current_amps, 0, 50, true);
     }
   }
   if (hasIgn2Current) {
     setText('cal-ign2-raw', d.igniter2_current_raw ?? '—');
     if (d.igniter2_current_amps !== undefined) {
       setText('cal-ign2-a', Number(d.igniter2_current_amps).toFixed(2) + ' A');
-      bar('bar-ign2-cur', d.igniter2_current_amps, 0, 30, true);
+      bar('bar-ign2-cur', d.igniter2_current_amps, 0, 50, true);
     }
   }
   if (hasOilPumpCurrent) {
@@ -1073,10 +1075,12 @@ window.applyData = function(d) {
     // ADC: show counts
     const raw = d.throttle_input_raw;
     setText('cal-th-raw', raw !== undefined ? raw : '—');
-    if (thMin !== null && thMax !== null && raw !== undefined) {
-      const pct = Math.round(((raw - thMin) / (thMax - thMin)) * 100);
+    if (raw !== undefined) {
+      const lo = (thMin !== null && thMax !== null) ? thMin : thRangeMin;
+      const hi = (thMin !== null && thMax !== null) ? thMax : thRangeMax;
+      const pct = Math.round(((raw - lo) / (hi - lo)) * 100);
       setText('cal-th-pct', Math.max(0, Math.min(100, pct)) + '%');
-      bar('bar-th', raw, thMin, thMax, true);
+      bar('bar-th', raw, lo, hi, true);
     }
   }
 };
@@ -1111,45 +1115,58 @@ function fpCapRef() {
 function fpSaveCal() {
   if (fpRawZero === null || fpRawRef === null) { alert('Capture both points first'); return; }
   if (fpRawRef <= fpRawZero) { alert('Reference raw must be greater than zero raw'); return; }
-  const refBar = parseFloat(document.getElementById('fp-ref-bar').value) || 3.0;
+  const refBar = parseFloat(document.getElementById('fp-ref-bar').value);
+  if (isNaN(refBar) || refBar <= 0 || refBar > 1000) {
+    alert('Enter a valid reference pressure between 0 and 1000 bar.');
+    return;
+  }
+  // UI state updates only after the ECU accepts the save (locked/offline
+  // rejections previously still showed "Saved.").
   patchConfig({
     calibration: {
       fuel_press_raw_min: fpRawZero,
       fuel_press_raw_max: fpRawRef,
       fuel_press_val_max: refBar
     }
-  }, 'Fuel pressure calibration saved (' + fpRawZero + '–' + fpRawRef + ' raw = 0–' + refBar + ' bar)');
-  if (!cfg.calibration) cfg.calibration = {};
-  cfg.calibration.fuel_press_raw_min = fpRawZero;
-  cfg.calibration.fuel_press_raw_max = fpRawRef;
-  cfg.calibration.fuel_press_val_max = refBar;
-  setText('cal-fuelpress-range', fpRawZero + ' – ' + fpRawRef + ' raw');
-  setText('fuelpress-bar-max', refBar.toFixed(1) + ' bar');
-  document.getElementById('fp-save-status').textContent = 'Saved.';
+  }, 'Fuel pressure calibration saved (' + fpRawZero + '–' + fpRawRef + ' raw = 0–' + refBar + ' bar)', () => {
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration.fuel_press_raw_min = fpRawZero;
+    cfg.calibration.fuel_press_raw_max = fpRawRef;
+    cfg.calibration.fuel_press_val_max = refBar;
+    setText('cal-fuelpress-range', fpRawZero + ' – ' + fpRawRef + ' raw');
+    setText('fuelpress-bar-max', refBar.toFixed(1) + ' bar');
+    document.getElementById('fp-save-status').textContent = 'Saved.';
+  });
 }
 
 function fpClearCal() {
-  fpRawZero = null; fpRawRef = null;
   patchConfig({ calibration: { fuel_press_raw_min: 0, fuel_press_raw_max: 4095, fuel_press_val_max: 10 } },
-    'Fuel pressure calibration cleared');
-  document.getElementById('fp-pts-status').textContent = 'Calibration cleared — defaults restored (0–4095 raw = 0–10 bar)';
-  document.getElementById('btn-fp-save').disabled = true;
-  document.getElementById('fp-save-status').textContent = '';
-  setText('cal-fuelpress-range', '0 – 4095 raw');
-  setText('fuelpress-bar-max', '10 bar');
+    'Fuel pressure calibration cleared', () => {
+    fpRawZero = null; fpRawRef = null;
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration.fuel_press_raw_min = 0;
+    cfg.calibration.fuel_press_raw_max = 4095;
+    cfg.calibration.fuel_press_val_max = 10;
+    document.getElementById('fp-pts-status').textContent = 'Calibration cleared — defaults restored (0–4095 raw = 0–10 bar)';
+    document.getElementById('btn-fp-save').disabled = true;
+    document.getElementById('fp-save-status').textContent = '';
+    setText('cal-fuelpress-range', '0 – 4095 raw');
+    setText('fuelpress-bar-max', '10 bar');
+  });
 }
 
 // ── Engine-mode guard for actuator-driving wizard steps ──────
-// The firmware only honors SET_OIL_PCT and IGN_TEST in STANDBY. Without
-// this guard the wizard would sample against a pump/igniter that never
-// moved and silently save a wrong calibration.
+// The firmware honors SET_OIL_PCT and IGN_TEST in STANDBY and in FAULT
+// (FAULT is the standby-like repair state — recalibrating there is a
+// legitimate fix path). Without this guard the wizard would sample against
+// a pump/igniter that never moved and silently save a wrong calibration.
 function calStandbyGuard(action) {
   const mode = live.mode;
   if (mode === undefined) {
     alert('No live engine data yet — wait for the connection before starting ' + action + '.');
     return false;
   }
-  if (mode !== 'STANDBY') {
+  if (mode !== 'STANDBY' && mode !== 'FAULT') {
     alert('Engine mode is ' + mode + '.\n\n' + action.charAt(0).toUpperCase() + action.slice(1) +
           ' requires STANDBY — the ECU ignores calibration actuator commands in any other mode, ' +
           'so the captured values would be wrong.');
@@ -1359,13 +1376,16 @@ function saveOilCal() {
       oil_poly: { a:oilFit.a, b:oilFit.b, c:oilFit.c, d:oilFit.d,
                   x_min:oilFit.x0, x_max:oilFit.x1 }
     }
-  }, 'Oil cubic calibration saved');
-  oilGoStep(1);
-  oilPts = [];
-  renderOilPts();
-  document.getElementById('btn-oil-to-3').disabled = true;
-  const btn = document.getElementById('btn-oil-start');
-  if (btn) btn.disabled = false;
+  }, 'Oil cubic calibration saved', () => {
+    // Reset the wizard only once the ECU accepted the save — a rejection
+    // used to wipe the captured points anyway.
+    oilGoStep(1);
+    oilPts = [];
+    renderOilPts();
+    document.getElementById('btn-oil-to-3').disabled = true;
+    const btn = document.getElementById('btn-oil-start');
+    if (btn) btn.disabled = false;
+  });
 }
 
 // ── Flame calibration ─────────────────────────────────────────
@@ -1423,8 +1443,10 @@ async function captureFlameNoise() {
 function recomputeFlameThreshold() {
   if (flameNoise === null) return;
   const mult = parseFloat(document.getElementById('flame-multiplier')?.value) || 3;
-  const thr  = Math.round(flameNoise * mult);
-  const msg  = `Noise floor: ${flameNoise}  ×${mult}  → Threshold: ${thr}`;
+  const raw  = Math.round(flameNoise * mult);
+  const thr  = Math.min(raw, 4095);  // ADC full-scale — firmware rejects higher
+  let msg  = `Noise floor: ${flameNoise}  ×${mult}  → Threshold: ${thr}`;
+  if (raw > 4095) msg += ' ⚠ capped at 4095 (sensor full-scale) — flame signal may never clear this threshold';
   document.getElementById('flame-status').textContent = msg;
   const btn = document.getElementById('btn-flame-save');
   if (btn) { btn.disabled = false; btn.dataset.thr = thr; }
@@ -1436,20 +1458,22 @@ function updateFlameStatus() {
 function saveFlameThreshold() {
   const thr = parseInt(document.getElementById('btn-flame-save').dataset.thr);
   if (isNaN(thr)) return;
-  patchConfig({ calibration: { flame_threshold: thr } }, `Flame threshold set to ${thr}`);
-  document.getElementById('cal-flame-thr').textContent = thr;
-  if (cfg.calibration) cfg.calibration.flame_threshold = thr;
-  else cfg.calibration = { flame_threshold: thr };
-  updateFlameThrMark(thr);
+  patchConfig({ calibration: { flame_threshold: thr } }, `Flame threshold set to ${thr}`, () => {
+    document.getElementById('cal-flame-thr').textContent = thr;
+    if (cfg.calibration) cfg.calibration.flame_threshold = thr;
+    else cfg.calibration = { flame_threshold: thr };
+    updateFlameThrMark(thr);
+  });
 }
 function saveFlameThresholdDirect() {
   const thr = parseInt(document.getElementById('flame-thr-direct').value);
   if (isNaN(thr) || thr < 0 || thr > 4095) return;
-  patchConfig({ calibration: { flame_threshold: thr } }, `Flame threshold set to ${thr}`);
-  document.getElementById('cal-flame-thr').textContent = thr;
-  if (cfg.calibration) cfg.calibration.flame_threshold = thr;
-  else cfg.calibration = { flame_threshold: thr };
-  updateFlameThrMark(thr);
+  patchConfig({ calibration: { flame_threshold: thr } }, `Flame threshold set to ${thr}`, () => {
+    document.getElementById('cal-flame-thr').textContent = thr;
+    if (cfg.calibration) cfg.calibration.flame_threshold = thr;
+    else cfg.calibration = { flame_threshold: thr };
+    updateFlameThrMark(thr);
+  });
 }
 function saveAbFlameThresholdDirect() {
   const thr = parseInt(document.getElementById('ab-flame-thr-direct').value);
@@ -1503,8 +1527,14 @@ function renderThStatus() {
   document.getElementById('btn-th-save').disabled = thMin === null || thMax === null;
 }
 function saveThrottle() {
+  if (thMin === null || thMax === null) { alert('Capture both min and max first.'); return; }
+  if (thMin === thMax) { alert('Throttle min and max cannot be identical.'); return; }
   patchConfig({ calibration: { throttle_min_raw: thMin, throttle_max_raw: thMax } },
-    `Throttle calibrated: ${thMin} – ${thMax}${_thUnit()}`);
+    `Throttle calibrated: ${thMin} – ${thMax}${_thUnit()}`, () => {
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration.throttle_min_raw = thMin;
+    cfg.calibration.throttle_max_raw = thMax;
+  });
 }
 
 // ── P1 / P2 zero calibration ─────────────────────────────────
@@ -1512,7 +1542,7 @@ function _idleCurrentValue() {
   return idleInputType === 'servo' ? live.idle_input_us : live.idle_input_raw;
 }
 function _idleUnit() {
-  return idleInputType === 'servo' ? ' us' : '';
+  return idleInputType === 'servo' ? ' µs' : '';
 }
 function captureIdleMin() {
   const val = _idleCurrentValue();
@@ -1534,11 +1564,14 @@ function renderIdleStatus() {
   document.getElementById('btn-idle-save').disabled = idleMin === null || idleMax === null;
 }
 function saveIdle() {
+  if (idleMin === null || idleMax === null) { alert('Capture both min and max first.'); return; }
+  if (idleMin === idleMax) { alert('Idle min and max cannot be identical.'); return; }
   patchConfig({ calibration: { idle_min_raw: idleMin, idle_max_raw: idleMax } },
-    `Idle input calibrated: ${idleMin} - ${idleMax}${_idleUnit()}`);
-  if (!cfg.calibration) cfg.calibration = {};
-  cfg.calibration.idle_min_raw = idleMin;
-  cfg.calibration.idle_max_raw = idleMax;
+    `Idle input calibrated: ${idleMin} - ${idleMax}${_idleUnit()}`, () => {
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration.idle_min_raw = idleMin;
+    cfg.calibration.idle_max_raw = idleMax;
+  });
 }
 
 // ── Hardware patch (no reboot) ────────────────────────────────
@@ -1552,6 +1585,7 @@ function patchHardware(patch, onOk) {
   })
   .then(d => {
     onOk();
+    if (d.warn) alert(d.warn);
   })
   .catch(e => alert('Save failed: ' + e.message));
 }
@@ -1575,10 +1609,19 @@ function saveNtcCal() {
   const beta = parseFloat(document.getElementById('ntc-beta').value);
   const r0   = parseFloat(document.getElementById('ntc-r0').value);
   const rf   = parseFloat(document.getElementById('ntc-rfixed').value);
-  if (isNaN(beta) || isNaN(r0) || isNaN(rf) || beta <= 0 || r0 <= 0 || rf <= 0) {
-    alert('Enter valid positive values for all three fields.'); return;
+  if (isNaN(beta) || beta < 1000 || beta > 10000 ||
+      isNaN(r0) || r0 < 100 || r0 > 1000000 ||
+      isNaN(rf) || rf < 100 || rf > 1000000) {
+    alert('Enter valid NTC values: Beta 1000-10000, R0 100-1000000 ohm, pull-up R 100-1000000 ohm.');
+    return;
   }
   patchHardware({ sensors: { oil_temp: { ntc_beta: beta, ntc_r0: r0, ntc_r_fixed: rf } } }, () => {
+    if (!cfg.hardware) cfg.hardware = {};
+    if (!cfg.hardware.sensors) cfg.hardware.sensors = {};
+    if (!cfg.hardware.sensors.oil_temp) cfg.hardware.sensors.oil_temp = {};
+    cfg.hardware.sensors.oil_temp.ntc_beta = beta;
+    cfg.hardware.sensors.oil_temp.ntc_r0 = r0;
+    cfg.hardware.sensors.oil_temp.ntc_r_fixed = rf;
     document.getElementById('ntc-status').textContent =
       'Saved: Beta=' + beta + '  R₀=' + r0 + ' Ω  R_fixed=' + rf + ' Ω';
   });
@@ -1596,6 +1639,12 @@ function captureBattVolt() {
   // ADC full scale = 3.3 V → Vbatt = (raw/4095) * 3.3 * divider
   _bvComputedDivider = known / vAdc;
   _bvComputedDivider = Math.round(_bvComputedDivider * 100) / 100;
+  if (_bvComputedDivider < 1 || _bvComputedDivider > 100) {
+    alert('Computed divider is outside the supported 1-100 range. Check the measured voltage and wiring.');
+    _bvComputedDivider = null;
+    document.getElementById('btn-bv-save').disabled = true;
+    return;
+  }
   document.getElementById('bv-status').textContent =
     'Raw ADC: ' + raw + '  Measured: ' + known + ' V  → Divider: ' + _bvComputedDivider;
   document.getElementById('btn-bv-save').disabled = false;
@@ -1603,6 +1652,10 @@ function captureBattVolt() {
 function saveBattVoltDivider() {
   if (_bvComputedDivider === null) return;
   patchHardware({ sensors: { batt_voltage: { divider: _bvComputedDivider } } }, () => {
+    if (!cfg.hardware) cfg.hardware = {};
+    if (!cfg.hardware.sensors) cfg.hardware.sensors = {};
+    if (!cfg.hardware.sensors.batt_voltage) cfg.hardware.sensors.batt_voltage = {};
+    cfg.hardware.sensors.batt_voltage.divider = _bvComputedDivider;
     document.getElementById('bv-status').textContent =
       'Saved divider = ' + _bvComputedDivider;
     document.getElementById('btn-bv-save').disabled = true;
@@ -1623,7 +1676,10 @@ function captureTorqueZero() {
 }
 function saveTorqueScale() {
   const fullScale = parseFloat(document.getElementById('torque-fullscale').value);
-  if (isNaN(fullScale) || fullScale <= 0) { alert('Enter a valid full-scale Nm value.'); return; }
+  if (isNaN(fullScale) || fullScale <= 0 || fullScale > 10000) {
+    alert('Enter a valid full-scale Nm value between 0 and 10000.');
+    return;
+  }
   const scaleNmPerV = fullScale / 3.3;   // Nm per volt (sensor output 0–3.3 V = 0–fullScale Nm)
   let offsetNm = 0;
   if (_torqueZeroRaw !== null) {
@@ -1631,8 +1687,13 @@ function saveTorqueScale() {
     offsetNm = zeroV * scaleNmPerV;
   }
   patchHardware({ sensors: { torque: { scale: scaleNmPerV, offset: offsetNm } } }, () => {
+    if (!cfg.hardware) cfg.hardware = {};
+    if (!cfg.hardware.sensors) cfg.hardware.sensors = {};
+    if (!cfg.hardware.sensors.torque) cfg.hardware.sensors.torque = {};
+    cfg.hardware.sensors.torque.scale = scaleNmPerV;
+    cfg.hardware.sensors.torque.offset = offsetNm;
     const msg = 'Saved: scale=' + scaleNmPerV.toFixed(2) + ' Nm/V' +
-      (_torqueZeroRaw !== null ? '  offset=' + offsetNm.toFixed(2) + ' Nm' : '');
+      (_torqueZeroRaw !== null ? '  zero offset=' + offsetNm.toFixed(2) + ' Nm' : '');
     document.getElementById('torque-status').textContent = msg;
     document.getElementById('torque-bar-max').textContent = fullScale + ' Nm';
     _torqueZeroRaw = null;
@@ -1640,7 +1701,8 @@ function saveTorqueScale() {
 }
 
 // ── Config patch ──────────────────────────────────────────────
-function patchConfig(patch, msg) {
+function patchConfig(patch, msg, onOk) {
+  let apiWarn = '';
   fetch('/api/config').then(async r => {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
@@ -1658,8 +1720,10 @@ function patchConfig(patch, msg) {
   }).then(async r => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+    apiWarn = d.warn || '';
   }).then(() => {
-    alert(msg + '\nNote: some calibration changes require restart to take effect.');
+    if (onOk) onOk();
+    alert(apiWarn ? (msg + '\n' + apiWarn) : msg);
   }).catch(e => alert('Save failed: ' + e.message));
 }
 
@@ -1706,6 +1770,10 @@ function p12Save(ch) {
     if (isNaN(vZero) || isNaN(vMax) || isNaN(valMax) || valMax <= 0) {
       alert('Enter all three factory spec values'); return;
     }
+    if (vZero < 0 || vZero > 3.3 || vMax < 0 || vMax > 3.3) {
+      alert('Factory voltage values must be the ECU ADC-pin voltage between 0 and 3.3 V.');
+      return;
+    }
     rawMin = Math.round(Math.min(vZero / 3.3, 1.0) * 4095);
     rawMax = Math.round(Math.min(vMax  / 3.3, 1.0) * 4095);
   }
@@ -1713,21 +1781,28 @@ function p12Save(ch) {
   const patch = { calibration: {
     [ch + '_raw_min']: rawMin, [ch + '_raw_max']: rawMax, [ch + '_val_max']: valMax
   }};
-  patchConfig(patch, ch.toUpperCase() + ' calibration saved — zero=' + rawMin + ', ref=' + rawMax + ' → ' + valMax + ' bar');
-  // Update local cfg so the bar range reflects the new scale immediately
-  if (!cfg.calibration) cfg.calibration = {};
-  cfg.calibration[ch + '_raw_min'] = rawMin;
-  cfg.calibration[ch + '_raw_max'] = rawMax;
-  cfg.calibration[ch + '_val_max'] = valMax;
-  document.getElementById(ch + '-bar-max-label').textContent = valMax + ' bar';
-  document.getElementById(ch + '-cal-status').textContent =
-    '✓ Saved: 0 bar @ ADC ' + rawMin + ',  ' + valMax + ' bar @ ADC ' + rawMax;
+  patchConfig(patch, ch.toUpperCase() + ' calibration saved — zero=' + rawMin + ', ref=' + rawMax + ' → ' + valMax + ' bar', () => {
+    // Update local cfg only once the ECU accepted the save
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration[ch + '_raw_min'] = rawMin;
+    cfg.calibration[ch + '_raw_max'] = rawMax;
+    cfg.calibration[ch + '_val_max'] = valMax;
+    document.getElementById(ch + '-bar-max-label').textContent = valMax + ' bar';
+    document.getElementById(ch + '-cal-status').textContent =
+      '✓ Saved: 0 bar @ ADC ' + rawMin + ',  ' + valMax + ' bar @ ADC ' + rawMax;
+  });
 }
 function p12Clear(ch) {
   patchConfig({ calibration: { [ch+'_raw_min']:0, [ch+'_raw_max']:4095, [ch+'_val_max']:10 } },
-    ch.toUpperCase() + ' calibration reset to defaults');
-  document.getElementById(ch + '-cal-status').textContent = 'Reset to defaults (0–4095 ADC → 0–10 bar)';
-  _p12State[ch] = {};
+    ch.toUpperCase() + ' calibration reset to defaults', () => {
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration[ch + '_raw_min'] = 0;
+    cfg.calibration[ch + '_raw_max'] = 4095;
+    cfg.calibration[ch + '_val_max'] = 10;
+    document.getElementById(ch + '-bar-max-label').textContent = '10 bar';
+    document.getElementById(ch + '-cal-status').textContent = 'Reset to defaults (0–4095 ADC → 0–10 bar)';
+    _p12State[ch] = {};
+  });
 }
 
 // ── Fuel flow analog calibration ──────────────────────────────
@@ -1755,15 +1830,26 @@ function ffSave() {
     fuel_flow_raw_min: _ffState.zeroRaw,
     fuel_flow_raw_max: _ffState.refRaw,
     fuel_flow_val_max: _ffState.refVal
-  }}, 'Fuel flow calibration saved');
-  document.getElementById('ff-bar-max-label').textContent = _ffState.refVal;
-  document.getElementById('ff-cal-status').textContent =
-    '✓ Saved: 0 @ ADC ' + _ffState.zeroRaw + ',  ' + _ffState.refVal + ' @ ADC ' + _ffState.refRaw;
+  }}, 'Fuel flow calibration saved', () => {
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration.fuel_flow_raw_min = _ffState.zeroRaw;
+    cfg.calibration.fuel_flow_raw_max = _ffState.refRaw;
+    cfg.calibration.fuel_flow_val_max = _ffState.refVal;
+    document.getElementById('ff-bar-max-label').textContent = _ffState.refVal;
+    document.getElementById('ff-cal-status').textContent =
+      '✓ Saved: 0 @ ADC ' + _ffState.zeroRaw + ',  ' + _ffState.refVal + ' @ ADC ' + _ffState.refRaw;
+  });
 }
 function ffClear() {
   patchConfig({ calibration: { fuel_flow_raw_min:0, fuel_flow_raw_max:4095, fuel_flow_val_max:10 } },
-    'Fuel flow calibration reset');
-  document.getElementById('ff-cal-status').textContent = 'Reset to defaults';
+    'Fuel flow calibration reset', () => {
+    if (!cfg.calibration) cfg.calibration = {};
+    cfg.calibration.fuel_flow_raw_min = 0;
+    cfg.calibration.fuel_flow_raw_max = 4095;
+    cfg.calibration.fuel_flow_val_max = 10;
+    document.getElementById('ff-bar-max-label').textContent = '10';
+    document.getElementById('ff-cal-status').textContent = 'Reset to defaults';
+  });
 }
 
 // ── Current sensor calibration (glow + igniter) ───────────────
@@ -1800,7 +1886,10 @@ function curSave(which) {
   if (st.zeroRaw === undefined || st.refRaw === undefined) {
     alert('Capture both zero and reference points first'); return;
   }
-  if (st.refRaw === st.zeroRaw) { alert('Zero and reference ADC are identical — check your setup'); return; }
+  if (st.refRaw <= st.zeroRaw) {
+    alert('Reference ADC must be greater than zero ADC for these current sensors. Check sensor direction and wiring.');
+    return;
+  }
   const zeroV   = st.zeroV;
   const deltaV  = ((st.refRaw - st.zeroRaw) / 4095.0) * 3300.0;  // mV
   const mvPerA  = deltaV / st.refAmps;

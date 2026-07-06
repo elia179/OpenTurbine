@@ -59,13 +59,16 @@ public:
     void begin() override {
         auto& ed = EngineData::instance();
         // If the governor was previously active and holding a non-zero pitch,
-        // release pitch to fine (0) before re-engaging.  Without this, a
-        // relight or RUNNING re-entry leaves pitch stranded at its last
-        // position.  If targetRpm > 0 the governor will immediately start
-        // adjusting pitch again on the first tick.
+        // re-sync internal state to the live demand and let tick()'s
+        // slew-capped path walk pitch from there.  The old instant
+        // propPitchDemand = 0 step bypassed pitchRampSec: a full-stroke
+        // release on RUNNING re-entry / relight is exactly the gearbox torque
+        // transient the slew cap exists to prevent.  With targetRpm > 0 the
+        // governor drives pitch itself from the first tick; when disabled,
+        // tick()'s release path slews pitch to fine.
         if (usePropPitch && _wasActive) {
-            ed.propPitchDemand = 0.0f;
-            _pitchCurrent      = 0.0f;
+            _pitchCurrent = ed.propPitchDemand;
+            if (targetRpm <= 0.0f) _releasing = true;
         }
         _wasActive = false;
         _lastMs    = millis();
@@ -83,16 +86,21 @@ public:
         if (targetRpm <= 0.0f) {
             // Governor disabled — release pitch to fine so manual throttle
             // has full authority without fighting a stale pitch demand.
+            // Slew-capped (pitchRampSec), not an instant 0-step.
             if (_wasActive) {
-                if (usePropPitch) {
-                    ed.propPitchDemand = 0.0f;
-                    _pitchCurrent      = 0.0f;
-                }
+                _releasing = usePropPitch;
                 _wasActive = false;
+            }
+            if (_releasing) {
+                float maxStep      = pitchRampSec > 0.0f ? dt / pitchRampSec : 1.0f;
+                _pitchCurrent      = constrain(_pitchCurrent - maxStep, 0.0f, 1.0f);
+                ed.propPitchDemand = _pitchCurrent;
+                if (_pitchCurrent <= 0.0f) _releasing = false;
             }
             return;
         }
         _wasActive = true;
+        _releasing = false;   // active governor owns pitch from here
         if (!ed.n2Healthy) return;
 
         float error = targetRpm - ed.n2Rpm;
@@ -103,13 +111,16 @@ public:
             // dt-scaled gain + hard slew cap so large errors can't step pitch
             // instantaneously (which would cause gearbox torque transients and
             // immediate N2 excursions that the governor then has to chase).
-            float pitchAdj    = pitchKp * error * dt;
+            // Positive demand is coarser pitch / higher prop load.  Therefore
+            // underspeed needs finer pitch (less load) and overspeed needs
+            // coarser pitch (more load).
+            float pitchAdj    = -pitchKp * error * dt;
             float maxStep     = pitchRampSec > 0.0f ? dt / pitchRampSec : 1.0f;
             pitchAdj          = constrain(pitchAdj, -maxStep, maxStep);
             float newPitch    = constrain(_pitchCurrent + pitchAdj, 0.0f, 1.0f);
 
             // Apply only if pitch has authority in the required direction
-            if ((error > 0 && newPitch < 1.0f) || (error < 0 && newPitch > 0.0f)) {
+            if (fabsf(newPitch - _pitchCurrent) > 0.0001f) {
                 _pitchCurrent      = newPitch;
                 ed.propPitchDemand = newPitch;
                 return;  // pitch authority: skip throttle
@@ -132,6 +143,7 @@ public:
 
 private:
     bool          _wasActive    = false;
+    bool          _releasing    = false; // slewed release-to-fine in progress
     unsigned long _lastMs       = 0;
     float         _pitchCurrent = 0.0f;  // governor's own pitch position state
 };

@@ -382,6 +382,17 @@ async function goto(page, route, waitSelector) {
     results.push('log session channels ghost when their hardware is not fitted');
 
     await reset(page);
+    await patchData(page, { config_locked: true });
+    await goto(page, 'log.html', '#tab-session');
+    await page.locator('#tab-session').click();
+    await page.waitForFunction(() => document.querySelector('#session-save-btn')?.disabled === true);
+    assert.equal(await disabled(page, 'input[data-bit="n1"]'), true);
+    assert.equal(await disabled(page, '#log-standby'), true);
+    assert.equal(await disabled(page, '#session-save-btn'), true);
+    assert.equal(await shown(page, '#session-lock-msg'), true);
+    results.push('log session settings respect the saved-config lock state');
+
+    await reset(page);
     await goto(page, 'tools.html', '#tool-area');
     assert.equal(await page.locator('#card-AB_SOL_TEST').isVisible(), true);
     await patchHardware(page, {

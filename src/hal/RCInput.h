@@ -16,8 +16,8 @@
 //
 //  Enabled by HardwareConfig::idleInputRcPwm / throttleInputRcPwm.
 //  The GPIO pin is the same as the ADC version - only the signal
-//  type changes.  Pulse width is calibrated via Config::rcMinUs /
-//  rcMaxUs / rcFailsafeMs (tunable at runtime).
+//  type changes.  Throttle and idle pulse widths are calibrated on the
+//  Calibration page; rcFailsafeMs remains a shared timeout.
 //
 //  Outputs written:
 //    ed.rcIdleValid / rcIdleNorm        (0.0–1.0) + synthesised idleInputRaw
@@ -143,8 +143,8 @@ private:
             // ADC defaults are 0-4095. Until a servo channel has been
             // calibrated, use standard receiver pulse endpoints.
             if (minUs == 0 && maxUs == 4095) {
-                minUs = Config::rcMinUs;
-                maxUs = Config::rcMaxUs;
+                minUs = 1000;
+                maxUs = 2000;
             }
             int range = maxUs - minUs;
             if (range == 0) { valid = false; return; }  // misconfigured — guard div/0

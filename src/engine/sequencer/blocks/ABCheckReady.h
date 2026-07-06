@@ -33,7 +33,7 @@ public:
 
         // Bench mode: skip all pre-checks — no real sensors or throttle position available
         if (ed.benchMode) {
-            Serial.println("[AB] CheckReady: BENCH — skipping pre-checks");
+            Serial.println("[AB] CheckReady: BENCH - skipping pre-checks");
             return BlockResult::Complete;
         }
 

@@ -44,10 +44,7 @@ public:
         pinMode(_miso, INPUT_PULLUP);
         if (_mosi >= 0) { pinMode(_mosi, OUTPUT); digitalWrite(_mosi, LOW); }
 
-        // CR0 = 0x81: 50 Hz noise filter + auto-convert mode (continuous)
-        _writeReg(0x00, 0x81);
-        // CR1 = tcType in lower nibble, averaging = 1 sample (bits 6:4 = 000)
-        _writeReg(0x01, _tcReg & 0x0F);
+        _configOk = _configure();
 
         _temp    = 0;
         _healthy = false;
@@ -59,9 +56,18 @@ public:
         if (now - _lastMs < READ_INTERVAL_MS) return;
         _lastMs = now;
 
+        // Chip never accepted its configuration (miswired/absent MOSI) —
+        // retry so a fixed wiring fault recovers without a reboot, and stay
+        // unhealthy instead of reporting the power-on 0.0 °C as valid.
+        if (!_configOk) {
+            _configOk = _configure();
+            _healthy  = false;
+            return;
+        }
+
         // Check fault status register first
         uint8_t sr = _readReg(0x0F);
-        if (sr & 0x3F) {               // any fault bit set (bits 5:0)
+        if (sr) {                      // any fault bit set (incl. CJ/TC range, bits 7:6)
             _healthy = false;
             return;
         }
@@ -99,7 +105,22 @@ private:
     uint8_t     _tcReg   = 0x03;   // default K-type
     float       _temp    = 0;
     bool        _healthy = false;
+    bool        _configOk = false;
     unsigned long _lastMs = 0;
+
+    // Write CR0/CR1 and verify by readback.  If MOSI is miswired or absent
+    // the writes fail silently and the chip would otherwise sit in its
+    // power-on state reporting a healthy-looking 0.0 °C forever.
+    bool _configure() {
+        // CR0 = 0x91: 50 Hz noise filter + open-circuit detection (OCFAULT=01)
+        //             + auto-convert mode (continuous).  Without OCFAULT a
+        //             detached thermocouple never sets the OPEN fault bit.
+        _writeReg(0x00, 0x91);
+        // CR1 = tcType in lower nibble, averaging = 1 sample (bits 6:4 = 000)
+        _writeReg(0x01, _tcReg & 0x0F);
+        return _readReg(0x00) == 0x91 &&
+               _readReg(0x01) == (_tcReg & 0x0F);
+    }
 
     // CR1 lower nibble codes per datasheet Table 4
     static uint8_t _typeToReg(const char* t) {

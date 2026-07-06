@@ -13,13 +13,15 @@ class TempConfirm : public IBlock {
 public:
     float         tempTarget    = 200.0f;   // °C
     unsigned long timeoutMs     = 10000;
+    unsigned long checkIntervalMs = 300;    // space checks so each samples a fresh EGT reading
     int           requiredCount = 3;        // consecutive readings above target needed
 
     const char* name() override { return "TempConfirm"; }
 
     void onEnter() override {
-        _entryMs = millis();
-        _count   = 0;
+        _entryMs   = millis();
+        _lastCheck = millis();
+        _count     = 0;
         clearWaitReason();
     }
 
@@ -35,13 +37,20 @@ public:
             clearWaitReason();
             return BlockResult::Abort;
         }
-        if (Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) >= tempTarget) {
-            if (++_count >= requiredCount) {
-                clearWaitReason();
-                return BlockResult::Complete;
+        // Space checks by checkIntervalMs (like FlameConfirm): EGT sensors
+        // update on ~100 ms intervals, so back-to-back loop ticks would count
+        // the same (possibly glitched) reading requiredCount times.
+        unsigned long now = millis();
+        if (now - _lastCheck >= checkIntervalMs) {
+            _lastCheck = now;
+            if (Config::primaryEgtHealthy(ed) && Config::primaryEgtC(ed) >= tempTarget) {
+                if (++_count >= requiredCount) {
+                    clearWaitReason();
+                    return BlockResult::Complete;
+                }
+            } else {
+                _count = 0;  // reset on any reading below threshold
             }
-        } else {
-            _count = 0;  // reset on any reading below threshold
         }
         return BlockResult::Running;
     }
@@ -49,6 +58,7 @@ public:
     void onExit() override { clearWaitReason(); }
 
 private:
-    unsigned long _entryMs = 0;
-    int           _count   = 0;
+    unsigned long _entryMs   = 0;
+    unsigned long _lastCheck = 0;
+    int           _count     = 0;
 };

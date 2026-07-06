@@ -51,7 +51,7 @@ public:
         if (!_completed) return;
         // Signal the AB state machine that AB is now running
         EngineData::instance().abMode = ABMode::Running;
-        Serial.println("[AB] Stabilize: complete — AB RUNNING");
+        Serial.println("[AB] Stabilize: complete - AB RUNNING");
     }
 
 private:

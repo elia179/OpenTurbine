@@ -20,7 +20,6 @@
 class HardwareConfig {
 public:
     static constexpr const char* PATH        = "/ecu_config.json";
-    static constexpr const char* LEGACY_PATH = "/hardware.json";
     static constexpr const char* SECTION     = "hardware";
 
     // ── Profile identity ──────────────────────────────────────
@@ -28,7 +27,7 @@ public:
     // It must match the settings section profileId within the same ecu_config.json.
     static char  profileId[64];
     static char  profileDesc[64];
-    static char  wifiPassword[32];   // WiFi AP password — empty = open network
+    static char  wifiPassword[64];   // WiFi AP password — empty = open network; WPA2 allows 8-63 chars
     static int   wifiTxPowerDbm;     // AP transmit power, dBm; lower reduces heat/current draw
 
     // ── System features ───────────────────────────────────────
@@ -133,7 +132,7 @@ public:
     static bool hasFuelPump2;        // second variable fuel pump (independent of throttle ESC)
     static bool hasBleedValve;       // compressor bleed valve (surge prevention / unloaded start)
     static bool hasPropPitch;        // variable pitch propeller servo (turboprop)
-    static bool hasGlowPlug;         // glow plug / pilot-flame element (PWM ramp, not relay)
+    static bool hasGlowPlug;         // glow plug / pilot-flame element
     static bool hasGlowCurrentSensor;       // current sensor on glow plug output
     static bool hasIgniterCurrentSensor;   // current sensor on igniter 1 coil output
     static bool hasIgniter2CurrentSensor;  // current sensor on igniter 2 coil output
@@ -155,6 +154,8 @@ public:
     static bool  throttleActiveH;    // on-off mode active polarity
     static int   throttleLedcFreqHz;
     static int   throttleLedcBits;
+    static float throttlePwmMinPct;
+    static float throttlePwmMaxPct;
 
     static int   starterPin;
     static int   starterType;
@@ -164,6 +165,8 @@ public:
     static bool  starterActiveH;     // on-off mode active polarity
     static int   starterLedcFreqHz;
     static int   starterLedcBits;
+    static float starterPwmMinPct;
+    static float starterPwmMaxPct;
     static bool  starterAssistEnabled;  // allow starter assist in RUNNING (servo/PWM types)
 
     // oilPumpType: 0=servo, 1=ledc_pwm, 2=onoff
@@ -174,6 +177,8 @@ public:
     static bool  oilPumpActiveH;        // on-off mode active polarity
     static int   oilPumpFreqHz;
     static int   oilPumpResBits;
+    static float oilPumpPwmMinPct;
+    static float oilPumpPwmMaxPct;
 
     static int   fuelSolPin;
     static bool  fuelSolActiveH;
@@ -217,6 +222,8 @@ public:
     static bool  coolFanActiveH;        // on-off mode active polarity
     static int   coolFanFreqHz;
     static int   coolFanResBits;
+    static float coolFanPwmMinPct;
+    static float coolFanPwmMaxPct;
 
     // abPumpType: 0=servo, 1=ledc_pwm, 2=onoff
     static int   abPumpPin;
@@ -226,6 +233,8 @@ public:
     static bool  abPumpActiveH;
     static int   abPumpFreqHz;
     static int   abPumpResBits;
+    static float abPumpPwmMinPct;
+    static float abPumpPwmMaxPct;
 
     // oilScavPumpType: 0=servo, 1=ledc_pwm, 2=onoff
     static int   oilScavPumpPin;
@@ -235,6 +244,8 @@ public:
     static bool  oilScavPumpActiveH;
     static int   oilScavPumpFreqHz;
     static int   oilScavPumpResBits;
+    static float oilScavPumpPwmMinPct;
+    static float oilScavPumpPwmMaxPct;
 
     // fuelPump2Type: 0=servo, 1=ledc_pwm, 2=onoff
     static int   fuelPump2Pin;
@@ -244,6 +255,8 @@ public:
     static bool  fuelPump2ActiveH;
     static int   fuelPump2FreqHz;
     static int   fuelPump2ResBits;
+    static float fuelPump2PwmMinPct;
+    static float fuelPump2PwmMaxPct;
 
     // bleedValveType: 0=on-off (relay/solenoid), 1=servo, 2=ledc_pwm
     static int   bleedValveType;
@@ -253,21 +266,30 @@ public:
     static int   bleedValveMaxUs;      // servo: open pulse
     static int   bleedValveFreqHz;     // PWM freq
     static int   bleedValveResBits;    // PWM resolution
+    static float bleedValvePwmMinPct;
+    static float bleedValvePwmMaxPct;
 
     // propPitchType: 0=servo, 1=ledc_pwm, 2=on-off
     static int   propPitchType;
     static int   propPitchPin;         // actuator output pin
-    static int   propPitchMinUs;       // servo: fine/feather pitch pulse
+    static int   propPitchMinUs;       // servo: fine pitch pulse
     static int   propPitchMaxUs;       // servo: coarse pitch pulse
     static int   propPitchFreqHz;      // PWM freq
     static int   propPitchResBits;     // PWM resolution
+    static float propPitchPwmMinPct;
+    static float propPitchPwmMaxPct;
     static bool  propPitchActiveH;     // on-off: active-high = coarse pitch
 
-    // glowPlugType: 0=plain PWM glow, 1=current-sensed glow, 2=wet glow
+    // glowPlugType: 0=plain glow, 1=current-sensed glow, 2=wet glow
+    // glowPlugOutputType: 0=LEDC PWM, 1=on-off relay/MOSFET
     static int   glowPlugType;
-    static int   glowPlugPin;          // LEDC PWM output to glow plug / pilot element
+    static int   glowPlugOutputType;
+    static bool  glowPlugActiveH;       // relay/on-off mode polarity
+    static int   glowPlugPin;           // output to glow plug / pilot element
     static int   glowPlugFreqHz;       // PWM frequency (e.g. 1000 Hz)
     static int   glowPlugResBits;      // PWM resolution (default 8)
+    static float glowPlugPwmMinPct;
+    static float glowPlugPwmMaxPct;
     static int   wetGlowFuelPin;       // fuel output for wet glow plug (-1 = none)
     static int   wetGlowFuelType;      // 0=relay, 1=LEDC PWM, 2=servo/ESC
     static bool  wetGlowFuelActiveH;    // relay mode polarity
@@ -275,6 +297,8 @@ public:
     static int   wetGlowFuelMaxUs;      // servo/ESC high pulse
     static int   wetGlowFuelFreqHz;     // PWM frequency
     static int   wetGlowFuelResBits;    // PWM resolution
+    static float wetGlowFuelPwmMinPct;
+    static float wetGlowFuelPwmMaxPct;
     static float wetGlowFuelDemandPct;  // active demand for PWM/servo
     static int   wetGlowFuelDelayMs;    // delay after glow command before fuel starts
     static int   glowCurrentPin;            // ADC pin for glow plug current sensor (-1 = none)
@@ -372,7 +396,7 @@ public:
         // fault role params:
         char faultCode[24]    = {};  // e.g. "LOW_OIL_PRESSURE"
         char faultMsg[64]     = {};  // human-readable fault description
-        uint8_t activeModes   = 0xFF; // bitmask of SysMode values where action fires (0xFF = all)
+        uint8_t activeModes   = 0x1F; // bitmask of SysMode values where action fires (0x1F = all 5 modes incl. FAULT)
     };
     static DiChannel diCh[MAX_DI];
 

@@ -9,10 +9,13 @@
 //  DS18B20TempSensor — Dallas/Maxim DS18B20 1-Wire digital thermometer
 //
 //  Single-pin OneWire interface; auto-discovers the first device
-//  on the bus.  Supports 9–12-bit resolution (default 12-bit).
+//  on the bus (address cached in begin() — no per-read bus search).
+//  Supports 9–12-bit resolution (default 12-bit).
 //
 //  Conversion is fully asynchronous — update() triggers the next
-//  conversion at the end of each read so the ECU loop never blocks.
+//  conversion at the end of each read, and the scratchpad read is
+//  split across ticks (select on one tick, 3 data bytes per tick)
+//  so no single ECU-loop tick blocks for the whole transaction.
 //
 //  Conversion times:
 //    9-bit  →  94 ms   (0.5 °C resolution)
@@ -21,8 +24,9 @@
 //   12-bit  → 750 ms   (0.0625 °C)
 //
 //  Healthy range: −55 °C to +125 °C (sensor spec).
-//  85 °C returned on power-on before first conversion — treated as fault.
-//  −127 °C / DEVICE_DISCONNECTED_C returned when no device found — fault.
+//  85 °C is the power-on-reset value — rejected only on the first
+//  conversion after begin(); later it is a legitimate temperature.
+//  Scratchpad CRC failure / missing presence pulse — fault.
 //
 //  Uses placement-new (no heap allocation after begin()).
 // ============================================================
@@ -48,14 +52,17 @@ public:
         _dt->begin();
         _numDevices = _dt->getDeviceCount();
 
+        _haveAddr  = false;
+        _firstConv = true;
+
         if (_numDevices > 0) {
+            // Cache the ROM address once — getTempCByIndex() would repeat a
+            // full bus search every read (~15-25 ms blocking the ECU core).
+            _haveAddr = _dt->getAddress(_addr, 0);
             _dt->setResolution(_resolution);
-            _dt->setWaitForConversion(false);   // non-blocking requestTemperatures()
-            _dt->requestTemperatures();          // kick off first conversion
-            _convReadyMs = millis() + _convDelayMs();
-            _convPending = true;
+            _startConversion(millis());          // kick off first conversion
         } else {
-            _convPending = false;
+            _state = ST_IDLE;
         }
 
         _temp    = 0.0f;
@@ -66,35 +73,41 @@ public:
     void begin() override { begin(_pin, _resolution); }
 
     void update() override {
-        if (!_dt || _numDevices == 0) return;
+        if (!_dt || _numDevices == 0 || !_haveAddr) return;
 
         unsigned long now = millis();
 
-        if (!_convPending) {
+        switch (_state) {
+        case ST_IDLE:
             // Safety: restart conversion if somehow never started.
-            _dt->requestTemperatures();
-            _convReadyMs = now + _convDelayMs();
-            _convPending = true;
-            return;
+            _startConversion(now);
+            break;
+
+        case ST_CONVERTING:
+            if (now < _convReadyMs) return;   // conversion still in progress
+            // Address the cached device and issue READ SCRATCHPAD; the nine
+            // data bytes are clocked out over the following ticks (1-Wire
+            // tolerates idle gaps between byte slots).
+            if (!_ow->reset()) {              // no presence pulse — device gone
+                _healthy = false;
+                _startConversion(now);        // retry at conversion cadence
+                return;
+            }
+            _ow->select(_addr);
+            _ow->write(0xBE);                 // READ SCRATCHPAD
+            _scratchIdx = 0;
+            _state = ST_READING;
+            break;
+
+        case ST_READING:
+            for (int i = 0; i < 3 && _scratchIdx < 9; i++)
+                _scratch[_scratchIdx++] = _ow->read();
+            if (_scratchIdx < 9) return;
+            _processScratchpad();
+            // Request the next conversion immediately.
+            _startConversion(now);
+            break;
         }
-
-        if (now < _convReadyMs) return;   // conversion still in progress
-
-        float t = _dt->getTempCByIndex(0);
-        // Reject known fault values:
-        //   DEVICE_DISCONNECTED_C = -127  → no device
-        //   85.0 °C               → power-on reset, not yet converted
-        if (t > -100.0f && fabsf(t - 85.0f) > 0.01f && t < 130.0f) {
-            _temp    = t;
-            _healthy = true;
-        } else {
-            _healthy = false;
-        }
-
-        // Request the next conversion immediately.
-        _dt->requestTemperatures();
-        _convReadyMs = now + _convDelayMs();
-        // _convPending stays true
     }
 
     float       getValue()  override { return _temp; }
@@ -102,12 +115,48 @@ public:
     const char* name()      override { return _name; }
 
 private:
+    enum ReadState : uint8_t { ST_IDLE, ST_CONVERTING, ST_READING };
+
     unsigned long _convDelayMs() const {
         switch (_resolution) {
             case 9:  return  94UL;
             case 10: return 188UL;
             case 11: return 375UL;
             default: return 750UL;   // 12-bit
+        }
+    }
+
+    // Broadcast CONVERT T and arm the ready timer (~2 ms on the bus).
+    void _startConversion(unsigned long now) {
+        if (_ow->reset()) {
+            _ow->skip();
+            _ow->write(0x44);                 // CONVERT T
+        }
+        _convReadyMs = now + _convDelayMs();
+        _state = ST_CONVERTING;
+    }
+
+    void _processScratchpad() {
+        if (OneWire::crc8(_scratch, 8) != _scratch[8]) {
+            _healthy = false;                 // garbled read / device gone
+            return;
+        }
+        int16_t raw = (int16_t)(((uint16_t)_scratch[1] << 8) | _scratch[0]);
+        // Mask undefined low bits at reduced resolution
+        if      (_resolution == 9)  raw &= ~0x07;
+        else if (_resolution == 10) raw &= ~0x03;
+        else if (_resolution == 11) raw &= ~0x01;
+        float t = raw * 0.0625f;
+        // 85.0 °C (raw 0x0550) is the power-on-reset value: reject it only
+        // on the first conversion after begin() — afterwards a requested
+        // conversion has demonstrably run, so 85 °C is a legitimate oil temp.
+        bool porArtifact = _firstConv && raw == 0x0550;
+        _firstConv = false;
+        if (!porArtifact && t > -100.0f && t < 130.0f) {
+            _temp    = t;
+            _healthy = true;
+        } else {
+            _healthy = false;
         }
     }
 
@@ -122,8 +171,13 @@ private:
     OneWire*           _ow;
     DallasTemperature* _dt;
 
+    uint8_t       _addr[8]      = {};
+    bool          _haveAddr     = false;
+    uint8_t       _scratch[9]   = {};
+    uint8_t       _scratchIdx   = 0;
+    bool          _firstConv    = true;
+    ReadState     _state        = ST_IDLE;
     float         _temp         = 0.0f;
     bool          _healthy      = false;
     unsigned long _convReadyMs  = 0;
-    bool          _convPending  = false;
 };

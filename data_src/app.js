@@ -138,7 +138,8 @@ function usesGlobalTelemetry() {
 }
 function hasPageLocalTelemetry() {
   return location.pathname === '/hardware.html' ||
-    location.pathname === '/sequence.html';
+    location.pathname === '/sequence.html' ||
+    location.pathname === '/tools.html';
 }
 
 function desiredPullPeriodMs() {
@@ -299,6 +300,11 @@ function applyData(d) {
   // fields; slow fields (has_*, limits, max_oil_temp, etc.) must persist so
   // that applyData(_lastData) called by the unit-toggle buttons still has them.
   if (!_lastData) _lastData = {};
+  // di_channels: fast frames only carry {state,pin} — merge per-entry so the
+  // label/role fields from the /api/data snapshot survive fast WS frames.
+  if (d && Array.isArray(d.di_channels) && Array.isArray(_lastData.di_channels)) {
+    d.di_channels = d.di_channels.map((ch, i) => Object.assign({}, _lastData.di_channels[i], ch));
+  }
   Object.assign(_lastData, d);
   d = _lastData;
   if (d.uptime_s !== undefined && Number.isFinite(Number(d.uptime_s))) {
@@ -513,10 +519,16 @@ function applyData(d) {
   if (p1Card && d.has_p1 !== undefined) p1Card.style.display = d.has_p1 ? '' : 'none';
   const p2Card = document.getElementById('p2-card');
   if (p2Card && d.has_p2 !== undefined) p2Card.style.display = d.has_p2 ? '' : 'none';
-  setText('p1', d.p1 !== undefined ? toDispPress(Number(d.p1)).toFixed(2) : '—');
-  setText('p2', d.p2 !== undefined ? toDispPress(Number(d.p2)).toFixed(2) : '—');
+  // A railed/disconnected optional pressure sensor now reports unhealthy —
+  // show an explicit dash instead of a believable extrapolated number.
+  const p1Ok = d.p1_healthy !== false, p2Ok = d.p2_healthy !== false;
+  setText('p1', d.p1 !== undefined && p1Ok ? toDispPress(Number(d.p1)).toFixed(2) : '—');
+  setText('p2', d.p2 !== undefined && p2Ok ? toDispPress(Number(d.p2)).toFixed(2) : '—');
   setText('max-p1', d.max_p1 !== undefined ? toDispPress(Number(d.max_p1)).toFixed(2) : '—');
   setText('max-p2', d.max_p2 !== undefined ? toDispPress(Number(d.max_p2)).toFixed(2) : '—');
+  const p1El = document.getElementById('p1'), p2El = document.getElementById('p2');
+  if (p1El) p1El.title = p1Ok ? '' : 'P1 sensor fault (railed/disconnected) — check wiring';
+  if (p2El) p2El.title = p2Ok ? '' : 'P2 sensor fault (railed/disconnected) — check wiring';
 
   // Health dots
   // RPM health is only meaningful when the engine is running — zero RPM at standby is valid.
@@ -526,7 +538,22 @@ function applyData(d) {
   setDot('n2-health',  engineOp ? d.n2_healthy : null, lbl('n2') + ' RPM');
   setDot('tot-health', d.tot_healthy, lbl('tot'));
   setDot('oil-health', d.oil_healthy, lbl('oil_press'));
-  setDot('flame-dot',  d.has_flame === false ? null : d.flame, 'Flame sensor');
+  // Flame dot: green = flame confirmed; red = no flame while the engine is
+  // operating (in-flight flameout cue); neutral = no flame otherwise (normal
+  // at standby). Title set manually below to bypass setDot's generic
+  // "sensor fault (check wiring)" text — flame-off is not a wiring fault.
+  // Exception: a railed ADC at standby (flame_healthy=false) IS a wiring
+  // hint — while running a strong flame can saturate legitimately, so the
+  // rail check is only surfaced outside operational modes.
+  const flameWiring = !engineOp && d.flame_healthy === false;
+  setDot('flame-dot',  d.has_flame === false ? null
+    : d.flame ? true : ((engineOp || flameWiring) ? false : null));
+  {
+    const flameDot = document.getElementById('flame-dot');
+    if (flameDot) flameDot.title = d.has_flame === false ? 'Flame sensor'
+      : flameWiring ? 'Flame sensor — ADC railed (check wiring)'
+      : (d.flame ? 'Flame sensor — flame confirmed' : 'Flame sensor — no flame');
+  }
   const flameCard = document.getElementById('flame-card');
   if (flameCard && d.has_flame !== undefined) flameCard.style.display = d.has_flame ? '' : 'none';
   const combustionGroup = document.getElementById('combustion-group');
@@ -563,6 +590,14 @@ function applyData(d) {
   }
   const storageBanner = document.getElementById('config-storage-banner');
   if (storageBanner) storageBanner.style.display = d.config_storage_fault ? '' : 'none';
+  // Boot-config load warning (full frames: config_load_warning = string|null).
+  // Dismiss hides it for this page load only; reappears on reload while it persists.
+  const cfgLoadWarnBanner = document.getElementById('config-load-warn-banner');
+  if (cfgLoadWarnBanner && d.config_load_warning !== undefined) {
+    const warn = d.config_load_warning;
+    if (warn) setText('config-load-warn-text', warn);
+    cfgLoadWarnBanner.style.display = (warn && !window._cfgLoadWarnDismissed) ? 'flex' : 'none';
+  }
 
   // Stop switch warning below start button
   const stopWarn = document.getElementById('stop-switch-warn');
@@ -578,7 +613,32 @@ function applyData(d) {
       startBtn._startTimeout = null;
     }
   }
-  setDisabled('btn-start', running || d.mode === 'FAULT' || d.stop_switch_active);
+  // Mirror the backend start-preflight reasons visible in telemetry, so
+  // START is disabled with an explanation instead of accepting the click
+  // and rejecting it server-side (backend remains the authority).
+  let startBlock = '';
+  if (!running) {
+    if (d.mode === 'FAULT')                startBlock = 'ECU is in FAULT — fix config/profile first';
+    else if (d.stop_switch_active)         startBlock = 'STOP switch is active';
+    else if (d.profile_match === false)    startBlock = 'Profile mismatch — upload a matching config';
+    // (boot config-load failure enters FAULT mode, caught above; telemetry
+    // config_locked means "running, edits locked" and never applies here)
+    else if (d.extra_cooldown_active)      startBlock = 'Extra cooldown is running — stop it on Tools';
+    else if (d.seq_has_structural_errors)  startBlock = 'Startup sequence has structural errors — see Sequence page';
+    else if (d.seq_has_errors && !d.bench_mode) startBlock = 'Sequence hardware errors — see Sequence page (Bench Mode bypasses)';
+    else if (Array.isArray(d.di_channels) &&
+             d.di_channels.some(ch => ch && ch.pin >= 0 && ch.state && ch.role === 'inhibit_start'))
+                                           startBlock = 'Start-inhibit input is active';
+  }
+  setDisabled('btn-start', running || !!startBlock);
+  if (startBtn) startBtn.title = startBlock;
+  const sbr = document.getElementById('start-block-reason');
+  if (sbr) {
+    // stop-switch has its own warning line — avoid doubling it
+    const show = startBlock && !d.stop_switch_active;
+    sbr.style.display = show ? '' : 'none';
+    if (show) sbr.textContent = '⚠ ' + startBlock;
+  }
   setDisabled('btn-stop',  !running);
   setHwActive('btn-start', !!d.start_switch_active);
   setHwActive('btn-stop',  !!d.stop_switch_active);
@@ -586,7 +646,8 @@ function applyData(d) {
   // ── Sequence progress ─────────────────────────────────────
   const seqSection = document.getElementById('seq-progress-section');
   if (seqSection) {
-    const inSeq = (d.mode === 'STARTUP' || d.mode === 'SHUTDOWN') && d.seq_block_total > 0;
+    const abSeqActive = d.mode === 'RUNNING' && (d.ab_mode === 'Igniting' || d.ab_mode === 'ShuttingDown');
+    const inSeq = (d.mode === 'STARTUP' || d.mode === 'SHUTDOWN' || abSeqActive) && d.seq_block_total > 0;
     seqSection.style.display = inSeq ? '' : 'none';
     if (inSeq) {
       setText('seq-block-name', d.current_block || '—');
@@ -635,9 +696,7 @@ function applyData(d) {
   if (d.tot_rise_rate !== undefined) {
     const rate = Number(d.tot_rise_rate);
     const rateEl = document.getElementById('tot-rise-rate-val');
-    // Rise rate is a delta — only apply the scale factor (×9/5), not the +32 offset
-    if (rateEl) rateEl.textContent = (tempUnit() === 'F' ? (rate * 9/5).toFixed(1) + ' °F/s'
-                                                         : rate.toFixed(1) + ' °C/s');
+    if (rateEl) rateEl.textContent = toDispTempDelta(rate).toFixed(1) + ' ' + dispTempUnit() + '/s';
   }
 
   // ── Color gauges + approach-to-limit warnings ────────────
@@ -679,7 +738,9 @@ function applyData(d) {
   }
   if (d.oil !== undefined) {
     const oilMin = Number(d.oil_running_min || 0);
-    if (d.mode === 'RUNNING') {
+    if (d.mode === 'RUNNING' || d.mode === 'SHUTDOWN') {
+      // SHUTDOWN included: pump is still active and the engine is spinning,
+      // and a low-oil red bar is the cue that explains a low-oil shutdown.
       // Oil is inverted vs the other gauges: LOW pressure is the fault state.
       // Width tracks pressure (minimum = 50% width, floor 8% so a red sliver
       // is always visible); color is forced — red below the running minimum,
@@ -698,6 +759,15 @@ function applyData(d) {
         if (low) warn.textContent = '⚠ Oil ' + toDispPress(Number(d.oil)).toFixed(2)
           + ' ' + dispPressUnit() + ' — near min ' + toDispPress(oilMin).toFixed(2) + ' ' + dispPressUnit();
       }
+    } else {
+      // STANDBY/FAULT and other non-op modes: keep the bar live but neutral —
+      // clears a stale red 'danger' bar/warning left over from the last
+      // RUNNING/SHUTDOWN frame.
+      const ratio = oilMin > 0 ? d.oil / oilMin : 0;
+      const width = oilMin > 0 ? Math.min(100, Math.max(0, ratio * 50)) : 0;
+      setGaugeBar('oil-gauge-bar', width, 'ok');
+      const warn = document.getElementById('oil-approach-warn');
+      if (warn) warn.style.display = 'none';
     }
     const absLbl = document.getElementById('oil-abs-label');
     if (absLbl) absLbl.textContent = oilMin > 0
@@ -855,10 +925,12 @@ function applyData(d) {
     if (d.has_glow_current) {
       setText('glow-current-val', d.glow_current_amps !== undefined ? Number(d.glow_current_amps).toFixed(1) : '—');
       const hot = !!d.glow_plug_hot;
-      setDot('glow-hot-dot', hot);          // set class only; title managed below
+      // Not-hot is a normal state (plug off or still heating), not a sensor
+      // fault — render neutral instead of the red fault dot.
+      setDot('glow-hot-dot', hot ? true : null);   // set class only; title managed below
       const ghDot = document.getElementById('glow-hot-dot');
-      if (ghDot) ghDot.title = hot ? 'Glow plug — HOT (ready)' : 'Glow plug — warming up';
-      setText('glow-hot-label', hot ? 'HOT — ready' : 'warming up…');
+      if (ghDot) ghDot.title = hot ? 'Glow plug — HOT (ready)' : 'Glow plug — cold / off';
+      setText('glow-hot-label', hot ? 'HOT — ready' : 'not hot');
     }
   }
 
@@ -899,7 +971,10 @@ function applyData(d) {
   if (fuelFlowCard) {
     fuelFlowCard.style.display = d.has_fuel_flow ? '' : 'none';
     if (d.has_fuel_flow) {
-      setText('fuel-flow-val', d.fuel_flow !== undefined ? Number(d.fuel_flow).toFixed(2) : '—');
+      const ffOk = d.fuel_flow_healthy !== false;
+      setText('fuel-flow-val', d.fuel_flow !== undefined && ffOk ? Number(d.fuel_flow).toFixed(2) : '—');
+      const ffEl = document.getElementById('fuel-flow-val');
+      if (ffEl) ffEl.title = ffOk ? '' : 'Fuel flow sensor fault (railed/disconnected) — check wiring';
     }
   }
 
@@ -924,8 +999,13 @@ function applyData(d) {
         }
         const name = (ch.label && ch.label.length) ? ch.label : ('DI-' + (i + 1));
         el.textContent = name + ': ' + (ch.state ? 'ACTIVE' : 'off');
-        el.style.color = ch.state ? 'var(--red)' : 'var(--dim)';
-        el.style.borderColor = ch.state ? 'var(--red)' : 'var(--border)';
+        // Color by role semantics: only fault/estop are alarming when active.
+        // An active arm switch / interlock / start-inhibit is a normal state
+        // and must not look like a fault.
+        const alarmRole = ch.role === 'fault' || ch.role === 'estop';
+        const activeColor = alarmRole ? 'var(--red)' : 'var(--yellow)';
+        el.style.color = ch.state ? activeColor : 'var(--dim)';
+        el.style.borderColor = ch.state ? activeColor : 'var(--border)';
       });
     }
   }
@@ -947,17 +1027,64 @@ function applyData(d) {
   // ── Advanced actuators section (glow, bleed, prop pitch, fuel pump 2, fan, airstarter, scavenge)
   const advActSection = document.getElementById('adv-act-section');
   if (advActSection) {
-    const anyAdv = d.has_glow_plug || d.has_bleed_valve || d.has_prop_pitch || d.has_fuel_pump2
+    const anyAdv = d.has_starter   || d.has_starter_en || d.has_fuel_sol  || d.has_igniter
+                || d.has_igniter2  || d.has_glow_plug  || d.has_bleed_valve || d.has_prop_pitch || d.has_fuel_pump2
                 || d.has_cool_fan  || d.has_airstarter  || d.has_oil_scavenge;
     advActSection.style.display = anyAdv ? '' : 'none';
     const actuatorIsRelay = type => Number(type) === 2;
+
+    const advStarter = document.getElementById('adv-starter');
+    if (advStarter) {
+      advStarter.style.display = d.has_starter ? '' : 'none';
+      if (d.has_starter && d.starter_demand !== undefined) {
+        const pct = Math.round(Number(d.starter_demand) * 100);
+        const relay = actuatorIsRelay(d.starter_type);
+        setText('starter-pct', relay ? (pct > 0 ? 'ON' : 'OFF') : pct);
+        setText('starter-unit', relay ? '' : '%');
+        setGaugeBar('starter-gauge-bar', relay ? (pct > 0 ? 100 : 0) : pct);
+      }
+    }
+
+    const advStarterEn = document.getElementById('adv-starter-en');
+    if (advStarterEn) {
+      advStarterEn.style.display = d.has_starter_en ? '' : 'none';
+      if (d.has_starter_en) setText('starter-en-state', d.starter_enabled ? 'ON' : 'OFF');
+    }
+
+    const advFuelSol = document.getElementById('adv-fuel-sol');
+    if (advFuelSol) {
+      advFuelSol.style.display = d.has_fuel_sol ? '' : 'none';
+      if (d.has_fuel_sol) setText('fuel-sol-state', d.fuel_sol_open ? 'OPEN' : 'CLOSED');
+    }
+
+    const advIgniter = document.getElementById('adv-igniter');
+    if (advIgniter) {
+      advIgniter.style.display = d.has_igniter ? '' : 'none';
+      if (d.has_igniter) setText('igniter-state', d.igniter_on ? 'ON' : 'OFF');
+    }
+
+    const advIgniter2 = document.getElementById('adv-igniter2');
+    if (advIgniter2) {
+      advIgniter2.style.display = d.has_igniter2 ? '' : 'none';
+      if (d.has_igniter2) setText('igniter2-state', d.igniter2_on ? 'ON' : 'OFF');
+    }
 
     const advGlow = document.getElementById('adv-glow');
     if (advGlow) {
       advGlow.style.display = d.has_glow_plug ? '' : 'none';
       if (d.has_glow_plug && d.glow_plug_pct !== undefined) {
-        setText('glow-pct', Math.round(d.glow_plug_pct));
-        setGaugeBar('glow-gauge-bar', d.glow_plug_pct);
+        const relay = Number(d.glow_plug_output_type || 0) === 1;
+        setText('glow-pct', relay ? (Number(d.glow_plug_pct) > 0 ? 'ON' : 'OFF') : Math.round(d.glow_plug_pct));
+        setText('glow-unit', relay ? '' : '%');
+        setGaugeBar('glow-gauge-bar', relay ? (Number(d.glow_plug_pct) > 0 ? 100 : 0) : d.glow_plug_pct);
+        const wetGlowFuel = document.getElementById('wet-glow-fuel-wrap');
+        if (wetGlowFuel) wetGlowFuel.style.display = d.has_wet_glow ? '' : 'none';
+        if (d.has_wet_glow && d.wet_glow_fuel_pct !== undefined) {
+          const wetRelay = Number(d.wet_glow_fuel_type ?? 0) === 0;
+          const wetPct = Number(d.wet_glow_fuel_pct);
+          setText('wet-glow-fuel-pct', wetRelay ? (wetPct > 0 ? 'ON' : 'OFF') : Math.round(wetPct));
+          setText('wet-glow-fuel-unit', wetRelay ? '' : '%');
+        }
       }
     }
 
@@ -1022,13 +1149,34 @@ function applyData(d) {
         modeEl.textContent = abMode.toUpperCase();
         modeEl.className   = 'ab-mode-val ab-mode-' + abMode;
       }
-      setDot('ab-sol-dot',   !!d.ab_sol_open,        'AB Solenoid');
-      setDot('ab-arm-dot',   !!d.ab_arm_switch_on,   'AB Arm switch');
-      setDot('ab-flame-dot', d.has_ab_flame === false ? null : !!d.ab_flame_on, 'AB flame sensor');
-      setDot('ab-trig-dot',  !!d.ab_trigger_active,  'AB trigger');
+      // These are normal boolean STATES, not sensor health: closed solenoid /
+      // arm off / trigger idle must render neutral, not red-fault. Titles are
+      // set manually so the generic "sensor fault (check wiring)" text never
+      // appears for a normal inactive state.
+      setDot('ab-sol-dot',  d.ab_sol_open      ? true : null);
+      setDot('ab-arm-dot',  d.ab_arm_switch_on ? true : null);
+      setDot('ab-trig-dot', d.ab_trigger_active ? true : null);
+      const _abT = (id, txt) => { const e = document.getElementById(id); if (e) e.title = txt; };
+      _abT('ab-sol-dot',  'AB solenoid — ' + (d.ab_sol_open ? 'OPEN' : 'closed'));
+      _abT('ab-arm-dot',  'AB arm switch — ' + (d.ab_arm_switch_on ? 'ARMED' : 'off'));
+      _abT('ab-trig-dot', 'AB trigger — ' + (d.ab_trigger_active ? 'ACTIVE' : 'idle'));
+      // AB flame: red only when the AB should be lit but no flame is seen —
+      // that is a real cue; otherwise neutral (green when burning).
+      const abExpectFlame = abMode === 'Igniting' || abMode === 'Running';
+      setDot('ab-flame-dot', d.has_ab_flame === false ? null
+                            : (d.ab_flame_on ? true : (abExpectFlame ? false : null)));
+      _abT('ab-flame-dot', d.has_ab_flame === false ? 'AB flame sensor not fitted'
+                          : (d.ab_flame_on ? 'AB flame — confirmed'
+                             : (abExpectFlame ? 'AB flame — NOT DETECTED while lit' : 'AB flame — no flame')));
+      if (d.ab_pump_demand !== undefined) setText('ab-pump-demand', Math.round(Number(d.ab_pump_demand) * 100));
+      const abOffset = Number(d.ab_fuel_offset || 0);
+      const abOffsetRow = document.getElementById('ab-fuel-offset-row');
+      if (abOffsetRow) abOffsetRow.style.display = Math.abs(abOffset) > 0.001 ? '' : 'none';
+      setText('ab-fuel-offset', Math.round(abOffset * 100));
 
-      // FIRE: only enabled when engine is RUNNING and AB is Off or Fault
-      const canFire = d.mode === 'RUNNING' && (abMode === 'Off' || abMode === 'Fault');
+      // Manual FIRE is only meaningful when Hardware trigger source is Manual command only.
+      const manualAb = Number(d.ab_trigger_source ?? 0) === 0;
+      const canFire = manualAb && d.mode === 'RUNNING' && (abMode === 'Off' || abMode === 'Fault');
       setDisabled('btn-ab-fire', !canFire);
       // STOP: only enabled when AB is active
       const abActive = abMode === 'Arming' || abMode === 'Igniting' || abMode === 'Running' || abMode === 'ShuttingDown';
@@ -1113,11 +1261,22 @@ function _renderLiveTimeline() {
   strip.innerHTML = _seqTimeline.map(b => _timelinePill(b)).join('');
 }
 
+// Escape user-influenced strings (e.g. custom sequence block names) before
+// interpolating into innerHTML. Shared site-wide: app.js loads before every
+// page's inline script, so pages use this instead of defining their own copy.
+function escapeHtmlText(v) {
+  return String(v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+const _escapeHtml = escapeHtmlText;  // internal alias (pre-unification name)
+
 function _timelinePill(b) {
   const s = (b.durationMs / 1000).toFixed(1);
   return `<span style="font-size:.7rem;padding:.15rem .5rem;border-radius:3px;` +
     `background:rgba(255,255,255,.06);border:1px solid var(--border);` +
-    `color:var(--dim);white-space:nowrap">${b.name} ` +
+    `color:var(--dim);white-space:nowrap">${_escapeHtml(b.name)} ` +
     `<span style="color:var(--text)">${s}s</span></span>`;
 }
 
@@ -1125,10 +1284,13 @@ function _showRunSummary(d, durationMs) {
   const card = document.getElementById('run-summary-card');
   if (!card) return;
 
-  const isFault  = d.mode === 'FAULT';
+  const faultText = String(d.fault_description || '').trim();
+  const lastEvent = String(d.last_event || '');
+  const isAbort = lastEvent.startsWith('Aborted') || faultText.startsWith('Startup aborted');
+  const isFault  = d.mode === 'FAULT' || isAbort || faultText.length > 0 || lastEvent.startsWith('FAULT:');
   const titleEl  = document.getElementById('run-summary-title');
   if (titleEl) {
-    titleEl.textContent = isFault ? '⚠ Run ended — Fault' : '✓ Run complete';
+    titleEl.textContent = isFault ? (isAbort ? 'Run ended - Abort' : 'Run ended - Fault') : 'Run complete';
     titleEl.style.color = isFault ? 'var(--red)' : 'var(--green)';
   }
 
@@ -1148,13 +1310,13 @@ function _showRunSummary(d, durationMs) {
   const statsEl = document.getElementById('run-summary-stats');
   if (statsEl) {
     statsEl.innerHTML = stats.map(s =>
-      `<span><span style="color:var(--dim)">${s.label}:</span> <strong>${s.value}</strong></span>`
+      `<span><span style="color:var(--dim)">${_escapeHtml(s.label)}:</span> <strong>${_escapeHtml(s.value)}</strong></span>`
     ).join('');
-    if (isFault && d.fault_description && d.fault_description.length > 0) {
-      const line = d.fault_description.split('\n')[0].slice(0, 120);
+    if (isFault && faultText.length > 0) {
+      const line = faultText.split('\n')[0].slice(0, 120);
       const faultEl = document.createElement('div');
       faultEl.style.cssText = 'width:100%;color:var(--red);font-size:.78rem;margin-top:.3rem';
-      faultEl.textContent = 'Fault: ' + line;
+      faultEl.textContent = (isAbort ? 'Abort: ' : 'Fault: ') + line;
       statsEl.appendChild(faultEl);
     }
   }
@@ -1271,6 +1433,24 @@ function sendAbCmd(cmd) {
     .catch(e => alert('Afterburner command failed: ' + e.message));
 }
 
+// Clear all session peak values (max N1/N2/TOT/TIT/pressures/battery) — the
+// firmware command existed but had no web control, so a bench spike could
+// only be cleared by reboot or cluster command.
+function resetPeaks() {
+  if (!confirm('Reset all session peak values (max RPM, temperatures, pressures)?')) return;
+  fetch('/api/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cmd: 'RESET_PEAKS' })
+  })
+    .then(async r => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));
+      requestTelemetryNow();
+    })
+    .catch(e => alert('Peak reset failed: ' + e.message));
+}
+
 // ── Boot: prime dashboard via REST for instant first paint, then WS takes over ─
 applyUnitLabels();
 organizeDashboardCards();
@@ -1283,7 +1463,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }).observe(document.body, { childList: true, subtree: true });
 });
 window.addEventListener('focus', requestTelemetryNow);
-window.addEventListener('pageshow', requestTelemetryNow);
+window.addEventListener('pageshow', (e) => {
+  // bfcache restore (iOS Safari back/forward): pagehide tore down the WS and
+  // all timers, but the DOM comes back showing the old green Connected dot.
+  // Restart whichever telemetry path this page uses. Only on real restores
+  // (e.persisted) — a normal first show must not defeat the staggered
+  // startTelemetryBoot() below.
+  if (!e.persisted) return;
+  if (usesGlobalTelemetry()) {
+    if (!ws) {
+      setConnectionState(false, 'Reconnecting - values retained');
+      connect();
+      startRestFallbackTimer();
+    }
+    requestTelemetryNow();
+  } else if (!hasPageLocalTelemetry()) {
+    startStatusHeartbeat();
+  }
+});
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) requestTelemetryNow();
 });
