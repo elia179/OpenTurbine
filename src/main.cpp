@@ -2045,6 +2045,10 @@ static void handleCommand(const OTPacket& pkt) {
                 ed.faultDescription[0] = '\0';  // clear previous fault/abort description
                 strncpy(ed.lastEvent, "Start sequence initiated", sizeof(ed.lastEvent) - 1);
                 Hardware::applyConfig();  // re-apply config before each start
+                if (!ed.benchMode && !ed.devMode) {
+                    Config::startAttemptCount++;
+                    Config::requestRuntimeStatsSave();
+                }
                 FlightRecorder::logStartAttempt();
                 SessionLogger::startSession();  // request a new session CSV on the web task
                 g_sequencer.startSequence(_startupBlocks, _startupCount,

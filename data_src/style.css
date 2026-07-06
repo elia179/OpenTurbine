@@ -372,7 +372,7 @@ button.primary:hover { background: color-mix(in srgb,var(--accent) 85%,#000); bo
   width: 100%;
   height: 32px;
   margin-top: 0.4rem;
-  opacity: 0.7;
+  opacity: 1;
 }
 
 /* ── Session peak sub-label ─────────────────────────────────── */

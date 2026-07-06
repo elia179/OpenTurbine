@@ -291,6 +291,7 @@ public:
 
     // ── Hour meter / run statistics ───────────────────────────
     static uint32_t totalRunSeconds;         // accumulated engine-on time (persisted)
+    static uint32_t startAttemptCount;       // commanded start attempts (persisted)
 
     // ── Session data logger ───────────────────────────────────
     static constexpr uint32_t SLOG_N1         = 1u << 0;

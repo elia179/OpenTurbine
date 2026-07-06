@@ -146,20 +146,20 @@
   </div>
 
   <section class="telemetry-group" id="temperature-group" style="display:none">
-    <div class="telemetry-group-title">Temperatures</div>
-    <div class="grid-3" id="temperature-cards"></div>
+    <div class="telemetry-group-title">Primary Engine Data</div>
+    <div class="grid-2" id="temperature-cards"></div>
   </section>
   <section class="telemetry-group" id="speed-group" style="display:none">
-    <div class="telemetry-group-title">Shaft Speed</div>
-    <div class="grid-2" id="speed-cards"></div>
-  </section>
-  <section class="telemetry-group" id="pressure-section" style="display:none">
-    <div class="telemetry-group-title">Pressures</div>
-    <div class="grid-3" id="pressure-cards"></div>
+    <div class="telemetry-group-title">Oil System</div>
+    <div class="grid-3" id="speed-cards"></div>
   </section>
   <section class="telemetry-group" id="combustion-group" style="display:none">
     <div class="telemetry-group-title">Fuel And Combustion</div>
     <div class="grid-3" id="combustion-cards"></div>
+  </section>
+  <section class="telemetry-group" id="pressure-section" style="display:none">
+    <div class="telemetry-group-title">Secondary Pressures</div>
+    <div class="grid-2" id="pressure-cards"></div>
   </section>
   <section class="telemetry-group" id="ext-sensors-section" style="display:none">
     <div class="telemetry-group-title">Electrical And Load</div>
@@ -434,10 +434,11 @@
       <div class="label">Uptime</div>
       <div class="value small" id="uptime">—</div>
     </div>
-    <div class="card small" title="Cumulative engine run statistics stored in persistent flash memory. 'Runs' counts start attempts; 'Total' is cumulative time spent in RUNNING state across all power cycles.">
+    <div class="card small" title="Cumulative engine run statistics stored in persistent flash memory. 'Starts' counts commanded start attempts; 'Runs' counts successful entries into RUNNING this boot; 'Total' is cumulative time spent in RUNNING state across all power cycles.">
       <div class="label">Hour Meter</div>
       <div class="hour-meter">
-        Runs: <span id="hour-run-count">—</span>
+        Starts: <span id="hour-start-count">—</span>
+        &nbsp; Runs: <span id="hour-run-count">—</span>
         &nbsp; Total: <span id="hour-run-time">—</span>
       </div>
     </div>

@@ -908,6 +908,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["hw_json_loaded"]        = true;
         // Session / boot stats
         doc["run_count"]             = ed.runCount;
+        doc["start_attempt_count"]   = Config::startAttemptCount;
         doc["reset_reason"]          = ed.resetReason;
         doc["total_run_seconds"]     = Config::totalRunSeconds;
         // Flash usage (cached by tick() — never call LittleFS from async_tcp context)

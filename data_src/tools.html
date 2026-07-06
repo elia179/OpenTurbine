@@ -438,7 +438,7 @@ function updateLoopDiagnostics(d) {
   set('diag-loop-period', Number.isFinite(period) ? period.toFixed(2) + ' ms' : '-');
   set('diag-loop-avg', fmtMs(avg));
   set('diag-loop-max', fmtMs(max));
-  set('diag-loop-count', Number.isFinite(count) ? count.toLocaleString() : '-');
+  set('diag-loop-count', Number.isFinite(count) ? fmtInt(count) : '-');
   set('diag-loop-sensors', fmtMs(Number(d.loop_sensors_ms)));
   set('diag-loop-sequencer', fmtMs(Number(d.loop_sequencer_ms)));
   set('diag-loop-controllers', fmtMs(Number(d.loop_controllers_ms)));

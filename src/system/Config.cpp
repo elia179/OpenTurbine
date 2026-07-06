@@ -238,6 +238,7 @@ float Config::glowHoldPct           = 30.0f;
 bool  Config::glowWaitUntilHot      = false;
 
 uint32_t Config::totalRunSeconds    = 0;
+uint32_t Config::startAttemptCount  = 0;
 
 int   Config::throttleMinRaw        = 0;
 int   Config::throttleMaxRaw        = 4095;
@@ -953,7 +954,7 @@ bool Config::flushPendingSave() {
     if (!_savePending) return false;
     _savePending = false;
     bool ok = save();
-    if (!ok) Serial.println("[Config] WARNING: deferred save failed - totalRunSeconds not persisted");
+    if (!ok) Serial.println("[Config] WARNING: deferred config save failed");
     return ok;
 }
 
@@ -961,42 +962,49 @@ void Config::requestRuntimeStatsSave() {
     _runtimeStatsSavePending = true;
 }
 
-static void runtimeStatsKey(char* key, size_t len) {
+static void runtimeStatsKey(char* key, size_t len, const char* prefix) {
     const char* profile = Config::profileId[0] ? Config::profileId : HardwareConfig::profileId;
     uint32_t hash = 2166136261u;
     for (const char* p = profile; p && *p; ++p) {
         hash ^= (uint8_t)*p;
         hash *= 16777619u;
     }
-    snprintf(key, len, "run%08lx", (unsigned long)hash);
+    snprintf(key, len, "%s%08lx", prefix, (unsigned long)hash);
 }
 
 void Config::loadRuntimeStats() {
-    char key[14];
-    runtimeStatsKey(key, sizeof(key));
+    char runKey[14];
+    char startKey[14];
+    runtimeStatsKey(runKey, sizeof(runKey), "run");
+    runtimeStatsKey(startKey, sizeof(startKey), "sta");
     Preferences stats;
     if (!stats.begin("ot", true)) {
         Serial.println("[Config] WARNING: failed to open NVS for accumulated runtime read");
         return;
     }
-    uint32_t saved = stats.getUInt(key, totalRunSeconds);
+    uint32_t savedRunSeconds = stats.getUInt(runKey, totalRunSeconds);
+    uint32_t savedStarts = stats.getUInt(startKey, startAttemptCount);
     stats.end();
-    if (saved > totalRunSeconds) totalRunSeconds = saved;
+    if (savedRunSeconds > totalRunSeconds) totalRunSeconds = savedRunSeconds;
+    if (savedStarts > startAttemptCount) startAttemptCount = savedStarts;
 }
 
 bool Config::flushPendingRuntimeStats() {
     if (!_runtimeStatsSavePending) return false;
     _runtimeStatsSavePending = false;
-    char key[14];
-    runtimeStatsKey(key, sizeof(key));
+    char runKey[14];
+    char startKey[14];
+    runtimeStatsKey(runKey, sizeof(runKey), "run");
+    runtimeStatsKey(startKey, sizeof(startKey), "sta");
     Preferences stats;
     if (!stats.begin("ot", false)) {
         Serial.println("[Config] WARNING: failed to open NVS for accumulated runtime");
         return false;
     }
-    size_t written = stats.putUInt(key, totalRunSeconds);
+    size_t writtenRun = stats.putUInt(runKey, totalRunSeconds);
+    size_t writtenStarts = stats.putUInt(startKey, startAttemptCount);
     stats.end();
-    if (written == 0) {
+    if (writtenRun == 0 || writtenStarts == 0) {
         Serial.println("[Config] WARNING: accumulated runtime NVS write failed");
         return false;
     }
@@ -1044,16 +1052,20 @@ const char* Config::primaryEgtLabel() {
 }
 
 void Config::clearRuntimeStats() {
-    char key[14];
-    runtimeStatsKey(key, sizeof(key));
+    char runKey[14];
+    char startKey[14];
+    runtimeStatsKey(runKey, sizeof(runKey), "run");
+    runtimeStatsKey(startKey, sizeof(startKey), "sta");
     Preferences stats;
     if (!stats.begin("ot", false)) {
         Serial.println("[Config] WARNING: failed to open NVS to clear accumulated runtime");
         return;
     }
-    stats.remove(key);
+    stats.remove(runKey);
+    stats.remove(startKey);
     stats.end();
     totalRunSeconds = 0;
+    startAttemptCount = 0;
 }
 
 bool Config::save() {
@@ -1280,7 +1292,7 @@ void Config::_applyDefaults() {
     ruleCount = 0;
     for (int i = 0; i < MAX_RULES; i++) rules[i] = {};
     loadWarning[0] = '\0';
-    // totalRunSeconds is NOT reset — hour meter persists across config reloads
+    // Runtime stats are NOT reset here; hour meter data persists across config reloads.
 }
 
 void Config::_fromDoc(const JsonDocument& doc) {
@@ -1602,6 +1614,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (!stats.isNull()) {
         uint32_t fileRunSeconds = stats["total_run_seconds"] | totalRunSeconds;
         if (fileRunSeconds > totalRunSeconds) totalRunSeconds = fileRunSeconds;
+        uint32_t fileStartAttempts = stats["start_attempt_count"] | startAttemptCount;
+        if (fileStartAttempts > startAttemptCount) startAttemptCount = fileStartAttempts;
     }
 
     // ── Automation rules ──────────────────────────────────────────
@@ -2158,6 +2172,7 @@ void Config::_toDoc(JsonDocument& doc) {
 
     auto stats = doc["stats"].to<JsonObject>();
     stats["total_run_seconds"] = totalRunSeconds;
+    stats["start_attempt_count"] = startAttemptCount;
 
     // ── Automation rules ──────────────────────────────────────────
     if (ruleCount > 0) {

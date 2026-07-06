@@ -147,7 +147,7 @@ function fullTelemetry() {
     glow_current_amps: 3.2, glow_plug_hot: true, igniter_current_amps: 0, igniter2_current_amps: 0, oil_pump_current_amps: 2.3, oil_pump_overcurrent: false,
     glow_plug_pct: 20, bleed_valve_open: false, prop_pitch_demand: 0.38, fuel_pump2_demand: 0.42, cool_fan_on: true, airstarter_open: false, oil_scavenge_on: true,
     ab_mode: 'Off', ab_sol_open: false, ab_arm_switch_on: true, ab_flame_on: false, ab_flame_raw: 760, ab_flame_threshold: 1800, ab_trigger_active: false,
-    governor_target_rpm: 25000, flash_free_kb: 560, flash_used_kb: 256, flash_total_kb: 816, log_records: 14, log_max_records: 400, boot_count: 4, reset_reason: 1, run_count: 8, total_run_seconds: 9860,
+    governor_target_rpm: 25000, flash_free_kb: 560, flash_used_kb: 256, flash_total_kb: 816, log_records: 14, log_max_records: 400, boot_count: 4, reset_reason: 1, run_count: 8, start_attempt_count: 12, total_run_seconds: 9860,
     oil_raw: 1400, p1_raw: 810, p2_raw: 1740, fuel_press_raw: 1320, fuel_flow_raw: 1044, config_storage_fault: false, profile_match: true, config_version_mismatch: false,
     seq_has_errors: false, seq_has_structural_errors: false, seq_issues: [],
     labels: makeHardware().labels,

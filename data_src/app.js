@@ -24,6 +24,10 @@ function toDispPress(b)  { return pressUnit() === 'psi' ? b * 14.5038   : b; }
 function fromDispPress(v){ return pressUnit() === 'psi' ? v / 14.5038   : v; }
 function dispTempUnit()  { return tempUnit()  === 'F'   ? '°F' : '°C'; }
 function dispPressUnit() { return pressUnit() === 'psi' ? 'PSI' : 'bar'; }
+function fmtInt(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '-';
+}
 function applyUnitLabels() {
   document.querySelectorAll('[data-unit="temp"]').forEach( el => el.textContent = dispTempUnit());
   document.querySelectorAll('[data-unit="press"]').forEach(el => el.textContent = dispPressUnit());
@@ -45,12 +49,12 @@ window.applyContextTooltips = applyContextTooltips;
 
 function organizeDashboardCards() {
   const groups = {
-    'temperature-cards': ['tot-card', 'tit-card', 'oil-temp-card'],
-    'speed-cards': ['n1-card', 'n2-card'],
-    'pressure-cards': ['oil-card', 'p1-card', 'p2-card'],
+    'temperature-cards': ['tot-card', 'tit-card', 'n1-card', 'n2-card'],
+    'speed-cards': ['oil-card', 'oil-temp-card', 'oilpump-current-card'],
     'combustion-cards': ['flame-card', 'fuel-press-card', 'fuel-flow-card'],
+    'pressure-cards': ['p1-card', 'p2-card'],
     'electrical-cards': ['batt-card', 'torque-card', 'glow-current-card',
-      'igniter-current-card', 'igniter2-current-card', 'oilpump-current-card']
+      'igniter-current-card', 'igniter2-current-card']
   };
   Object.entries(groups).forEach(([targetId, cardIds]) => {
     const target = document.getElementById(targetId);
@@ -60,9 +64,33 @@ function organizeDashboardCards() {
       if (card) target.appendChild(card);
     });
   });
+  const modeRow = document.querySelector('.mode-row');
+  const advActSection = document.getElementById('adv-act-section');
+  if (modeRow && advActSection) modeRow.insertAdjacentElement('afterend', advActSection);
+  if (modeRow) {
+    let outputCards = document.getElementById('actuator-output-cards');
+    if (!outputCards) {
+      outputCards = document.createElement('section');
+      outputCards.id = 'actuator-output-cards';
+      outputCards.className = 'grid-2 telemetry';
+    }
+    ['throttle-output-card', 'oil-output-card'].forEach(cardId => {
+      const card = document.getElementById(cardId);
+      if (card) outputCards.appendChild(card);
+    });
+    const anchor = advActSection || modeRow;
+    anchor.insertAdjacentElement('afterend', outputCards);
+  }
 }
 
 // ── Sparkline circular buffers ────────────────────────────────
+function resolveCssColor(color) {
+  const m = String(color || '').trim().match(/^var\((--[-_a-zA-Z0-9]+)\)$/);
+  if (!m) return color;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(m[1]).trim();
+  return v || color;
+}
+
 const SPARK_LEN = 60;
 const _sparkN1       = new Array(SPARK_LEN).fill(0);
 const _sparkTot      = new Array(SPARK_LEN).fill(0);
@@ -85,8 +113,8 @@ function drawSparkline(canvasId, data, color) {
   const max = Math.max(...data, 1);
   const min = 0;
   const range = max - min || 1;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = resolveCssColor(color);
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
   data.forEach((v, i) => {
     const x = (i / (data.length - 1)) * w;
@@ -332,18 +360,18 @@ function applyData(d) {
     sl('lbl-fuel-press', lbl('fuel_press'));
     sl('lbl-fuel-flow',  lbl('fuel_flow'));
   }
-  // Coerce to Number so .toFixed/.toLocaleString always work even if JSON sent as int
-  setText('n1',  d.n1  !== undefined ? Number(d.n1).toLocaleString()  : '—');
+  // Coerce to Number so formatting works even if JSON sent as int
+  setText('n1',  d.n1  !== undefined ? fmtInt(d.n1)  : '—');
   const n1Card = document.getElementById('n1-card');
   if (n1Card && d.has_n1 !== undefined) n1Card.style.display = d.has_n1 ? '' : 'none';
-  setText('n2',  d.n2  !== undefined ? Number(d.n2).toLocaleString()  : '—');
+  setText('n2',  d.n2  !== undefined ? fmtInt(d.n2)  : '—');
   const n2Card = document.getElementById('n2-card');
   if (n2Card && d.has_n2 !== undefined) n2Card.style.display = d.has_n2 ? '' : 'none';
   setText('tot', d.tot !== undefined ? toDispTemp(Number(d.tot)).toFixed(1)       : '—');
   const totCard = document.getElementById('tot-card');
   if (totCard && d.has_tot !== undefined) totCard.style.display = d.has_tot ? '' : 'none';
-  setText('max-n1',  d.max_n1  !== undefined ? Number(d.max_n1).toLocaleString() : '—');
-  setText('max-n2',  d.max_n2  !== undefined ? Number(d.max_n2).toLocaleString() : '—');
+  setText('max-n1',  d.max_n1  !== undefined ? fmtInt(d.max_n1) : '—');
+  setText('max-n2',  d.max_n2  !== undefined ? fmtInt(d.max_n2) : '—');
   setText('max-tot', d.max_tot !== undefined ? toDispTemp(Number(d.max_tot)).toFixed(1) : '—');
   setText('oil', d.oil !== undefined ? toDispPress(Number(d.oil)).toFixed(2)       : '—');
   const oilCard = document.getElementById('oil-card');
@@ -396,10 +424,13 @@ function applyData(d) {
     oilOutputCard.style.display = d.has_oil_pump ? '' : 'none';
   }
   const speedGroup = document.getElementById('speed-group');
-  if (speedGroup) speedGroup.style.display = (d.has_n1 || d.has_n2) ? '' : 'none';
+  if (speedGroup) {
+    const hasOilSystem = d.has_oil_press || d.has_oil_temp || d.has_oil_pump_current;
+    speedGroup.style.display = hasOilSystem ? '' : 'none';
+  }
   const temperatureGroup = document.getElementById('temperature-group');
   if (temperatureGroup) temperatureGroup.style.display =
-    (d.has_tot || d.has_tit || d.has_oil_temp) ? '' : 'none';
+    (d.has_tot || d.has_tit || d.has_n1 || d.has_n2) ? '' : 'none';
   setText('uptime',      d.uptime_s !== undefined ? formatUptime(d.uptime_s)  : '—');
   setText('last-event',  d.last_event || '—');
 
@@ -437,7 +468,7 @@ function applyData(d) {
     const showDi = d.dynamic_idle_enabled && d.mode === 'RUNNING';
     diWrap.style.display = showDi ? '' : 'none';
     if (showDi && d.idle_target_rpm !== undefined) {
-      setText('throttle-di-rpm', Number(d.idle_target_rpm).toLocaleString());
+      setText('throttle-di-rpm', fmtInt(d.idle_target_rpm));
     }
   }
 
@@ -514,7 +545,7 @@ function applyData(d) {
 
   // Pressure sensors — show/hide based on whether sensors are fitted
   const psSection = document.getElementById('pressure-section');
-  if (psSection) psSection.style.display = (d.has_oil_press || d.has_p1 || d.has_p2) ? '' : 'none';
+  if (psSection) psSection.style.display = (d.has_p1 || d.has_p2) ? '' : 'none';
   const p1Card = document.getElementById('p1-card');
   if (p1Card && d.has_p1 !== undefined) p1Card.style.display = d.has_p1 ? '' : 'none';
   const p2Card = document.getElementById('p2-card');
@@ -685,7 +716,9 @@ function applyData(d) {
   if (verBanner) verBanner.style.display = d.config_version_mismatch ? '' : 'none';
 
   // ── Hour meter ────────────────────────────────────────────
-  if (d.run_count !== undefined) setText('hour-run-count', d.run_count);
+  if (d.start_attempt_count !== undefined) setText('hour-start-count', fmtInt(d.start_attempt_count));
+  else if (d.run_count !== undefined) setText('hour-start-count', fmtInt(d.run_count));
+  if (d.run_count !== undefined) setText('hour-run-count', fmtInt(d.run_count));
   if (d.total_run_seconds !== undefined) {
     const hrs = Math.floor(d.total_run_seconds / 3600);
     const mins = Math.floor((d.total_run_seconds % 3600) / 60);
@@ -708,10 +741,10 @@ function applyData(d) {
       const show = pct >= 85;
       warn.style.display = show ? '' : 'none';
       if (show) warn.textContent = '⚠ N1 at ' + pct.toFixed(0) + '% — '
-        + Number(d.n1).toLocaleString() + ' / ' + Number(d.rpm_limit).toLocaleString() + ' RPM';
+        + fmtInt(d.n1) + ' / ' + fmtInt(d.rpm_limit) + ' RPM';
     }
     const absLbl = document.getElementById('n1-abs-label');
-    if (absLbl) absLbl.textContent = Number(d.n1).toLocaleString() + ' / ' + Number(d.rpm_limit).toLocaleString() + ' RPM';
+    if (absLbl) absLbl.textContent = fmtInt(d.n1) + ' / ' + fmtInt(d.rpm_limit) + ' RPM';
   }
   const selectedEgtSource = d.egt_source === 2 ? 'tit'
     : (d.egt_source === 1 ? 'tot' : (d.has_tot ? 'tot' : (d.has_tit ? 'tit' : null)));
@@ -784,11 +817,11 @@ function applyData(d) {
   // ── Sparklines ────────────────────────────────────────────
   if (d.n1 !== undefined) {
     pushSparkline(_sparkN1, Number(d.n1));
-    drawSparkline('n1-sparkline', _sparkN1, 'var(--green)');
+    drawSparkline('n1-sparkline', _sparkN1, 'var(--accent)');
   }
   if (d.tot !== undefined) {
     pushSparkline(_sparkTot, Number(d.tot));
-    drawSparkline('tot-sparkline', _sparkTot, 'var(--yellow)');
+    drawSparkline('tot-sparkline', _sparkTot, 'var(--accent)');
   }
   if (d.has_oil_temp && d.oil_temp !== undefined) {
     pushSparkline(_sparkOilTemp, Number(d.oil_temp));
@@ -796,7 +829,7 @@ function applyData(d) {
   }
   if (d.has_batt_voltage && d.batt_voltage !== undefined) {
     pushSparkline(_sparkBattVolt, Number(d.batt_voltage));
-    drawSparkline('batt-sparkline', _sparkBattVolt, 'var(--green)');
+    drawSparkline('batt-sparkline', _sparkBattVolt, 'var(--accent)');
   }
   if (d.has_torque && d.torque !== undefined) {
     pushSparkline(_sparkTorque, Number(d.torque));
@@ -808,7 +841,7 @@ function applyData(d) {
   if (extSection) {
     const anyExt = d.has_batt_voltage || d.has_torque ||
                    d.has_glow_current || d.has_igniter_current ||
-                   d.has_igniter2_current || d.has_oil_pump_current;
+                   d.has_igniter2_current;
     extSection.style.display = anyExt ? '' : 'none';
   }
 
@@ -1019,8 +1052,8 @@ function applyData(d) {
   if (govSection) {
     govSection.style.display = d.has_governor ? '' : 'none';
     if (d.has_governor) {
-      setText('gov-target-rpm', d.governor_target_rpm !== undefined ? Number(d.governor_target_rpm).toLocaleString() : '—');
-      setText('gov-n2-actual',  d.n2 !== undefined ? Number(d.n2).toLocaleString() : '—');
+      setText('gov-target-rpm', d.governor_target_rpm !== undefined ? fmtInt(d.governor_target_rpm) : '—');
+      setText('gov-n2-actual',  d.n2 !== undefined ? fmtInt(d.n2) : '—');
     }
   }
 
@@ -1300,7 +1333,7 @@ function _showRunSummary(d, durationMs) {
 
   const stats = [
     { label: 'Duration', value: durStr },
-    (d.has_n1 && d.max_n1 !== undefined) ? { label: 'Peak N1',  value: Number(d.max_n1).toLocaleString() + ' RPM' } : null,
+    (d.has_n1 && d.max_n1 !== undefined) ? { label: 'Peak N1',  value: fmtInt(d.max_n1) + ' RPM' } : null,
     (d.has_tot && d.max_tot !== undefined) ? { label: 'Peak TOT', value: toDispTemp(Number(d.max_tot)).toFixed(0) + ' ' + dispTempUnit() } : null,
     (d.has_tit && d.max_tit !== undefined) ? { label: 'Peak TIT', value: toDispTemp(Number(d.max_tit)).toFixed(0) + ' ' + dispTempUnit() } : null,
     (d.has_oil_press && d.oil_min_bar !== undefined && Number(d.oil_min_bar) > 0)

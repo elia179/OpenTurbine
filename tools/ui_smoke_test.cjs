@@ -70,12 +70,21 @@ function installedBrowser() {
     assert.equal(await text(page, '#fw-version'), 'vsim-1.0.0');
     assert.equal(await text(page, '#throttle-input-pct'), '50.0');
     assert.equal(await page.evaluate(() =>
-      ['tot-card', 'tit-card', 'oil-temp-card'].every(id =>
+      ['tot-card', 'tit-card', 'n1-card', 'n2-card'].every(id =>
         document.querySelector('#temperature-cards').contains(document.getElementById(id)))), true);
     assert.equal(await page.evaluate(() =>
-      ['n1-card', 'n2-card'].every(id =>
+      ['oil-card', 'oil-temp-card', 'oilpump-current-card'].every(id =>
         document.querySelector('#speed-cards').contains(document.getElementById(id)))), true);
-    results.push('dashboard renders throttle input and groups temperatures and shaft speeds together');
+    assert.equal(await page.evaluate(() => {
+      const mode = document.querySelector('.mode-row');
+      const outputs = document.getElementById('actuator-output-cards');
+      const adv = document.getElementById('adv-act-section');
+      return !!mode && !!outputs && !!adv &&
+        !!(mode.compareDocumentPosition(adv) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+        !!(adv.compareDocumentPosition(outputs) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }), true);
+    assert.equal(await text(page, '#hour-start-count'), '12');
+    results.push('dashboard prioritizes primary data, oil cards, and actuator outputs below start/stop');
     assert.equal((await text(page, '#getting-started-banner')).match(/[⚙🔧📋🔨▶]/u), null);
     assert.equal(await page.locator('.gs-steps a').first().evaluate(el => getComputedStyle(el).color), 'rgb(245, 245, 247)');
     results.push('getting-started checklist uses the high-contrast text colour for plain-text actions');
@@ -139,10 +148,11 @@ function installedBrowser() {
     await scenario(page, 'minimal');
     await waitShown(page, '#n2-card', false);
     await waitShown(page, '#p1-card', false);
-    await waitShown(page, '#pressure-section', true);
+    await waitShown(page, '#speed-group', true);
+    await waitShown(page, '#pressure-section', false);
     await waitShown(page, '#ext-sensors-section', false);
     await waitShown(page, '#ab-section', false);
-    results.push('minimal hardware telemetry hides optional cards and sections');
+    results.push('minimal hardware telemetry keeps oil visible and hides optional sections');
 
     await scenario(page, 'startup');
     await waitShown(page, '#seq-progress-section', true);

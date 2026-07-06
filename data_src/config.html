@@ -1064,7 +1064,7 @@ function liveSensorFitted(d, telemetryKey, sensorKey, hwFlatKey) {
 }
 const LIVE_BADGE_KEYS = {
   'rpm_limit': d => liveSensorFitted(d, 'has_n1', 'n1_rpm', 'has_n1_rpm') && d.n1 !== undefined
-    ? 'live: ' + Number(d.n1).toLocaleString() + ' RPM' : null,
+    ? 'live: ' + fmtInt(d.n1) + ' RPM' : null,
   'tot_limit': d => liveSensorFitted(d, 'has_tot', 'tot', 'has_tot') && d.tot !== undefined
     ? 'live: ' + toDispTemp(Number(d.tot)).toFixed(1) + '\u00a0' + dispTempUnit() : null,
   'sf_tit': d => liveSensorFitted(d, 'has_tit', 'tit', 'has_tit') && d.tit !== undefined

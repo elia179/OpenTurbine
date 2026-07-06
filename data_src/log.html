@@ -318,8 +318,8 @@ function renderSummary(runs) {
     const dur    = r.tEnd !== null
                      ? fmtDuration(r.tEnd - r.tStart)
                      : r.outcome === 'IN_PROGRESS' ? 'in progress' : '—';
-    const n1Str  = r.peakN1  > 0 ? Math.round(r.peakN1).toLocaleString()  + ' RPM' : '—';
-    const n2Str  = r.peakN2  > 0 ? Math.round(r.peakN2).toLocaleString()  + ' RPM' : '—';
+    const n1Str  = r.peakN1  > 0 ? fmtInt(r.peakN1)  + ' RPM' : '—';
+    const n2Str  = r.peakN2  > 0 ? fmtInt(r.peakN2)  + ' RPM' : '—';
     const totStr = r.peakTOT > 0 ? toDispTemp(r.peakTOT).toFixed(1) + ' ' + dispTempUnit() : '—';
     const titStr = r.peakTIT > 0 ? toDispTemp(r.peakTIT).toFixed(1) + ' ' + dispTempUnit() : '—';
     const tStr   = r.tStart  !== undefined ? r.tStart + 's'                         : '—';
@@ -335,8 +335,8 @@ function renderSummary(runs) {
         if (faultEv) {
           const parts = [];
           const n1 = eventN1(faultEv), n2 = eventN2(faultEv), tot = eventTOT(faultEv), tit = eventTIT(faultEv), oil = eventOil(faultEv);
-          if (n1  !== undefined) parts.push('N1 ' + Math.round(n1).toLocaleString() + ' RPM');
-          if (n2  !== undefined) parts.push('N2 ' + Math.round(n2).toLocaleString() + ' RPM');
+          if (n1  !== undefined) parts.push('N1 ' + fmtInt(n1) + ' RPM');
+          if (n2  !== undefined) parts.push('N2 ' + fmtInt(n2) + ' RPM');
           if (tot !== undefined) parts.push('TOT ' + toDispTemp(Number(tot)).toFixed(0) + ' ' + dispTempUnit());
           if (tit !== undefined) parts.push('TIT ' + toDispTemp(Number(tit)).toFixed(0) + ' ' + dispTempUnit());
           if (oil !== undefined) parts.push('Oil ' + toDispPress(Number(oil)).toFixed(2) + ' ' + dispPressUnit());
