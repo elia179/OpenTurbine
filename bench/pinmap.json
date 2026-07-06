@@ -1,0 +1,53 @@
+{
+  "$comment": "OpenTurbine hardware-in-the-loop bench rig — single source of truth for the wiring, shared by the OTBench tester firmware and the PC harness. DUT = ESP32-S3 running OpenTurbine. Tester = ESP32 classic running OTBench firmware. Edit pins here to match your physical harness; the firmware table (bench/firmware/src/main.cpp) MUST be kept in step with the tester_gpio/tester_kind values below.",
+  "meta": {
+    "dut_board": "esp32-s3-devkitc-1",
+    "tester_board": "esp32dev (classic)",
+    "dut_ip": "192.168.4.1",
+    "dut_ws": "ws://192.168.4.1/ws",
+    "tester_baud": 115200,
+    "logic_level_v": 3.3,
+    "adc_full_scale_counts": 4095,
+    "wiring_rules": [
+      "Common ground between the two boards is mandatory.",
+      "Put a 470-1000 ohm resistor in series with EVERY cross-link wire — cheap insurance against push-pull contention if a pin direction is ever misconfigured.",
+      "No smoothing capacitors available, so the only clean analog channels are the classic ESP32's two true DACs (GPIO25/26): THROTTLE_IN and OILP. FLAME (a threshold sensor) and IDLE_IN are driven as plain digital HIGH/LOW instead of a swept voltage.",
+      "Tester board constraints honoured: GPIO 36/39 unavailable; input-only pins 34-39 not used; GPIO 16/17 avoided (PSRAM on WROVER modules); strapping pins 0/2/5/12/15 avoided.",
+      "If IDLE_IN is left unwired, tie the S3 idle-input pin to GND so its ADC does not float."
+    ]
+  },
+  "signals": [
+    { "name": "START",        "dir": "dut_in",  "ot_signal": "start button",        "signal_type": "digital_active_low", "dut_gpio": 13, "tester_gpio": 13, "tester_kind": "digital_out_al", "telemetry_key": "start_switch_active", "notes": "value 1 = pressed (tester drives LOW); 0 = released (tester Hi-Z, DUT pull-up)" },
+    { "name": "STOP",         "dir": "dut_in",  "ot_signal": "stop button",         "signal_type": "digital_active_low", "dut_gpio": 15, "tester_gpio": 14, "tester_kind": "digital_out_al", "telemetry_key": "stop_switch_active", "notes": "value 1 = pressed (LOW)" },
+    { "name": "N1",           "dir": "dut_in",  "ot_signal": "N1 shaft RPM (PCNT)", "signal_type": "pulse",              "dut_gpio": 14, "tester_gpio": 4,  "tester_kind": "freq_out",       "telemetry_key": "n1", "ppr": 1.0, "notes": "tester generates a square wave; harness converts rpm to Hz using ppr" },
+    { "name": "THROTTLE_IN",  "dir": "dut_in",  "ot_signal": "throttle input (ADC)","signal_type": "analog",             "dut_gpio": 4,  "tester_gpio": 25, "tester_kind": "dac_out",        "telemetry_key": "throttle_input_raw", "notes": "true DAC, 0-3.3 V" },
+    { "name": "OILP",         "dir": "dut_in",  "ot_signal": "oil pressure (ADC)",  "signal_type": "analog",             "dut_gpio": 1,  "tester_gpio": 26, "tester_kind": "dac_out",        "telemetry_key": "oil_raw", "notes": "true DAC, 0-3.3 V; assert on oil_raw counts (raw = volts/3.3*4095)" },
+    { "name": "FLAME",        "dir": "dut_in",  "ot_signal": "flame (ADC threshold)","signal_type": "digital",           "dut_gpio": 2,  "tester_gpio": 27, "tester_kind": "digital_out",    "telemetry_key": "flame", "notes": "threshold sensor: HIGH (3.3 V) = above threshold, LOW = below" },
+    { "name": "IDLE_IN",      "dir": "dut_in",  "ot_signal": "idle input (ADC)",    "signal_type": "digital",            "dut_gpio": 5,  "tester_gpio": 32, "tester_kind": "digital_out",    "telemetry_key": "idle_input_raw", "optional": true, "notes": "no 3rd DAC — digital extremes only (0 or full scale); tie S3 GPIO5 to GND if not wired" },
+
+    { "name": "THROTTLE_OUT", "dir": "dut_out", "ot_signal": "throttle ESC (servo)","signal_type": "servo_pwm",          "dut_gpio": 16, "tester_gpio": 18, "tester_kind": "pwm_in_servo",   "telemetry_key": "throttle_effective", "notes": "1000-2000 us at 50 Hz" },
+    { "name": "STARTER_OUT",  "dir": "dut_out", "ot_signal": "starter ESC (servo)", "signal_type": "servo_pwm",          "dut_gpio": 17, "tester_gpio": 19, "tester_kind": "pwm_in_servo",   "telemetry_key": "starter_demand", "optional": true, "notes": "only meaningful if OT_HAS_STARTER enabled on the DUT" },
+    { "name": "OILPUMP_OUT",  "dir": "dut_out", "ot_signal": "oil pump (LEDC PWM)", "signal_type": "ledc_pwm",           "dut_gpio": 11, "tester_gpio": 21, "tester_kind": "pwm_in_ledc",    "telemetry_key": "oil_pct", "notes": "~10 kHz; harness compares measured duty to oil_pct/100" },
+    { "name": "FUEL_SOL",     "dir": "dut_out", "ot_signal": "fuel solenoid (relay)","signal_type": "digital",           "dut_gpio": 12, "tester_gpio": 22, "tester_kind": "digital_in",     "telemetry_key": "fuel_sol_open", "active_high": true },
+    { "name": "IGNITER",      "dir": "dut_out", "ot_signal": "igniter (relay)",     "signal_type": "digital",            "dut_gpio": 21, "tester_gpio": 23, "tester_kind": "digital_in",     "telemetry_key": "igniter_on", "active_high": true, "notes": "if the DUT igniter is set to PWM dwell mode, change tester_kind to pwm_in_ledc" },
+    { "name": "STARTER_EN",   "dir": "dut_out", "ot_signal": "starter enable (relay)","signal_type": "digital",          "dut_gpio": 39, "tester_gpio": 33, "tester_kind": "digital_in",     "telemetry_key": "starter_enabled", "active_high": true, "optional": true }
+  ],
+  "dut_profile": {
+    "$comment": "Set these on the OpenTurbine Hardware web page (or flash a matching hardware_profile.h) so the S3 pins line up with dut_gpio above. verify-wiring compares GET /api/hardware against this.",
+    "controls": { "start_pin": 13, "stop_pin": 15 },
+    "sensors": {
+      "n1_rpm":   { "enabled": true, "pin": 14, "ppr": 1.0 },
+      "oil_press":{ "enabled": true, "pin": 1 },
+      "flame":    { "enabled": true, "pin": 2 },
+      "throttle_input": { "enabled": true, "pin": 4, "type": "adc" },
+      "idle_input":     { "enabled": true, "pin": 5, "type": "adc", "note": "driven digital or tied to GND" }
+    },
+    "actuators": {
+      "throttle":   { "enabled": true, "pin": 16, "type": "servo" },
+      "oil_pump":   { "enabled": true, "pin": 11, "type": "ledc" },
+      "fuel_sol":   { "enabled": true, "pin": 12, "active_high": true },
+      "igniter":    { "enabled": true, "pin": 21, "active_high": true },
+      "starter_en": { "enabled": false, "pin": 39 }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# OTBench PC harness dependencies.
+# The DUT (ESP32-S3) is reached over HTTP with the Python standard library
+# (urllib), so the only third-party dependency is the serial link to the tester.
+pyserial>=3.5

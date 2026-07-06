@@ -1,0 +1,133 @@
+"""HTTP client for the OpenTurbine DUT (ESP32-S3) web API.
+
+Uses only the Python standard library. Telemetry is read by polling
+/api/data, which carries the full EngineData snapshot (mode, sensor values,
+actuator demands, sequence progress, health flags, bench/dev mode, ...).
+"""
+
+import json
+import socket
+import time
+import urllib.error
+import urllib.request
+
+
+class DUT:
+    def __init__(self, base="http://192.168.4.1", timeout=4.0):
+        self.base = base.rstrip("/")
+        self.timeout = timeout
+
+    # ── low-level ────────────────────────────────────────────
+    def _open_retry(self, req, tries=4):
+        """urlopen with retries on transient transport errors (the AP drops the
+        odd request during mode transitions / WiFi contention). A real HTTP
+        response (4xx/5xx) is an HTTPError and is re-raised immediately."""
+        last = None
+        for i in range(tries):
+            try:
+                return urllib.request.urlopen(req, timeout=self.timeout)
+            except urllib.error.HTTPError:
+                raise
+            except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
+                last = e
+                time.sleep(0.4)
+        raise last
+
+    def _get(self, path):
+        req = urllib.request.Request(self.base + path, method="GET")
+        with self._open_retry(req) as r:
+            return json.loads(r.read().decode("utf-8"))
+
+    def _body(self, path, obj, method):
+        data = json.dumps(obj).encode("utf-8") if obj is not None else b""
+        headers = {"Content-Type": "application/json"} if obj is not None else {}
+        req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
+        try:
+            with self._open_retry(req) as r:
+                body = r.read().decode("utf-8")
+                return r.status, (json.loads(body) if body else {})
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(body)
+            except json.JSONDecodeError:
+                parsed = {"error": body}
+            return e.code, parsed
+
+    def _post(self, path, obj=None):
+        return self._body(path, obj, "POST")
+
+    def patch(self, path, obj):
+        return self._body(path, obj, "PATCH")
+
+    # ── endpoints ────────────────────────────────────────────
+    def data(self):
+        return self._get("/api/data")
+
+    def status(self):
+        return self._get("/api/status")
+
+    def hardware(self):
+        return self._get("/api/hardware")
+
+    def config(self):
+        return self._get("/api/config")
+
+    def command(self, cmd, fParam=0.0, iParam=0):
+        return self._post("/api/command", {"cmd": cmd, "fParam": fParam, "iParam": iParam})
+
+    def start(self):
+        return self._post("/api/start")
+
+    def stop(self):
+        return self._post("/api/stop")
+
+    # ── convenience ──────────────────────────────────────────
+    def mode(self):
+        return self.data().get("mode")
+
+    def ping(self):
+        """Return (ok, detail)."""
+        try:
+            s = self.status()
+            return True, s
+        except Exception as e:  # noqa: BLE001 — surface any transport error
+            return False, str(e)
+
+    def poll_until(self, predicate, timeout=5.0, interval=0.15):
+        """Poll /api/data until predicate(data) is truthy or timeout.
+        Returns (ok, last_data)."""
+        deadline = time.time() + timeout
+        last = {}
+        while time.time() < deadline:
+            last = self.data()
+            if predicate(last):
+                return True, last
+            time.sleep(interval)
+        return False, last
+
+    def ensure_mode_standby(self, timeout=25.0):
+        """Best-effort return to STANDBY: issue STOP if the engine is active.
+        Timeout covers the shutdown cooldown block (~15 s by default)."""
+        d = self.data()
+        if d.get("mode") in ("STARTUP", "RUNNING", "SHUTDOWN"):
+            self.stop()
+            ok, d = self.poll_until(lambda x: x.get("mode") == "STANDBY", timeout=timeout)
+            return ok, d
+        return d.get("mode") == "STANDBY", d
+
+    def _ensure_toggle(self, key, cmd, want, settle=0.4):
+        """Toggle a boolean EngineData flag (dev_mode / bench_mode) to `want`.
+        These toggles are STANDBY-only in the firmware."""
+        d = self.data()
+        if bool(d.get(key)) != bool(want):
+            self.command(cmd)
+            time.sleep(settle)
+            d = self.data()
+        return bool(d.get(key))
+
+    def ensure_dev_mode(self, want=True):
+        return self._ensure_toggle("dev_mode", "TOGGLE_DEV_MODE", want)
+
+    def ensure_bench_mode(self, want=True):
+        return self._ensure_toggle("bench_mode", "TOGGLE_BENCH_MODE", want)

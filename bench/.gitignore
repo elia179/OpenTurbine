@@ -1,0 +1,5 @@
+# PlatformIO build output for the OTBench tester firmware
+firmware/.pio/
+# Python
+**/__pycache__/
+*.pyc
