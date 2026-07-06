@@ -252,6 +252,7 @@ constexpr uint32_t DEFAULT_STATUS_LED_STANDBY_COLOR  = 0x00FF40;
 constexpr uint32_t DEFAULT_STATUS_LED_STARTUP_COLOR  = 0x0060FF;
 constexpr uint32_t DEFAULT_STATUS_LED_RUNNING_COLOR  = 0x00FF00;
 constexpr uint32_t DEFAULT_STATUS_LED_SHUTDOWN_COLOR = 0xFF8000;
+constexpr uint32_t DEFAULT_STATUS_LED_BLINK_COLOR    = 0x0000FF;
 
 constexpr const char* currentPlatformName() {
 #if defined(OT_PLATFORM_ESP32S3)
@@ -290,6 +291,7 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
         if (led["startup_color"].isNull()) led["startup_color"] = DEFAULT_STATUS_LED_STARTUP_COLOR;
         if (led["running_color"].isNull()) led["running_color"] = DEFAULT_STATUS_LED_RUNNING_COLOR;
         if (led["shutdown_color"].isNull()) led["shutdown_color"] = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
+        if (led["blink_color"].isNull()) led["blink_color"] = DEFAULT_STATUS_LED_BLINK_COLOR;
         JsonVariant sensorsVar = doc["sensors"];
         if (sensorsVar.is<JsonObject>()) {
             JsonObject sensors = sensorsVar.as<JsonObject>();
@@ -317,6 +319,7 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
     if (led["startup_color"].isNull()) led["startup_color"] = DEFAULT_STATUS_LED_STARTUP_COLOR;
     if (led["running_color"].isNull()) led["running_color"] = DEFAULT_STATUS_LED_RUNNING_COLOR;
     if (led["shutdown_color"].isNull()) led["shutdown_color"] = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
+    if (led["blink_color"].isNull()) led["blink_color"] = DEFAULT_STATUS_LED_BLINK_COLOR;
 #else
     (void)doc;
 #endif
@@ -1478,6 +1481,7 @@ uint32_t HardwareConfig::statusLedStandbyColor  = DEFAULT_STATUS_LED_STANDBY_COL
 uint32_t HardwareConfig::statusLedStartupColor  = DEFAULT_STATUS_LED_STARTUP_COLOR;
 uint32_t HardwareConfig::statusLedRunningColor  = DEFAULT_STATUS_LED_RUNNING_COLOR;
 uint32_t HardwareConfig::statusLedShutdownColor = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
+uint32_t HardwareConfig::statusLedBlinkColor    = DEFAULT_STATUS_LED_BLINK_COLOR;
 
 // Cluster serial
 int   HardwareConfig::clusterTxPin     = OT_CLUSTER_TX_PIN;
@@ -1892,6 +1896,7 @@ void HardwareConfig::applyDefaults() {
     statusLedStartupColor  = DEFAULT_STATUS_LED_STARTUP_COLOR;
     statusLedRunningColor  = DEFAULT_STATUS_LED_RUNNING_COLOR;
     statusLedShutdownColor = DEFAULT_STATUS_LED_SHUTDOWN_COLOR;
+    statusLedBlinkColor    = DEFAULT_STATUS_LED_BLINK_COLOR;
 
     // Labels and DI channels belong to the previous engine profile — a
     // defaults reset must not retain stale safety inputs (estop, fault,
@@ -2277,6 +2282,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     led["startup_color"] = statusLedStartupColor;
     led["running_color"] = statusLedRunningColor;
     led["shutdown_color"] = statusLedShutdownColor;
+    led["blink_color"] = statusLedBlinkColor;
 
     auto clus = doc["cluster_serial"].to<JsonObject>();
     clus["enabled"] = hasClusterSerial; clus["tx_pin"] = clusterTxPin;
@@ -2743,11 +2749,13 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     statusLedStartupColor  = led["startup_color"]  | statusLedStartupColor;
     statusLedRunningColor  = led["running_color"]  | statusLedRunningColor;
     statusLedShutdownColor = led["shutdown_color"] | statusLedShutdownColor;
+    statusLedBlinkColor    = led["blink_color"]    | statusLedBlinkColor;
     if (statusLedMode < 0 || statusLedMode > 1) statusLedMode = DEFAULT_STATUS_LED_MODE;
     statusLedStandbyColor  &= 0xFFFFFFu;
     statusLedStartupColor  &= 0xFFFFFFu;
     statusLedRunningColor  &= 0xFFFFFFu;
     statusLedShutdownColor &= 0xFFFFFFu;
+    statusLedBlinkColor    &= 0xFFFFFFu;
     if (statusLedMode == 1) {
         hasStatusLed = true;
         statusLedType = 1;

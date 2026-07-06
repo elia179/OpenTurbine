@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0e1120">
+<meta name="theme-color" content="#101012">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css?v=20260705a">
+<link rel="stylesheet" href="/style.css?v=20260706a">
+<script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
 <nav>
@@ -1776,6 +1777,11 @@
             <option value="1">State colors</option>
           </select>
         </div>
+        <div class="hw-field" id="grp-led-blink" style="display:none">
+          <span class="hw-label">Blink color</span>
+          <span class="hw-desc">NeoPixel colour used by Blink pattern mode (the 1/2/3/4 flash and rapid fault flash). Default blue.</span>
+          <input type="color" id="f-led-color-blink" onchange="setStatusLedColor('blink_color',this.value)">
+        </div>
         <div class="hw-field" id="grp-led-colors" style="display:none;grid-column:1/-1">
           <span class="hw-label">State colors</span>
           <span class="hw-desc">Used only by NeoPixel state color mode. Output is dimmed in firmware for small onboard or panel LEDs.</span>
@@ -2332,6 +2338,7 @@ function updateStatusLedTypeUI() {
   if (cfg.actuators.status_led.startup_color === undefined) cfg.actuators.status_led.startup_color = 0x0060FF;
   if (cfg.actuators.status_led.running_color === undefined) cfg.actuators.status_led.running_color = 0x00FF00;
   if (cfg.actuators.status_led.shutdown_color === undefined) cfg.actuators.status_led.shutdown_color = 0xFF8000;
+  if (cfg.actuators.status_led.blink_color === undefined) cfg.actuators.status_led.blink_color = 0x0000FF;
   if (cfg.platform === 'esp32s3' && cfg.actuators.status_led.type === 1 &&
       (cfg.actuators.status_led.pin === undefined || cfg.actuators.status_led.pin === null ||
        cfg.actuators.status_led.pin < 0 || cfg.actuators.status_led.pin === 38)) {
@@ -2342,9 +2349,12 @@ function updateStatusLedTypeUI() {
   const isColor = isNeo && cfg.actuators.status_led.mode === 1;
   const modeGrp = document.getElementById('grp-led-mode');
   const colorGrp = document.getElementById('grp-led-colors');
+  const blinkGrp = document.getElementById('grp-led-blink');
   if (modeGrp) modeGrp.style.display = isNeo ? '' : 'none';
   if (colorGrp) colorGrp.style.display = isColor ? '' : 'none';
+  if (blinkGrp) blinkGrp.style.display = (isNeo && !isColor) ? '' : 'none';
   v('f-led-mode', cfg.actuators.status_led.mode ?? 0);
+  v('f-led-color-blink', colorToHex(cfg.actuators.status_led.blink_color, '#0000ff'));
   v('f-led-color-standby', colorToHex(cfg.actuators.status_led.standby_color, '#00ff40'));
   v('f-led-color-startup', colorToHex(cfg.actuators.status_led.startup_color, '#0060ff'));
   v('f-led-color-running', colorToHex(cfg.actuators.status_led.running_color, '#00ff00'));
@@ -4449,6 +4459,7 @@ function saveHardware() {
     if (cfg.actuators.status_led.startup_color === undefined) cfg.actuators.status_led.startup_color = 0x0060FF;
     if (cfg.actuators.status_led.running_color === undefined) cfg.actuators.status_led.running_color = 0x00FF00;
     if (cfg.actuators.status_led.shutdown_color === undefined) cfg.actuators.status_led.shutdown_color = 0xFF8000;
+  if (cfg.actuators.status_led.blink_color === undefined) cfg.actuators.status_led.blink_color = 0x0000FF;
   }
   const missing = [];
   const requirePin = (obj, key, label) => {

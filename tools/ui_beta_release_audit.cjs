@@ -319,8 +319,8 @@ function enumNames(source, marker) {
     results.push('runtime safety guards cover zero limits, inactive EGT flameout, and stale auto-relight prerequisites');
 
     const indexHtml = fs.readFileSync(path.join('data_src', 'index.html'), 'utf8');
-    assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|20260625a|Primary thermal limit/);
-    assert.match(indexHtml, /20260705a/);
+    assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|20260625a|20260705a|Primary thermal limit/);
+    assert.match(indexHtml, /20260706a/);
     assert.match(indexHtml, /<body data-page="dashboard">/);
     assert.match(indexHtml, /id="profile-mismatch-banner" style="display:none"/);
     const appSource = fs.readFileSync(path.join('data_src', 'app.js'), 'utf8');

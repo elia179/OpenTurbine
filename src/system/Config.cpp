@@ -264,6 +264,7 @@ int   Config::fuelFlowRawMax        = 4095;
 float Config::fuelFlowValMax        = 10.0f;
 
 char  Config::profileId[64]         = {};
+char  Config::uiTheme[16]           = "carbon";
 bool  Config::profileMatch          = false;
 char  Config::loadWarning[192]      = {};
 static SemaphoreHandle_t s_configWriteMutex = nullptr;
@@ -1244,6 +1245,7 @@ void Config::_applyDefaults() {
     toolAbSolTestMs = 1000; toolAbPumpTestMs = 2000; toolAbPumpTestPct = 30.0f;
     toolStarterEnTestMs = 1000; toolPropPitchTestMs = 3000; toolPropPitchTestPct = 50.0f;
     wsIntervalMs = 333; snapshotIntervalMs = 10000; controlLoopHz = 400; logStandby = false;
+    strcpy(uiTheme, "carbon");
     starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
     standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
@@ -1296,6 +1298,10 @@ void Config::_fromDoc(const JsonDocument& doc) {
                           " - affected fields will use compile-time defaults\n", sec);
         }
     }
+
+    // UI theme (cosmetic; the browser falls back to the default for unknown keys)
+    { const char* th = doc["ui_theme"] | "";
+      if (th[0]) { strncpy(uiTheme, th, sizeof(uiTheme) - 1); uiTheme[sizeof(uiTheme) - 1] = '\0'; } }
 
     auto eng = doc["engine"];
     rpmLimit          = eng["rpm_limit"]          | rpmLimit;
@@ -1861,6 +1867,7 @@ void Config::_toDoc(JsonDocument& doc) {
     sanitizeForHardware();
     doc["profile_id"]     = HardwareConfig::profileId[0] ? HardwareConfig::profileId : OT_PROFILE_ID;
     doc["config_version"] = CONFIG_VERSION;
+    doc["ui_theme"]       = uiTheme;
 
     auto eng = doc["engine"].to<JsonObject>();
     eng["rpm_limit"]          = rpmLimit;

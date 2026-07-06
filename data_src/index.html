@@ -3,9 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#0e1120">
+<meta name="theme-color" content="#101012">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260705a">
+<link rel="stylesheet" href="/style.css?v=20260706a">
+<script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script src="/theme.js?v=20260706a"></script>
 </head>
 <body data-page="dashboard">
 <nav>
@@ -507,6 +509,19 @@
   </div>
 </div>
 
+<!-- First-run theme chooser (shown once, right after the beta notice) -->
+<div id="theme-firstrun" class="theme-firstrun-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="tfr-title">
+  <div class="theme-firstrun-box">
+    <div class="tfr-kicker">One more thing</div>
+    <h3 id="tfr-title">Choose your look</h3>
+    <p>Pick a theme for the interface. You can change it any time at the bottom of the Tools page.</p>
+    <div class="tfr-grid" id="theme-firstrun-grid"></div>
+    <div class="tfr-actions">
+      <button class="primary" onclick="OTTheme.finishFirstRun()">Done</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const BETA_ACK_KEY = 'ot_beta_notice_ack_v1';
 const GS_DISMISS_KEY = 'ot_gs_dismissed';
@@ -546,9 +561,11 @@ function acceptBetaNotice() {
   setStoredFlag(BETA_ACK_KEY);
   const overlay = document.getElementById('beta-ack-overlay');
   if (overlay) overlay.style.display = 'none';
+  if (window.OTTheme) OTTheme.maybeFirstRun();
 }
 document.addEventListener('DOMContentLoaded', function() {
   if (!hasBetaNoticeAck()) showBetaNotice();
+  else if (window.OTTheme) OTTheme.maybeFirstRun();
 });
 function showStartConfirm() {
   if (!hasBetaNoticeAck()) {
@@ -661,6 +678,6 @@ function dismissCaptiveBanner() {
 })();
 </script>
 
-<script src="/app.js?v=20260705a"></script>
+<script src="/app.js?v=20260706a"></script>
 </body>
 </html>

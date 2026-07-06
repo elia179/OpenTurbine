@@ -125,7 +125,7 @@ static bool _outputsActiveForOta() {
 static const char* const WEB_ASSETS[] = {
     "app.js.gz", "calibration.html.gz", "config.html.gz", "hardware.html.gz",
     "index.html.gz", "log.html.gz", "sequence.html.gz", "style.css.gz",
-    "tools.html.gz"
+    "tools.html.gz", "theme.js.gz"
 };
 static constexpr uint16_t WEB_ASSET_COUNT = sizeof(WEB_ASSETS) / sizeof(WEB_ASSETS[0]);
 static constexpr uint16_t WEB_ASSET_ALL = (1u << WEB_ASSET_COUNT) - 1u;
@@ -902,6 +902,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["config_storage_fault"]  = ed.configStorageFault;
         // Boot-load accept+warn notice (out-of-cap safety limits etc.)
         doc["config_load_warning"]   = Config::loadWarning[0] ? Config::loadWarning : nullptr;
+        doc["ui_theme"]              = Config::uiTheme;
         doc["config_version_firmware"] = Config::CONFIG_VERSION;
         doc["hardware_profile"]      = HardwareConfig::profileId;
         doc["hw_json_loaded"]        = true;
@@ -1060,6 +1061,9 @@ void WebServer::_setupRoutes() {
     });
     _server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest* req) {
         _sendGzipAsset(req, "/style.css.gz", "text/css", SHARED_ASSET_CACHE);
+    });
+    _server.on("/theme.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        _sendGzipAsset(req, "/theme.js.gz", "application/javascript", SHARED_ASSET_CACHE);
     });
     _server.on("/", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
         if (redirectCaptiveToIp(req)) return;
@@ -1260,6 +1264,27 @@ void WebServer::_setupRoutes() {
                 req->send(200, "application/json", "{\"ok\":true}");
             }
         });
+
+    // POST /api/theme?t=<key> — persist the web UI theme into ecu_config.json so it
+    // travels with the engine file. Cosmetic: not mode-gated, no APPLY_CONFIG, no flight log.
+    _server.on("/api/theme", HTTP_POST, [](AsyncWebServerRequest* req) {
+        if (!req->hasParam("t")) {
+            req->send(400, "application/json", "{\"ok\":false,\"error\":\"missing t\"}");
+            return;
+        }
+        String t = req->getParam("t")->value();
+        static const char* const VALID[] = { "carbon", "ember", "slate", "midnight", "contrast", "daylight" };
+        bool ok = false;
+        for (const char* v : VALID) if (t == v) { ok = true; break; }
+        if (!ok) {
+            req->send(400, "application/json", "{\"ok\":false,\"error\":\"unknown theme\"}");
+            return;
+        }
+        strncpy(Config::uiTheme, t.c_str(), sizeof(Config::uiTheme) - 1);
+        Config::uiTheme[sizeof(Config::uiTheme) - 1] = '\0';
+        bool saved = Config::save();
+        req->send(200, "application/json", saved ? "{\"ok\":true}" : "{\"ok\":true,\"warn\":\"not persisted\"}");
+    });
 
     // GET /api/log — last 400 events as a JSON array for in-browser display.
     // Capped so AsyncResponseStream stays bounded regardless of log size.

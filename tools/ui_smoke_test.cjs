@@ -61,6 +61,12 @@ function installedBrowser() {
     await waitShown(page, '#beta-ack-overlay', false);
     assert.equal(await page.evaluate(() => localStorage.getItem('ot_beta_notice_ack_v1')), '1');
     results.push('beta safety notice gates a fresh profile and is dismissible via checkbox + continue');
+    // First-run theme chooser appears right after the beta notice; dismiss it like a tester would.
+    await waitShown(page, '#theme-firstrun', true);
+    await page.locator('#theme-firstrun button.primary').click();
+    await waitShown(page, '#theme-firstrun', false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('ot_theme_onboarded_v1')), '1');
+    results.push('first-run theme chooser appears after the beta notice and is dismissible');
     assert.equal(await text(page, '#fw-version'), 'vsim-1.0.0');
     assert.equal(await text(page, '#throttle-input-pct'), '50.0');
     assert.equal(await page.evaluate(() =>
@@ -71,8 +77,8 @@ function installedBrowser() {
         document.querySelector('#speed-cards').contains(document.getElementById(id)))), true);
     results.push('dashboard renders throttle input and groups temperatures and shaft speeds together');
     assert.equal((await text(page, '#getting-started-banner')).match(/[⚙🔧📋🔨▶]/u), null);
-    assert.equal(await page.locator('.gs-steps a').first().evaluate(el => getComputedStyle(el).color), 'rgb(255, 255, 255)');
-    results.push('getting-started checklist uses readable white plain-text actions');
+    assert.equal(await page.locator('.gs-steps a').first().evaluate(el => getComputedStyle(el).color), 'rgb(245, 245, 247)');
+    results.push('getting-started checklist uses the high-contrast text colour for plain-text actions');
 
     await page.request.post(`${base}/__sim/data`, { data: {
       mode: 'RUNNING', bench_mode: false, egt_source: 2,

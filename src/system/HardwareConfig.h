@@ -320,6 +320,7 @@ public:
     static int   statusLedType;        // 0=plain GPIO, 1=NeoPixel/RGB data LED
     static int   statusLedMode;        // NeoPixel only: 0=blink pattern, 1=state color
     static uint32_t statusLedStandbyColor;
+    static uint32_t statusLedBlinkColor;
     static uint32_t statusLedStartupColor;
     static uint32_t statusLedRunningColor;
     static uint32_t statusLedShutdownColor;

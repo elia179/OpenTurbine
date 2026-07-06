@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenTurbine — Theme Lab</title>
+<style>
+:root{
+  /* ── Ember (default) — edit live via the panel ── */
+  --bg:#14110d;
+  --surface:#1d1915;
+  --surface-2:#241f19;
+  --surface-3:#2e2820;
+  --border:#38312a;
+  --border-light:#4a4239;
+  --text:#f7f4ee;
+  --text-2:#d8d2c8;
+  --dim:#a79f94;
+  --green:#34d07a;
+  --red:#ff4d61;
+  --yellow:#ffcf4d;
+  --blue:#5bb8c9;
+  --accent:#ec7a22;
+
+  --r-sm:6px; --r-md:9px; --r-lg:12px;
+  --font-ui:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'SF Mono','Consolas',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;display:flex;min-height:100vh}
+
+/* ── Control panel ── */
+.lab{width:320px;flex:0 0 320px;background:var(--surface);border-right:1px solid var(--border);height:100vh;position:sticky;top:0;overflow-y:auto;padding:14px 14px 40px}
+.lab h1{font-size:.95rem;font-weight:700;letter-spacing:.02em;margin-bottom:2px}
+.lab .sub{font-size:.7rem;color:var(--dim);line-height:1.5;margin-bottom:12px}
+.lab .grp{font-size:.62rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin:16px 0 8px;border-top:1px solid var(--border);padding-top:12px}
+.lab .grp:first-of-type{border-top:none;padding-top:0}
+.row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.row label{flex:1;font-size:.72rem;color:var(--text-2)}
+.row input[type=color]{width:30px;height:26px;border:1px solid var(--border-light);border-radius:5px;background:none;padding:0;cursor:pointer;flex:0 0 auto}
+.row input[type=text]{width:82px;flex:0 0 auto;font-family:var(--font-mono);font-size:.72rem;padding:.28rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text)}
+.presets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:4px}
+.presets button,.act button{font-family:var(--font-ui);font-size:.72rem;font-weight:600;padding:.42rem .5rem;border-radius:6px;border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer}
+.presets button:hover,.act button:hover{border-color:var(--accent);color:var(--text)}
+.pgroup{margin-bottom:8px}
+.plabel{font-size:.58rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin:8px 0 5px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pbtn{display:flex;flex-direction:column;gap:6px;align-items:flex-start;padding:.45rem .5rem;border-radius:6px;border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer;font-family:var(--font-ui);font-size:.7rem;font-weight:600;text-align:left}
+.pbtn:hover{border-color:var(--accent);color:var(--text)}
+.pbtn.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.pbtn .sws{display:flex;gap:3px}
+.pbtn .sw{width:15px;height:15px;border-radius:3px;border:1px solid rgba(255,255,255,.14)}
+.act{display:flex;gap:6px;margin:10px 0}
+.act button{flex:1}
+.act button.primary{background:var(--accent);color:color-mix(in srgb,var(--accent) 24%,#000);border-color:var(--accent);font-weight:700}
+textarea#export{width:100%;height:150px;font-family:var(--font-mono);font-size:.68rem;line-height:1.5;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text-2);padding:8px;resize:vertical;margin-top:6px}
+.copied{font-size:.68rem;color:var(--green);margin-left:8px;opacity:0;transition:opacity .2s}
+.copied.show{opacity:1}
+
+/* ── Preview area ── */
+.view{flex:1;height:100vh;overflow-y:auto}
+.view-inner{max-width:900px;margin:0 auto;padding:18px}
+
+/* nav */
+nav{display:flex;align-items:center;gap:0;padding:0 1rem;background:var(--surface);border-bottom:1px solid var(--border);height:46px;position:sticky;top:0;z-index:5}
+nav a{color:var(--dim);font-size:.72rem;font-weight:500;padding:0 .85rem;height:46px;line-height:46px;letter-spacing:.05em;text-transform:uppercase;border-bottom:2px solid transparent;text-decoration:none;cursor:pointer}
+nav a.active{color:var(--text);border-bottom-color:var(--accent)}
+nav a:hover{color:var(--text-2)}
+.conn-dot{width:7px;height:7px;border-radius:50%;margin-left:auto;background:var(--green);box-shadow:0 0 6px color-mix(in srgb,var(--green) 70%,transparent)}
+.conn-label{font-size:.62rem;color:var(--dim);margin-left:.4rem;text-transform:uppercase;letter-spacing:.05em}
+
+.sec-title{font-size:.62rem;text-transform:uppercase;letter-spacing:.12em;color:var(--dim);margin:20px 0 8px}
+.sec-title:first-child{margin-top:0}
+
+/* mode */
+.mode-row{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:6px}
+.mode-badge{font-family:var(--font-mono);font-size:.85rem;font-weight:700;letter-spacing:.13em;padding:.42rem 1rem;border-radius:var(--r-sm);background:var(--surface-3);border:1px solid var(--border);color:var(--dim)}
+.mode-badge.STANDBY{color:var(--text-2);border-color:var(--border-light)}
+.mode-badge.STARTUP{color:var(--yellow);border-color:var(--yellow);background:color-mix(in srgb,var(--yellow) 9%,transparent)}
+.mode-badge.RUNNING{color:var(--green);border-color:var(--green);background:color-mix(in srgb,var(--green) 9%,transparent)}
+.mode-badge.SHUTDOWN{color:var(--blue);border-color:var(--blue);background:color-mix(in srgb,var(--blue) 9%,transparent)}
+.mode-badge.FAULT{color:var(--red);border-color:var(--red);background:color-mix(in srgb,var(--red) 12%,transparent)}
+.mode-switch{display:flex;gap:5px;flex-wrap:wrap}
+.mode-switch button{font-size:.64rem;padding:.25rem .5rem;border-radius:5px;border:1px solid var(--border);background:var(--surface-2);color:var(--dim);cursor:pointer;text-transform:uppercase;letter-spacing:.04em}
+.mode-switch button:hover{border-color:var(--accent);color:var(--text-2)}
+
+/* cards + gauges */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.7rem}
+.card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.85rem 1rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.label{font-size:.66rem;color:var(--dim);text-transform:uppercase;letter-spacing:.09em;margin-bottom:.3rem;display:flex;align-items:center;gap:.4rem}
+.value{font-family:var(--font-mono);font-size:2rem;font-weight:600;color:var(--text);line-height:1.1;letter-spacing:-.02em}
+.value.small{font-size:1.3rem}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 5px color-mix(in srgb,var(--green) 55%,transparent)}
+.gauge-bar-wrap{height:3px;background:var(--border);border-radius:2px;margin-top:.55rem;overflow:hidden}
+.gauge-bar{height:100%;border-radius:2px;background:var(--green);transition:width .3s ease,background .3s ease}
+.gauge-bar.warn{background:var(--yellow)}
+.gauge-bar.danger{background:var(--red)}
+.gauge-abs-label{font-size:.7rem;color:var(--dim);font-family:var(--font-mono);margin-top:.3rem;display:block}
+.gauge-approach-warn{display:block;font-size:.7rem;color:var(--yellow);font-family:var(--font-mono);margin-top:.2rem}
+.gauge-over{display:block;font-size:.7rem;color:var(--red);font-family:var(--font-mono);margin-top:.2rem}
+.peak-val{font-size:.62rem;color:var(--dim);margin-top:.15rem}
+
+/* load slider */
+.loadbox{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:.7rem 1rem;margin-bottom:10px}
+.loadbox input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+.loadbox .lb-head{display:flex;justify-content:space-between;font-size:.72rem;color:var(--dim);margin-bottom:.3rem}
+.loadbox .lb-head b{color:var(--text);font-family:var(--font-mono)}
+
+/* buttons */
+.controls{display:flex;gap:.5rem;flex-wrap:wrap;margin:8px 0}
+.btn{font-family:var(--font-ui);font-size:.82rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:.6rem 1.2rem;min-height:46px;border-radius:var(--r-sm);border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--text)}
+.btn-start{background:var(--green);color:color-mix(in srgb,var(--green) 20%,#000);border:none;font-weight:700}
+.btn-stop{background:var(--red);color:color-mix(in srgb,var(--red) 22%,#000);border:none;font-weight:700}
+.btn-primary{background:var(--accent);color:color-mix(in srgb,var(--accent) 22%,#000);border:none;font-weight:700}
+.btn-danger{background:transparent;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 55%,transparent)}
+.btn-danger:hover{background:color-mix(in srgb,var(--red) 10%,transparent);border-color:var(--red)}
+
+/* banners */
+.banner{border-radius:var(--r-md);padding:.7rem 1rem;margin-bottom:.6rem;font-size:.82rem;line-height:1.5}
+.banner.dev{background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent)}
+.banner.warn{background:color-mix(in srgb,var(--yellow) 9%,transparent);border:1px solid color-mix(in srgb,var(--yellow) 40%,transparent);color:var(--yellow)}
+.banner.err{background:color-mix(in srgb,var(--red) 9%,transparent);border:1px solid color-mix(in srgb,var(--red) 45%,transparent);color:var(--red)}
+.banner.info{background:color-mix(in srgb,var(--blue) 8%,transparent);border:1px solid color-mix(in srgb,var(--blue) 40%,transparent);color:var(--blue)}
+
+/* form */
+.formcard{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);padding:1rem;margin-bottom:10px}
+.formcard .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.7rem}
+.ff{display:flex;flex-direction:column;gap:.25rem}
+.ff span{font-size:.66rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em}
+input[type=number],input[type=text].fld,select{font-family:var(--font-mono);font-size:.83rem;padding:.4rem .55rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text);width:100%}
+input[type=number]:focus,input[type=text].fld:focus,select:focus{outline:none;border-color:var(--accent)}
+.chk{display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--text-2)}
+input[type=checkbox]{width:1rem;height:1rem;accent-color:var(--accent)}
+
+/* badges */
+.badges{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:10px}
+.badge{font-size:.58rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:.2rem .5rem;border-radius:4px}
+.b-while{background:var(--yellow);color:color-mix(in srgb,var(--yellow) 26%,#000)}
+.b-action{background:var(--accent);color:color-mix(in srgb,var(--accent) 24%,#000)}
+.b-wait{background:var(--blue);color:color-mix(in srgb,var(--blue) 28%,#000)}
+.b-check{background:var(--green);color:color-mix(in srgb,var(--green) 24%,#000)}
+
+/* log */
+.logwrap{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+.logrow{font-family:var(--font-mono);font-size:.76rem;padding:.4rem .7rem;border-bottom:1px solid var(--border);display:flex;gap:.75rem}
+.logrow:last-child{border-bottom:none}
+.lt{color:var(--dim);flex-shrink:0}
+.le{flex-shrink:0}
+.le.accent{color:var(--accent)}
+.le.fault{color:var(--red);font-weight:700}
+.le.run{color:var(--green);font-weight:700}
+.le.start{color:var(--yellow)}
+.le.shut{color:var(--blue)}
+.ld{color:var(--text-2)}
+</style>
+</head>
+<body>
+
+<aside class="lab">
+  <h1>OpenTurbine · Theme Lab</h1>
+  <div class="sub">Local preview only — nothing here touches the ECU or gets flashed. Tweak colors live, then hit <b>Copy CSS</b> and send it back to bake into <code>style.css</code>.</div>
+
+  <div class="grp" style="border:none;padding-top:0;margin-top:0">Presets — click to try</div>
+  <div id="presets"></div>
+
+  <div class="act">
+    <button class="primary" onclick="copyCSS()">Copy CSS</button>
+    <button onclick="applyPreset('ember');markActive('ember')">Reset</button>
+    <span class="copied" id="copied">Copied!</span>
+  </div>
+
+  <div id="controls"></div>
+
+  <div class="grp">Export — paste into <code>:root</code></div>
+  <textarea id="export" readonly spellcheck="false"></textarea>
+</aside>
+
+<main class="view">
+  <nav>
+    <a class="active">Dashboard</a>
+    <a>Hardware</a>
+    <a>Config</a>
+    <a>Sequence</a>
+    <a>Log</a>
+    <span class="conn-dot"></span><span class="conn-label">Connected</span>
+  </nav>
+
+  <div class="view-inner">
+
+    <div class="sec-title">Banners</div>
+    <div class="banner dev">DEV MODE — dev controls &amp; live config editing unlocked.</div>
+    <div class="banner warn">Startup sequence is empty — engine cannot be started.</div>
+    <div class="banner err">Storage fault — engine operations locked.</div>
+    <div class="banner info">Getting started: set up hardware, calibrate sensors, review limits.</div>
+
+    <div class="sec-title">Mode</div>
+    <div class="mode-row">
+      <div class="mode-badge RUNNING" id="modeBadge">RUNNING</div>
+      <div class="mode-switch">
+        <button onclick="setMode('STANDBY')">Standby</button>
+        <button onclick="setMode('STARTUP')">Startup</button>
+        <button onclick="setMode('RUNNING')">Running</button>
+        <button onclick="setMode('SHUTDOWN')">Shutdown</button>
+        <button onclick="setMode('FAULT')">Fault</button>
+      </div>
+    </div>
+
+    <div class="sec-title">Live gauge — drag to watch it cross the limits</div>
+    <div class="loadbox">
+      <div class="lb-head"><span>Simulated load / temperature</span><b id="loadPct">78%</b></div>
+      <input type="range" min="0" max="100" value="78" step="1" oninput="setLoad(this.value)">
+    </div>
+
+    <div class="grid" style="margin-bottom:10px">
+      <div class="card">
+        <div class="label">N1 rpm <span class="dot"></span></div>
+        <div class="value">74,200</div>
+        <div class="peak-val">max 88,000</div>
+        <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:62%"></div></div>
+        <span class="gauge-abs-label">74,200 / 120,000 rpm</span>
+      </div>
+      <div class="card">
+        <div class="label">TOT &deg;c <span class="dot" id="totDot"></span></div>
+        <div class="value" id="totVal">712</div>
+        <div class="peak-val">max ovr — rate +14/s</div>
+        <div class="gauge-bar-wrap"><div class="gauge-bar warn" id="g-tot" style="width:78%"></div></div>
+        <span class="gauge-abs-label"><span id="totAbs">712</span> / 780 &deg;c</span>
+        <span class="gauge-approach-warn" id="totApproach">approaching limit</span>
+        <span class="gauge-over" id="totOver" style="display:none">over limit</span>
+      </div>
+      <div class="card">
+        <div class="label">Oil press (bar) <span class="dot"></span></div>
+        <div class="value small">3.8</div>
+        <div class="peak-val">demand: 3.5 bar</div>
+        <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:55%"></div></div>
+        <span class="gauge-abs-label">3.8 / 6.0 bar</span>
+      </div>
+    </div>
+
+    <div class="sec-title">Controls</div>
+    <div class="controls">
+      <button class="btn btn-start">Start</button>
+      <button class="btn btn-stop">Stop</button>
+      <button class="btn btn-primary">Save config</button>
+      <button class="btn">Reset peaks</button>
+      <button class="btn btn-danger">Factory reset</button>
+    </div>
+
+    <div class="sec-title">Sequence block badges</div>
+    <div class="badges">
+      <span class="badge b-while">While</span>
+      <span class="badge b-action">Action</span>
+      <span class="badge b-wait">Wait</span>
+      <span class="badge b-check">Check</span>
+    </div>
+
+    <div class="sec-title">Form inputs</div>
+    <div class="formcard">
+      <div class="fgrid">
+        <div class="ff"><span>Overspeed rpm</span><input type="number" value="120000"></div>
+        <div class="ff"><span>TOT limit &deg;c</span><input type="number" value="780"></div>
+        <div class="ff"><span>Engine temp source</span><select><option>TOT</option><option>TIT</option></select></div>
+        <div class="ff"><span>Profile id</span><input type="text" class="fld" value="OpenTurbine"></div>
+      </div>
+      <label class="chk" style="margin-top:.7rem"><input type="checkbox" checked> Enable overspeed protection</label>
+    </div>
+
+    <div class="sec-title">Log</div>
+    <div class="logwrap">
+      <div class="logrow"><span class="lt">00:12:04</span><span class="le run">RUNNING</span><span class="ld">stable idle reached, N1 62,400</span></div>
+      <div class="logrow"><span class="lt">00:11:58</span><span class="le start">STARTUP</span><span class="ld">light-up confirmed, TOT rising</span></div>
+      <div class="logrow"><span class="lt">00:11:40</span><span class="le accent">CAL</span><span class="ld">TOT sensor calibration applied</span></div>
+      <div class="logrow"><span class="lt">00:09:12</span><span class="le shut">SHUTDOWN</span><span class="ld">cooldown spin complete</span></div>
+      <div class="logrow"><span class="lt">00:02:31</span><span class="le fault">FAULT</span><span class="ld">oil pressure below minimum during running</span></div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+const PRESETS = {
+  ember:     {bg:'#14110d',surface:'#1d1915','surface-2':'#241f19','surface-3':'#2e2820',border:'#38312a','border-light':'#4a4239',text:'#f7f4ee','text-2':'#d8d2c8',dim:'#a79f94',green:'#34d07a',red:'#ff4d61',yellow:'#ffcf4d',blue:'#5bb8c9',accent:'#ec7a22'},
+  emberDeep: {bg:'#120f0b',surface:'#1a1611','surface-2':'#201b15','surface-3':'#2a231b',border:'#342c24','border-light':'#463c31',text:'#f6f2ea','text-2':'#d6cfc2',dim:'#a49b8d',green:'#33cc78',red:'#f9556a',yellow:'#f5c247',blue:'#58b3c4',accent:'#e2661a'},
+  molten:    {bg:'#100d0a',surface:'#191410','surface-2':'#1f1914','surface-3':'#29211a',border:'#342a20','border-light':'#48392c',text:'#f8f4ee','text-2':'#dad2c6',dim:'#aaa093',green:'#3ad07f',red:'#ff5566',yellow:'#ffc93d',blue:'#5cbccb',accent:'#ff7a1a'},
+  copper:    {bg:'#15120f',surface:'#1e1a16','surface-2':'#25201b','surface-3':'#2f2921',border:'#39312a','border-light':'#4c4238',text:'#f4efe8','text-2':'#d6cec2',dim:'#a69d90',green:'#38cc7e',red:'#f2596a',yellow:'#edc158',blue:'#61b6c2',accent:'#d2793a'},
+  sunset:    {bg:'#16110f',surface:'#1f1815','surface-2':'#261e19','surface-3':'#312720',border:'#3b2f28','border-light':'#4e4036',text:'#f7f2ee','text-2':'#dacfc7',dim:'#ab9d93',green:'#34d086',red:'#ff5271',yellow:'#ffc95a',blue:'#5fb9c7',accent:'#ff6b3d'},
+  cockpit:   {bg:'#0f1013',surface:'#17181d','surface-2':'#1e2027','surface-3':'#282b34',border:'#2f323c','border-light':'#40444f',text:'#f3f4f6','text-2':'#cfd2d8',dim:'#9aa0aa',green:'#35d68a',red:'#ff5a5a',yellow:'#ffd166',blue:'#4bb8e6',accent:'#ffb020'},
+  brass:     {bg:'#141210',surface:'#1d1a16','surface-2':'#23201a','surface-3':'#2d2921',border:'#372f27','border-light':'#493f34',text:'#f5f1e9','text-2':'#d7d0c3',dim:'#a89f91',green:'#37cf7e',red:'#f65a6d',yellow:'#f2c64f',blue:'#5eb6c3',accent:'#e0a63a'},
+  graphite:  {bg:'#131315',surface:'#1b1b1e','surface-2':'#222226','surface-3':'#2b2b30',border:'#35353b','border-light':'#45454d',text:'#f6f6f8','text-2':'#cfcfd6',dim:'#a3a3ab',green:'#34d07a',red:'#ff4d61',yellow:'#ffcf4d',blue:'#5bb8c9',accent:'#ec7a22'},
+  gunmetal:  {bg:'#121417',surface:'#191c20','surface-2':'#1f2329','surface-3':'#292e35',border:'#333941','border-light':'#434a54',text:'#f2f4f6','text-2':'#ccd1d8',dim:'#98a0aa',green:'#33cf82',red:'#ff5566',yellow:'#ffc94d',blue:'#58b6cc',accent:'#f0752a'},
+  slateTeal: {bg:'#101416',surface:'#171d20','surface-2':'#1d2427','surface-3':'#273034',border:'#313d41','border-light':'#425155',text:'#f1f5f6','text-2':'#ccd6d8',dim:'#97a4a7',green:'#38d29a',red:'#ff5a6b',yellow:'#ffce55',blue:'#5cc4d6',accent:'#2fb6b0'},
+  carbon:    {bg:'#101012',surface:'#17171a','surface-2':'#1d1d20','surface-3':'#262629',border:'#313135','border-light':'#42424a',text:'#f5f5f7','text-2':'#cecdd4',dim:'#a0a0a8',green:'#33cf7a',red:'#ff4d5f',yellow:'#ffcf4d',blue:'#5ab8ca',accent:'#ee7620'},
+  crimson:   {bg:'#131113',surface:'#1b181b','surface-2':'#221e22','surface-3':'#2c262c',border:'#362f36','border-light':'#483f48',text:'#f6f3f5','text-2':'#d6cfd4',dim:'#a89fa6',green:'#35d07e',red:'#ff4d61',yellow:'#ffcb50',blue:'#5bb6c9',accent:'#f05a3c'},
+  navy:      {bg:'#0e1120',surface:'#181b2e','surface-2':'#222640','surface-3':'#2c3058',border:'#2c3155','border-light':'#3c4270',text:'#f4f5ff','text-2':'#c0c5e8',dim:'#8890c0',green:'#00f0a0',red:'#ff4466',yellow:'#ffc400',blue:'#38c8ff',accent:'#00f0a0'}
+};
+const GROUPS = [
+  {t:'Accents', v:[['accent','Orange · brand / accent'],['green','Green · go / ok'],['yellow','Yellow · caution'],['red','Red · stop / fault'],['blue','Steel · shutdown / info']]},
+  {t:'Shell',   v:[['bg','Page background'],['surface','Nav & bars'],['surface-2','Cards'],['surface-3','Raised controls'],['border','Border'],['border-light','Border · light']]},
+  {t:'Text',    v:[['text','Text'],['text-2','Text · secondary'],['dim','Dim / labels']]}
+];
+const ORDER = ['bg','surface','surface-2','surface-3','border','border-light','text','text-2','dim','green','red','yellow','blue','accent'];
+const state = {};
+
+function setVar(k,val){
+  if(!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  state[k]=val.toLowerCase();
+  document.documentElement.style.setProperty('--'+k,val);
+  const c=document.getElementById('c-'+k), t=document.getElementById('t-'+k);
+  if(c) c.value=val; if(t) t.value=val;
+  refreshExport();
+}
+function applyPreset(name){
+  const p=PRESETS[name]; if(!p) return;
+  ORDER.forEach(k=>setVar(k,p[k]));
+}
+function refreshExport(){
+  document.getElementById('export').value =
+    ':root {\n'+ORDER.map(k=>'  --'+k+': '+state[k]+';').join('\n')+'\n}';
+}
+function copyCSS(){
+  const ta=document.getElementById('export');
+  ta.select();
+  navigator.clipboard.writeText(ta.value).catch(()=>document.execCommand('copy'));
+  const c=document.getElementById('copied'); c.classList.add('show');
+  setTimeout(()=>c.classList.remove('show'),1400);
+}
+function setMode(m){ document.getElementById('modeBadge').className='mode-badge '+m; document.getElementById('modeBadge').textContent=m; }
+function setLoad(v){
+  v=+v;
+  document.getElementById('loadPct').textContent=v+'%';
+  const g=document.getElementById('g-tot');
+  g.style.width=v+'%';
+  g.className='gauge-bar'+(v>90?' danger':(v>70?' warn':''));
+  const t=Math.round(300+v*5.4);
+  document.getElementById('totVal').textContent=t;
+  document.getElementById('totAbs').textContent=t;
+  document.getElementById('totApproach').style.display=(v>70&&v<=90)?'':'none';
+  document.getElementById('totOver').style.display=(v>90)?'':'none';
+  const d=document.getElementById('totDot');
+  d.style.background=v>90?'var(--red)':(v>70?'var(--yellow)':'var(--green)');
+  d.style.boxShadow='0 0 5px '+(v>90?'color-mix(in srgb,var(--red) 55%,transparent)':(v>70?'color-mix(in srgb,var(--yellow) 55%,transparent)':'color-mix(in srgb,var(--green) 55%,transparent)'));
+}
+
+/* presets UI */
+const NAMES={ember:'Ember',emberDeep:'Ember Deep',molten:'Molten',copper:'Copper',sunset:'Sunset',cockpit:'Amber Cockpit',brass:'Brass',graphite:'Graphite',gunmetal:'Gunmetal',slateTeal:'Slate Teal',carbon:'Carbon',crimson:'Crimson Steel',navy:'Current navy'};
+const PGROUPS=[
+  {t:'Warm',keys:['ember','emberDeep','molten','copper','sunset','cockpit','brass']},
+  {t:'Cool / neutral',keys:['graphite','gunmetal','slateTeal','carbon','crimson']},
+  {t:'Reference',keys:['navy']}
+];
+function buildPresets(){
+  const host=document.getElementById('presets'); host.innerHTML='';
+  PGROUPS.forEach(g=>{
+    const gd=document.createElement('div'); gd.className='pgroup';
+    const l=document.createElement('div'); l.className='plabel'; l.textContent=g.t; gd.appendChild(l);
+    const grid=document.createElement('div'); grid.className='pgrid';
+    g.keys.forEach(k=>{
+      const p=PRESETS[k]; if(!p) return;
+      const b=document.createElement('button'); b.className='pbtn'; b.dataset.key=k;
+      b.innerHTML='<span>'+NAMES[k]+'</span><span class="sws">'+
+        ['accent','green','yellow','red'].map(c=>'<span class="sw" style="background:'+p[c]+'"></span>').join('')+'</span>';
+      b.onclick=()=>{applyPreset(k);markActive(k);};
+      grid.appendChild(b);
+    });
+    gd.appendChild(grid); host.appendChild(gd);
+  });
+}
+function markActive(k){ document.querySelectorAll('.pbtn').forEach(b=>b.classList.toggle('active',b.dataset.key===k)); }
+
+/* build controls */
+(function(){
+  const host=document.getElementById('controls');
+  GROUPS.forEach(g=>{
+    const h=document.createElement('div'); h.className='grp'; h.textContent=g.t; host.appendChild(h);
+    g.v.forEach(([k,lbl])=>{
+      const row=document.createElement('div'); row.className='row';
+      row.innerHTML='<label>'+lbl+'</label>'+
+        '<input type="color" id="c-'+k+'">'+
+        '<input type="text" id="t-'+k+'" maxlength="7" spellcheck="false">';
+      host.appendChild(row);
+      row.querySelector('#c-'+k).addEventListener('input',e=>setVar(k,e.target.value));
+      const tf=row.querySelector('#t-'+k);
+      tf.addEventListener('change',e=>{let x=e.target.value.trim();if(x[0]!=='#')x='#'+x;setVar(k,x);});
+    });
+  });
+  buildPresets();
+  applyPreset('ember');
+  markActive('ember');
+  setLoad(78);
+})();
+</script>
+</body>
+</html>

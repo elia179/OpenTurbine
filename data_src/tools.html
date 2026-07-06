@@ -2,9 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#0e1120">
+<meta name="theme-color" content="#101012">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260705a">
+<link rel="stylesheet" href="/style.css?v=20260706a">
+<script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script src="/theme.js?v=20260706a"></script>
 </head>
 <body>
 <nav>
@@ -50,7 +52,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260705a"></script>
+<script src="/app.js?v=20260706a"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -950,13 +952,13 @@ function startWebAssetsUpdate(input) {
   const required = [
     'app.js.gz', 'calibration.html.gz', 'config.html.gz', 'hardware.html.gz',
     'index.html.gz', 'log.html.gz', 'sequence.html.gz', 'style.css.gz',
-    'tools.html.gz'
+    'theme.js.gz', 'tools.html.gz'
   ];
   const names = new Set(files.map(f => f.name));
   const missing = required.filter(name => !names.has(name));
   const invalid = files.filter(file => !required.includes(file.name));
   if (missing.length || invalid.length || files.length !== required.length) {
-    alert('Choose exactly the nine generated data/*.gz web assets.\n\nMissing: ' +
+    alert('Choose exactly the ten generated data/*.gz web assets.\n\nMissing: ' +
       (missing.join(', ') || 'none') + '\nUnexpected: ' +
       (invalid.map(file => file.name).join(', ') || 'none'));
     input.value = '';
@@ -1009,5 +1011,15 @@ function startWebAssetsUpdate(input) {
   input.value = '';
 }
 </script>
+
+<!-- Appearance / theme selector (kept minimal, at the very bottom) -->
+<div style="max-width:900px;margin:1.25rem auto 2rem;padding:0 1rem">
+  <div style="border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;background:var(--surface)">
+    <div id="appearance-picker"></div>
+    <div style="font-size:.66rem;color:var(--dim);margin-top:.55rem">Interface theme for this device — applies instantly.</div>
+  </div>
+</div>
+<script>if(window.OTTheme)OTTheme.renderPicker(document.getElementById('appearance-picker'));</script>
+
 </body>
 </html>

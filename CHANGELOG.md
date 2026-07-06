@@ -6,6 +6,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.4.0] — 2026-07-06
+
+Web UI theming, a portable theme choice, and a configurable status-LED blink colour.
+
+### Added
+- Selectable UI theme: six built-in dark/light themes — Carbon (default), Ember, Slate Teal, Midnight, High Contrast, and Daylight — chosen from a preview-tile picker at the bottom of the Tools page, or a one-time first-run chooser shown right after the beta notice. The saved theme is applied before first paint on every page (no flash of the wrong theme).
+- The theme travels with the engine file: it is stored in `ecu_config.json` (`ui_theme`), served in `/api/data`, and saved through a new lightweight `POST /api/theme` (no engine-config re-apply). A fresh phone/browser adopts whatever theme the ECU has stored; a per-browser override is kept in local storage.
+- Configurable status-LED blink colour (`blink_color`, default blue): in NeoPixel blink-pattern mode the RGB status LED now flashes the chosen colour instead of hard-coded green, with a Blink colour picker on the Hardware page (shown in blink mode). State-colour mode is unchanged.
+
+### Changed
+- The web palette is now fully CSS-variable driven so themes swap cleanly: the brand accent is split from the healthy/running green, every semantic tint tracks the active theme, START is a filled green and STOP a filled red with high-contrast dark labels, and SHUTDOWN uses a steel teal. The shipped default look moves from the previous navy/mint to the neutral "Carbon" charcoal with an orange accent.
+
+### Fixed
+- Field help text (`.hw-desc`/`.cfg-desc`/`.param-unit`) used a hard-coded blue-grey that clashed with the new palette; it now uses the theme's neutral dim colour.
+
+---
+
 ## [1.3.0] — 2026-07-05
 
 Beta-hardening release: two full review/fix passes over firmware and web UI

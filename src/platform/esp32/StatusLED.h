@@ -56,8 +56,11 @@ static int _statusPin() {
 
 static void _writeLed(int pin, bool on) {
     if (_isRgbStatusLed(pin)) {
-        const uint8_t level = on ? S3_RGB_LEVEL : 0;
-        rgbLedWrite((uint8_t)pin, 0, level, 0);
+        uint32_t c = on ? HardwareConfig::statusLedBlinkColor : 0;
+        rgbLedWrite((uint8_t)pin,
+                    (uint8_t)((((c >> 16) & 0xFFu) * S3_RGB_LEVEL) / 255u),
+                    (uint8_t)((((c >> 8)  & 0xFFu) * S3_RGB_LEVEL) / 255u),
+                    (uint8_t)(((c & 0xFFu) * S3_RGB_LEVEL) / 255u));
         return;
     }
     digitalWrite(pin, on ? HIGH : LOW);

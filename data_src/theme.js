@@ -1,0 +1,124 @@
+/* OpenTurbine UI theming — applies the saved theme, renders the pickers,
+   and drives the one-time first-run chooser. Loaded on every page.
+   Stage 1: choice persists per-browser in localStorage. (A portable
+   ecu_config.json ui_theme field can be layered on later.) */
+(function () {
+  'use strict';
+  var KEY = 'ot_theme';
+  var ONBOARD = 'ot_theme_onboarded_v1';
+
+  // key, display name, tag, and a few colors for the swatch previews
+  var THEMES = [
+    { k: 'carbon',   n: 'Carbon',        t: 'clean',     bg: '#101012', tx: '#f5f5f7', dm: '#a0a0a8', ac: '#ee7620', gr: '#33cf7a', ye: '#ffcf4d', rd: '#ff4d5f' },
+    { k: 'ember',    n: 'Ember',         t: 'warm',      bg: '#14110d', tx: '#f7f4ee', dm: '#a79f94', ac: '#ec7a22', gr: '#34d07a', ye: '#ffcf4d', rd: '#ff4d61' },
+    { k: 'slate',    n: 'Slate Teal',    t: 'cool',      bg: '#101416', tx: '#f1f5f6', dm: '#97a4a7', ac: '#2fb6b0', gr: '#38d29a', ye: '#ffce55', rd: '#ff5a6b' },
+    { k: 'midnight', n: 'Midnight',      t: 'deep blue', bg: '#0e1120', tx: '#f4f5ff', dm: '#8890c0', ac: '#00f0a0', gr: '#00f0a0', ye: '#ffc400', rd: '#ff4466' },
+    { k: 'contrast', n: 'High Contrast', t: 'bright',    bg: '#000000', tx: '#ffffff', dm: '#b8b8c0', ac: '#ff8a1e', gr: '#00e676', ye: '#ffd000', rd: '#ff3b5c' },
+    { k: 'daylight', n: 'Daylight',      t: 'light',     bg: '#f4f2ee', tx: '#1b1917', dm: '#7c766b', ac: '#c65d12', gr: '#12a150', ye: '#b47f00', rd: '#db2f43' }
+  ];
+  var VALID = THEMES.map(function (t) { return t.k; });
+  function meta(k) { for (var i = 0; i < THEMES.length; i++) if (THEMES[i].k === k) return THEMES[i]; return THEMES[0]; }
+
+  function get() {
+    try { var v = localStorage.getItem(KEY); if (v && VALID.indexOf(v) >= 0) return v; } catch (e) {}
+    return 'carbon';
+  }
+  function apply(k) {
+    if (VALID.indexOf(k) < 0) k = 'carbon';
+    document.documentElement.setAttribute('data-theme', k);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', meta(k).bg);
+  }
+  function markActive(k) {
+    var all = document.querySelectorAll('[data-theme-key]');
+    for (var i = 0; i < all.length; i++) all[i].classList.toggle('active', all[i].getAttribute('data-theme-key') === k);
+  }
+  function set(k, silent) {
+    if (VALID.indexOf(k) < 0) return;
+    try { localStorage.setItem(KEY, k); } catch (e) {}
+    apply(k);
+    markActive(k);
+    // Persist to the device so the theme travels inside ecu_config.json.
+    if (!silent) { try { fetch('/api/theme?t=' + encodeURIComponent(k), { method: 'POST' }).catch(function () {}); } catch (e) {} }
+  }
+  // Fresh browser with no local choice yet → adopt whatever the device has saved,
+  // so a theme stored in the engine file follows it to any new phone/browser.
+  function reconcileFromDevice() {
+    try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
+    try {
+      fetch('/api/data').then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.ui_theme && VALID.indexOf(d.ui_theme) >= 0) set(d.ui_theme, true);
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  /* ── theme tile: a mini preview in the theme's own colours ── */
+  function tile(t) {
+    return '<button class="ot-tile" type="button" data-theme-key="' + t.k + '" title="' + t.n + ' — ' + t.t +
+      '" onclick="OTTheme.set(\'' + t.k + '\')" style="background:' + t.bg + '">' +
+      '<span class="ot-tile-top" style="background:' + t.ac + '"></span>' +
+      '<span class="ot-tile-dots"><i style="background:' + t.gr + '"></i><i style="background:' + t.ye +
+        '"></i><i style="background:' + t.rd + '"></i></span>' +
+      '<span class="ot-tile-name" style="color:' + t.tx + '">' + t.n +
+        '<span class="ot-tile-tag" style="color:' + t.dm + '">' + t.t + '</span></span>' +
+    '</button>';
+  }
+
+  /* ── Appearance strip (Tools page bottom) ── */
+  function renderPicker(el) {
+    if (!el) return;
+    el.innerHTML = '<div class="ot-appx-label">Appearance</div><div class="ot-appx-grid">' +
+      THEMES.map(tile).join('') + '</div>';
+    markActive(get());
+  }
+
+  /* ── one-time first-run chooser (dashboard) ── */
+  function maybeFirstRun() {
+    try { if (localStorage.getItem(ONBOARD) === '1') return; } catch (e) {}
+    var ov = document.getElementById('theme-firstrun');
+    if (!ov) return;
+    var grid = document.getElementById('theme-firstrun-grid');
+    if (grid) grid.innerHTML = THEMES.map(tile).join('');
+    markActive(get());
+    ov.style.display = 'flex';
+  }
+  function finishFirstRun() {
+    try { localStorage.setItem(ONBOARD, '1'); } catch (e) {}
+    var ov = document.getElementById('theme-firstrun');
+    if (ov) ov.style.display = 'none';
+  }
+
+  /* ── widget styles (kept here so style.css stays palette-only) ── */
+  var css =
+    '.ot-appx-label{font-size:.66rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);font-weight:600;margin-bottom:9px}' +
+    '.ot-appx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:9px}' +
+    '.ot-tile{padding:0;border:1px solid var(--border-light);border-radius:9px;overflow:hidden;cursor:pointer;text-align:left;display:flex;flex-direction:column;transition:transform .08s}' +
+    '.ot-tile:hover{transform:translateY(-2px)}' +
+    '.ot-tile.active{box-shadow:0 0 0 2px var(--accent);border-color:var(--accent)}' +
+    '.ot-tile-top{display:block;height:24px}' +
+    '.ot-tile-dots{display:flex;gap:4px;padding:8px 9px 0}' +
+    '.ot-tile-dots i{width:12px;height:12px;border-radius:3px;display:block}' +
+    '.ot-tile-name{display:block;padding:6px 9px 9px;font-size:.73rem;font-weight:600;line-height:1.25}' +
+    '.ot-tile-tag{display:block;font-weight:400;font-size:.6rem;margin-top:1px}' +
+    '.theme-firstrun-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:1100;padding:1rem}' +
+    '.theme-firstrun-box{background:var(--surface-2);border:1px solid var(--border-light);border-radius:12px;padding:20px 22px;max-width:580px;width:100%;max-height:calc(100vh - 2rem);overflow:auto;box-shadow:0 24px 70px rgba(0,0,0,.6)}' +
+    '.tfr-kicker{font-size:.64rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:.4rem}' +
+    '.theme-firstrun-box h3{font-size:1.15rem;margin-bottom:.3rem}' +
+    '.theme-firstrun-box p{font-size:.83rem;color:var(--text-2);margin-bottom:1rem;line-height:1.5}' +
+    '.tfr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:9px;margin-bottom:1.1rem}' +
+    '.tfr-actions{display:flex;justify-content:flex-end}';
+  try {
+    var s = document.createElement('style');
+    s.textContent = css;
+    document.head.appendChild(s);
+  } catch (e) {}
+
+  window.OTTheme = {
+    get: get, set: set, apply: apply,
+    renderPicker: renderPicker, maybeFirstRun: maybeFirstRun, finishFirstRun: finishFirstRun,
+    THEMES: THEMES
+  };
+
+  apply(get());
+  reconcileFromDevice();
+})();
