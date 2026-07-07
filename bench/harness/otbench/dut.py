@@ -34,9 +34,20 @@ class DUT:
         raise last
 
     def _get(self, path):
+        # WiFi can truncate a large /api/data body mid-stream, yielding invalid
+        # JSON. Retry a couple of times before giving up so one glitch doesn't
+        # abort a whole test run.
         req = urllib.request.Request(self.base + path, method="GET")
-        with self._open_retry(req) as r:
-            return json.loads(r.read().decode("utf-8"))
+        last = None
+        for _ in range(3):
+            with self._open_retry(req) as r:
+                body = r.read().decode("utf-8")
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError as e:
+                last = e
+                time.sleep(0.3)
+        raise last
 
     def _body(self, path, obj, method):
         data = json.dumps(obj).encode("utf-8") if obj is not None else b""

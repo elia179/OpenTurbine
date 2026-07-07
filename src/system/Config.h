@@ -159,7 +159,8 @@ public:
     // ── Standby oil feed (windmill protection) ────────────────
     static int   standbyOilSource;       // 0=N1, 1=N2, 2=either shaft
     static float standbyOilRpmLimit;     // selected shaft above this in STANDBY → activate oil feed
-    static float standbyOilFeedPct;      // oil pump % to run during standby feed
+    static float standbyOilFeedPct;      // oil pump % to run during standby feed (fixed mode, and the floor in pressure mode)
+    static float standbyOilFeedBar;      // >0 with an oil sensor: regulate standby feed to this pressure (bar) instead of a fixed %; 0 = fixed % mode
 
     // ── Limp mode ─────────────────────────────────────────────
     static float limpMaxThrottlePct;     // throttle cap (%) when limp mode is active
@@ -189,6 +190,7 @@ public:
     // ── Throttle / fuel ESC idle range ────────────────────────
     static float fuelPumpIdleMinPct;     // throttle % at idle input minimum (~8%)
     static float fuelPumpIdleMaxPct;     // throttle % at idle input maximum (~18%)
+    static float fuelPumpMinPct;         // measured min % at which the fuel-pump ESC reliably spins; a hard RUNNING throttle floor (0 = not calibrated). Below it the pump stalls -> flameout.
 
     // ── New sequence block params ─────────────────────────────
     static int   timedDelayMs;           // TimedDelay block duration (ms)
@@ -292,6 +294,7 @@ public:
     // ── Hour meter / run statistics ───────────────────────────
     static uint32_t totalRunSeconds;         // accumulated engine-on time (persisted)
     static uint32_t startAttemptCount;       // commanded start attempts (persisted)
+    static uint32_t runCount;                // successful entries into RUNNING (persisted, lifetime)
 
     // ── Session data logger ───────────────────────────────────
     static constexpr uint32_t SLOG_N1         = 1u << 0;

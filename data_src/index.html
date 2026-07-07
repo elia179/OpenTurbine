@@ -30,9 +30,9 @@
   <!-- Captive portal browser warning — shown when the page is opened via the OS auto-popup
        WebView instead of a real browser. The CNA/WebView throttles WebSocket frames to
        5-20 s intervals. Users need Safari/Chrome for live data. -->
-  <div id="captive-banner" style="display:none;background:rgba(255,160,0,.10);border:1px solid rgba(255,160,0,.5);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.84rem;color:#ffa040;align-items:center;justify-content:space-between">
+  <div id="captive-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 10%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 50%, transparent);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.84rem;color:var(--yellow);align-items:center;justify-content:space-between">
     <span>&#9888; Live updates need a real browser &mdash; open <strong>Safari</strong> or <strong>Chrome</strong> and go to <strong>192.168.4.1</strong></span>
-  <button onclick="dismissCaptiveBanner()" style="background:none;border:none;color:#ffa040;font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
+  <button onclick="dismissCaptiveBanner()" style="background:none;border:none;color:var(--yellow);font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
   </div>
 
   <!-- Getting Started banner (shown on first run, STANDBY, not yet dismissed) -->
@@ -55,27 +55,27 @@
     <a href="/config.html" style="color:var(--yellow);text-decoration:underline">→ Live Config Edit</a>
   </div>
   <!-- Empty startup sequence warning -->
-  <div id="empty-seq-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
+  <div id="empty-seq-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 7%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
     ⚠ Startup sequence is empty — engine cannot be started.
     <a href="/sequence.html" style="color:var(--yellow);text-decoration:underline;margin-left:.5rem">Set up sequence →</a>
   </div>
 
-  <div id="bench-banner" style="display:none;background:rgba(240,100,0,.12);border:1px solid rgba(240,100,0,.6);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:#f64;font-weight:700;text-align:center">
+  <div id="bench-banner" style="display:none;background:color-mix(in srgb, var(--accent) 12%, transparent);border:1px solid color-mix(in srgb, var(--accent) 60%, transparent);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--accent);font-weight:700;text-align:center">
     ⚠ BENCH MODE ACTIVE — Sequence runs on timers only, no sensor verification, safety bypassed.
-    <a href="/tools.html" style="color:#f64;text-decoration:underline;font-weight:400;margin-left:.5rem">Disable in Tools →</a>
+    <a href="/tools.html" style="color:var(--accent);text-decoration:underline;font-weight:400;margin-left:.5rem">Disable in Tools →</a>
   </div>
-  <div id="session-log-drop-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
+  <div id="session-log-drop-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 7%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
     Session log dropped rows. CSV for this run is incomplete.
   </div>
-  <div id="flight-log-drop-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
+  <div id="flight-log-drop-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 7%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
     Flight recorder dropped events. Event log may be incomplete.
   </div>
-  <div id="config-storage-banner" style="display:none;background:rgba(255,60,96,.10);border:1px solid rgba(255,60,96,.55);border-radius:7px;padding:.65rem 1rem;margin-bottom:.7rem;font-size:.82rem;color:var(--red);line-height:1.5">
+  <div id="config-storage-banner" style="display:none;background:color-mix(in srgb, var(--red) 10%, transparent);border:1px solid color-mix(in srgb, var(--red) 55%, transparent);border-radius:7px;padding:.65rem 1rem;margin-bottom:.7rem;font-size:.82rem;color:var(--red);line-height:1.5">
     <strong>Storage fault - engine operations locked.</strong>
     Config, calibration, or log storage could not be read or written. Check LittleFS/web-assets flashing and restore a known-good engine file before testing.
   </div>
   <!-- Config schema mismatch banner -->
-  <div id="config-version-banner" style="display:none;background:rgba(255,196,0,0.07);border:1px solid rgba(255,196,0,0.4);border-radius:7px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--yellow);line-height:1.6">
+  <div id="config-version-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 7%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent);border-radius:7px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.82rem;color:var(--yellow);line-height:1.6">
     <strong>⚠ Config schema mismatch</strong> — this engine file was written for a different firmware settings schema.
     Missing or unsupported settings may use built-in defaults and may not match your engine.<br>
     <b>Recommended:</b> Go to <a href="/calibration.html" style="color:var(--yellow);text-decoration:underline">Calibration</a> and re-run sensor calibration, then verify all settings on the <a href="/config.html" style="color:var(--yellow);text-decoration:underline">Config</a> page before starting the engine.
@@ -84,7 +84,7 @@
   <!-- Config load warning — boot config carried out-of-normal-range safety limits.
        Load+warn philosophy: values are applied as-is, the user is informed.
        Dismiss lasts this page load only; reappears on reload while the warning persists. -->
-  <div id="config-load-warn-banner" style="display:none;background:rgba(255,196,0,.07);border:1px solid rgba(255,196,0,.4);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);align-items:center;justify-content:space-between">
+  <div id="config-load-warn-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 7%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent);border-radius:7px;padding:.6rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);align-items:center;justify-content:space-between">
     <span>&#9888; <span id="config-load-warn-text"></span>
       <a href="/config.html" style="color:var(--yellow);text-decoration:underline;margin-left:.5rem">Review limits →</a></span>
     <button onclick="this.parentElement.style.display='none';window._cfgLoadWarnDismissed=true" style="background:none;border:none;color:var(--yellow);font-size:1.2rem;cursor:pointer;margin-left:.8rem;line-height:1">&times;</button>
@@ -172,19 +172,19 @@
       <div class="label"><span id="lbl-n1">N1 RPM</span> <span id="n1-health" class="dot"></span></div>
       <div class="value" id="n1">—</div>
       <div class="peak-val">max <span id="max-n1">—</span></div>
-      <canvas class="sparkline" id="n1-sparkline"></canvas>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="n1-gauge-bar" style="width:0%"></div></div>
       <span id="n1-abs-label" class="gauge-abs-label">— / — RPM</span>
       <span id="n1-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+      <canvas class="sparkline" id="n1-sparkline"></canvas>
     </div>
     <div class="card big" id="tot-card" style="display:none" title="Turbine Outlet Temperature — exhaust gas temperature measured downstream of the turbine wheel. It is the primary thermal limit only when Engine Temp Source selects TOT; TIT-primary setups use the configured TIT limit instead.">
       <div class="label"><span id="lbl-tot">TOT</span> <span data-unit="temp">°C</span> <span id="tot-health" class="dot"></span></div>
       <div class="value" id="tot">—</div>
       <div class="peak-val">max <span id="max-tot">—</span> · rate <span id="tot-rise-rate-val">—</span></div>
-      <canvas class="sparkline" id="tot-sparkline"></canvas>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="tot-gauge-bar" style="width:0%"></div></div>
       <span id="tot-abs-label" class="gauge-abs-label">— / — °C</span>
       <span id="tot-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+      <canvas class="sparkline" id="tot-sparkline"></canvas>
     </div>
   </section>
 
@@ -310,7 +310,7 @@
   <!-- Governor status (shown only when governor enabled) -->
   <section id="governor-section" style="display:none;margin-bottom:.5rem">
     <div class="card small">
-      <div class="label">Power Turbine Governor</div>
+      <div class="label">Power Turbine Governor <span id="gov-mode" style="display:none;font-size:.6rem;padding:.05rem .4rem;border-radius:999px;border:1px solid var(--border);color:var(--dim);vertical-align:middle;letter-spacing:.03em"></span></div>
       <div class="oil-sub">N2 target: <span id="gov-target-rpm">—</span> RPM &nbsp;|&nbsp; N2 actual: <span id="gov-n2-actual">—</span> RPM</div>
     </div>
   </section>
@@ -413,7 +413,7 @@
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="throttle-input-row" style="display:none">throttle input: <span id="throttle-input-pct">—</span>%</div>
       <div class="oil-sub" id="throttle-feedback-inhibit-note" style="display:none;color:var(--yellow)">Throttle increase limited: fitted RPM/EGT feedback is unhealthy. Fix the sensor/calibration before live running; Bench Mode is only for dry actuator tests.</div>
-      <div class="oil-sub" id="throttle-floor-row">running floor: <span id="throttle-idle-floor">—</span>%
+      <div class="oil-sub" id="throttle-floor-row" title="Fuel-pump minimum-spin floor: the lowest fuel the ECU commands while running (from the fuel-pump min-spin calibration). 0 = not calibrated / no floor.">fuel floor: <span id="throttle-idle-floor">—</span>%
         <span id="throttle-di-wrap" style="display:none"> · Dynamic Idle target <span id="throttle-di-rpm">—</span> rpm</span>
       </div>
       <div class="oil-sub" id="throttle-startup-range-row" style="display:none">startup FuelPumpIdle range: <span id="throttle-startup-range">—</span>%</div>
@@ -434,7 +434,7 @@
       <div class="label">Uptime</div>
       <div class="value small" id="uptime">—</div>
     </div>
-    <div class="card small" title="Cumulative engine run statistics stored in persistent flash memory. 'Starts' counts commanded start attempts; 'Runs' counts successful entries into RUNNING this boot; 'Total' is cumulative time spent in RUNNING state across all power cycles.">
+    <div class="card small" title="Cumulative engine run statistics stored in persistent flash memory. 'Starts' counts commanded start attempts; 'Runs' counts successful entries into RUNNING across all power cycles; 'Total' is cumulative time spent in RUNNING state across all power cycles.">
       <div class="label">Hour Meter</div>
       <div class="hour-meter">
         Starts: <span id="hour-start-count">—</span>

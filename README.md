@@ -17,7 +17,8 @@ broader feature and build reference.
 - **Closed-loop oil pressure control** — P-controller with throttle-mapped target (idle → full throttle interpolation), open-loop failsafe on sensor fault, configurable deadband
 - **Dynamic idle hold** — optional RPM-feedback feature with asymmetric ramp, PI integral term, selectable N1 or N2 source
 - **Throttle slew limiting** — configurable up/down ramp rates with safety pullback near RPM/selected-EGT limits
-- **Power turbine governor** — closed-loop N2 RPM control via propeller pitch servo for turboprop builds
+- **Fuel-pump minimum spin** — calibrated lowest fuel the ECU will command while running (replaces the old fixed idle-floor assumption); below it the pump stalls and the engine flames out. 0 = uncalibrated / no floor
+- **Power turbine governor** — closed-loop N2 RPM hold, auto-selecting throttle-driven mode (turboshaft/APU/generator) or prop-pitch mode (turboprop) from the fitted hardware
 - **Afterburner state machine** — full AB ignition/shutdown sequencer (ABCheckReady → ABIgnite → ABFlameConfirm → ABStabilize) with torch mode, fuel offset, pump-follows-throttle demand, independent igniter
 - **Automation rules engine** — up to 8 user-defined threshold rules (sensor op value → actuator demand) evaluated every loop tick
 - **Glow plug support** — current-sensor-based saturation detection with dwell/rest state machine
@@ -248,9 +249,9 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 | `oil_advanced` | Oil-near-zero fault threshold, overcurrent threshold |
 | `sequence.startup` | Per-block timeouts (oil prime, pre-ignition, flame confirm, spool, safety hold…) |
 | `sequence.shutdown` | RPM drop timeout, cooldown timeout, cooldown mode, cooldown pressure target |
-| `throttle` | Slew ramp rates (up/down), idle % range, expo curve, limp mode cap |
+| `throttle` | Slew ramp rates (up/down), idle-input % range, expo curve, limp mode cap, fuel-pump minimum-spin % (the running fuel floor), pullback thresholds |
 | `dynamic_idle` | Target RPM, ramp rates, deadband, P/I gains, N1 vs N2 source |
-| `governor` | N2 target RPM, P-gain, pitch slew limit, pitch range (turboprop) |
+| `governor` | N2 target RPM, throttle gain (throttle-driven mode) and pitch gain/slew/range (prop-pitch mode), deadband |
 | `safety` | Check interval, selected EGT source, TIT limit, flameout source/hold time, EGT rise-rate limit |
 | `relight` | Enable/disable auto-relight, minimum N1 RPM, relight timeout |
 | `afterburner` | Ignition limits, torch settings, flame-confirm mode, pump command source, fuel offset |

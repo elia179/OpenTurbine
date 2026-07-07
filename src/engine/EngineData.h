@@ -231,6 +231,7 @@ struct EngineData {
     // ── Stats ─────────────────────────────────────────────────
     volatile uint32_t bootCount          = 0;
     volatile uint32_t runCount           = 0;   // entries into RUNNING
+    volatile uint32_t runStartMs         = 0;   // millis() at RUNNING entry (0 = not running); mirrors main.cpp _runStartMs so telemetry can show a LIVE hour meter
     volatile uint32_t uptimeMs           = 0;
     volatile uint32_t loopCounter        = 0;   // main control-loop iterations since boot
     volatile float    loopHz             = 0.0f; // measured loop start-to-start rate

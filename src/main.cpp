@@ -528,6 +528,8 @@ static void validateSequences() {
         else if (strcmp(nm, "OilPrime") == 0) {
             if (!hw.hasOilPump)
                 addIssue(nm, "No oil pump actuator configured - block will run for timeout with no physical effect", false);
+            // (OilPrime drives the pump directly at a fixed % when the oil control loop is
+            //  off, so it still builds pressure without the loop — no warning needed.)
         }
         else if (strcmp(nm, "OilPumpOn") == 0) {
             if (!hw.hasOilPump)
@@ -617,6 +619,26 @@ static void validateSequences() {
                 ? "Only FuelPulse is present. FuelPulse is a pre-prime pulse and does not count as sustained fuel delivery or trigger hot cooldown."
                 : "No sustained fuel delivery block (FuelOpen/FuelPumpIdle/FuelPump2*) in startup - engine will spin without fuel",
                 false);
+        }
+
+        // ── Low-oil protection arming check ───────────────────
+        // LOW_OIL only trips once a startup block sets oilMinBar > 0 (OilPrime on
+        // completion, StarterSpin, Spool, or SafetyHold). A hand-built sequence with
+        // none of these leaves low-oil protection disarmed even after reaching RUNNING
+        // — the fault would be silent. Warn when low-oil is enabled and an oil sensor is
+        // fitted but nothing arms the threshold. (flameMonitorActive has a comparable
+        // backstop; oilMinBar relies entirely on the sequence.)
+        if (hw.safetyLowOil && hw.hasOilPress) {
+            bool armsOilMin = false;
+            for (int i = 0; i < _startupCount; i++) {
+                const char* nm = _startupBlocks[i]->name();
+                if (strcmp(nm, "OilPrime") == 0 || strcmp(nm, "StarterSpin") == 0 ||
+                    strcmp(nm, "Spool") == 0 || strcmp(nm, "SafetyHold") == 0) {
+                    armsOilMin = true; break;
+                }
+            }
+            if (!armsOilMin)
+                addIssue("startup", "Low-oil protection is enabled but no startup block arms the oil-pressure minimum (OilPrime/StarterSpin/Spool/SafetyHold) - LOW_OIL will never trip. Add one of those blocks.", false);
         }
     }
 
@@ -1233,18 +1255,33 @@ static void checkStandbyOilFeed() {
             Serial.printf("[OT] Standby oil feed ON (N1=%.0f N2=%.0f)\n",
                 (double)ed.n1Rpm, (double)ed.n2Rpm);
         }
-        // Only set if no other tool is using the oil (prime etc.)
-        if (ed.oilPumpPct < Config::standbyOilFeedPct) {
+        // Pressure mode: with an oil sensor + the oil control loop enabled, regulate the
+        // standby feed to a target pressure (bar) instead of a fixed pump %. Reuses the
+        // tuned oil loop (dt-normalised, with its own sensor-fault failsafe); the fixed
+        // feed % is kept as a hard floor so bearings always see at least the safe flow.
+        // The loop no-ops in bench mode, so pressure mode is validated on a real start.
+        if (Config::standbyOilFeedBar > 0.0f && hw.hasOilPress && hw.hasOilLoop) {
+            ed.oilTargetBar = Config::standbyOilFeedBar;
+            g_ctrlOilLoop.tick();
+            if (ed.oilPumpPct < Config::standbyOilFeedPct)
+                ed.oilPumpPct = Config::standbyOilFeedPct;
+        } else if (ed.oilPumpPct < Config::standbyOilFeedPct) {
+            // Fixed % mode (default, or when no sensor/loop is available).
             ed.oilPumpPct = Config::standbyOilFeedPct;
         }
     } else if (ed.standbyOilFeedActive) {
         ed.standbyOilFeedActive = false;
-        // Only drop demand if we were the highest bidder — don't cut a running oil prime.
-        // Use <= so that demand exactly at our level (which we set) is cleared.
-        // Demand above our level means another tool owns it; leave it alone.
-        // Restore the operator's manual SET_OIL_PCT value (0 if none was set)
-        // instead of silently wiping it — the feed only ever raises demand.
-        if (ed.oilPumpPct <= Config::standbyOilFeedPct) {
+        const bool pressureMode = Config::standbyOilFeedBar > 0.0f && hw.hasOilPress && hw.hasOilLoop;
+        if (pressureMode) {
+            // Pressure mode owned the pump via the oil loop and may have regulated it
+            // above the feed %, so the fixed-% "<=" guard below wouldn't clear it —
+            // leaving the pump running in standby. Hand back to the operator's manual
+            // value and clear the target so the loop stops holding pressure.
+            ed.oilTargetBar = 0.0f;
+            ed.oilPumpPct   = _manualOilPct;
+        } else if (ed.oilPumpPct <= Config::standbyOilFeedPct) {
+            // Fixed %: only drop demand if we were the highest bidder — don't cut a
+            // running oil prime. Restore the operator's manual SET_OIL_PCT value.
             ed.oilPumpPct = _manualOilPct;
         }
         Serial.printf("[OT] Standby oil feed OFF (oil %.0f%%)\n", (double)ed.oilPumpPct);
@@ -1686,7 +1723,11 @@ static void enterRunning() {
     auto& ed = EngineData::instance();
     ed.mode               = SysMode::RUNNING;
     // Dev mode and bench mode runs are not real engine starts — don't count toward run log
-    if (!ed.benchMode && !ed.devMode) ed.runCount = ed.runCount + 1;
+    if (!ed.benchMode && !ed.devMode) {
+        ed.runCount = ed.runCount + 1;          // per-boot (kept for any internal use)
+        Config::runCount = Config::runCount + 1; // persisted lifetime count
+        Config::requestRuntimeStatsSave();
+    }
     ed.relightArmed       = true;   // arm relight for this run
     ed.relightAttempts    = 0;      // reset attempt counter
     // Ensure flameout detection is armed regardless of which startup sequence was
@@ -1695,6 +1736,7 @@ static void enterRunning() {
     // never be detected in RUNNING mode.
     ed.flameMonitorActive = true;
     _runStartMs        = millis();
+    ed.runStartMs      = _runStartMs;   // mirror for the live hour meter in telemetry
     strncpy(ed.lastEvent, "Startup complete - engine self-sustained", sizeof(ed.lastEvent) - 1);
     _buzzerPattern = 2;  // startup OK beep
     Hardware::initControllers();
@@ -1795,6 +1837,7 @@ static void enterStandby() {
             Config::requestRuntimeStatsSave();
         }
         _runStartMs = 0;
+        ed.runStartMs = 0;   // stop the live hour meter; persisted total now reflects this run
     }
     _buzzerPattern = 0;  // silence any buzzer
     ed.mode               = SysMode::STANDBY;
@@ -2120,6 +2163,17 @@ static void handleCommand(const OTPacket& pkt) {
             if (standbyLike) {
                 ed.oilPumpPct = (float)constrain(pkt.iParam, 0, 100);
                 _manualOilPct = ed.oilPumpPct;  // restored when standby oil feed disengages
+            }
+            break;
+
+        case OTCommand::SET_THROTTLE_PCT:
+            // Fuel-pump min-spin calibration: drive the throttle/fuel-pump ESC to a
+            // commanded % in STANDBY so the user can ramp it and find where the pump
+            // starts to spin. Reuses the idle-test timer, so it auto-returns to 0 if
+            // the UI stops refreshing it.
+            if (HardwareConfig::hasThrottle && standbyLike && !anyToolTimerActive()) {
+                ed.throttleDemand = constrain(pkt.iParam, 0, 100) / 100.0f;
+                _idleTestUntilMs  = millis() + Config::toolIdleTestMs;
             }
             break;
 

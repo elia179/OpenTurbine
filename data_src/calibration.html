@@ -22,6 +22,28 @@
 <main>
   <h2 style="margin-bottom:1.2rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Live Sensor Readings &amp; Calibration</h2>
 
+  <!-- Fuel pump minimum spin (actuator calibration -> running throttle floor) -->
+  <div class="sensor-row" id="fuelpump-min-cal-row">
+    <div class="sensor-name">Fuel Pump Minimum Spin</div>
+    <div class="wizard">
+      <div class="wizard-title">Minimum reliable-spin calibration</div>
+      <div class="wizard-steps">
+        ⚠ In STANDBY, this spins the fuel pump — best done with fuel returned to tank or the line dry, and no ignition. Slowly raise the pump % until the pump <b>just starts to spin reliably</b>, then click Save — no higher. That % becomes the lowest fuel the ECU will ever command while RUNNING: below it the pump stalls and the engine flames out, so the governor/pullback never dip under it. A floor set well above the true minimum forces excess fuel at idle and can over-temp the engine every run. Leave at 0 for no running fuel floor (throttle can follow demand down to zero).
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0">
+        <span style="font-size:.78rem;color:var(--dim)">Pump %</span>
+        <input type="range" id="fp-min-slider" min="0" max="40" step="0.5" value="0" style="flex:1;min-width:120px" oninput="fpMinSlide()">
+        <span class="sv-val" id="fp-min-live" style="min-width:3.2rem">0.0%</span>
+        <button onclick="fpMinStop()" style="color:var(--dim)">Stop pump</button>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.4rem">
+        <button onclick="fpMinSave()" id="btn-fp-min-save">Save this % as minimum</button>
+        <span style="font-size:.75rem;color:var(--dim)">Saved minimum: <span id="fp-min-saved">—</span>%</span>
+      </div>
+      <div id="fp-min-status" style="font-size:.75rem;color:var(--yellow);min-height:1rem"></div>
+    </div>
+  </div>
+
   <!-- Oil pressure -->
   <div class="sensor-row" id="oil-press-cal-row" style="display:none">
     <div class="sensor-name"><span id="oil-h-cal" class="dot"></span> Oil Pressure</div>
@@ -330,15 +352,15 @@
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin:.5rem 0">
         <div>
           <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">Beta coefficient</div>
-          <input type="number" id="ntc-beta" min="1000" max="10000" step="1" placeholder="3950" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+          <input type="number" id="ntc-beta" min="1000" max="10000" step="1" placeholder="3950">
         </div>
         <div>
           <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">R₀ at 25 °C (Ω)</div>
-          <input type="number" id="ntc-r0" min="100" max="1000000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+          <input type="number" id="ntc-r0" min="100" max="1000000" step="100" placeholder="10000">
         </div>
         <div>
           <div style="font-size:.72rem;color:var(--dim);margin-bottom:.2rem">Pull-up R (Ω)</div>
-          <input type="number" id="ntc-rfixed" min="100" max="1000000" step="100" placeholder="10000" style="width:100%;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+          <input type="number" id="ntc-rfixed" min="100" max="1000000" step="100" placeholder="10000">
         </div>
       </div>
       <div class="wiz-buttons" style="margin-bottom:.4rem">
@@ -372,7 +394,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:.5rem;margin:.5rem 0;flex-wrap:wrap">
         <div style="font-size:.72rem;color:var(--dim)">Measured voltage (V):</div>
-        <input type="number" id="bv-known-v" min="0" max="60" step="0.1" placeholder="12.0" style="width:6rem;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+        <input type="number" id="bv-known-v" min="0" max="60" step="0.1" placeholder="12.0" style="width:6rem">
       </div>
       <div class="wiz-buttons" style="margin-bottom:.4rem">
         <button onclick="captureBattVolt()">Capture &amp; Compute</button>
@@ -400,7 +422,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:.5rem;margin:.5rem 0;flex-wrap:wrap">
         <div style="font-size:.72rem;color:var(--dim)">Full-scale Nm (at 3.3 V):</div>
-        <input type="number" id="torque-fullscale" min="0" max="10000" step="1" placeholder="100" style="width:6rem;font-size:.82rem;padding:.3rem .4rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text)">
+        <input type="number" id="torque-fullscale" min="0" max="10000" step="1" placeholder="100" style="width:6rem">
       </div>
       <div class="wiz-buttons" style="margin-bottom:.4rem">
         <button onclick="captureTorqueZero()">Capture Zero</button>
@@ -915,6 +937,7 @@ window.applyData = function(d) {
 
   setText('cal-oil-raw', d.oil_raw ?? '—');
   setText('cal-oil',     d.oil !== undefined ? Number(d.oil).toFixed(3) + ' bar' : '—');
+  setText('fp-min-saved', d.fuel_pump_min_pct !== undefined ? Number(d.fuel_pump_min_pct).toFixed(1) : '—');
   setText('cal-oil-pct', d.oil_pct !== undefined ? d.oil_pct + ' %' : '—');
   setText('cal-oil-h',   d.oil_healthy ? 'OK' : 'fault');
   setDot('oil-h-cal',    d.oil_healthy);
@@ -1262,6 +1285,44 @@ function oilCalStop() {
   if (st) st.style.display = 'none';
 }
 
+// ── Fuel pump minimum-spin calibration ──────────────────────────────
+// Drives the throttle/fuel-pump ESC at the slider % in STANDBY. The command
+// auto-expires, so we refresh it every 2 s while the slider is above 0.
+let _fpMinKeepAlive = null;
+function _fpMinSend() {
+  const p = parseFloat(document.getElementById('fp-min-slider').value) || 0;
+  postCalCommand({ cmd:'SET_THROTTLE_PCT', iParam: Math.round(p) }).catch(e => {
+    const s = document.getElementById('fp-min-status'); if (s) s.textContent = 'Pump command failed: ' + e.message;
+  });
+}
+function fpMinSlide() {
+  const pct = parseFloat(document.getElementById('fp-min-slider').value) || 0;
+  document.getElementById('fp-min-live').textContent = pct.toFixed(1) + '%';
+  _fpMinSend();
+  if (_fpMinKeepAlive) clearInterval(_fpMinKeepAlive);
+  if (pct > 0) _fpMinKeepAlive = setInterval(() => {
+    if ((parseFloat(document.getElementById('fp-min-slider').value) || 0) > 0) _fpMinSend();
+    else { clearInterval(_fpMinKeepAlive); _fpMinKeepAlive = null; }
+  }, 2000);
+}
+function fpMinStop() {
+  if (_fpMinKeepAlive) { clearInterval(_fpMinKeepAlive); _fpMinKeepAlive = null; }
+  const sl = document.getElementById('fp-min-slider'); if (sl) sl.value = 0;
+  document.getElementById('fp-min-live').textContent = '0.0%';
+  postCalCommand({ cmd:'SET_THROTTLE_PCT', iParam: 0 }).catch(() => {});
+}
+function fpMinSave() {
+  const pct = parseFloat(document.getElementById('fp-min-slider').value) || 0;
+  fetch('/api/config', { method:'PATCH', body: JSON.stringify({ throttle: { fuel_pump_min_pct: pct } }),
+                         headers: { 'Content-Type':'application/json' } })
+    .then(r => r.json().catch(() => ({}))).then(b => {
+      if (b.ok === false) throw new Error(b.error || 'save rejected');
+      document.getElementById('fp-min-saved').textContent = pct.toFixed(1);
+      document.getElementById('fp-min-status').textContent = 'Saved ' + pct.toFixed(1) + '% as the running fuel floor.';
+      fpMinStop();
+    }).catch(e => { document.getElementById('fp-min-status').textContent = 'Save error: ' + e.message; });
+}
+
 function captureOilPoint() {
   const b = parseFloat(document.getElementById('oil-pval').value);
   if (isNaN(b) || b < 0) { alert('Enter a valid bar value (e.g. 3.5)'); return; }
@@ -1357,6 +1418,14 @@ function oilGoStep3() {
   const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 1;
   const r2Color = r2 >= 0.999 ? 'var(--green)' : r2 >= 0.99 ? 'var(--yellow)' : 'var(--red)';
 
+  // Zero-pressure reachability: if the curve never reads below the zero threshold at
+  // the low end of its range, the OIL_ZERO pump-failure fault can never trigger.
+  const zeroThresh = (cfg && cfg.oil_advanced && cfg.oil_advanced.zero_bar) || 0.1;
+  const barAtLow = ((fit.a*oilFit.x0+fit.b)*oilFit.x0+fit.c)*oilFit.x0+fit.d;
+  const zeroWarn = barAtLow > zeroThresh
+    ? `<br><span style="color:var(--yellow)">⚠ At true-zero pump this curve still reads ~${barAtLow.toFixed(2)} bar, above your Zero-Pressure Threshold (${zeroThresh} bar). OIL_ZERO (pump-failure) protection may never trigger — extend the calibration lower, or raise the threshold.</span>`
+    : '';
+
   document.getElementById('oil-fit-summary').innerHTML =
     `<b>Cubic fit</b>: y = a·x³ + b·x² + c·x + d<br>` +
     `a = ${fit.a.toExponential(4)}<br>` +
@@ -1365,7 +1434,8 @@ function oilGoStep3() {
     `d = ${fit.d.toFixed(4)}<br>` +
     `Range: raw ${oilFit.x0} – ${oilFit.x1} &nbsp;|&nbsp; ` +
     `Max residual: <b>${maxErr} bar</b> &nbsp;|&nbsp; ` +
-    `R² = <b style="color:${r2Color}">${r2.toFixed(5)}</b> &nbsp;|&nbsp; ${oilPts.length} pts`;
+    `R² = <b style="color:${r2Color}">${r2.toFixed(5)}</b> &nbsp;|&nbsp; ${oilPts.length} pts` +
+    zeroWarn;
 
   oilCalStop();
   oilGoStep(3);

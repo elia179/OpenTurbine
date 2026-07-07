@@ -202,20 +202,39 @@ def t_sequence_bench(ctx, c):
     saw_ign = False
     blocks = []
     try:
+        # Sample the tester pins fast (serial only, ~40 ms) so short action-block
+        # windows aren't aliased past — the IgniterOn..IgniterOff window is only a
+        # few hundred ms. Only reach for the slower DUT HTTP poll occasionally, to
+        # track the block and notice when the sequence has settled (STARTUP -> a
+        # steady mode). current_block reports the timed blocks; the 0 ms action
+        # blocks (OilPumpOn/IgniterOn/...) execute instantly and aren't observable.
         deadline = time.time() + ctx.opts.get("seq_secs", 45)
+        next_http = 0.0
+        steady_since = None
         while time.time() < deadline:
-            d = ctx.dut.data()
-            blk = d.get("current_block")
-            if blk and (not blocks or blocks[-1] != blk):
-                blocks.append(blk)
             st = ctx.tester.state()
             if st.get("OILPUMP_OUT_duty", 0) > 0.02 or st.get("OILPUMP_OUT_level") == 1:
                 saw_oil = True
             if st.get("IGNITER", 0) == 1:
                 saw_ign = True
-            if d.get("mode") == "STANDBY" and blocks:
-                break  # sequence completed / returned to standby
-            time.sleep(0.2)
+            now = time.time()
+            if now >= next_http:
+                next_http = now + 0.3
+                d = ctx.dut.data()
+                blk = d.get("current_block")
+                if blk and (not blocks or blocks[-1] != blk):
+                    blocks.append(blk)
+                mode = d.get("mode")
+                # Startup finished when we leave STARTUP for a steady RUNNING (bench
+                # mode never returns to STANDBY on its own) or back to STANDBY.
+                if blocks and mode in ("RUNNING", "STANDBY"):
+                    if steady_since is None:
+                        steady_since = now
+                    elif saw_ign and now - steady_since > 1.0:
+                        break
+                else:
+                    steady_since = None
+            time.sleep(0.04)
     finally:
         ctx.dut.stop()
         ctx.dut.ensure_mode_standby()

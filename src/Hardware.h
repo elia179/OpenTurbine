@@ -1329,19 +1329,15 @@ namespace Hardware {
     // ── Status LED init / tick ────────────────────────────────
     inline void initStatusLED() {
         auto& hw = HardwareConfig::instance();
-#if defined(OT_PLATFORM_ESP32S3)
-        (void)hw;
-        StatusLED::begin();
-#else
+        // Respect hasStatusLed on every platform. On the S3 this used to run
+        // unconditionally, so disabling the status LED in the hardware config had
+        // no effect and the onboard NeoPixel stayed lit. When disabled, actively
+        // clear the LED (it latches its last colour otherwise).
         if (hw.hasStatusLed) StatusLED::begin();
-#endif
+        else                 StatusLED::off();
     }
     inline void tickStatusLED() {
-#if defined(OT_PLATFORM_ESP32S3)
-        StatusLED::tick();
-#else
         if (HardwareConfig::instance().hasStatusLed) StatusLED::tick();
-#endif
     }
 
     // ── Controller init ───────────────────────────────────────
@@ -1364,8 +1360,18 @@ namespace Hardware {
         // When a physical throttle input is configured (ADC pot or RC stick),
         // map it directly to throttleDemand in RUNNING mode.  DynamicIdle then
         // applies a floor on top, and ThrottleSlew rate-limits the result.
-        // If the governor is active (APU/turboshaft) it overrides this demand.
-        if (hw.hasThrottleInput && mode == SysMode::RUNNING) {
+        // A throttle-primary governor (turboshaft/APU with no prop-pitch authority)
+        // OWNS throttleDemand: it holds N2 by accumulating throttle over many ticks.
+        // Re-mapping the pilot input onto throttleDemand every tick would wipe that
+        // accumulation, so skip the input mapping while such a governor is active
+        // (this is the "governor overrides this demand" contract). A pitch-primary
+        // governor instead leaves the throttle to the pilot and holds N2 with pitch,
+        // so the input mapping still applies there. DynamicIdle (ticked after the
+        // governor) still enforces the running idle floor either way.
+        const bool governorOwnsThrottle = hw.hasGovernor && hw.hasN2Rpm &&
+                                          Config::governorTargetRpm > 0.0f &&
+                                          !g_ctrlGovernor.usePropPitch;
+        if (hw.hasThrottleInput && mode == SysMode::RUNNING && !governorOwnsThrottle) {
             float norm;
             if (hw.throttleInputRcPwm) {
                 norm = (ed.rcThrottleValid) ? ed.rcThrottleNorm : 0.0f;
@@ -1422,6 +1428,18 @@ namespace Hardware {
             if (ed.throttleDemand > cap) ed.throttleDemand = cap;
         }
         if (hw.hasThrottleSlew) g_ctrlThrottleSlew.tick();
+        // Running fuel floor: the measured fuel-pump minimum-spin %. Below it the
+        // ESC stalls -> no fuel -> flameout, so nothing may leave RUNNING fuel under
+        // it. Applied LAST — after the governor, dynamic idle, rules AND the slew's
+        // pullback — so even the overspeed/EGT pullback (whose own floor can be
+        // lower) can't undercut it. If a limit is so severe that the fuel floor
+        // still overheats/overspeeds, the hard safety shutdown handles it; the
+        // governor must not stall the pump. Standard value is 0 (uncalibrated -> no
+        // floor); the user measures the real minimum via the min-spin calibration.
+        if (mode == SysMode::RUNNING && Config::fuelPumpMinPct > 0.0f) {
+            float floor = constrain(Config::fuelPumpMinPct / 100.0f, 0.0f, 1.0f);
+            if (ed.throttleDemand < floor) ed.throttleDemand = floor;
+        }
     }
 
 } // namespace Hardware

@@ -153,6 +153,7 @@ static bool _isStandbyToolCommand(OTCommand cmd) {
         case OTCommand::IDLE_TEST:
         case OTCommand::SET_OIL_DEMAND:
         case OTCommand::SET_OIL_PCT:
+        case OTCommand::SET_THROTTLE_PCT:
         case OTCommand::EXTRA_COOLDOWN:
         case OTCommand::CLEAR_LOG:
         case OTCommand::OIL_SCAV_TEST:
@@ -205,6 +206,7 @@ static const char* _missingHardwareForCommand(OTCommand cmd) {
         case OTCommand::OIL_PRIME:
         case OTCommand::SET_OIL_PCT:
         case OTCommand::SET_OIL_DEMAND: return HardwareConfig::hasOilPump ? nullptr : "Oil pump is not configured";
+        case OTCommand::SET_THROTTLE_PCT: return HardwareConfig::hasThrottle ? nullptr : "Throttle output is not configured";
         case OTCommand::IGN_TEST: return HardwareConfig::hasIgniter ? nullptr : "Igniter 1 is not configured";
         case OTCommand::IGN2_TEST: return HardwareConfig::hasIgniter2 ? nullptr : "Igniter 2 is not configured";
         case OTCommand::START_TEST: return HardwareConfig::hasStarter ? nullptr : "Starter is not configured";
@@ -745,6 +747,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["oil_failsafe_active"]   = ed.oilFailsafeActive;
     doc["oil_min_bar"]           = (float)(int)(ed.oilMinBar * 100) / 100.0f;
     doc["standby_oil_feed_active"] = ed.standbyOilFeedActive;
+    doc["standby_oil_feed_bar"]  = Config::standbyOilFeedBar;
     doc["last_event"]            = ed.lastEvent;
     doc["dev_mode"]              = ed.devMode;
     doc["skip_safety_checks"]    = ed.skipSafetyChecks;
@@ -843,6 +846,12 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["airstarter_open"]       = ed.airstarterOpen;
     doc["oil_scavenge_on"]       = ed.oilScavengeOn;
     doc["governor_target_rpm"]   = (int)Config::governorTargetRpm;
+    // Which governor axis is live (same selection as Hardware runControllers): prop-pitch
+    // mode holds N2 with pitch/load and leaves the throttle to the pilot; throttle-driven
+    // mode winds fuel/throttle to hold N2. Lets the dashboard show the active mode.
+    doc["governor_mode"]         = (HardwareConfig::hasPropPitch &&
+                                    HardwareConfig::propPitchType != 2 &&
+                                    Config::governorPitchKp > 0.0f) ? "pitch" : "throttle";
     doc["max_tit"]               = (float)(int)(ed.maxTit * 10) / 10.0f;
     // ── DI channel states (config fields — pin/label/role — are in slow) ──
     {
@@ -868,6 +877,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["idle_min_pct"]          = Config::throttleIdleMinPct;
         doc["fuel_idle_min_pct"]     = Config::fuelPumpIdleMinPct;
         doc["fuel_idle_max_pct"]     = Config::fuelPumpIdleMaxPct;
+        doc["fuel_pump_min_pct"]     = Config::fuelPumpMinPct;
         doc["oil_pump_on_pct"]       = Config::oilPumpOnPct;
         doc["has_throttle"]          = HardwareConfig::hasThrottle;
         doc["has_starter"]           = HardwareConfig::hasStarter;
@@ -907,10 +917,18 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["hardware_profile"]      = HardwareConfig::profileId;
         doc["hw_json_loaded"]        = true;
         // Session / boot stats
-        doc["run_count"]             = ed.runCount;
+        doc["run_count"]             = Config::runCount;   // persisted lifetime count
         doc["start_attempt_count"]   = Config::startAttemptCount;
         doc["reset_reason"]          = ed.resetReason;
-        doc["total_run_seconds"]     = Config::totalRunSeconds;
+        // Live hour meter: the persisted total only bumps on stop, so add the
+        // in-progress run's elapsed time (real runs only — bench/dev don't count)
+        // so the dashboard ticks up during a run instead of looking frozen.
+        {
+            uint32_t liveTotal = Config::totalRunSeconds;
+            if (ed.runStartMs > 0 && !ed.benchMode && !ed.devMode)
+                liveTotal += (millis() - ed.runStartMs) / 1000;
+            doc["total_run_seconds"] = liveTotal;
+        }
         // Flash usage (cached by tick() — never call LittleFS from async_tcp context)
         doc["log_max_records"]       = FlightRecorder::MAX_RECORDS;
         doc["flash_total_kb"]        = (int)s_fsTotal;
@@ -1040,19 +1058,53 @@ void WebServer::_setupRoutes() {
     };
 
     // ── Captive portal landing ─────────────────────────────────
-    // Serve the portal body directly for OS probes. Windows may follow a redirect
-    // through its own /redirect target and end up at msn.com instead of our page.
+    // Serve a SMALL, self-contained landing page to OS captive probes — NOT the full
+    // dashboard. The dashboard opens a WebSocket, and the OS captive-portal mini-browser
+    // (CNA/WebView) that shows this page would then hold the single /ws slot
+    // (cleanupClients keeps only 1), starving the real browser's dashboard/hardware pages
+    // and forcing them onto the slow status-poll fallback. A static page with a link keeps
+    // the /ws slot free and gives a clearer "open in your browser" prompt.
     auto sendPortalPage = [](AsyncWebServerRequest* req) {
-        _sendGzipAsset(req, "/index.html.gz", "text/html", "no-store");
+        String ip = WiFi.softAPIP().toString();
+        String html = F("<!DOCTYPE html><html><head><meta charset=utf-8>"
+            "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
+            "<title>OpenTurbine</title></head>"
+            "<body style=\"font-family:system-ui,-apple-system,sans-serif;background:#101012;"
+            "color:#eee;text-align:center;padding:2.2rem 1rem;margin:0\">"
+            "<h2 style=\"margin:.2rem 0 1rem\">OpenTurbine</h2>"
+            "<p style=\"color:#bbb\">Open the control panel in your browser.</p>"
+            "<p><a href=\"http://");
+        html += ip;
+        html += F("/\" style=\"display:inline-block;padding:.85rem 1.5rem;background:#ee7620;"
+            "color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:1.05rem\">"
+            "Open Control Panel</a></p>"
+            "<p style=\"color:#888;font-size:.85rem;margin-top:1.4rem\">or type <b>");
+        html += ip;
+        html += F("</b> into Safari or Chrome</p></body></html>");
+        auto* resp = req->beginResponse(200, "text/html", html);
+        resp->addHeader("Cache-Control", "no-store");
+        req->send(resp);
     };
-    _server.on("/generate_204", HTTP_GET, sendPortalPage);
-    _server.on("/hotspot-detect.html", HTTP_GET, sendPortalPage);
-    _server.on("/library/test/success.html", HTTP_GET, sendPortalPage);
-    _server.on("/connecttest.txt", HTTP_GET, sendPortalPage);
-    _server.on("/ncsi.txt", HTTP_GET, sendPortalPage);
-    _server.on("/fwlink", HTTP_GET, sendPortalPage);
-    _server.on("/redirect", HTTP_GET, sendPortalPage);
-    _server.on("/canonical.html", HTTP_GET, sendPortalPage);
+    // Redirect the OS connectivity probes to the portal with a 302 + Location header.
+    // A bare 200 page leaves Windows unable to learn the portal URL, so it opens its own
+    // default (msn.com) instead. The Location points at a lightweight /portal page (no
+    // WebSocket) so it never hogs the single /ws slot.
+    auto redirectToPortal = [](AsyncWebServerRequest* req) {
+        auto* resp = req->beginResponse(302, "text/plain", "");
+        resp->addHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/portal");
+        resp->addHeader("Cache-Control", "no-store");
+        req->send(resp);
+    };
+    _server.on("/portal", HTTP_GET, sendPortalPage);
+    _server.on("/generate_204", HTTP_GET, redirectToPortal);
+    _server.on("/gen_204", HTTP_GET, redirectToPortal);          // some Android builds
+    _server.on("/hotspot-detect.html", HTTP_GET, redirectToPortal);
+    _server.on("/library/test/success.html", HTTP_GET, redirectToPortal);
+    _server.on("/connecttest.txt", HTTP_GET, redirectToPortal);
+    _server.on("/ncsi.txt", HTTP_GET, redirectToPortal);
+    _server.on("/fwlink", HTTP_GET, redirectToPortal);
+    _server.on("/redirect", HTTP_GET, redirectToPortal);
+    _server.on("/canonical.html", HTTP_GET, redirectToPortal);
 
     // Revalidate shared assets on every page load. During beta testing the web
     // filesystem is reflashed often; stale JS/CSS with fresh HTML creates
@@ -1468,6 +1520,7 @@ void WebServer::_setupRoutes() {
             else if (strcmp(cmdStr, "TOGGLE_SAFETY_CHECKS")  == 0) pkt.cmd = OTCommand::TOGGLE_SAFETY_CHECKS;
             else if (strcmp(cmdStr, "TOGGLE_BENCH_MODE")     == 0) pkt.cmd = OTCommand::TOGGLE_BENCH_MODE;
             else if (strcmp(cmdStr, "SET_OIL_PCT")          == 0) pkt.cmd = OTCommand::SET_OIL_PCT;
+            else if (strcmp(cmdStr, "SET_THROTTLE_PCT")     == 0) pkt.cmd = OTCommand::SET_THROTTLE_PCT;
             else if (strcmp(cmdStr, "SET_OIL_DEMAND")        == 0) pkt.cmd = OTCommand::SET_OIL_DEMAND;
             else if (strcmp(cmdStr, "EXTRA_COOLDOWN")        == 0) pkt.cmd = OTCommand::EXTRA_COOLDOWN;
             else if (strcmp(cmdStr, "STARTER_ASSIST")       == 0) pkt.cmd = OTCommand::STARTER_ASSIST;
@@ -2267,9 +2320,11 @@ void WebServer::_setupRoutes() {
     // 404
     _server.onNotFound([isCaptive](AsyncWebServerRequest* req) {
         if (isCaptive(req)) {
+            // Send captive clients to the lightweight portal page (no WebSocket), not the
+            // dashboard, so they get a clear "open the panel" prompt without hogging /ws.
             String target = "http://";
             target += WiFi.softAPIP().toString();
-            target += "/";
+            target += "/portal";
             req->redirect(target);
             return;
         }
@@ -2378,9 +2433,14 @@ void WebServer::tick() {
     // usedBytes() from inside the async_tcp task context (avoids FS mutex
     // contention / priority inversion with SessionLogger writes).
     {
+        static bool _fsStatInit = false;
         static unsigned long _fsStatMs = 0;
         unsigned long now = millis();
-        if (now - _fsStatMs >= 10000) {
+        // Compute on the very first webTask tick, then refresh every 10 s.
+        // Without the init flag the cache stays 0 for the first 10 s after boot,
+        // so the dashboard shows a scary "0 KB free · 0 / 0 KB used".
+        if (!_fsStatInit || now - _fsStatMs >= 10000) {
+            _fsStatInit = true;
             _fsStatMs  = now;
             s_fsTotal  = LittleFS.totalBytes() / 1024;
             s_fsUsed   = LittleFS.usedBytes()  / 1024;

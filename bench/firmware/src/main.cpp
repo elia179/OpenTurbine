@@ -33,6 +33,7 @@
 #include <strings.h>   // strcasecmp
 #include <stdlib.h>    // atoi, atof
 #include "soc/gpio_reg.h"  // GPIO_OUT_W1TS_REG / GPIO_IN1_REG for fast ISR pin access
+#include "driver/ledc.h"   // raw ESP-IDF LEDC: explicit per-timer control so N1/N2 are independent
 
 static const char* OTBENCH_VER = "0.3";
 
@@ -42,6 +43,7 @@ enum Kind {
     DIGITAL_OUT,      // plain push-pull digital out: !=0 = HIGH, 0 = LOW
     FREQ_OUT,         // square-wave generator (RPM simulation)
     DAC_OUT,          // true DAC analog out (GPIO25/26 only)
+    SERVO_OUT,        // 50 Hz servo/RC pulse generator: SET <name> <microseconds>
     PWM_IN_SERVO,     // capture 50 Hz servo pulse (1000-2000 us)
     PWM_IN_LEDC,      // capture high-frequency LEDC PWM (~10 kHz)
     DIGITAL_IN        // read a relay / solenoid level
@@ -54,8 +56,31 @@ struct Signal {
 };
 
 // ── Signal table — MUST match bench/pinmap.json (tester_gpio / tester_kind) ──
-//  Tester board constraints honoured here: GPIO 36/39 unavailable; input-only
-//  pins 34-39 and GPIO 16/17 (WROVER PSRAM) avoided; strapping pins avoided.
+#if defined(OTBENCH_S3)
+// ROLE-REVERSED build: this runs on the ESP32-S3 acting as the TESTER, wired to a
+// classic ESP32 running OpenTurbine (the DUT). Each pin here is the S3 side of the same
+// physical jumper (pinmap dut_gpio), with the direction flipped vs the normal build:
+// what OpenTurbine drives on the classic side, the S3 now READS; what OpenTurbine reads,
+// the S3 now DRIVES. No DAC on the S3, so the two analog inputs (THROTTLE_IN/OILP) are
+// omitted. STARTER_OUT omitted (its jumper is the known-dead GPIO17<->GPIO19 path).
+static Signal SIGNALS[] = {
+    // classic-DUT inputs — the S3 tester drives these (S3 GPIO = pinmap dut_gpio)
+    { "START",        DIGITAL_OUT_AL, 13 },
+    { "STOP",         DIGITAL_OUT_AL, 15 },
+    { "N1",           FREQ_OUT,       14 },
+    { "N2",           FREQ_OUT,        8 },
+    { "FLAME",        DIGITAL_OUT,     2 },
+    { "IDLE_IN",      SERVO_OUT,       5 },
+    // classic-DUT outputs — the S3 tester reads these
+    { "THROTTLE_OUT", PWM_IN_SERVO,   40 },
+    { "OILPUMP_OUT",  PWM_IN_LEDC,    11 },
+    { "FUEL_SOL",     DIGITAL_IN,     12 },
+    { "IGNITER",      DIGITAL_IN,     21 },
+    { "STARTER_EN",   DIGITAL_IN,     39 },
+};
+#else
+//  Normal build (classic ESP32 tester, S3 DUT). Board constraints: GPIO 36/39 unavailable;
+//  input-only pins 34-39 and GPIO 16/17 (WROVER PSRAM) avoided; strapping pins avoided.
 static Signal SIGNALS[] = {
     // DUT inputs — the tester drives these
     { "START",        DIGITAL_OUT_AL, 13 },
@@ -64,19 +89,67 @@ static Signal SIGNALS[] = {
     { "THROTTLE_IN",  DAC_OUT,        25 },   // true DAC
     { "OILP",         DAC_OUT,        26 },   // true DAC
     { "FLAME",        DIGITAL_OUT,    27 },   // threshold sensor -> digital HIGH/LOW
-    { "IDLE_IN",      DIGITAL_OUT,    32 },   // no 3rd DAC -> digital extremes (optional)
+    { "IDLE_IN",      SERVO_OUT,      32 },   // servo/RC pulse gen -> RC-PWM input testing (SET IDLE_IN <us>)
+    { "N2",           FREQ_OUT,       18 },   // N2 shaft RPM (governor testing) -> DUT GPIO27; GPIO18 freed when THROTTLE_OUT moved to 17
     // DUT outputs — the tester reads these
-    { "THROTTLE_OUT", PWM_IN_SERVO,   18 },
+    { "THROTTLE_OUT", PWM_IN_SERVO,   17 },   // moved 18->17: tester GPIO18 read no pulse on the bench
     { "STARTER_OUT",  PWM_IN_SERVO,   19 },
     { "OILPUMP_OUT",  PWM_IN_LEDC,    21 },
     { "FUEL_SOL",     DIGITAL_IN,     22 },
     { "IGNITER",      DIGITAL_IN,     23 },
     { "STARTER_EN",   DIGITAL_IN,     33 },
 };
+#endif
 static const int NUM_SIGNALS = sizeof(SIGNALS) / sizeof(SIGNALS[0]);
 
 static const float VREF = 3.3f;
 
+// ── LEDC (raw ESP-IDF) — each FREQ_OUT / SERVO_OUT gets its OWN timer+channel ──
+// The Arduino ledcAttach/ledcWriteTone wrappers kept reusing a single timer, so N1
+// and N2 clobbered each other. Assigning an explicit LEDC timer per signal (via
+// ledc_timer_config with distinct timer_num) makes them fully independent.
+static int8_t sigLedcChan[NUM_SIGNALS];   // LEDC channel (== timer) for this signal, or -1
+
+static inline int sigIndex(const Signal& s) { return (int)(&s - SIGNALS); }
+
+// Servo PWM resolution differs by SoC: the ESP32-S3's LEDC tops out at 14-bit (the same
+// clock wall that makes 16-bit@50 Hz fail on the S3), the classic ESP32 does 16-bit.
+#if defined(OTBENCH_S3)
+static const ledc_timer_bit_t SERVO_RES      = LEDC_TIMER_14_BIT;
+static const uint32_t         SERVO_MAX_DUTY = 16383;   // 2^14 - 1
+#else
+static const ledc_timer_bit_t SERVO_RES      = LEDC_TIMER_16_BIT;
+static const uint32_t         SERVO_MAX_DUTY = 65535;   // 2^16 - 1
+#endif
+
+static void ledcSetupSignal(int idx, const Signal& s, int chan) {
+    sigLedcChan[idx] = (int8_t)chan;
+    const bool servo = (s.kind == SERVO_OUT);
+    ledc_timer_config_t tc = {};
+    tc.speed_mode      = LEDC_LOW_SPEED_MODE;
+    tc.duty_resolution = servo ? SERVO_RES : LEDC_TIMER_10_BIT;
+    tc.timer_num       = (ledc_timer_t)chan;      // own timer per signal
+    tc.freq_hz         = servo ? 50 : 1000;
+    tc.clk_cfg         = LEDC_AUTO_CLK;
+    ledc_timer_config(&tc);
+    ledc_channel_config_t cc = {};
+    cc.gpio_num   = s.gpio;
+    cc.speed_mode = LEDC_LOW_SPEED_MODE;
+    cc.channel    = (ledc_channel_t)chan;
+    cc.intr_type  = LEDC_INTR_DISABLE;
+    cc.timer_sel  = (ledc_timer_t)chan;           // bind channel to its own timer
+    cc.duty       = 0;
+    cc.hpoint     = 0;
+    ledc_channel_config(&cc);
+}
+
+static inline void ledcSetDuty(int chan, uint32_t duty) {
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)chan, duty);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)chan);
+}
+
+#if !defined(OTBENCH_S3)   // MAX6675 emulator uses classic-ESP32 register layout; the S3
+                           // role-reversed tester doesn't emulate the thermocouple.
 // ── MAX6675 thermocouple emulator (SPI slave) ────────────────
 // The DUT (OpenTurbine, Adafruit MAX6675 lib) is the SPI master and bit-bangs
 // slowly. We watch its CLK/CS and clock a fake 16-bit word out on MISO:
@@ -131,6 +204,7 @@ static void totSet(float celsius, bool open) {
     g_totWord = ((uint16_t)counts) << 3;
     g_totEnabled = true;
 }
+#endif   // !OTBENCH_S3 (MAX6675 emulator)
 
 // ── Helpers ──────────────────────────────────────────────────
 static const char* kindName(Kind k) {
@@ -139,6 +213,7 @@ static const char* kindName(Kind k) {
         case DIGITAL_OUT:    return "digital_out";
         case FREQ_OUT:       return "freq_out";
         case DAC_OUT:        return "dac_out";
+        case SERVO_OUT:      return "servo_out";
         case PWM_IN_SERVO:   return "pwm_in_servo";
         case PWM_IN_LEDC:    return "pwm_in_ledc";
         case DIGITAL_IN:     return "digital_in";
@@ -146,7 +221,7 @@ static const char* kindName(Kind k) {
     return "?";
 }
 static bool isOutputKind(Kind k) {
-    return k == DIGITAL_OUT_AL || k == DIGITAL_OUT || k == FREQ_OUT || k == DAC_OUT;
+    return k == DIGITAL_OUT_AL || k == DIGITAL_OUT || k == FREQ_OUT || k == DAC_OUT || k == SERVO_OUT;
 }
 
 static Signal* findSignal(const char* name) {
@@ -166,10 +241,15 @@ static void safeState(const Signal& s) {
             digitalWrite(s.gpio, LOW);
             break;
         case FREQ_OUT:
-            ledcWriteTone(s.gpio, 0);              // stop tone -> line low
+        case SERVO_OUT: {
+            int ch = sigLedcChan[sigIndex(s)];
+            if (ch >= 0) ledcSetDuty(ch, 0);       // duty 0 -> line low / no pulse
             break;
+        }
         case DAC_OUT:
+#if !defined(OTBENCH_S3)
             dacWrite(s.gpio, 0);                   // 0 V
+#endif
             break;
         case PWM_IN_SERVO:
         case PWM_IN_LEDC:
@@ -180,10 +260,15 @@ static void safeState(const Signal& s) {
 }
 
 static void initSignals() {
+    // Each FREQ_OUT / SERVO_OUT gets its own LEDC timer+channel (timer_num == channel), so
+    // N1 and N2 are fully independent — changing one timer's frequency never touches the other.
+    for (int i = 0; i < NUM_SIGNALS; i++) sigLedcChan[i] = -1;
+    int nextCh = 0;
     for (int i = 0; i < NUM_SIGNALS; i++) {
         Signal& s = SIGNALS[i];
-        if (s.kind == FREQ_OUT)
-            ledcAttach(s.gpio, 1000, 10);          // attach; tone set later
+        if (s.kind == FREQ_OUT || s.kind == SERVO_OUT) {
+            ledcSetupSignal(i, s, nextCh++);
+        }
         safeState(s);
     }
 }
@@ -204,14 +289,35 @@ static bool applyOutput(const Signal& s, const char* valStr, String& err) {
             return true;
         }
         case FREQ_OUT: {
+            // Change only THIS signal's timer frequency (its own timer), so N1 and N2 are
+            // independent. 50% duty (512 of 10-bit) gives a clean square wave.
+            int ch = sigLedcChan[sigIndex(s)];
             float hz = atof(valStr);
-            if (hz < 1.0f) ledcWriteTone(s.gpio, 0);
-            else           ledcWriteTone(s.gpio, (uint32_t)(hz + 0.5f));
+            if (hz < 1.0f) {
+                ledcSetDuty(ch, 0);                                    // stop -> line low
+            } else {
+                ledc_set_freq(LEDC_LOW_SPEED_MODE, (ledc_timer_t)ch, (uint32_t)(hz + 0.5f));
+                ledcSetDuty(ch, 512);                                  // 50% duty at 10-bit
+            }
             return true;
         }
         case DAC_OUT: {
+#if !defined(OTBENCH_S3)
             float volts = constrain((float)atof(valStr), 0.0f, VREF);
             dacWrite(s.gpio, (int)(volts / VREF * 255.0f + 0.5f));
+#else
+            err = "no DAC on the S3 tester";
+            return false;   // S3 has no DAC — analog inputs aren't drivable in this build
+#endif
+            return true;
+        }
+        case SERVO_OUT: {
+            // Value is the pulse width in microseconds (0 = no pulse). 50 Hz frame = 20000 us,
+            // 16-bit resolution -> duty = us / 20000 * 65535.
+            int ch = sigLedcChan[sigIndex(s)];
+            float us = constrain((float)atof(valStr), 0.0f, 20000.0f);
+            uint32_t duty = (uint32_t)(us / 20000.0f * (float)SERVO_MAX_DUTY + 0.5f);
+            ledcSetDuty(ch, duty);
             return true;
         }
         default:
@@ -304,6 +410,7 @@ static void handleLine(char* line) {
         char* name = strtok(nullptr, " \t");
         char* val  = strtok(nullptr, " \t");
         if (!name || !val) { Serial.println("ERR usage: SET <name> <value>"); return; }
+#if !defined(OTBENCH_S3)
         if (strcasecmp(name, "TOT") == 0) {         // MAX6675 thermocouple emulator
             if      (strcasecmp(val, "open") == 0) { totSet(0, true); }
             else if (strcasecmp(val, "off")  == 0) { g_totEnabled = false; }
@@ -311,6 +418,7 @@ static void handleLine(char* line) {
             Serial.println("OK");
             return;
         }
+#endif
         Signal* s = findSignal(name);
         if (!s) { Serial.printf("ERR unknown signal %s\n", name); return; }
         if (!isOutputKind(s->kind)) { Serial.printf("ERR %s is not an output\n", name); return; }
@@ -322,11 +430,13 @@ static void handleLine(char* line) {
     if (strcasecmp(cmd, "GET") == 0) {
         char* name = strtok(nullptr, " \t");
         if (!name) { Serial.println("ERR usage: GET <name>"); return; }
+#if !defined(OTBENCH_S3)
         if (strcasecmp(name, "TOT") == 0) {
             Serial.printf("VAL TOT celsius=%.2f enabled=%d word=0x%04X\n",
                           (g_totWord >> 3) * 0.25f, g_totEnabled ? 1 : 0, g_totWord);
             return;
         }
+#endif
         Signal* s = findSignal(name);
         if (!s) { Serial.printf("ERR unknown signal %s\n", name); return; }
         if (isOutputKind(s->kind)) { Serial.printf("ERR %s is not an input\n", name); return; }
@@ -346,8 +456,12 @@ void setup() {
     Serial.begin(115200);
     delay(200);
     initSignals();
+#if !defined(OTBENCH_S3)
     totBegin();
     Serial.printf("OK OTBench %s ready (%d signals + TOT thermocouple)\n", OTBENCH_VER, NUM_SIGNALS);
+#else
+    Serial.printf("OK OTBench %s ready (%d signals, S3 role-reversed tester)\n", OTBENCH_VER, NUM_SIGNALS);
+#endif
 }
 
 void loop() {

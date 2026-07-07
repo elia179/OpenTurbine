@@ -6,6 +6,60 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.5.0] — 2026-07-07
+
+Hardware-in-the-loop validation release. A full two-ESP32 HIL bench exercised every input,
+output, controller, and safety path end-to-end; the fixes and features below were all verified
+on hardware, and OpenTurbine is now validated on **both** the ESP32-S3 and the classic ESP32
+(servo/PWM, ADC, RPM/frequency, and digital I/O confirmed on each).
+
+### Added
+- **Fuel-pump minimum-spin calibration** — a Calibration-page routine ramps the fuel pump until
+  it reliably spins; that % (`throttle.fuel_pump_min_pct`, telemetry `fuel_pump_min_pct`) becomes
+  the lowest fuel the ECU commands while running. Replaces the old fixed 8% idle-floor assumption;
+  0 = uncalibrated = no floor. The dashboard throttle card shows it as "fuel floor".
+- **Standby-oil set-pressure mode** (`standby_oil.feed_bar`) — with an oil sensor and the oil
+  control loop enabled, the standby windmill feed regulates the pump to a target pressure instead
+  of a fixed %, floored at Feed Duty %. Default 0 keeps the fixed-% behaviour unchanged.
+- **Governor mode indicator** on the dashboard (`governor_mode` telemetry) — shows whether the
+  power-turbine governor is running in PROP-PITCH or THROTTLE-DRIVEN mode.
+- **Preflight warnings** for two silent-failure footguns: LOW_OIL protection enabled but no
+  startup block arms the oil-pressure minimum; and an afterburner ignition with no active method
+  (torch needs an EGT cap, or enable the AB igniter).
+- **Oil-zero reachability warning** on the Calibration page: flags an oil curve that never reads
+  below the zero-pressure threshold (which would silently defeat OIL_ZERO protection).
+
+### Changed
+- **Fuel/throttle floor model** — the running floor is now the measured fuel-pump minimum-spin %,
+  not an arbitrary 8% idle floor. The throttle-driven governor correctly overrides the throttle
+  input to hold N2, and the N1/EGT pullback reduces throttle no lower than the fuel floor.
+- **OilPrime** drives the oil pump directly at a fixed % when the oil control loop is disabled
+  (previously it set a pressure target that nothing acted on → a silent no-prime abort).
+- **Afterburner ignition** falls back to the fitted AB igniter when no ignition method is
+  configured, so a default AB setup lights whenever the ignition hardware is present.
+- **Captive portal** serves a small landing page (302 → `/portal`, no WebSocket) to OS
+  connectivity probes instead of the full dashboard. This both improves the captive experience
+  and frees the single `/ws` slot, so the Hardware page now updates at 1 s on first open (it
+  previously fell back to a 3 s poll until you navigated away and back).
+- **Guides / settings text** — clearer idle-input vs running-fuel-floor naming, explicit
+  governor-mode labels and gains, pullback-strength guidance, and false-confirm warnings on the
+  relight/afterburner EGT-rise thresholds; README updated for the fuel floor and both governor
+  modes. All dashboard warning-banner colours now use theme variables so they track all six themes.
+- Standby oil feed keeps the fixed-% path as the floor in pressure mode and releases the pump
+  cleanly when windmilling stops.
+
+### Fixed
+- **ServoActuator dead on ESP32-S3** — `ledcAttach(pin, 50, 16)` (16-bit @ 50 Hz) fails to attach
+  on the S3's slower LEDC clock, so the throttle ESC and starter servo emitted nothing. Now
+  retries at progressively lower resolution (16→12 bit) with runtime max-duty tracking, matching
+  `LEDCActuator`. Verified: the S3 falls back to 12-bit and the classic ESP32 keeps full 16-bit.
+- Dashboard: battery bar colour direction (green full → red empty), the S3 status LED now turns
+  off when disabled in the hardware config, unified per-field graph/bar/value layout, N1/N2 health
+  dots no longer stay grey when the data is good, and the hour meter / lifetime run count / flash
+  usage now update correctly.
+
+---
+
 ## [1.4.0] — 2026-07-06
 
 Web UI theming, a portable theme choice, and a configurable status-LED blink colour.

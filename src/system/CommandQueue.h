@@ -23,6 +23,7 @@ enum class OTCommand : uint8_t {
     IDLE_TEST,
     SET_OIL_DEMAND,       // fParam = bar target
     SET_OIL_PCT,          // iParam = percent
+    SET_THROTTLE_PCT,     // iParam = percent — drive throttle/fuel-pump ESC in STANDBY (fuel-pump min-spin calibration)
     TOGGLE_LIMP_MODE,
     TOGGLE_DYNAMIC_IDLE,
     TOGGLE_SAFETY_CHECKS, // DEV_MODE only

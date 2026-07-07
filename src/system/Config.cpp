@@ -52,6 +52,7 @@ float Config::throttleRampUpMs      = 600;
 float Config::throttleRampDownMs    = 800;
 float Config::throttleIdleMinPct    = 8;
 float Config::throttleIdleMaxPct    = 18;
+float Config::fuelPumpMinPct        = 0;   // 0 = not calibrated; measured via the fuel-pump min-spin calibration
 float Config::throttleExpo          = 0.0f;  // 0 = linear by default
 bool  Config::pullbackN1Enabled     = true;
 bool  Config::pullbackN2Enabled     = false;
@@ -142,6 +143,7 @@ float    Config::oilPressureDeadband = 0.2f;
 int      Config::standbyOilSource    = 0;
 float    Config::standbyOilRpmLimit  = 100.0f;
 float    Config::standbyOilFeedPct   = 25.0f;
+float    Config::standbyOilFeedBar   = 0.0f;
 
 float    Config::limpMaxThrottlePct  = 50.0f;
 bool     Config::igniterOnStart      = true;
@@ -239,6 +241,7 @@ bool  Config::glowWaitUntilHot      = false;
 
 uint32_t Config::totalRunSeconds    = 0;
 uint32_t Config::startAttemptCount  = 0;
+uint32_t Config::runCount           = 0;
 
 int   Config::throttleMinRaw        = 0;
 int   Config::throttleMaxRaw        = 4095;
@@ -471,6 +474,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (!validNumber(th["ramp_up_ms"], 0.0f, 3600000.0f) ||
         !validNumber(th["ramp_down_ms"], 0.0f, 3600000.0f) ||
         !validNumber(th["idle_min_pct"], 0.0f, 100.0f) ||
+        !validNumber(th["fuel_pump_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["idle_max_pct"], 0.0f, 100.0f) ||
         !validNumber(th["expo"], 0.0f, 1.0f) ||
         !validBool(th["pullback_n1"]) ||
@@ -524,7 +528,8 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (present(so) && (!so.is<JsonObjectConst>() ||
         !validInt(so["source"], 0, 2) ||
         !validNumber(so["rpm_limit"], 0.0f, 500000.0f) ||
-        !validNumber(so["feed_pct"], 0.0f, 100.0f))) return false;
+        !validNumber(so["feed_pct"], 0.0f, 100.0f) ||
+        !validNumber(so["feed_bar"], 0.0f, 20.0f))) return false;
 
     JsonVariantConst sf = doc["safety"];
     if (!validInt(sf["check_interval_ms"], 10, 60000) ||
@@ -667,7 +672,8 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (present(sobv) && (!sobv.is<JsonObjectConst>() ||
         !validInt(sobv["source"], 0, 10) ||
         !validNumber(sobv["rpm_limit"], 0.0f, 1000000.0f) ||
-        !validNumber(sobv["feed_pct"], 0.0f, 100.0f))) return false;
+        !validNumber(sobv["feed_pct"], 0.0f, 100.0f) ||
+        !validNumber(sobv["feed_bar"], 0.0f, 20.0f))) return false;
 
     JsonVariantConst limpv = doc["limp_mode"];
     if (present(limpv) && (!limpv.is<JsonObjectConst>() ||
@@ -975,8 +981,10 @@ static void runtimeStatsKey(char* key, size_t len, const char* prefix) {
 void Config::loadRuntimeStats() {
     char runKey[14];
     char startKey[14];
+    char rcKey[14];
     runtimeStatsKey(runKey, sizeof(runKey), "run");
     runtimeStatsKey(startKey, sizeof(startKey), "sta");
+    runtimeStatsKey(rcKey, sizeof(rcKey), "rct");
     Preferences stats;
     if (!stats.begin("ot", true)) {
         Serial.println("[Config] WARNING: failed to open NVS for accumulated runtime read");
@@ -984,9 +992,11 @@ void Config::loadRuntimeStats() {
     }
     uint32_t savedRunSeconds = stats.getUInt(runKey, totalRunSeconds);
     uint32_t savedStarts = stats.getUInt(startKey, startAttemptCount);
+    uint32_t savedRuns = stats.getUInt(rcKey, runCount);
     stats.end();
     if (savedRunSeconds > totalRunSeconds) totalRunSeconds = savedRunSeconds;
     if (savedStarts > startAttemptCount) startAttemptCount = savedStarts;
+    if (savedRuns > runCount) runCount = savedRuns;
 }
 
 bool Config::flushPendingRuntimeStats() {
@@ -994,8 +1004,10 @@ bool Config::flushPendingRuntimeStats() {
     _runtimeStatsSavePending = false;
     char runKey[14];
     char startKey[14];
+    char rcKey[14];
     runtimeStatsKey(runKey, sizeof(runKey), "run");
     runtimeStatsKey(startKey, sizeof(startKey), "sta");
+    runtimeStatsKey(rcKey, sizeof(rcKey), "rct");
     Preferences stats;
     if (!stats.begin("ot", false)) {
         Serial.println("[Config] WARNING: failed to open NVS for accumulated runtime");
@@ -1003,8 +1015,9 @@ bool Config::flushPendingRuntimeStats() {
     }
     size_t writtenRun = stats.putUInt(runKey, totalRunSeconds);
     size_t writtenStarts = stats.putUInt(startKey, startAttemptCount);
+    size_t writtenRuns = stats.putUInt(rcKey, runCount);
     stats.end();
-    if (writtenRun == 0 || writtenStarts == 0) {
+    if (writtenRun == 0 || writtenStarts == 0 || writtenRuns == 0) {
         Serial.println("[Config] WARNING: accumulated runtime NVS write failed");
         return false;
     }
@@ -1054,8 +1067,10 @@ const char* Config::primaryEgtLabel() {
 void Config::clearRuntimeStats() {
     char runKey[14];
     char startKey[14];
+    char rcKey[14];
     runtimeStatsKey(runKey, sizeof(runKey), "run");
     runtimeStatsKey(startKey, sizeof(startKey), "sta");
+    runtimeStatsKey(rcKey, sizeof(rcKey), "rct");
     Preferences stats;
     if (!stats.begin("ot", false)) {
         Serial.println("[Config] WARNING: failed to open NVS to clear accumulated runtime");
@@ -1063,9 +1078,11 @@ void Config::clearRuntimeStats() {
     }
     stats.remove(runKey);
     stats.remove(startKey);
+    stats.remove(rcKey);
     stats.end();
     totalRunSeconds = 0;
     startAttemptCount = 0;
+    runCount = 0;
 }
 
 bool Config::save() {
@@ -1234,6 +1251,7 @@ void Config::_applyDefaults() {
     cooldownStarterPct = 40.0f; cooldownOilPct = 30.0f; cooldownOilPressureTarget = 2.0f;
     throttleRampUpMs = 600; throttleRampDownMs = 800;
     throttleIdleMinPct = 8; throttleIdleMaxPct = 18; throttleExpo = 0.0f;
+    fuelPumpMinPct = 0;
     pullbackN1Enabled = true; pullbackN2Enabled = false; pullbackEgtEnabled = true;
     pullbackN1SoftRpm = 95000.0f; pullbackN1HardRpm = 100000.0f;
     pullbackN2SoftRpm = 0.0f; pullbackN2HardRpm = 0.0f;
@@ -1261,6 +1279,7 @@ void Config::_applyDefaults() {
     starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
     standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
+    standbyOilFeedBar = 0.0f;
     limpMaxThrottlePct = 50.0f; igniterOnStart = true; manualRelightIgnitionTarget = 0;
     cooldownSkipHoldMs = 1000;
     fuelPumpIdleMinPct = 8.0f; fuelPumpIdleMaxPct = 18.0f;
@@ -1395,6 +1414,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     throttleRampUpMs    = th["ramp_up_ms"]   | throttleRampUpMs;
     throttleRampDownMs  = th["ramp_down_ms"] | throttleRampDownMs;
     throttleIdleMinPct  = th["idle_min_pct"] | throttleIdleMinPct;
+    fuelPumpMinPct      = th["fuel_pump_min_pct"] | fuelPumpMinPct;
     throttleIdleMaxPct  = th["idle_max_pct"] | throttleIdleMaxPct;
     throttleExpo        = th["expo"]         | throttleExpo;
     if (!th["pullback_n1"].isNull()) pullbackN1Enabled = th["pullback_n1"].as<bool>();
@@ -1528,6 +1548,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     standbyOilSource   = sob["source"]    | standbyOilSource;
     standbyOilRpmLimit = sob["rpm_limit"] | standbyOilRpmLimit;
     standbyOilFeedPct  = sob["feed_pct"]  | standbyOilFeedPct;
+    standbyOilFeedBar  = sob["feed_bar"]  | standbyOilFeedBar;
 
     auto limp = doc["limp_mode"];
     limpMaxThrottlePct = limp["max_throttle_pct"] | limpMaxThrottlePct;
@@ -1616,6 +1637,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
         if (fileRunSeconds > totalRunSeconds) totalRunSeconds = fileRunSeconds;
         uint32_t fileStartAttempts = stats["start_attempt_count"] | startAttemptCount;
         if (fileStartAttempts > startAttemptCount) startAttemptCount = fileStartAttempts;
+        uint32_t fileRuns = stats["run_count"] | runCount;
+        if (fileRuns > runCount) runCount = fileRuns;
     }
 
     // ── Automation rules ──────────────────────────────────────────
@@ -1761,6 +1784,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     cooldownOilPct = constrain(cooldownOilPct, 0.0f, 100.0f);
     throttleIdleMinPct = constrain(throttleIdleMinPct, 0.0f, 100.0f);
     throttleIdleMaxPct = constrain(throttleIdleMaxPct, throttleIdleMinPct, 100.0f);
+    fuelPumpMinPct     = constrain(fuelPumpMinPct, 0.0f, 100.0f);
     throttleExpo = constrain(throttleExpo, 0.0f, 1.0f);
     pullbackN1SoftRpm = constrain(pullbackN1SoftRpm, 0.0f, 500000.0f);
     pullbackN1HardRpm = constrain(pullbackN1HardRpm, 0.0f, 500000.0f);
@@ -1783,6 +1807,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     glowHoldPct = constrain(glowHoldPct, 0.0f, 100.0f);
     starterAssistPct = constrain(starterAssistPct, 0.0f, 100.0f);
     standbyOilFeedPct = constrain(standbyOilFeedPct, 0.0f, 100.0f);
+    standbyOilFeedBar = constrain(standbyOilFeedBar, 0.0f, 20.0f);
     fuelPumpIdleMinPct = constrain(fuelPumpIdleMinPct, 0.0f, 100.0f);
     fuelPumpIdleMaxPct = constrain(fuelPumpIdleMaxPct, fuelPumpIdleMinPct, 100.0f);
     if (modifiedIdleMultiplier < 0.0f) modifiedIdleMultiplier = 0.0f;
@@ -1962,6 +1987,7 @@ void Config::_toDoc(JsonDocument& doc) {
     th["ramp_up_ms"]   = throttleRampUpMs;
     th["ramp_down_ms"] = throttleRampDownMs;
     th["idle_min_pct"] = throttleIdleMinPct;
+    th["fuel_pump_min_pct"] = fuelPumpMinPct;
     th["idle_max_pct"] = throttleIdleMaxPct;
     th["expo"]         = throttleExpo;
     th["pullback_n1"] = pullbackN1Enabled;
@@ -2093,6 +2119,7 @@ void Config::_toDoc(JsonDocument& doc) {
     sob["source"]    = standbyOilSource;
     sob["rpm_limit"] = standbyOilRpmLimit;
     sob["feed_pct"]  = standbyOilFeedPct;
+    sob["feed_bar"]  = standbyOilFeedBar;
 
     auto limp = doc["limp_mode"].to<JsonObject>();
     limp["max_throttle_pct"] = limpMaxThrottlePct;
@@ -2173,6 +2200,7 @@ void Config::_toDoc(JsonDocument& doc) {
     auto stats = doc["stats"].to<JsonObject>();
     stats["total_run_seconds"] = totalRunSeconds;
     stats["start_attempt_count"] = startAttemptCount;
+    stats["run_count"] = runCount;
 
     // ── Automation rules ──────────────────────────────────────────
     if (ruleCount > 0) {

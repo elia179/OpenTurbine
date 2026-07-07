@@ -69,3 +69,85 @@ with the author:
    low-oil protection off in STARTUP. `flameMonitorActive` has an explicit
    safeguard for exactly this (main.cpp:1696) — `oilMinBar` does not. Consider a
    similar backstop or a config-validation warning.
+
+---
+
+## Session 2 — 2026-07-07 (fw 1.4.0, S3 + tester)
+
+Full regression re-run plus guides/UI/feature work. Real-problem log:
+`bench/ISSUES_FOUND.md`. Known open item: DUT went unreachable after a flash near
+the end (flash succeeded + hash-verified; AP didn't return, PC couldn't re-associate)
+— items marked ⏳ are implemented/ready but await a DUT power-cycle to validate.
+
+### Validated GREEN on hardware this session
+- ✅ **Safety monitor** — TOT_RISE trips 0.48 s; OIL_ZERO trips 0.08 s once properly
+  armed (the batch "FAIL" was the `only_safety` reboot-race verify artifact, not a
+  defect); safety-block config round-trips correctly.
+- ✅ **ServoActuator on S3** (session-1 open item RESOLVED) — attach-retry fix lands;
+  throttle ESC ramps smoothly 0→full in ~2 s (`ctrl_slew`).
+- ✅ **Throttle slew + N1/EGT pullback**, incl. under the governor, respecting the fuel floor.
+- ✅ **Governor, both flavours** — throttle-driven (winds fuel to hold N2, respects the
+  fuel floor at 0.08) and prop-pitch/load-driven (winds pitch, leaves throttle to pilot).
+- ✅ **Fuel-pump minimum-spin floor** — 15% floors at 0.150, 10% at 0.100, 0 = no floor
+  (throttle → ~0). Replaces the old fixed 8% idle floor by design.
+- ✅ **Relight** 5/5, **rules** 6/6 (thresholds + hysteresis + shutdown), **sequencer** (blocks,
+  gates, aborts, ImmediateCut), **config** persistence/reboot/illegal-pin/out-of-range-reject.
+- ✅ **Oil P-loop** drives the pump to target pressure (sign response).
+
+### Firmware fix this session
+- ❌→✅ **OilPrime silent no-prime when the oil control loop is disabled.** With an oil
+  sensor, `OilPrime` sets a pressure target and relies on `g_ctrlOilLoop` to drive the
+  pump; if the loop is off, nothing drives it → times out into an abort with no reason.
+  Added a preflight `seq_issue` warning (main.cpp sequence validation, OilPrime case).
+  Confirmed: with the loop enabled OilPrime drives the pump to 100%.
+
+### Engineering notes from session 1 — now addressed
+- Note 1 (oil-zero reachability): the Calibration page now warns after an oil fit if the
+  curve never reads below the zero-pressure threshold at the low end (OIL_ZERO could be silent).
+
+### Validated GREEN after the DUT was power-cycled (firmware + UI reflashed)
+- ✅ **New preflight warnings** both fire on hardware: OilPrime-needs-oil-loop, and
+  low-oil-arming (sequence with no oil-arming block).
+- ✅ **Standby-oil SET-PRESSURE mode** 5/5 (`standby_oil_pressure_test.py`): regulates to
+  the target bar, floors at feed_pct, disengages + releases the pump when windmilling stops,
+  and fixed-% mode (feed_bar=0) is unchanged.
+- ✅ **Calibration pipeline** 4/4 (`calibration_pipeline_test.py`): oil cubic scaling, flame
+  threshold tracking, fuel-pump-min save, oil zero-reachability.
+- ✅ **Digital inputs** 3/3 (`di_switch_test.py`): DI channel debounce/state (pin-reused),
+  START switch initiates start, STOP switch shuts down.
+- ✅ **Rules engine** reconfirmed 6/6 + extended (LT operator + OIL_PRESS source + IGNITER
+  actuator) on the new firmware.
+- ✅ **Afterburner** 5/5 (`afterburner_test.py`): AB_FIRE opens the AB solenoid (telemetry +
+  physical relay on the remapped pin), drives the AB pump to 90%, reaches AB Running with the
+  main-fuel offset live, and AB_STOP shuts it down cleanly. New engineering note filed:
+  default AB ignition faults ("no active ignition method") when torch has no EGT cap and the
+  AB igniter is off — see ISSUES_FOUND.md #7.
+- ✅ **Guides/UI** deployed via uploadfs; new firmware confirmed live (`governor_mode`,
+  `standby_oil_feed_bar` telemetry present).
+
+**All planned HIL validation is complete.**
+
+---
+
+## v1.5.0 sign-off — verified on BOTH chips (2026-07-07)
+
+Both open follow-ups resolved: OilPrime now self-drives the pump when the oil loop is off
+(verified: oil_pct 80, duty 0.81 with the loop disabled), and afterburner ignition falls back
+to the fitted igniter (verified: default AB reaches Running). Both new-problem fixes done too:
+the tester now drives N1/N2 **independently** (raw ESP-IDF LEDC per-timer), which unblocked a
+**direct** N1-max pullback-under-governor test (N1 65k → throttle 1.0 → 0.08); and the "GPIO17
+servo quirk" was root-caused as a dead bench jumper (DUT17↔tester19), not firmware.
+
+**Cross-platform (role-reversed rig: OpenTurbine on the classic ESP32, S3 as tester):** every
+reachable pin FUNCTION validated on the classic ESP32 — **8/8**: LEDC PWM out, servo out
+(1599 µs, full 16-bit), 3× digital out, freq/RPM in (PCNT), ADC in (0↔4095), digital in. Plus
+a clean serial boot (LittleFS, sequencer validate, WiFi, web server). The ServoActuator fix is
+platform-correct: **16-bit on the classic, 12-bit fallback only on the S3.** OpenTurbine builds
+for both `esp32dev` and `esp32s3dev`.
+
+Not provable on this bench (wiring limits, NOT firmware): classic thermocouple SPI (TOT jumpers
+land on input-only pins), a full analog sweep (S3 tester has no DAC), MAVLink (no UART jumper),
+and a real engine start. Classic-ESP32 rule to document for testers: analog sensors must use
+**ADC1** pins so WiFi doesn't disturb them.
+
+Normal bench restored (S3 = OpenTurbine v1.5.0 DUT, classic = OTBench tester); smoke test green.

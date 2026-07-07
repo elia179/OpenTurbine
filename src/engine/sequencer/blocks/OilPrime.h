@@ -25,10 +25,15 @@ public:
         _completed = false;
         auto& ed = EngineData::instance();
         ed.oilMinBar = 0;  // not yet checking min during prime
-        if (HardwareConfig::hasOilPress) {
-            ed.oilTargetBar = startupOilDemand;   // P-controller will regulate to this bar target
+        // Use the oil control loop to regulate to a pressure target ONLY when it is
+        // actually running (sensor fitted, loop enabled, not bench). Otherwise drive the
+        // pump directly at a fixed % — without this, a sensor-fitted build with the oil
+        // loop OFF would set a target that nothing acts on and never prime (silent abort).
+        _useLoop = HardwareConfig::hasOilPress && HardwareConfig::hasOilLoop && !ed.benchMode;
+        if (_useLoop) {
+            ed.oilTargetBar = startupOilDemand;   // P-controller regulates to this bar target
         } else {
-            ed.oilPumpPct = startupOilPct;   // fixed % — no sensor, run for timeout
+            ed.oilPumpPct = startupOilPct;        // no loop / bench — drive the pump directly
         }
         if (HardwareConfig::hasOilScavengePump && useScavengePump) ed.oilScavengeOn = true;
     }
@@ -37,6 +42,10 @@ public:
         auto& ed = EngineData::instance();
 
         unsigned long elapsed = millis() - _entryMs;
+
+        // When we drive the pump ourselves (no loop / bench), keep commanding it every tick
+        // so nothing else quietly clears it during the prime.
+        if (!_useLoop) ed.oilPumpPct = startupOilPct;
 
         if (!HardwareConfig::hasOilPress || ed.benchMode) {
             // No pressure sensor, OR bench mode — run pump for configured time then proceed
@@ -47,8 +56,7 @@ public:
             }
             char buf[80];
             snprintf(buf, sizeof(buf), "%sOil pump %.0f%% - %lu ms remaining",
-                     ed.benchMode ? "[BENCH] " : "",
-                     HardwareConfig::hasOilPress ? (float)100 : startupOilPct,
+                     ed.benchMode ? "[BENCH] " : "", startupOilPct,
                      timeoutMs - elapsed);
             setWaitReason(buf);
             return BlockResult::Running;
@@ -80,4 +88,5 @@ public:
 private:
     unsigned long _entryMs = 0;
     bool          _completed = false;
+    bool          _useLoop = false;   // true = oil loop regulates to target; false = drive pump directly
 };

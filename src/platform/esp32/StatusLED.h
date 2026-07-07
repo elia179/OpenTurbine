@@ -200,4 +200,24 @@ inline void tick() {
     }
 }
 
+// Force the status LED dark. Used when the status LED is disabled in the
+// hardware config: simply not ticking is not enough because the addressable S3
+// onboard LED latches its last colour across a soft reboot, so it must be
+// explicitly cleared or it stays lit.
+inline void off() {
+    int pin = _statusPin();
+    if (pin >= 0) {
+        if (_isRgbStatusLed(pin)) rgbLedWrite((uint8_t)pin, 0, 0, 0);
+        else { pinMode(pin, OUTPUT); digitalWrite(pin, LOW); }
+    }
+#if defined(OT_PLATFORM_ESP32S3)
+    // Clear the onboard addressable LED (GPIO48) explicitly even if the config
+    // pin was cleared to -1/AUTO on disable — it would otherwise hold its colour.
+    rgbLedWrite(48, 0, 0, 0);
+#endif
+    _ledOn           = false;
+    _blinksRemaining = 0;
+    _inPause         = true;
+}
+
 } // namespace StatusLED

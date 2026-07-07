@@ -435,8 +435,10 @@ function applyData(d) {
   setText('last-event',  d.last_event || '—');
 
   // Throttle sub-labels: idle floor + dynamic idle target
-  if (d.idle_min_pct !== undefined) {
-    setText('throttle-idle-floor', Number(d.idle_min_pct).toFixed(1));
+  // Running fuel floor = the measured fuel-pump minimum-spin % (0 = uncalibrated,
+  // no floor). This is the lowest fuel the ECU commands while RUNNING.
+  if (d.fuel_pump_min_pct !== undefined) {
+    setText('throttle-idle-floor', Number(d.fuel_pump_min_pct).toFixed(1));
   }
   const floorRow = document.getElementById('throttle-floor-row');
   if (floorRow) floorRow.style.display = d.mode === 'STARTUP' ? 'none' : '';
@@ -565,8 +567,12 @@ function applyData(d) {
   // RPM health is only meaningful when the engine is running — zero RPM at standby is valid.
   // Pass null when not in an operational mode so the dot shows neutral (dim), not fault (red).
   const engineOp = (d.mode === 'RUNNING' || d.mode === 'STARTUP');
-  setDot('n1-health',  engineOp ? d.n1_healthy : null, lbl('n1') + ' RPM');
-  setDot('n2-health',  engineOp ? d.n2_healthy : null, lbl('n2') + ' RPM');
+  // RPM health: green whenever the sensor has trustworthy data (any mode, so
+  // live bench RPM shows green like every other sensor dot). A stopped shaft
+  // reads 0 with no pulses (unhealthy) — show that as a red fault only while
+  // operating; in STANDBY a still shaft is expected, so stay neutral (grey).
+  setDot('n1-health',  d.n1_healthy ? true : (engineOp ? false : null), lbl('n1') + ' RPM');
+  setDot('n2-health',  d.n2_healthy ? true : (engineOp ? false : null), lbl('n2') + ' RPM');
   setDot('tot-health', d.tot_healthy, lbl('tot'));
   setDot('oil-health', d.oil_healthy, lbl('oil_press'));
   // Flame dot: green = flame confirmed; red = no flame while the engine is
@@ -925,11 +931,24 @@ function applyData(d) {
         const battMin = Number(d.batt_volt_min || 0);
         setText('batt-volt-min', battMin > 0 ? battMin.toFixed(1) : 'OFF');
         if (d.batt_voltage !== undefined) {
-          // 0% = at alarm threshold, 100% = 30% above threshold (typical full charge headroom)
+          const v = Number(d.batt_voltage);
+          // 0% width = at alarm threshold, 100% = 30% above threshold (typical full-charge headroom).
           const fullV = battMin * 1.3;
           const pct = battMin > 0 ? Math.min(100, Math.max(0,
-            ((d.batt_voltage - battMin) / (fullV - battMin)) * 100)) : 0;
-          setGaugeBar('batt-gauge-bar', pct);
+            ((v - battMin) / (fullV - battMin)) * 100)) : 0;
+          // Battery is inverted vs the temp/RPM gauges: a FULL pack is the good
+          // state (green), a near-empty pack is the fault (red). Colour is forced
+          // by voltage thresholds so a full battery never renders red. Optional
+          // over-voltage (charger fault / wrong cell count) also flags once the
+          // pack climbs meaningfully above the full reference.
+          let cls = 'ok';
+          if (battMin > 0) {
+            if (v <= battMin)            cls = 'danger';   // at/below undervoltage alarm
+            else if (v < battMin * 1.1)  cls = 'warn';     // within 10% of the alarm
+            else if (v > fullV * 1.08)   cls = 'danger';   // over-voltage (well above full)
+            else if (v > fullV)          cls = 'warn';     // slightly over full headroom
+          }
+          setGaugeBar('batt-gauge-bar', pct, battMin > 0 ? cls : 'ok');
         }
       }
     }
@@ -1054,6 +1073,18 @@ function applyData(d) {
     if (d.has_governor) {
       setText('gov-target-rpm', d.governor_target_rpm !== undefined ? fmtInt(d.governor_target_rpm) : '—');
       setText('gov-n2-actual',  d.n2 !== undefined ? fmtInt(d.n2) : '—');
+      const govMode = document.getElementById('gov-mode');
+      if (govMode) {
+        if (d.governor_mode) {
+          govMode.textContent = d.governor_mode === 'pitch' ? 'PROP-PITCH' : 'THROTTLE-DRIVEN';
+          govMode.title = d.governor_mode === 'pitch'
+            ? 'Holds N2 by adjusting propeller pitch/load — you set power with the throttle.'
+            : 'Holds N2 by winding fuel/throttle directly — the governor owns the throttle.';
+          govMode.style.display = '';
+        } else {
+          govMode.style.display = 'none';
+        }
+      }
     }
   }
 
