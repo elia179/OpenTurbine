@@ -29,7 +29,7 @@ public:
     float rampDownMs    = 20000.0f;
     float deadbandRpm   = 300.0f;
     float rpmLimit      = 60000.0f;  // disengage above this
-    float minMultiplier = 0.75f;     // floor = configured idle throttle * multiplier
+    float minMultiplier = 0.75f;     // floor = fuel-pump min-spin * multiplier
     float maxMultiplier = 1.50f;     // ceiling = configured idle max throttle * multiplier
 
     void begin() override {
@@ -90,10 +90,10 @@ public:
             // is centred on the idle point rather than the disengage ceiling.
             rampStep = constrain(error / targetRpm, -maxStep, maxStep);
         }
-        // This multiplier belongs to the calibrated running idle throttle
-        // floor. Deriving it from RPM ratios can impose a hidden high fuel
+        // This multiplier belongs to the calibrated fuel-pump minimum spin.
+        // Deriving it from RPM ratios can impose a hidden high fuel
         // minimum (for example 54% instead of an intended 7.2%).
-        float minFloor = constrain((Config::throttleIdleMinPct / 100.0f) * minMultiplier,
+        float minFloor = constrain((Config::fuelPumpMinPct / 100.0f) * minMultiplier,
                                    0.0f, 1.0f);
         // Ceiling near the calibrated idle max: a healthy-but-underreading N1
         // (e.g. wrong pulses-per-rev) keeps error positive forever and would

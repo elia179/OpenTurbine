@@ -1,6 +1,6 @@
 # OpenTurbine (OT) — Architecture & Design Specification
 
-Version: 1.2
+Version: 1.5
 License: MIT
 
 ---
@@ -16,7 +16,7 @@ License: MIT
 
 OpenTurbine is a universal turbine engine ECU firmware targeting ESP32-class microcontrollers.
 The core principle: **add without breaking**. Every feature is an optional block. The firmware
-runs on minimal hardware by gracefully disabling anything not declared in the hardware profile.
+runs on minimal hardware by gracefully disabling anything not enabled in the runtime hardware config.
 Non-engineers can configure and operate it; engineers can extend it without touching unrelated code.
 
 ### Hard rules
@@ -547,7 +547,7 @@ All parameters from ecu_config.json.
   "throttle": {
     "ramp_up_ms": 600,
     "ramp_down_ms": 800,
-    "idle_min_pct": 8,
+    "fuel_pump_min_pct": 0,
     "idle_max_pct": 18,
     "expo": 0
   },
@@ -925,14 +925,14 @@ monitor_speed = 115200
 
 1. **ECU loop never blocks.** No `delay()`, no mutex waits, no blocking I/O.
 2. **Sensors always report health.** No consumer uses a value without checking health.
-3. **All hardware assumptions in `hardware_profile.h` only.** Zero chip names elsewhere.
+3. **Hardware defaults live in `hardware_profile.h`; runtime configuration in `ecu_config.json` owns the fitted hardware.** Chip names are validated in the hardware/config layer so saved configs cannot select unsupported drivers.
 4. **No dynamic allocation after boot.** No `new`/`malloc` in the run loop.
 5. **Config changes during operation are locked unless runtime Dev Mode is active.**
 6. **Profile ID mismatch = no engine operations.** Ever.
 7. **STOP switch always wins.** Checked in hardware, not just software.
 8. **Flight recorder writes are non-blocking.** Buffered, flushed when idle.
 9. **Web server can never directly set actuator state.** Commands only via queue.
-10. **Every optional feature compiles to zero code when not declared.**
+10. **Optional hardware is inactive unless configured.** Runtime hardware objects may remain compiled in so one firmware image can serve multiple engine builds.
 
 ---
 
@@ -1195,4 +1195,4 @@ The actuator object never reads `EngineData` directly.
 
 ---
 
-*End of specification — OpenTurbine v1.2*
+*End of specification — OpenTurbine v1.5*

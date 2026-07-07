@@ -9,13 +9,13 @@
 //  ModifiedIdle — set throttle demand from idle input × multiplier
 //
 //  ACTION block: reads idleInputRaw (0–4095), maps it through the
-//  configured throttle idle range [throttleIdleMinPct, throttleIdleMaxPct],
+//  configured idle range [fuelPumpMinPct, throttleIdleMaxPct],
 //  then multiplies by `multiplier` and writes to ed.throttleDemand.
 //  Completes in one tick.
 //
 //  multiplier is a per-block runtime param set from Config via
-//  Hardware::applyConfig().  Idle range comes from Config::throttleIdleMinPct /
-//  throttleIdleMaxPct (the same percentages used by the Spool block).
+//  Hardware::applyConfig(). The low end is the calibrated fuel-pump
+//  minimum-spin percentage; the high end comes from throttleIdleMaxPct.
 //
 //  Use case: hold throttle at a scaled idle position — e.g., 1.5× idle
 //  for a warm-up step without engaging full DynamicIdle control.
@@ -36,8 +36,8 @@ public:
             norm = range == 0 ? 0.0f :
                 constrain((ed.idleInputRaw - Config::idleMinRaw) / (float)range, 0.0f, 1.0f);
         }
-        float minPct = Config::throttleIdleMinPct;
-        float maxPct = Config::throttleIdleMaxPct;
+        float minPct = Config::fuelPumpMinPct;
+        float maxPct = constrain(Config::throttleIdleMaxPct, minPct, 100.0f);
         float pct    = minPct + norm * (maxPct - minPct);
         ed.throttleDemand = constrain((pct / 100.0f) * multiplier, 0.0f, 1.0f);
     }

@@ -50,7 +50,6 @@ int   Config::shutdownFinalStopTimeoutMs=10000;
 
 float Config::throttleRampUpMs      = 600;
 float Config::throttleRampDownMs    = 800;
-float Config::throttleIdleMinPct    = 8;
 float Config::throttleIdleMaxPct    = 18;
 float Config::fuelPumpMinPct        = 0;   // 0 = not calibrated; measured via the fuel-pump min-spin calibration
 float Config::throttleExpo          = 0.0f;  // 0 = linear by default
@@ -163,7 +162,6 @@ int      Config::waitForInputTimeoutMs = 0;
 
 int      Config::cooldownSkipHoldMs  = 1000;
 
-float    Config::fuelPumpIdleMinPct  = 8.0f;
 float    Config::fuelPumpIdleMaxPct  = 18.0f;
 
 int      Config::timedDelayMs            = 1000;
@@ -473,7 +471,6 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     JsonVariantConst th = doc["throttle"];
     if (!validNumber(th["ramp_up_ms"], 0.0f, 3600000.0f) ||
         !validNumber(th["ramp_down_ms"], 0.0f, 3600000.0f) ||
-        !validNumber(th["idle_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["fuel_pump_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["idle_max_pct"], 0.0f, 100.0f) ||
         !validNumber(th["expo"], 0.0f, 1.0f) ||
@@ -488,7 +485,6 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(th["pullback_egt_hard_c"], 0.0f, 1400.0f) ||
         !validNumber(th["pullback_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["pullback_strength"], 0.0f, 5.0f)) return false;
-    if (present(th["idle_min_pct"]) && present(th["idle_max_pct"]) && th["idle_max_pct"].as<float>() < th["idle_min_pct"].as<float>()) return false;
     if (present(th["pullback_n1_soft_rpm"]) && present(th["pullback_n1_hard_rpm"]) &&
         th["pullback_n1_hard_rpm"].as<float>() > 0.0f &&
         th["pullback_n1_hard_rpm"].as<float>() <= th["pullback_n1_soft_rpm"].as<float>()) return false;
@@ -498,6 +494,10 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (present(th["pullback_egt_soft_c"]) && present(th["pullback_egt_hard_c"]) &&
         th["pullback_egt_hard_c"].as<float>() > 0.0f &&
         th["pullback_egt_hard_c"].as<float>() <= th["pullback_egt_soft_c"].as<float>()) return false;
+
+    JsonVariantConst fp = doc["fuel_pump"];
+    if (present(fp) && (!fp.is<JsonObjectConst>() ||
+        !validNumber(fp["idle_max_pct"], 0.0f, 100.0f))) return false;
 
     JsonVariantConst tools = doc["tools"];
     if (present(tools) && (!tools.is<JsonObjectConst>() ||
@@ -1218,6 +1218,13 @@ bool Config::applyJsonRuntimeOnly(const JsonDocument& doc) {
     return true;
 }
 
+float Config::applyFuelPumpMinimum(float demand01) {
+    float demand = constrain(demand01, 0.0f, 1.0f);
+    float minDemand = constrain(fuelPumpMinPct / 100.0f, 0.0f, 1.0f);
+    if (minDemand <= 0.0f) return demand;
+    return (demand > 0.0f && demand < minDemand) ? 0.0f : demand;
+}
+
 void Config::_applyDefaults() {
     // Re-assign every field to its compile-time default so that load() is
     // idempotent: missing JSON keys restore to the default rather than
@@ -1250,7 +1257,7 @@ void Config::_applyDefaults() {
     cooldownUseStarter = true; cooldownUseOilPump = true;
     cooldownStarterPct = 40.0f; cooldownOilPct = 30.0f; cooldownOilPressureTarget = 2.0f;
     throttleRampUpMs = 600; throttleRampDownMs = 800;
-    throttleIdleMinPct = 8; throttleIdleMaxPct = 18; throttleExpo = 0.0f;
+    throttleIdleMaxPct = 18; throttleExpo = 0.0f;
     fuelPumpMinPct = 0;
     pullbackN1Enabled = true; pullbackN2Enabled = false; pullbackEgtEnabled = true;
     pullbackN1SoftRpm = 95000.0f; pullbackN1HardRpm = 100000.0f;
@@ -1282,7 +1289,7 @@ void Config::_applyDefaults() {
     standbyOilFeedBar = 0.0f;
     limpMaxThrottlePct = 50.0f; igniterOnStart = true; manualRelightIgnitionTarget = 0;
     cooldownSkipHoldMs = 1000;
-    fuelPumpIdleMinPct = 8.0f; fuelPumpIdleMaxPct = 18.0f;
+    fuelPumpIdleMaxPct = 18.0f;
     fp2StartPct = 0.0f; fp2EndPct = 80.0f; fp2RampMs = 3000; fp2DemandPct = 0.0f;
     govHoldTimeoutMs = 10000;
     abMinN1 = 30000.0f; abMaxN1 = 0.0f; abMaxTotForLight = 0.0f;
@@ -1413,7 +1420,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
     auto th = doc["throttle"];
     throttleRampUpMs    = th["ramp_up_ms"]   | throttleRampUpMs;
     throttleRampDownMs  = th["ramp_down_ms"] | throttleRampDownMs;
-    throttleIdleMinPct  = th["idle_min_pct"] | throttleIdleMinPct;
     fuelPumpMinPct      = th["fuel_pump_min_pct"] | fuelPumpMinPct;
     throttleIdleMaxPct  = th["idle_max_pct"] | throttleIdleMaxPct;
     throttleExpo        = th["expo"]         | throttleExpo;
@@ -1559,7 +1565,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
     manualRelightIgnitionTarget = misc["igniter_on_start_target"] | manualRelightIgnitionTarget;
 
     auto fp = doc["fuel_pump"];
-    fuelPumpIdleMinPct = fp["idle_min_pct"] | fuelPumpIdleMinPct;
     fuelPumpIdleMaxPct = fp["idle_max_pct"] | fuelPumpIdleMaxPct;
 
     auto rh = doc["rpm_health"];
@@ -1782,9 +1787,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     oilPumpOnPct = constrain(oilPumpOnPct, 0.0f, 100.0f);
     cooldownStarterPct = constrain(cooldownStarterPct, 0.0f, 100.0f);
     cooldownOilPct = constrain(cooldownOilPct, 0.0f, 100.0f);
-    throttleIdleMinPct = constrain(throttleIdleMinPct, 0.0f, 100.0f);
-    throttleIdleMaxPct = constrain(throttleIdleMaxPct, throttleIdleMinPct, 100.0f);
     fuelPumpMinPct     = constrain(fuelPumpMinPct, 0.0f, 100.0f);
+    throttleIdleMaxPct = constrain(throttleIdleMaxPct, fuelPumpMinPct, 100.0f);
     throttleExpo = constrain(throttleExpo, 0.0f, 1.0f);
     pullbackN1SoftRpm = constrain(pullbackN1SoftRpm, 0.0f, 500000.0f);
     pullbackN1HardRpm = constrain(pullbackN1HardRpm, 0.0f, 500000.0f);
@@ -1808,8 +1812,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     starterAssistPct = constrain(starterAssistPct, 0.0f, 100.0f);
     standbyOilFeedPct = constrain(standbyOilFeedPct, 0.0f, 100.0f);
     standbyOilFeedBar = constrain(standbyOilFeedBar, 0.0f, 20.0f);
-    fuelPumpIdleMinPct = constrain(fuelPumpIdleMinPct, 0.0f, 100.0f);
-    fuelPumpIdleMaxPct = constrain(fuelPumpIdleMaxPct, fuelPumpIdleMinPct, 100.0f);
+    fuelPumpIdleMaxPct = constrain(fuelPumpIdleMaxPct, fuelPumpMinPct, 100.0f);
     if (modifiedIdleMultiplier < 0.0f) modifiedIdleMultiplier = 0.0f;
     fp2StartPct = constrain(fp2StartPct, 0.0f, 100.0f);
     fp2EndPct = constrain(fp2EndPct, 0.0f, 100.0f);
@@ -1986,7 +1989,6 @@ void Config::_toDoc(JsonDocument& doc) {
     auto th = doc["throttle"].to<JsonObject>();
     th["ramp_up_ms"]   = throttleRampUpMs;
     th["ramp_down_ms"] = throttleRampDownMs;
-    th["idle_min_pct"] = throttleIdleMinPct;
     th["fuel_pump_min_pct"] = fuelPumpMinPct;
     th["idle_max_pct"] = throttleIdleMaxPct;
     th["expo"]         = throttleExpo;
@@ -2130,7 +2132,6 @@ void Config::_toDoc(JsonDocument& doc) {
     misc["igniter_on_start_target"] = manualRelightIgnitionTarget;
 
     auto fp = doc["fuel_pump"].to<JsonObject>();
-    fp["idle_min_pct"] = fuelPumpIdleMinPct;
     fp["idle_max_pct"] = fuelPumpIdleMaxPct;
 
     auto rh = doc["rpm_health"].to<JsonObject>();

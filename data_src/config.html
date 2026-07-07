@@ -114,8 +114,7 @@ const SCHEMA = [
   { title: 'Throttle', id: 'throttle', fields: [
     { key:'th_ru', path:['throttle','ramp_up_ms'],   label:'Throttle Open Speed (ms)',   desc:'Time to sweep throttle from 0 to 100% (milliseconds). Lower = faster response. Typical: 500-2000 ms.',   step:50,  min:0, basic:true },
     { key:'th_rd', path:['throttle','ramp_down_ms'], label:'Throttle Close Speed (ms)', desc:'Time to sweep throttle from 100% to 0 (milliseconds). Lower = faster closure. Typical: 500-2000 ms.',    step:50,  min:0, basic:true },
-    { key:'th_mn', path:['throttle','idle_min_pct'], label:'Idle Min %',     desc:'Throttle/fuel output when the idle input is at its minimum — the low end of the idle-input curve (0–100%). This is NOT the running fuel floor (that is the Fuel Pump Minimum Spin calibration). The Calibration page only calibrates the idle input\'s raw endpoints; set this value here.',  step:1, min:0, max:100, basic:true },
-    { key:'th_mx', path:['throttle','idle_max_pct'], label:'Idle Max %',     desc:'Throttle/fuel output when the idle input is at its maximum — the high end of the idle-input curve (0–100%).', step:1, min:0, max:100, basic:true },
+    { key:'th_mx', path:['throttle','idle_max_pct'], label:'Idle Max %',     desc:'Throttle/fuel output when the idle input is at its maximum. The low end comes from Calibration -> Fuel Pump Minimum Spin.', step:1, min:0, max:100, basic:true },
     { key:'th_ex', path:['throttle','expo'],         label:'Throttle Expo',  desc:'Exponential response curve for the throttle stick (0 = linear, 0.3 = mild, 0.7 = strong). Reduces stick sensitivity near idle making low-power flying easier. Has no effect without a physical throttle input connected.', step:0.05, min:0, max:0.95, basic:true },
     { key:'pb_n1e', path:['throttle','pullback_n1'], label:'N1 Soft Pullback', type:'checkbox', desc:'Reduce throttle as N1 approaches its soft/hard pullback range.', basic:true },
     { key:'pb_n1s', path:['throttle','pullback_n1_soft_rpm'], label:'N1 Pullback Start', unit:'RPM', desc:'N1 RPM where throttle pullback begins.', step:500, min:0, max:500000 },
@@ -138,7 +137,7 @@ const SCHEMA = [
     { key:'di_rd', path:['dynamic_idle','ramp_down_ms'],  label:'Ramp Down (ms)',   desc:'Throttle ramp-down rate for idle hold', step:500,  min:0 },
     { key:'di_db', path:['dynamic_idle','deadband_rpm'],  label:'Deadband RPM',     desc:'No correction within this RPM band',   step:100,  min:0 },
     { key:'di_rl', path:['dynamic_idle','rpm_limit'],     label:'Disengage RPM',    desc:'Controller disengages above this RPM', step:1000, min:0 },
-    { key:'di_mm', path:['dynamic_idle','min_multiplier'],label:'Min Multiplier',   desc:'Floor = idle_min_pct × multiplier',    step:0.05, min:0, max:1 },
+    { key:'di_mm', path:['dynamic_idle','min_multiplier'],label:'Min Multiplier',   desc:'Floor = calibrated fuel-pump minimum-spin % × multiplier',    step:0.05, min:0, max:1 },
     { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Use N2 Speed',     desc:'Use N2 shaft RPM as the idle controller feedback source. N1-only protections only run when an N1 sensor is fitted.', type:'checkbox' },
     { key:'di_ig', path:['dynamic_idle','i_gain'],       label:'I-Gain',           desc:'Integral gain (0 = off). Eliminates steady-state RPM error caused by load changes (e.g. oil pump startup). Start small: 0.05–0.15. Only active when Dynamic Idle is enabled.', step:0.01, min:0, max:2 },
     { key:'di_im', path:['dynamic_idle','i_max'],        label:'I-Max Authority',  desc:'Maximum integral authority (fraction of throttle range). Limits wind-up so the integrator alone cannot over-speed the engine. 0.10 = ±10% throttle range.', step:0.01, min:0, max:0.5 },
@@ -759,8 +758,6 @@ function validateBeforeSave(cfg) {
   const rpmLimit   = gv(cfg, 'engine', 'rpm_limit');
   const minRpm     = gv(cfg, 'engine', 'min_rpm');
   const idleTarget = gv(cfg, 'dynamic_idle', 'target_rpm');
-  const idleMin    = gv(cfg, 'throttle', 'idle_min_pct');
-  const idleMax    = gv(cfg, 'throttle', 'idle_max_pct');
   const hasN1       = !!((hwCfg.sensors || {}).n1_rpm?.enabled || hwCfg.has_n1_rpm);
   const hasAnyIdleRpm = !!(hasN1 || (hwCfg.has_two_shaft && ((hwCfg.sensors || {}).n2_rpm?.enabled || hwCfg.has_n2_rpm)));
 
@@ -769,9 +766,6 @@ function validateBeforeSave(cfg) {
 
   if (hasAnyIdleRpm && idleTarget !== undefined && minRpm !== undefined && idleTarget < minRpm)
     warns.push('Idle target RPM (' + idleTarget + ') is below Min RPM (' + minRpm + '). Engine may fault at idle.');
-
-  if (idleMin !== undefined && idleMax !== undefined && idleMin > idleMax)
-    errors.push('Throttle Idle Min% (' + idleMin + ') is greater than Idle Max% (' + idleMax + '). Swap them.');
 
   // Oil system cross-checks
   const oilRunning   = gv(cfg, 'oil', 'running_min');
@@ -1506,7 +1500,6 @@ function applyHwConditions() {
   const slewMsg = 'Applied by the Throttle Slew controller — enable it in Hardware > Controllers.';
   ghostField('th_ru', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Throttle / fuel output is not configured in Hardware.' : slewMsg);
   ghostField('th_rd', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Throttle / fuel output is not configured in Hardware.' : slewMsg);
-  ghostField('th_mn', hasThrottleOut, 'Throttle / fuel output is not configured in Hardware.');
   ghostField('th_mx', hasThrottleOut, 'Throttle / fuel output is not configured in Hardware.');
   ghostField('th_ex', hasThrottleOut, 'Throttle / fuel output is not configured in Hardware.');
   const hasN1Pb  = !!(hwCfg.sensors?.n1_rpm?.enabled || hwCfg.has_n1_rpm);
@@ -1780,8 +1773,9 @@ async function fetchJsonWithRetry(url, attempts = 3) {
     }
   })
   .catch(e => {
+    const msg = e && e.message ? e.message : e;
     document.getElementById('cfg-form').innerHTML =
-      `<p style="color:var(--red);font-size:.85rem">Error loading config: ${e}</p>`;
+      `<p style="color:var(--red);font-size:.85rem">Error loading config: ${_escHtml(msg || 'unknown error')}</p>`;
   });
 </script>
 </body>

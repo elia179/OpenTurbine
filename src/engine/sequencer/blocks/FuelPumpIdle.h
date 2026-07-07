@@ -9,16 +9,14 @@
 //  FuelPumpIdle — set throttle / fuel ESC from idle input channel
 //
 //  ACTION block: reads idleInputRaw (0–4095), maps it linearly
-//  through [minPct, maxPct], and writes the result to
-//  ed.throttleDemand.  Completes in one tick.
+//  through [Config::fuelPumpMinPct, maxPct], and writes the
+//  result to ed.throttleDemand. Completes in one tick.
 //
-//  Typical idle range: 8–18 % of full throttle travel.
-//  minPct / maxPct are set from Config::fuelPumpIdleMinPct /
-//  fuelPumpIdleMaxPct via Hardware::applyConfig().
+//  The low end is the calibrated fuel-pump minimum-spin percentage.
+//  maxPct is set from Config::fuelPumpIdleMaxPct via Hardware::applyConfig().
 // ============================================================
 class FuelPumpIdle : public IBlock {
 public:
-    float minPct = 8.0f;    // throttle % when idle input is at minimum
     float maxPct = 18.0f;   // throttle % when idle input is at maximum
 
     const char* name() override { return "FuelPumpIdle"; }
@@ -33,9 +31,11 @@ public:
             norm = range == 0 ? 0.0f :
                 constrain((ed.idleInputRaw - Config::idleMinRaw) / (float)range, 0.0f, 1.0f);
         }
-        float pct  = minPct + norm * (maxPct - minPct);
+        float minPct = constrain(Config::fuelPumpMinPct, 0.0f, 100.0f);
+        float topPct = constrain(maxPct, minPct, 100.0f);
+        float pct  = minPct + norm * (topPct - minPct);
         ed.throttleDemand = constrain(pct / 100.0f, 0.0f, 1.0f);
-        if (ed.throttleDemand > 0.0f) ed.fuelEverOpened = true;
+        if (Config::applyFuelPumpMinimum(ed.throttleDemand) > 0.001f) ed.fuelEverOpened = true;
     }
 
     BlockResult tick() override {

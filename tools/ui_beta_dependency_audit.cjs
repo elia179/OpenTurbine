@@ -396,7 +396,7 @@ async function optionDisabled(page, selector, value) {
     assert.equal(await optionDisabled(page, '#cf-eg_src', '2'), false);
     assert.equal(await disabled(page, '#cf-tot_limit'), true);
     assert.equal(await disabled(page, '#cf-sf_tit'), false);
-    assert.equal(await disabled(page, '#cf-th_mn'), true);
+    assert.equal(await disabled(page, '#cf-th_mx'), true);
     assert.equal(await disabled(page, '#cf-ab_ui'), true);
     assert.equal(await disabled(page, '#cf-ab_ut'), true);
     assert.equal(await disabled(page, '#cf-ab_pcm'), true);

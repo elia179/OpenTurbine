@@ -427,9 +427,8 @@ const BLOCKS = {
     label:'Fuel Pump -> Idle Input', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
-    desc:'Sets the throttle/fuel ESC demand from the idle input (pot or RC channel). Maps raw input (0-4095) linearly to the Min%-Max% range. If no idle channel is fitted, uses Min% as a fixed idle - set Min% = Max% for a precise hardcoded idle without a physical channel. Completes immediately.',
+    desc:'Sets the throttle/fuel ESC demand from the idle input (pot or RC channel). The low end is the calibrated Fuel Pump Minimum Spin value; this block maps raw input (0-4095) linearly up to Max%. If no idle channel is fitted, it uses the calibrated minimum as the fixed idle. Completes immediately.',
     params:[
-      {key:'fp_idle_min_pct',      label:'Min pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:8,     configKey:'fp_idle_min_pct'},
       {key:'fp_idle_max_pct',      label:'Max pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:18,    configKey:'fp_idle_max_pct'},
     ]
   },
@@ -446,14 +445,12 @@ const BLOCKS = {
     label:'Spool', type:'while', badgeClass:'badge-while',
     condition: hw => `N1 < ${hw.rpm_target ?? 32000} rpm`,
     timeout_action:'fault',
-    desc:'Sets throttleDemand to idle_min_pct and holds until N1 reaches target RPM. Flame monitor is active - if flame is lost the engine faults. On timeout -> FAULT SHUTDOWN. The running oil minimum is enforced from this block onward. On exit: optionally cuts starter demand and/or starter enable relay (checkboxes below). Outputs: throttleDemand = idle_min_pct (held until block exits).',
+    desc:'Sets throttleDemand to the calibrated Fuel Pump Minimum Spin value and holds until N1 reaches target RPM. Flame monitor is active - if flame is lost the engine faults. On timeout -> FAULT SHUTDOWN. The running oil minimum is enforced from this block onward. On exit: optionally cuts starter demand and/or starter enable relay (checkboxes below).',
     hwWarnings:[
       { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
         msg: 'Warning: No N1 RPM sensor - Spool cannot verify target RPM has been reached. Block will run until timeout -> FAULT SHUTDOWN.' },
     ],
     params:[
-      {key:'idle_min_pct',              label:'Idle throttle',              unit:'%',  type:'float', min:0,    max:50,     step:0.5,  def:8,     configKey:'idle_min_pct',
-        visibleIf: hw => actuatorHasProportionalOutput('throttle')},
       {key:'rpm_target',                label:'Target N1',                  unit:'rpm',type:'float', min:1000, max:200000, step:500,  def:32000, configKey:'rpm_target'},
       {key:'rpm_timeout_ms',            label:'Timeout',                    unit:'ms', type:'int',   min:1000, max:120000, step:1000, def:12000, configKey:'rpm_timeout_ms'},
       {key:'oil_running_min',           label:'Running oil min',            unit:'bar',type:'float', min:0,    max:10,     step:0.1,  def:2.8,   configKey:'oil_running_min',
@@ -909,7 +906,6 @@ const CONFIG_SECTIONS = {
   flame_timeout_ms:        {sec:'sequence.startup', key:'flame_timeout_ms'},
   rpm_target:              {sec:'sequence.startup', key:'rpm_target'},
   rpm_timeout_ms:          {sec:'sequence.startup', key:'rpm_timeout_ms'},
-  idle_min_pct:            {sec:'throttle',          key:'idle_min_pct'},
   safety_hold_ms:          {sec:'sequence.startup', key:'safety_hold_ms'},
   final_check_rpm:         {sec:'sequence.startup', key:'final_check_rpm'},
   // shutdown params (doc.sequence.shutdown.*)
@@ -936,7 +932,6 @@ const CONFIG_SECTIONS = {
   throttle_set_pct:        {sec:'sequence.startup', key:'throttle_set_pct'},
   preheat_ms:              {sec:'sequence.startup', key:'preheat_ms'},
   oil_pump_on_pct:         {sec:'sequence.startup', key:'oil_pump_on_pct'},
-  fp_idle_min_pct:         {sec:'fuel_pump',        key:'idle_min_pct'},
   fp_idle_max_pct:         {sec:'fuel_pump',        key:'idle_max_pct'},
   // FlameConfirm / SafetyHold exit action bools
   flame_turn_off_igniter:     {sec:'sequence.startup', key:'flame_turn_off_igniter'},
@@ -1066,9 +1061,9 @@ const BLOCK_INFO = {
     ]
   },
   Spool: {
-    desc: 'Holds throttle at idle_min_pct and waits for N1 to reach target RPM. Flame monitor active - flameout causes fault.',
+    desc: 'Holds throttle/fuel at calibrated Fuel Pump Minimum Spin and waits for N1 to reach target RPM. Flame monitor active - flameout causes fault.',
     links: [
-      { label: 'Throttle Idle Min %', url: '/config.html#throttle' },
+      { label: 'Fuel Pump Minimum Spin', url: '/calibration.html#fuelpump-min-cal-row' },
       { label: 'Throttle Open Speed', url: '/config.html#throttle' },
       { label: 'Running Oil Min',     url: '/config.html#oil-config-section' },
     ]
@@ -1101,13 +1096,15 @@ const BLOCK_INFO = {
     links: []
   },
   FuelPumpIdle: {
-    desc: 'Maps idle input (pot or RC) to fuel/throttle ESC demand using the configured idle min/max range.',
-    links: []
+    desc: 'Maps idle input (pot or RC) from calibrated Fuel Pump Minimum Spin up to Max pump %. The calibrated minimum is edited on Calibration.',
+    links: [
+      { label: 'Fuel Pump Minimum Spin', url: '/calibration.html#fuelpump-min-cal-row' },
+    ]
   },
   ModifiedIdle: {
-    desc: 'Sets throttle demand = idle input x multiplier. Use for a slightly higher idle on first spool.',
+    desc: 'Sets throttle demand from calibrated Fuel Pump Minimum Spin to Idle Max %, then applies the multiplier.',
     links: [
-      { label: 'Throttle Idle Min %', url: '/config.html#throttle' },
+      { label: 'Fuel Pump Minimum Spin', url: '/calibration.html#fuelpump-min-cal-row' },
       { label: 'Throttle Idle Max %', url: '/config.html#throttle' },
     ]
   },
@@ -1643,19 +1640,19 @@ function buildFinalStateCard(tab, seq, idleRaw) {
       if (bname === 'FuelPump2Off')  state.fuelPump2 = 'off';
       applySideActionsToState(tab, i, 'enter', state);
       if (bname === 'FuelPumpIdle') {
-        const mn = paramVals['FuelPumpIdle.fp_idle_min_pct'] ?? 8;
+        const mn = cfg?.throttle?.fuel_pump_min_pct ?? 0;
         const mx = paramVals['FuelPumpIdle.fp_idle_max_pct'] ?? 18;
         state.throttle = `${mn}-${mx}%  (from idle input)`;
       }
       if (bname === 'ModifiedIdle') {
         const mul = paramVals['ModifiedIdle.modified_idle_multiplier'] ?? 1.0;
-        const mn  = cfg?.throttle?.idle_min_pct ?? 8;
+        const mn  = cfg?.throttle?.fuel_pump_min_pct ?? 0;
         const mx  = cfg?.throttle?.idle_max_pct ?? 18;
         state.throttle = `${mn}-${mx}% x${mul}  (reset to 0 on RUNNING)`;
       }
       if (bname === 'Spool') {
-        const pct = paramVals['Spool.idle_min_pct'] ?? cfg?.sequence?.startup?.idle_min_pct ?? 8;
-        state.throttle = `${pct}%  (idle, held during spool)`;
+        const pct = cfg?.throttle?.fuel_pump_min_pct ?? 0;
+        state.throttle = `${pct}%  (calibrated min-spin, held during spool)`;
         // Update starter/enable state based on exit action checkboxes
         if (paramVals['Spool.spool_cut_starter_on_exit'] ?? true)    state.starter   = 'off';
         if (paramVals['Spool.spool_cut_starter_en_on_exit'] ?? true)  state.starterEn = 'off';
@@ -1672,8 +1669,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     }
     // After startup completes (RUNNING), throttle tracks idle input
     if (seq.includes('SafetyHold')) {
-      const mn = paramVals['Spool.idle_min_pct'] ?? paramVals['FuelPumpIdle.fp_idle_min_pct']
-              ?? cfg?.throttle?.idle_min_pct ?? cfg?.fuel_pump?.idle_min_pct ?? 8;
+      const mn = cfg?.throttle?.fuel_pump_min_pct ?? 0;
       const mx = paramVals['FuelPumpIdle.fp_idle_max_pct']
               ?? cfg?.throttle?.idle_max_pct ?? cfg?.fuel_pump?.idle_max_pct ?? 18;
       if (idleRaw != null) {
@@ -1681,7 +1677,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
         const pct  = (mn + norm * (mx - mn)).toFixed(1);
         state.throttle = `${pct}%  (idle input at ${Math.round(norm*100)}%, operator controlled)`;
       } else {
-        state.throttle = `${mn}-${mx}%  (idle minimum-maximum, operator controlled)`;
+        state.throttle = `${mn}-${mx}%  (min-spin to idle maximum, operator controlled)`;
       }
     }
 

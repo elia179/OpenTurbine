@@ -407,16 +407,16 @@
 
   <!-- Telemetry cards -->
   <section class="grid-2 telemetry">
-    <div class="card small" id="throttle-output-card" title="Actual commanded throttle or fuel-ESC output. During startup the Fuel Pump Idle sequence range is separate from the running throttle floor.">
+    <div class="card small" id="throttle-output-card" title="Actual commanded throttle or fuel-ESC output after the fuel-pump minimum-spin deadband. During startup the idle-input command range starts at the calibrated minimum.">
       <div class="label">Main Fuel / Throttle Output</div>
       <div class="value small" id="throttle-demand">—</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="throttle-input-row" style="display:none">throttle input: <span id="throttle-input-pct">—</span>%</div>
       <div class="oil-sub" id="throttle-feedback-inhibit-note" style="display:none;color:var(--yellow)">Throttle increase limited: fitted RPM/EGT feedback is unhealthy. Fix the sensor/calibration before live running; Bench Mode is only for dry actuator tests.</div>
-      <div class="oil-sub" id="throttle-floor-row" title="Fuel-pump minimum-spin floor: the lowest fuel the ECU commands while running (from the fuel-pump min-spin calibration). 0 = not calibrated / no floor.">fuel floor: <span id="throttle-idle-floor">—</span>%
+      <div class="oil-sub" id="throttle-floor-row" title="Fuel-pump minimum-spin calibration. Outside standby calibration/tools, nonzero commands below this value are forced to zero. 0 = not calibrated / no deadband.">fuel min spin: <span id="throttle-idle-floor">—</span>%
         <span id="throttle-di-wrap" style="display:none"> · Dynamic Idle target <span id="throttle-di-rpm">—</span> rpm</span>
       </div>
-      <div class="oil-sub" id="throttle-startup-range-row" style="display:none">startup FuelPumpIdle range: <span id="throttle-startup-range">—</span>%</div>
+      <div class="oil-sub" id="throttle-startup-range-row" style="display:none">startup idle-input command range: <span id="throttle-startup-range">—</span>%</div>
       <div class="oil-sub" id="throttle-effective-note" style="display:none">base demand: <span id="throttle-base-demand">—</span>% + AB offset</div>
     </div>
     <div class="card small" id="oil-output-card" title="Actual oil-pump PWM output. Controller Minimum Duty is a closed-loop floor, not a maximum; sequence steps such as Oil Pump On may command 100%.">

@@ -434,9 +434,9 @@ function applyData(d) {
   setText('uptime',      d.uptime_s !== undefined ? formatUptime(d.uptime_s)  : '—');
   setText('last-event',  d.last_event || '—');
 
-  // Throttle sub-labels: idle floor + dynamic idle target
-  // Running fuel floor = the measured fuel-pump minimum-spin % (0 = uncalibrated,
-  // no floor). This is the lowest fuel the ECU commands while RUNNING.
+  // Throttle sub-labels: calibrated fuel-pump min-spin + dynamic idle target.
+  // Non-standby commands below min-spin are displayed as zero after firmware
+  // applies the same deadband used at the actuator output.
   if (d.fuel_pump_min_pct !== undefined) {
     setText('throttle-idle-floor', Number(d.fuel_pump_min_pct).toFixed(1));
   }
@@ -445,11 +445,11 @@ function applyData(d) {
   const startupRangeRow = document.getElementById('throttle-startup-range-row');
   if (startupRangeRow) {
     const showStartupRange = d.mode === 'STARTUP' &&
-      d.fuel_idle_min_pct !== undefined && d.fuel_idle_max_pct !== undefined;
+      d.fuel_pump_min_pct !== undefined && d.fuel_idle_max_pct !== undefined;
     startupRangeRow.style.display = showStartupRange ? '' : 'none';
     if (showStartupRange) {
       setText('throttle-startup-range',
-        Number(d.fuel_idle_min_pct).toFixed(1) + ' to ' + Number(d.fuel_idle_max_pct).toFixed(1));
+        Number(d.fuel_pump_min_pct).toFixed(1) + ' to ' + Number(d.fuel_idle_max_pct).toFixed(1));
     }
   }
   const effectiveNote = document.getElementById('throttle-effective-note');

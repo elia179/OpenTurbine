@@ -819,6 +819,47 @@ bool numberRange(JsonVariantConst object, const char* field, float minValue, flo
     return value >= minValue && value <= maxValue;
 }
 
+bool optionalStringFits(JsonVariantConst value, size_t capacity) {
+    if (value.isNull()) return true;
+    if (!value.is<const char*>()) return false;
+    const char* text = value.as<const char*>();
+    return text && strlen(text) < capacity;
+}
+
+bool requiredStringFits(JsonVariantConst value, size_t capacity) {
+    if (!value.is<const char*>()) return false;
+    const char* text = value.as<const char*>();
+    return text && text[0] && strlen(text) < capacity;
+}
+
+bool validateDisplayLabels(JsonVariantConst labels) {
+    if (labels.isNull()) return true;
+    if (!labels.is<JsonObjectConst>()) return false;
+    static constexpr const char* keys[] = {
+        "tot", "tit", "n1", "n2", "oil_press", "oil_temp", "p1", "p2",
+        "fuel_press", "fuel_flow", "stop", "start", "ab_arm"
+    };
+    for (const char* key : keys) {
+        if (!optionalStringFits(labels[key], sizeof(HardwareConfig::labelTot))) return false;
+    }
+    return true;
+}
+
+bool validateCustomBlockStrings(JsonVariantConst blocks) {
+    if (blocks.isNull()) return true;
+    if (!blocks.is<JsonObjectConst>()) return false;
+    for (JsonPairConst kv : blocks.as<JsonObjectConst>()) {
+        const char* key = kv.key().c_str();
+        if (!key || strncmp(key, "custom_", 7) != 0) continue;
+        if (strlen(key) >= sizeof(HardwareConfig::customBlocks[0].key)) return false;
+        if (!kv.value().is<JsonObjectConst>()) return false;
+        JsonObjectConst item = kv.value().as<JsonObjectConst>();
+        if (!optionalStringFits(item["label"], sizeof(HardwareConfig::customBlocks[0].label)) ||
+            !optionalStringFits(item["desc"], sizeof(HardwareConfig::customBlocks[0].desc))) return false;
+    }
+    return true;
+}
+
 bool pwmPercentRange(JsonVariantConst object, const char* minField, const char* maxField) {
     if (!numberRange(object, minField, 0.0f, 100.0f) ||
         !numberRange(object, maxField, 0.0f, 100.0f)) return false;
@@ -1066,7 +1107,12 @@ bool validatePlatformPins(const JsonDocument& doc) {
                strcmp(role, "ab_fire") == 0 ||
                strcmp(role, "limp_mode") == 0;
     };
+    if (!doc["di_channels"].isNull() && !doc["di_channels"].is<JsonArrayConst>()) return false;
     for (JsonVariantConst ch : doc["di_channels"].as<JsonArrayConst>()) {
+        if (!optionalStringFits(ch["label"], sizeof(HardwareConfig::diCh[0].label)) ||
+            !optionalStringFits(ch["role"], sizeof(HardwareConfig::diCh[0].role)) ||
+            !optionalStringFits(ch["fault_code"], sizeof(HardwareConfig::diCh[0].faultCode)) ||
+            !optionalStringFits(ch["fault_msg"], sizeof(HardwareConfig::diCh[0].faultMsg))) return false;
         const char* role = ch["role"] | "none";
         if (!validDiRole(role)) return false;
         if ((role && strcmp(role, "none") != 0) && jsonPin(ch, "pin") < 0) return false;
@@ -2023,14 +2069,16 @@ bool HardwareConfig::validateJson(const char* json, size_t len) {
 }
 
 bool HardwareConfig::validateJson(const JsonDocument& doc) {
-    const char* id = doc["profile_id"] | "";
-    if (!id[0]) return false;
-    if (strlen(id) >= sizeof(HardwareConfig::profileId)) return false;
+    if (!requiredStringFits(doc["profile_id"], sizeof(HardwareConfig::profileId))) return false;
+    if (!optionalStringFits(doc["profile_desc"], sizeof(HardwareConfig::profileDesc))) return false;
+    if (!optionalStringFits(doc["wifi_password"], sizeof(HardwareConfig::wifiPassword))) return false;
     const char* password = doc["wifi_password"] | "";
     if (strcmp(password, WIFI_PASSWORD_RETAINED) != 0 && password[0]) {
         size_t pwLen = strlen(password);
         if (pwLen < 8 || pwLen >= sizeof(HardwareConfig::wifiPassword)) return false;
     }
+    if (!validateDisplayLabels(doc["labels"])) return false;
+    if (!validateCustomBlockStrings(doc["custom_blocks"])) return false;
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
     if (n1["enabled"].as<bool>()) {
@@ -3029,6 +3077,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             strncpy(diCh[i].role,      ch["role"]       | "none", sizeof(diCh[i].role)-1);
             strncpy(diCh[i].faultCode, ch["fault_code"] | "", sizeof(diCh[i].faultCode)-1);
             strncpy(diCh[i].faultMsg,  ch["fault_msg"]  | "", sizeof(diCh[i].faultMsg)-1);
+            diCh[i].label[sizeof(diCh[i].label) - 1] = '\0';
+            diCh[i].role[sizeof(diCh[i].role) - 1] = '\0';
+            diCh[i].faultCode[sizeof(diCh[i].faultCode) - 1] = '\0';
+            diCh[i].faultMsg[sizeof(diCh[i].faultMsg) - 1] = '\0';
             {
                 // Accept out-of-range active_modes and mask to the 5 valid
                 // SysMode bits instead of failing the whole config.

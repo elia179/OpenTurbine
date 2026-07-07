@@ -17,7 +17,7 @@ broader feature and build reference.
 - **Closed-loop oil pressure control** — P-controller with throttle-mapped target (idle → full throttle interpolation), open-loop failsafe on sensor fault, configurable deadband
 - **Dynamic idle hold** — optional RPM-feedback feature with asymmetric ramp, PI integral term, selectable N1 or N2 source
 - **Throttle slew limiting** — configurable up/down ramp rates with safety pullback near RPM/selected-EGT limits
-- **Fuel-pump minimum spin** — calibrated lowest fuel the ECU will command while running (replaces the old fixed idle-floor assumption); below it the pump stalls and the engine flames out. 0 = uncalibrated / no floor
+- **Fuel-pump minimum spin** — calibrated single source for the main fuel lower bound; startup idle input, spool, dynamic idle, and running throttle mapping use it. Outside standby calibration/tools, nonzero commands below it are forced to 0. 0 = uncalibrated / no deadband
 - **Power turbine governor** — closed-loop N2 RPM hold, auto-selecting throttle-driven mode (turboshaft/APU/generator) or prop-pitch mode (turboprop) from the fitted hardware
 - **Afterburner state machine** — full AB ignition/shutdown sequencer (ABCheckReady → ABIgnite → ABFlameConfirm → ABStabilize) with torch mode, fuel offset, pump-follows-throttle demand, independent igniter
 - **Automation rules engine** — up to 8 user-defined threshold rules (sensor op value → actuator demand) evaluated every loop tick
@@ -88,7 +88,7 @@ OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/
 
 | Component | Notes |
 |---|---|
-| ESP32 or ESP32-S3 dev board | 4 MB flash minimum. Classic 30-/38-pin modules or ESP32-S3 DevKitC |
+| ESP32 or ESP32-S3 dev board | Classic ESP32: 4 MB flash minimum. Shipped `esp32s3dev` target: ESP32-S3 DevKitC-1 N16R8 with 16 MB flash and 8 MB PSRAM. |
 | Hardware STOP / fuel-cut path | A physical stop switch or equivalent external cut-off is mandatory for real engine testing. The ECU stop input defaults to GPIO 15 active-low. |
 | EGT sensor (TOT or TIT) | MAX6675, MAX31855, MAX31856, or DS18B20 |
 | Main fuel pump / throttle output | Servo ESC, LEDC PWM, or on/off output as supported by the Hardware page |
@@ -249,7 +249,7 @@ All parameters live in `ecu_config.json` on LittleFS, editable via the web Confi
 | `oil_advanced` | Oil-near-zero fault threshold, overcurrent threshold |
 | `sequence.startup` | Per-block timeouts (oil prime, pre-ignition, flame confirm, spool, safety hold…) |
 | `sequence.shutdown` | RPM drop timeout, cooldown timeout, cooldown mode, cooldown pressure target |
-| `throttle` | Slew ramp rates (up/down), idle-input % range, expo curve, limp mode cap, fuel-pump minimum-spin % (the running fuel floor), pullback thresholds |
+| `throttle` | Slew ramp rates (up/down), idle-input max %, expo curve, limp mode cap, fuel-pump minimum-spin %, pullback thresholds |
 | `dynamic_idle` | Target RPM, ramp rates, deadband, P/I gains, N1 vs N2 source |
 | `governor` | N2 target RPM, throttle gain (throttle-driven mode) and pitch gain/slew/range (prop-pitch mode), deadband |
 | `safety` | Check interval, selected EGT source, TIT limit, flameout source/hold time, EGT rise-rate limit |
@@ -334,7 +334,7 @@ src/
 | Environment | Target | Notes |
 |---|---|---|
 | `esp32dev` | Classic ESP32 (240 MHz, 4 MB) | ADC1: GPIO 32–39 |
-| `esp32s3dev` | ESP32-S3 DevKitC N8 target (240 MHz, 8 MB) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB; YD onboard RGB status LED uses GPIO48 NeoPixel by default |
+| `esp32s3dev` | ESP32-S3 DevKitC-1 N16R8 target (240 MHz, 16 MB flash, 8 MB PSRAM) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB; YD onboard RGB status LED uses GPIO48 NeoPixel by default |
 
 ```bash
 pio run -e esp32dev   -t upload      # firmware
@@ -346,6 +346,8 @@ pio run -e esp32s3dev -t uploadfs
 Fresh beta installs and partition-table changes require serial firmware upload
 plus `uploadfs`. OTA firmware alone does not replace the partition table.
 The current storage layout uses a `data/littlefs` partition named `littlefs`.
+The `esp32s3dev` environment is intentionally for N16R8 modules; create a
+separate environment and partition table before flashing smaller S3 boards.
 
 ---
 

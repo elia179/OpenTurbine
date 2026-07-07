@@ -23,7 +23,7 @@ Choose the correct PlatformIO environment:
 | Board | Environment |
 |---|---|
 | Classic ESP32 dev board | `esp32dev` |
-| ESP32-S3 / YD-ESP32-S3 / YD-ESP32-23 | `esp32s3dev` |
+| ESP32-S3 DevKitC-1 N16R8 / YD-ESP32-S3 / YD-ESP32-23 with 16 MB flash | `esp32s3dev` |
 
 Flash firmware and web assets:
 
@@ -49,6 +49,9 @@ Notes:
   `uploadfs`. OTA firmware alone does not replace the partition table.
 - OpenTurbine expects its web/config storage partition to be `data/littlefs`
   named `littlefs`.
+- The `esp32s3dev` environment is for the tested N16R8-class S3 layout
+  (16 MB flash, 8 MB PSRAM). Smaller S3 modules need their own environment and
+  partition table.
 - OTA firmware and web-asset updates are also available later from Tools, after
   the ECU has already been installed with the current partition table.
 

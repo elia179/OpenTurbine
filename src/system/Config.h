@@ -61,7 +61,6 @@ public:
     // ── Throttle parameters ───────────────────────────────────
     static float throttleRampUpMs;
     static float throttleRampDownMs;
-    static float throttleIdleMinPct;
     static float throttleIdleMaxPct;
     static float throttleExpo;       // 0=linear, 0.3=mild expo, 1.0=max expo (reduces sensitivity near zero)
     static bool  pullbackN1Enabled;
@@ -188,9 +187,8 @@ public:
     static int   cooldownSkipHoldMs;     // hold both buttons this long in SHUTDOWN to skip cooldown
 
     // ── Throttle / fuel ESC idle range ────────────────────────
-    static float fuelPumpIdleMinPct;     // throttle % at idle input minimum (~8%)
     static float fuelPumpIdleMaxPct;     // throttle % at idle input maximum (~18%)
-    static float fuelPumpMinPct;         // measured min % at which the fuel-pump ESC reliably spins; a hard RUNNING throttle floor (0 = not calibrated). Below it the pump stalls -> flameout.
+    static float fuelPumpMinPct;         // measured min % at which the fuel-pump ESC reliably spins; 0 = not calibrated. Non-standby commands below it are forced to zero.
 
     // ── New sequence block params ─────────────────────────────
     static int   timedDelayMs;           // TimedDelay block duration (ms)
@@ -266,6 +264,7 @@ public:
     static float primaryEgtC(const EngineData& ed);
     static float primaryEgtLimitC();
     static const char* primaryEgtLabel();
+    static float applyFuelPumpMinimum(float demand01);
 
     // ── RC PWM input calibration ──────────────────────────────
     // GPIO pin and ADC/servo input type are selected in Hardware.

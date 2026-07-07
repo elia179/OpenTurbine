@@ -1276,6 +1276,21 @@ select option.pin-adc2   { color: #c07030; }
 .save-btn:disabled { opacity: 0.35; cursor: default; }
 .save-status { font-size: 0.76rem; color: var(--dim); flex: 1; font-family: var(--font-ui); }
 
+@media (max-width: 700px) {
+  .save-bar {
+    position: static;
+    bottom: auto;
+  }
+  .seq-save-bar {
+    position: static;
+    bottom: auto;
+    flex-wrap: wrap;
+    margin: 1rem 0 0;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+  }
+}
+
 /* Custom block dialog */
 .cblk-section { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.75rem 0.9rem 0.85rem; }
 .cblk-section-title { font-size: 0.59rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; font-family: var(--font-ui); }

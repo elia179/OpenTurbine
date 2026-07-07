@@ -710,9 +710,11 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["throttle_input_norm"] = (float)(int)(inputNorm * 1000) / 1000.0f;
     }
     doc["throttle_demand"]       = (float)(int)(ed.throttleDemand * 1000) / 1000.0f;
-    // Effective throttle = pilot demand + AB main fuel offset (what the ESC sees)
-    doc["throttle_effective"]    = (float)(int)(
-        constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f) * 1000) / 1000.0f;
+    // Effective throttle = pilot demand + AB main fuel offset after min-spin
+    // deadband, matching what the ESC sees outside standby calibration/tools.
+    float throttleEffective = constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f);
+    if (ed.mode != SysMode::STANDBY) throttleEffective = Config::applyFuelPumpMinimum(throttleEffective);
+    doc["throttle_effective"]    = (float)(int)(throttleEffective * 1000) / 1000.0f;
     doc["ab_fuel_offset"]        = (float)(int)(ed.abFuelOffset * 1000) / 1000.0f;
     doc["starter_demand"]        = (float)(int)(ed.starterDemand * 1000) / 1000.0f;
     doc["starter_enabled"]       = ed.starterEnabled;
@@ -874,8 +876,6 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
                                        || HardwareConfig::idleInputRcPwm;
         doc["idle_use_n2"]           = Config::idleUseN2;
         doc["limp_throttle_cap"]     = Config::limpMaxThrottlePct;
-        doc["idle_min_pct"]          = Config::throttleIdleMinPct;
-        doc["fuel_idle_min_pct"]     = Config::fuelPumpIdleMinPct;
         doc["fuel_idle_max_pct"]     = Config::fuelPumpIdleMaxPct;
         doc["fuel_pump_min_pct"]     = Config::fuelPumpMinPct;
         doc["oil_pump_on_pct"]       = Config::oilPumpOnPct;

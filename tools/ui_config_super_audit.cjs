@@ -118,7 +118,7 @@ async function sectionVisible(page, title) {
       '#cf-eg_src', '#cf-tot_limit', '#cf-tot_safe_margin', '#cf-tot_cooldown_target',
       '#cf-sf_hs', '#cf-sf_rr', '#cf-sf_fo', '#cf-sf_fs',
       '#cf-rh_jt', '#cf-rh_zs',
-      '#cf-th_ru', '#cf-th_rd', '#cf-th_mn', '#cf-th_mx', '#cf-th_ex',
+      '#cf-th_ru', '#cf-th_rd', '#cf-th_mx', '#cf-th_ex',
       '#cf-lm_mt', '#cf-ms_is',
       '#cf-sl_n1', '#cf-sl_tt', '#cf-sl_ti', '#cf-sl_ol', '#cf-sl_th'
     ]) {

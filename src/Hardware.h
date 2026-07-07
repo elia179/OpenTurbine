@@ -453,12 +453,11 @@ namespace Hardware {
         g_blkThrottleSet.pct                 = Config::throttleSetPct;
         g_blkPreHeat.preheatMs               = (unsigned long)Config::preHeatMs;
         g_blkOilPumpOn.demandPct             = Config::oilPumpOnPct;
-        g_blkFuelPumpIdle.minPct              = Config::fuelPumpIdleMinPct;
         g_blkFuelPumpIdle.maxPct              = Config::fuelPumpIdleMaxPct;
         g_blkModifiedIdle.multiplier          = Config::modifiedIdleMultiplier;
         g_blkSpool.rpmTarget              = Config::spoolRpmTarget;
         g_blkSpool.timeoutMs              = Config::spoolTimeoutMs;
-        g_blkSpool.throttleIdle           = Config::throttleIdleMinPct / 100.0f;
+        g_blkSpool.throttleIdle           = Config::fuelPumpMinPct / 100.0f;
         g_blkSpool.cutStarterOnExit       = Config::spoolCutStarterOnExit;
         g_blkSpool.cutStarterEnOnExit     = Config::spoolCutStarterEnOnExit;
         g_blkSpool.runningOilMin          = Config::oilRunningMin;  // raise oil threshold at spool start
@@ -1122,8 +1121,14 @@ namespace Hardware {
         auto& ed = EngineData::instance();
         // AB main-fuel offset is added here at the actuator write, NOT to throttleDemand,
         // so ThrottleSlew's feedback loop never sees the inflated value.
-        if (hw.hasThrottle && g_actThrottle)
-            g_actThrottle->set(constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f));
+        if (hw.hasThrottle && g_actThrottle) {
+            float demand = constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f);
+            // Standby calibration/tools intentionally bypass the saved min-spin
+            // threshold so the operator can measure or lower the threshold.
+            if (ed.mode != SysMode::STANDBY) demand = Config::applyFuelPumpMinimum(demand);
+            g_actThrottle->set(demand);
+            if (demand > 0.001f) ed.fuelEverOpened = true;
+        }
 
         // Starter enable relay
         if (hw.hasStarterEn) {
@@ -1388,8 +1393,8 @@ namespace Hardware {
                 // Standard RC expo: y = x*(1-e) + x^3*e
                 norm = norm * (1.0f - expo) + norm * norm * norm * expo;
             }
-            // Map from idle floor to full range
-            float minPct = Config::throttleIdleMinPct / 100.0f;
+            // Map from calibrated fuel-pump minimum spin to full range.
+            float minPct = Config::fuelPumpMinPct / 100.0f;
             ed.throttleDemand = constrain(minPct + norm * (1.0f - minPct), 0.0f, 1.0f);
         }
 
@@ -1428,18 +1433,9 @@ namespace Hardware {
             if (ed.throttleDemand > cap) ed.throttleDemand = cap;
         }
         if (hw.hasThrottleSlew) g_ctrlThrottleSlew.tick();
-        // Running fuel floor: the measured fuel-pump minimum-spin %. Below it the
-        // ESC stalls -> no fuel -> flameout, so nothing may leave RUNNING fuel under
-        // it. Applied LAST — after the governor, dynamic idle, rules AND the slew's
-        // pullback — so even the overspeed/EGT pullback (whose own floor can be
-        // lower) can't undercut it. If a limit is so severe that the fuel floor
-        // still overheats/overspeeds, the hard safety shutdown handles it; the
-        // governor must not stall the pump. Standard value is 0 (uncalibrated -> no
-        // floor); the user measures the real minimum via the min-spin calibration.
-        if (mode == SysMode::RUNNING && Config::fuelPumpMinPct > 0.0f) {
-            float floor = constrain(Config::fuelPumpMinPct / 100.0f, 0.0f, 1.0f);
-            if (ed.throttleDemand < floor) ed.throttleDemand = floor;
-        }
+        // The calibrated fuel-pump minimum is applied as an output deadband in
+        // updateActuators(), not as a clamp here. Low commands below min-spin
+        // become zero instead of being silently lifted to the threshold.
     }
 
 } // namespace Hardware

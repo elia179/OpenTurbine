@@ -2222,9 +2222,10 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::IDLE_TEST:
-            // Move throttle servo to idle position for the configured test duration.
+            // Move throttle/fuel output to the calibrated min-spin position for
+            // the configured test duration.
             if (HardwareConfig::hasThrottle && standbyLike && !anyToolTimerActive()) {
-                ed.throttleDemand = Config::throttleIdleMinPct / 100.0f;
+                ed.throttleDemand = Config::fuelPumpMinPct / 100.0f;
                 _idleTestUntilMs  = millis() + Config::toolIdleTestMs;
             }
             break;

@@ -22,13 +22,13 @@
 <main>
   <h2 style="margin-bottom:1.2rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Live Sensor Readings &amp; Calibration</h2>
 
-  <!-- Fuel pump minimum spin (actuator calibration -> running throttle floor) -->
+  <!-- Fuel pump minimum spin (actuator calibration -> main-fuel deadband) -->
   <div class="sensor-row" id="fuelpump-min-cal-row">
     <div class="sensor-name">Fuel Pump Minimum Spin</div>
     <div class="wizard">
       <div class="wizard-title">Minimum reliable-spin calibration</div>
       <div class="wizard-steps">
-        ⚠ In STANDBY, this spins the fuel pump — best done with fuel returned to tank or the line dry, and no ignition. Slowly raise the pump % until the pump <b>just starts to spin reliably</b>, then click Save — no higher. That % becomes the lowest fuel the ECU will ever command while RUNNING: below it the pump stalls and the engine flames out, so the governor/pullback never dip under it. A floor set well above the true minimum forces excess fuel at idle and can over-temp the engine every run. Leave at 0 for no running fuel floor (throttle can follow demand down to zero).
+        ⚠ In STANDBY, this spins the fuel pump — best done with fuel returned to tank or the line dry, and no ignition. Slowly raise the pump % until the pump <b>just starts to spin reliably</b>, then click Save — no higher. That % becomes the single fuel-pump minimum-spin source for startup, idle input, dynamic idle, spool, and running throttle mapping. Outside standby calibration/tools, nonzero commands below it are forced to 0. Leave at 0 for no minimum-spin deadband.
       </div>
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.5rem 0">
         <span style="font-size:.78rem;color:var(--dim)">Pump %</span>
@@ -978,7 +978,7 @@ window.applyData = function(d) {
     const idleNorm = idleInputType === 'servo'
       ? Math.max(0, Math.min(1, ((d.idle_input_us ?? rcMin) - rcMin) / (rcMax - rcMin)))
       : Math.max(0, Math.min(1, ((d.idle_input_raw ?? rcMin) - rcMin) / (rcMax - rcMin)));
-    const idleThLo = cfg.throttle?.idle_min_pct ?? 8;
+    const idleThLo = cfg.throttle?.fuel_pump_min_pct ?? 0;
     const idleThHi = cfg.throttle?.idle_max_pct ?? 18;
     setText('cal-idle-thr', (idleThLo + idleNorm * (idleThHi - idleThLo)).toFixed(1) + '%');
   }
@@ -1318,7 +1318,7 @@ function fpMinSave() {
     .then(r => r.json().catch(() => ({}))).then(b => {
       if (b.ok === false) throw new Error(b.error || 'save rejected');
       document.getElementById('fp-min-saved').textContent = pct.toFixed(1);
-      document.getElementById('fp-min-status').textContent = 'Saved ' + pct.toFixed(1) + '% as the running fuel floor.';
+      document.getElementById('fp-min-status').textContent = 'Saved ' + pct.toFixed(1) + '% as the fuel-pump minimum spin.';
       fpMinStop();
     }).catch(e => { document.getElementById('fp-min-status').textContent = 'Save error: ' + e.message; });
 }

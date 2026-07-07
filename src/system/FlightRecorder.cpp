@@ -126,11 +126,13 @@ void FlightRecorder::logBoot() {
     snprintf(chipHex, sizeof(chipHex), "%04X%08X",
              (unsigned)((chipId >> 32) & 0xFFFF),
              (unsigned)(chipId & 0xFFFFFFFF));
+    char safeProfile[64];
+    jsonSafeCopy(safeProfile, sizeof(safeProfile), HardwareConfig::profileId);
     char buf[160];
     snprintf(buf, sizeof(buf),
         "{\"t\":%lu,\"bc\":%lu,\"ev\":\"BOOT\",\"profile\":\"%s\",\"chip\":\"%s\"}",
         _uptimeSec(), (unsigned long)EngineData::instance().bootCount,
-        HardwareConfig::profileId, chipHex);
+        safeProfile, chipHex);
     _append(buf);
 }
 
