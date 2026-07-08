@@ -280,7 +280,8 @@ public:
     static float propPitchPwmMaxPct;
     static bool  propPitchActiveH;     // on-off: active-high = coarse pitch
 
-    // glowPlugType: 0=plain glow, 1=current-sensed glow, 2=wet glow
+    // glowPlugType: 0=plain glow, 2=wet glow (1 retired: current-sensing is the
+    // separate hasGlowCurrentSensor flag, independent of plain/wet)
     // glowPlugOutputType: 0=LEDC PWM, 1=on-off relay/MOSFET
     static int   glowPlugType;
     static int   glowPlugOutputType;
@@ -330,7 +331,6 @@ public:
     static int   clusterRxPin;
     static int   clusterBaud;
     static int   clusterIntervalMs;
-    static int   clusterProtocol;
 
     // ── Controller feature flags ──────────────────────────────
     static bool hasOilLoop;
@@ -343,7 +343,6 @@ public:
     static bool safetyLowOil;
     static bool safetyOilZero;
     static bool safetyFlameout;
-    static bool safetyLowFuel;
     static bool safetyHotStart;   // abort startup if selected EGT is above hotStartTotThreshold
     static bool safetyTitOvertemp;  // TIT (turbine inlet temp) overtemp shutdown
     static bool safetyOilTempHigh;  // oil temperature overtemp shutdown

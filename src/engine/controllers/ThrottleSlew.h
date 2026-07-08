@@ -21,8 +21,6 @@ public:
     // Config parameters (ms to ramp 0→100%)
     float rampUpMs          = 600.0f;
     float rampDownMs        = 800.0f;
-    float idleMinPct        = 8.0f;
-    float idleMaxPct        = 18.0f;
 
     // Safety pullback thresholds (from config: RPM limit and selected EGT limit)
     float rpmSoftLimit      = 95000.0f;  // start pulling back at 95% of limit

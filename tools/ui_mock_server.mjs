@@ -71,7 +71,7 @@ function makeHardware() {
       glow_plug: { enabled: true, pin: 17, freq_hz: 5000, res_bits: 10, current_pin: 36, current_mv_a: 100, current_zero_v: 0, current_ready_a: 2, has_current: true },
       status_led: { enabled: true, pin: 2 }
     },
-    cluster_serial: { enabled: true, tx_pin: 1, rx_pin: -1, baud: 115200, interval_ms: 100, protocol: 1 },
+    cluster_serial: { enabled: true, tx_pin: 1, rx_pin: -1, baud: 115200, interval_ms: 100 },
     buzzer: { enabled: false, pin: -1 },
     mavlink: { enabled: true, tx_pin: 3, baud: 57600, interval_ms: 100 },
     controllers: { oil_loop: true, throttle_slew: true, dynamic_idle: true, governor: true },

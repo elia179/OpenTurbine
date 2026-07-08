@@ -13,7 +13,8 @@
 //  result to ed.throttleDemand. Completes in one tick.
 //
 //  The low end is the calibrated fuel-pump minimum-spin percentage.
-//  maxPct is set from Config::fuelPumpIdleMaxPct via Hardware::applyConfig().
+//  maxPct is set from Config::throttleIdleMaxPct (the unified idle ceiling)
+//  via Hardware::applyConfig().
 // ============================================================
 class FuelPumpIdle : public IBlock {
 public:

@@ -453,7 +453,7 @@ namespace Hardware {
         g_blkThrottleSet.pct                 = Config::throttleSetPct;
         g_blkPreHeat.preheatMs               = (unsigned long)Config::preHeatMs;
         g_blkOilPumpOn.demandPct             = Config::oilPumpOnPct;
-        g_blkFuelPumpIdle.maxPct              = Config::fuelPumpIdleMaxPct;
+        g_blkFuelPumpIdle.maxPct              = Config::throttleIdleMaxPct;  // unified idle ceiling
         g_blkModifiedIdle.multiplier          = Config::modifiedIdleMultiplier;
         g_blkSpool.rpmTarget              = Config::spoolRpmTarget;
         g_blkSpool.timeoutMs              = Config::spoolTimeoutMs;
@@ -532,6 +532,7 @@ namespace Hardware {
             g_ctrlDynamicIdle.deadbandRpm   = Config::idleDeadbandRpm;
             g_ctrlDynamicIdle.rpmLimit      = Config::idleRpmLimit;
             g_ctrlDynamicIdle.minMultiplier = Config::idleMinMultiplier;
+            g_ctrlDynamicIdle.maxMultiplier = Config::idleMaxMultiplier;
         }
         if (hw.hasOilPress) {
             PolyCal pc;
@@ -1315,6 +1316,7 @@ namespace Hardware {
         _ed.starterDemand   = 0;
         _ed.starterEnabled  = false;
         _ed.oilPumpPct      = 0;
+        _ed.oilTargetBar    = 0;   // clear the loop target too (matches enterStandby/ImmediateCut/FinalStop)
         _ed.oilScavengeOn   = false;
         _ed.abSolOpen       = false;
         _ed.abPumpDemand    = 0;

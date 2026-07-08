@@ -603,7 +603,10 @@ void ClusterSerial::_sendSchema() {
                   : (egtLimit > 0.0f ? max(0.0f, egtLimit - Config::totSafeMargin) : 0.0f);
     float oilWarn = Config::oilWarnBar > 0.0f ? Config::oilWarnBar : Config::oilRunningMin;
     putFloat(limits + 0,  Config::rpmLimit);
-    putFloat(limits + 4,  Config::n1WarnRpm);
+    // 0 = auto-derive from the RPM limit (like totWarn/oilWarn above), so the
+    // N1 warn line tracks rpm_limit instead of a stale fixed default.
+    putFloat(limits + 4,  Config::n1WarnRpm > 0.0f ? Config::n1WarnRpm
+                                                   : Config::rpmLimit * 0.9f);
     putFloat(limits + 8,  Config::n2WarnRpm);
     putFloat(limits + 12, egtLimit);
     putFloat(limits + 16, totWarn);

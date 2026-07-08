@@ -44,13 +44,11 @@ broader feature and build reference.
 - **NTCSensor** — NTC thermistor via Steinhart-Hart B-parameter equation, configurable divider
 - **AnalogPolySensor** — cubic polynomial (oil pressure), linear, and threshold (flame detection) variants
 - **RCInput** — interrupt-driven RC PWM decoder for idle and throttle inputs (same GPIO as ADC, no pin change)
-- **MockSensor** — development stub for scripted sensor values
 
 ### Actuators (HAL)
 - **ServoActuator** — 50 Hz servo PWM 1000–2000 µs (throttle ESC, starter ESC, prop pitch)
 - **LEDCActuator** — high-frequency ESP32 LEDC PWM (oil pump, fuel pump 2, AB pump), invertible
 - **RelayActuator** — digital relay/MOSFET driver, active-high or active-low
-- **MockActuator** — development stub that logs actuator calls
 
 ### Connectivity
 - **Wi-Fi captive portal** — connecting to the ECU AP serves the dashboard for common captive-portal probes; direct `192.168.4.1` or `ot.local` remains the reliable path on Windows/Chrome

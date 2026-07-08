@@ -1057,8 +1057,7 @@ bool validatePlatformPins(const JsonDocument& doc) {
         (!requiredPinAllowed(cluster, "tx_pin", outputGpioAllowed) ||
          !optionalPinAllowed(cluster, "rx_pin", gpioAllowed) ||
          (jsonPin(cluster, "tx_pin") >= 0 && jsonPin(cluster, "tx_pin") == jsonPin(cluster, "rx_pin")))) return false;
-    if (!intRange(cluster, "protocol", 1, 1) ||
-        !intRange(cluster, "baud", 9600, 921600) ||
+    if (!intRange(cluster, "baud", 9600, 921600) ||
         !intRange(cluster, "interval_ms", 10, 5000)) return false;
     if (enabled(mavlink) && !requiredPinAllowed(mavlink, "tx_pin", outputGpioAllowed)) return false;
     if (enabled(buzzer) && !requiredPinAllowed(buzzer, "pin", outputGpioAllowed)) return false;
@@ -1534,7 +1533,6 @@ int   HardwareConfig::clusterTxPin     = OT_CLUSTER_TX_PIN;
 int   HardwareConfig::clusterRxPin     = -1;
 int   HardwareConfig::clusterBaud      = OT_CLUSTER_BAUD;
 int   HardwareConfig::clusterIntervalMs= OT_CLUSTER_INTERVAL_MS;
-int   HardwareConfig::clusterProtocol  = 1;
 
 // Controller feature flags
 bool  HardwareConfig::hasOilLoop       = DEFAULT_HAS_OIL_LOOP;
@@ -1547,7 +1545,6 @@ bool  HardwareConfig::safetyOvertemp   = DEFAULT_SAFETY_OVERTEMP;
 bool  HardwareConfig::safetyLowOil     = DEFAULT_SAFETY_LOW_OIL;
 bool  HardwareConfig::safetyOilZero    = DEFAULT_SAFETY_OIL_ZERO;
 bool  HardwareConfig::safetyFlameout   = DEFAULT_SAFETY_FLAMEOUT;
-bool  HardwareConfig::safetyLowFuel    = false;
 bool  HardwareConfig::safetyHotStart   = false;
 bool  HardwareConfig::safetyTitOvertemp  = false;
 bool  HardwareConfig::safetyOilTempHigh  = false;
@@ -1893,6 +1890,9 @@ void HardwareConfig::applyDefaults() {
 
     starterEnPin     = OT_STARTER_EN_PIN;
     starterEnActiveH = OT_STARTER_EN_ACTIVE_H;
+    starterEnDelayMs = 1000;             // mirror static-init default (was missing here)
+    starterAssistEnabled = true;         // mirror static-init default; sanitizeForHardware
+                                         // disables it if no starter + N1 sensor
 
     igniter2Pin = -1; igniter2ActiveH = true; igniter2Pwm = false;
     igniter2DwellMs = 6; igniter2RestMs = 3;
@@ -1935,6 +1935,8 @@ void HardwareConfig::applyDefaults() {
     abFlamePin          = -1;
     abFlameThreshold    = 500;
 
+    wifiTxPowerDbm = 8;                  // mirror static-init default (was missing here)
+
     statusLedPin = DEFAULT_STATUS_LED_PIN;
     statusLedType = DEFAULT_STATUS_LED_TYPE;
     statusLedMode = DEFAULT_STATUS_LED_MODE;
@@ -1970,7 +1972,6 @@ void HardwareConfig::applyDefaults() {
     clusterRxPin    = -1;
     clusterBaud     = OT_CLUSTER_BAUD;
     clusterIntervalMs = OT_CLUSTER_INTERVAL_MS;
-    clusterProtocol = 1;
 
     hasOilLoop      = DEFAULT_HAS_OIL_LOOP;
     hasThrottleSlew = DEFAULT_HAS_THROTTLE_SLEW;
@@ -1984,7 +1985,6 @@ void HardwareConfig::applyDefaults() {
     safetyLowOil    = DEFAULT_SAFETY_LOW_OIL;
     safetyOilZero   = DEFAULT_SAFETY_OIL_ZERO;
     safetyFlameout  = DEFAULT_SAFETY_FLAMEOUT;
-    safetyLowFuel       = false;
     safetyHotStart      = false;
     safetyTitOvertemp   = false;
     safetyOilTempHigh   = false;
@@ -2336,7 +2336,6 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     clus["enabled"] = hasClusterSerial; clus["tx_pin"] = clusterTxPin;
     clus["rx_pin"] = clusterRxPin;
     clus["baud"] = clusterBaud; clus["interval_ms"] = clusterIntervalMs;
-    clus["protocol"] = clusterProtocol;
 
     auto buz = doc["buzzer"].to<JsonObject>();
     buz["enabled"] = hasBuzzer; buz["pin"] = buzzerPin;
@@ -2771,6 +2770,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     glowCurrentReadyAmps= glw["current_ready_a"] | glowCurrentReadyAmps;
     if (!glw["has_current"].isNull()) hasGlowCurrentSensor = hasGlowPlug && glw["has_current"].as<bool>();
     glowPlugType = constrain(glowPlugType, 0, 2);
+    if (glowPlugType == 1) glowPlugType = 0;  // legacy 'current-sensed' retired; current = hasGlowCurrentSensor
     glowPlugOutputType = constrain(glowPlugOutputType, 0, 1);
     wetGlowFuelType = constrain(wetGlowFuelType, 0, 2);
     wetGlowFuelMinUs = constrain(wetGlowFuelMinUs, 500, 2500);
@@ -2841,7 +2841,6 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     clusterRxPin     = clus["rx_pin"]     | clusterRxPin;
     clusterBaud      = clus["baud"]       | clusterBaud;
     clusterIntervalMs= clus["interval_ms"]| clusterIntervalMs;
-    clusterProtocol  = clus["protocol"]   | clusterProtocol;
 
     auto buz = doc["buzzer"];
     if (!buz["enabled"].isNull()) hasBuzzer = buz["enabled"].as<bool>();
@@ -2892,9 +2891,6 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!saf["fuel_press_low"].isNull()) safetyFuelPressLow  = saf["fuel_press_low"].as<bool>();
     if (!saf["batt_low"].isNull())       safetyBattLow       = saf["batt_low"].as<bool>();
     if (!saf["surge"].isNull())          safetySurge         = saf["surge"].as<bool>();
-    // Fuel-flow remains available for telemetry, calibration, logging, and
-    // Control Rules, but not as a built-in safety switch.
-    safetyLowFuel = false;
     if (!hasN1Rpm) {
         safetyOverspeed = false;
         safetySurge = false;
@@ -3103,7 +3099,6 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (igniter2RestMs < 1) igniter2RestMs = 1;
     if (mavlinkIntervalMs < 20) mavlinkIntervalMs = 100;
     if (clusterIntervalMs < 10) clusterIntervalMs = 50;
-    if (clusterProtocol != 1) clusterProtocol = 1;
     abTriggerSource = constrain(abTriggerSource, 0, 3);
     abInputThreshold = constrain(abInputThreshold, 0, 4095);
     if (abTriggerSource == 0) abRequiresArmSwitch = false;

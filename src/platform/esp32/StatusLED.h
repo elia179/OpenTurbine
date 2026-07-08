@@ -95,9 +95,13 @@ static void _writeRgbColor(int pin, uint32_t color, bool on, bool half = false) 
 
 static void _tickColorMode(int pin, unsigned long now, SysMode mode) {
     if (mode == SysMode::FAULT) {
-        if (_lastStateColor == 0) _lastStateColor = _colorForMode(SysMode::STANDBY);
+        // FAULT must always be visible. Reuse the last rendered state colour,
+        // but if that is black (nothing rendered yet, or a state colour set to
+        // 0x000000) flash red instead of the standby colour — which could also
+        // be configured black and leave the fault indication invisible.
+        uint32_t faultColor = _lastStateColor ? _lastStateColor : 0xFF0000u;
         _ledOn = !_ledOn;
-        _writeRgbColor(pin, _lastStateColor, _ledOn, true);
+        _writeRgbColor(pin, faultColor, _ledOn, true);
         _nextMs = now + FAULT_PERIOD_MS;
         return;
     }

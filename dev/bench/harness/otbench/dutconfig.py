@@ -15,7 +15,13 @@ def _nested_matches(cfg, partial):
             if not isinstance(cfg.get(k), dict) or not _nested_matches(cfg[k], v):
                 return False
         elif isinstance(v, float) or isinstance(cfg.get(k), float):
-            if abs((cfg.get(k) or 0.0) - (v or 0.0)) > 1e-4:
+            cur = cfg.get(k)
+            # A missing/null key is NOT a match — otherwise verifying a patch to
+            # 0.0 (e.g. disarming a rate limit) against a config that never had
+            # the key would falsely report the change as applied.
+            if cur is None:
+                return False
+            if abs(float(cur) - float(v)) > 1e-4:
                 return False
         elif cfg.get(k) != v:
             return False
@@ -33,21 +39,43 @@ class DutConfig:
     def cfg(self):
         return self.dut.config()
 
-    def _wait_reboot(self, n=45):
-        # POST returns 200 then schedules restart ~1 s later, so /api/status
-        # answers briefly BEFORE the reboot. Confirm it drops then returns,
-        # then settle so the reboot-pending preflight flag has cleared.
-        time.sleep(1.2)
-        for _ in range(20):
+    def _wait_reboot(self):
+        # A hardware POST answers 200 and then schedules the reboot ~5 s LATER,
+        # so /api/status keeps answering the PRE-reboot state for several seconds
+        # before the ESP32 actually restarts. The old "wait for one failed poll
+        # then one success" heuristic could therefore return before the reboot
+        # (catching the pre-reboot config) and falsely report a change as applied.
+        #
+        # Confirm a REAL reboot by requiring the AP to be unreachable for a
+        # SUSTAINED period (the restart drops the WiFi AP for several seconds; a
+        # transient glitch is sub-second), then wait for it to come back and
+        # settle. Returns True only if the outage was observed, so a POST that
+        # silently failed to reboot is reported as unverified (edit_hw retries)
+        # rather than passing on stale, pre-reboot config.
+        REQUIRED_DOWN = 3            # consecutive failed polls = a real outage
+        deadline = time.time() + 90.0
+        down = 0
+        saw_outage = False
+        # Phase 1: wait for the sustained outage (the reboot dropping the AP).
+        while time.time() < deadline:
             try:
-                self.dut.status(); time.sleep(0.3)
+                self.dut.status()
+                down = 0
             except Exception:
-                break
-        for _ in range(n):
+                down += 1
+                if down >= REQUIRED_DOWN:
+                    saw_outage = True
+                    break
+            time.sleep(0.5)
+        # Phase 2: wait for the AP to return, then settle so the reboot-pending
+        # preflight flag has cleared before the caller re-reads config.
+        while time.time() < deadline:
             try:
-                self.dut.status(); time.sleep(2.0); return True
+                self.dut.status()
+                time.sleep(2.0)
+                return saw_outage
             except Exception:
-                time.sleep(1)
+                time.sleep(1.0)
         return False
 
     def edit_hw(self, mutate, check=None, tries=3):

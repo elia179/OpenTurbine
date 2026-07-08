@@ -48,10 +48,6 @@ public:
         _applyActuator(act, constrain(dem, 0.0f, 1.0f), EngineData::instance(), nullptr);
     }
 
-    static bool sensorUsable(uint8_t sensor) {
-        return _sensorUsable(sensor, EngineData::instance());
-    }
-
     static bool sensorConditionMet(uint8_t sensor, uint8_t op, float threshold) {
         auto& ed = EngineData::instance();
         return _sensorUsable(sensor, ed) && _evalOp(_readSensor(sensor, ed), op, threshold, sensor);

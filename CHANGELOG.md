@@ -4,6 +4,61 @@ All notable changes to OpenTurbine are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
+_Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
+
+---
+
+## [1.6.0] — 2026-07-08
+
+Code-quality and configuration-clarity release. A deep, repeated end-to-end audit of the firmware
+and web UI removed dead code and confusing/duplicated configuration, tightened the cross-core data
+paths, and fixed several latent bugs. No new engine features — the focus is making the existing
+behaviour correct, consistent, and easy to configure. Re-validated on the two-ESP32 HIL bench
+(every input, output, and startup-sequence path).
+
+### Added
+- **Safety-threshold auto-fill** — turning on a safety check that still has a zero/unset threshold
+  now auto-fills a sensible turbine default (TIT 900 °C, oil temp 120 °C, fuel pressure 0.5 bar,
+  battery 10.5 V, surge 500000) and logs it, so a check can never be armed in a state where it can
+  never trip. Every value remains user-editable.
+- **Dynamic-idle maximum multiplier** (`dynamic_idle.max_multiplier`, default 1.50) — bounds the
+  dynamic-idle upper target as a multiple of the idle set point, mirroring the existing
+  `min_multiplier`.
+
+### Changed
+- **Unified the idle-ceiling setting** — the two overlapping "idle max %" fields are merged into one
+  (`throttle.idle_max_pct`); the old `fuel_pump.idle_max_pct` is migrated forward automatically on
+  first load.
+- **Decoupled glow-plug configuration** — glow-plug type and glow current-sensing are now
+  independent settings; the redundant "current-sensed" glow-type option is gone. (Per-channel
+  igniter current-sensing is unchanged.)
+- **`0 = auto` N1 warn threshold now works** — the default no longer silently overrides an unset
+  (0) warn threshold with a fixed RPM, so it derives from the configured N1 limit as intended.
+- **RPM staleness floor scales with the engine** — the "shaft still turning" floor in the PCNT
+  reader derives from the configured RPM limit (min 200 rpm) instead of a fixed 2000 rpm, so both
+  small and large turbines detect a stalled or newly-live shaft correctly.
+- **Leaner telemetry** — 18 telemetry fields that nothing consumed were dropped from `/api/data`
+  (only the instrument cluster and web UI read telemetry).
+- **Config schema → v2**, with automatic forward-migration of the renamed/merged fields.
+
+### Fixed
+- **Cross-core run statistics** — total run seconds and the start-attempt / run counters are now
+  `volatile` and mutex-guarded, eliminating torn reads/writes between the ECU (core 1) and web
+  (core 0) tasks.
+- **Factory reset** no longer returns HTTP 500 while nonetheless rebooting into wiped defaults when
+  the backup copy fails — it now falls through cleanly to the compiled defaults.
+- **Manual relight, dynamic-idle toggle, and limp-home switch** logic in the main loop: igniter-on-
+  start and manual relight are no longer conflated, the dynamic-idle toggle is no longer a no-op,
+  and the limp-home switch is level-authoritative each tick.
+- **Complete actuator safe-state** — the master "all off" path also zeroes the oil-pressure target.
+- **Web UI doubled divider** — a subsection label placed directly under a section title on the
+  Hardware page no longer stacks its top border against the title's bottom border.
+
+### Removed
+- Dead configuration and code: the unused low-fuel-safety flag and cluster-protocol selector, the
+  vestigial oil-arm-bar and ThrottleSlew idle-min/idle-max fields, `fuel_pump.idle_max_pct` (merged
+  above), unused HAL helper methods, and the unused mock sensor/actuator classes.
+
 ---
 
 ## [1.5.0] — 2026-07-07
@@ -17,7 +72,7 @@ on hardware, and OpenTurbine is now validated on **both** the ESP32-S3 and the c
 - **Fuel-pump minimum-spin calibration** — a Calibration-page routine ramps the fuel pump until
   it reliably spins; that % (`throttle.fuel_pump_min_pct`, telemetry `fuel_pump_min_pct`) becomes
   the lowest fuel the ECU commands while running. Replaces the old fixed 8% idle-floor assumption;
-  0 = uncalibrated = no floor. The dashboard throttle card shows it as "fuel floor".
+  0 = uncalibrated = no floor. The dashboard throttle card shows it as "fuel min spin".
 - **Standby-oil set-pressure mode** (`standby_oil.feed_bar`) — with an oil sensor and the oil
   control loop enabled, the standby windmill feed regulates the pump to a target pressure instead
   of a fixed %, floored at Feed Duty %. Default 0 keeps the fixed-% behaviour unchanged.

@@ -16,11 +16,12 @@
 //
 //  DEFAULT = minimal simple turbojet, no sensors, external (air/leaf-blower)
 //  start. Enabled out of the box: throttle input, idle input, throttle/fuel
-//  pump ESC, oil pump, one igniter, throttle rate-limiter, and the START/STOP
-//  buttons. Startup/shutdown run on TIMERS only. NO sensors and therefore NO
-//  automated overspeed/overtemp/oil/flameout protection — those switch on
-//  automatically as you fit the matching sensor. Add your real hardware here
-//  or on the web Hardware page.
+//  pump ESC, oil pump, one igniter, throttle rate-limiter, the START/STOP
+//  buttons, and the onboard status LED (auto-enabled on the dev-board LED —
+//  see the Status LED section below). Startup/shutdown run on TIMERS only.
+//  NO sensors and therefore NO automated overspeed/overtemp/oil/flameout
+//  protection — those switch on automatically as you fit the matching sensor.
+//  Add your real hardware here or on the web Hardware page.
 // ============================================================
 
 // ── Profile identity ─────────────────────────────────────────
@@ -244,17 +245,6 @@
 // #define OT_HAS_COOL_FAN
 // #define OT_COOL_FAN_PIN     XX
 
-// ── I²C bus ───────────────────────────────────────────────────
-// Enable if you have I²C peripherals: OLED displays, I²C pressure
-// sensors, ADS1115 external ADC, IMU, etc.  The bus is shared —
-// multiple devices use the same SDA/SCL pair.
-// Any GPIO works for SDA/SCL on both ESP32 and S3 (fully remappable).
-// Avoid ADC1 pins if you need analog sensors on the same build.
-// #define OT_HAS_I2C
-// #define OT_I2C_SDA_PIN  21   // any GPIO
-// #define OT_I2C_SCL_PIN  22   // any GPIO
-// #define OT_I2C_FREQ_HZ  400000   // 400 kHz fast-mode (100000 for standard)
-
 // ── Controllers ──────────────────────────────────────────────
 // All require matching hardware above to be defined.
 // #define OT_HAS_OIL_LOOP        // P-controller: OIL_PRESS → OIL_PUMP (needs oil-pressure sensor)
@@ -275,11 +265,6 @@
 // #define OT_SAFETY_LOW_OIL      // oil < min bar → shutdown; requires oil-pressure sensor
 // #define OT_SAFETY_OIL_ZERO     // oil near-zero during RUNNING → catastrophic loss fault; requires oil-pressure sensor
 // #define OT_SAFETY_FLAMEOUT     // combustion source lost sustained → shutdown; requires TOT/N1/flame source
-
-// Optional:
-// Low-fuel safety is not implemented as a built-in monitor. Use a Control Rule
-// with the fuel-flow sensor if your installation needs a custom low-flow action.
-// #define OT_SAFETY_LOW_FUEL
 
 // ── Startup sequence ─────────────────────────────────────────
 // Order matters. Comment out to remove a block.
@@ -308,10 +293,13 @@
 
 // ── Optional feature blocks ──────────────────────────────────
 // #define OT_HAS_AFTERBURNER
-// #define OT_HAS_AIRSTARTER
 
 // ── Status LED (mode blink indicator) ────────────────────────
 // Blink pattern: STANDBY=1, STARTUP=2, RUNNING=3, SHUTDOWN=4, FAULT=rapid
+// ENABLED BY DEFAULT on the onboard dev-board LED even with the macros below
+// left commented: the runtime default pin is GPIO 2 (classic ESP32) / GPIO 48
+// (ESP32-S3), so a fresh config ships with the status LED on. Uncomment the
+// macros only to force a specific pin; disable it on the web Hardware page.
 // Built-in LED is usually GPIO 2 on ESP32 dev boards.
 // YD-ESP32-S3 / YD-ESP32-23 has an addressable RGB LED on GPIO48.
 // In the Hardware page, choose Status LED type = NeoPixel RGB data LED

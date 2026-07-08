@@ -3,7 +3,7 @@
 Compress web assets from data_src/ into data/ as .gz files.
 Run this after editing any HTML/JS/CSS file, then do: pio run -t uploadfs
 """
-import gzip, shutil, os
+import gzip, os
 
 SRC = os.path.join(os.path.dirname(__file__), "..", "data_src")
 DST = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -16,10 +16,16 @@ for fname in os.listdir(SRC):
     src_path = os.path.join(SRC, fname)
     dst_path = os.path.join(DST, fname + ".gz")
     tmp_path = dst_path + ".tmp"
-    with open(src_path, "rb") as f_in, open(tmp_path, "wb") as raw_out:
+    with open(src_path, "rb") as f_in:
+        data = f_in.read()
+    # Normalize line endings to LF so the gzip output is byte-identical
+    # regardless of the checkout OS (Windows autocrlf yields CRLF working
+    # trees). Text assets only (.html/.js/.css), so this cannot corrupt bytes.
+    data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    with open(tmp_path, "wb") as raw_out:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw_out,
                            compresslevel=9, mtime=0) as f_out:
-            shutil.copyfileobj(f_in, f_out)
+            f_out.write(data)
     os.replace(tmp_path, dst_path)
     src_kb = os.path.getsize(src_path) / 1024
     dst_kb = os.path.getsize(dst_path) / 1024

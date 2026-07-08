@@ -107,4 +107,10 @@ def print_report(results, verbose=False):
     e = sum(1 for r in results if r.status == "error")
     print("\n%d passed, %d failed, %d skipped, %d errored (%d total)"
           % (p, f, s, e, len(results)))
+    if s:
+        # Skips are legitimate (feature not fitted) so they don't fail the run,
+        # but an untested path must not be mistaken for a verified one — flag it
+        # loudly so a green exit code isn't read as "everything was exercised".
+        print("WARNING: %d test(s) SKIPPED (prerequisite/hardware not fitted) — "
+              "those paths were NOT exercised; review before trusting a pass." % s)
     return f == 0 and e == 0

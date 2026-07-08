@@ -10,7 +10,8 @@
 //  Uses the IDF5 PCNT unit API (driver/pulse_cnt.h).
 //  Hardware counting is interrupt-free and glitch-filtered.
 //  RPM computed from count delta every UPDATE_INTERVAL_MS.
-//  Reports RpmHealth fault bits (SATURATED / JUMP / ZERO_STUCK).
+//  Reports RpmHealth fault bits (JUMP / ZERO_STUCK; see _updateHealth for
+//  why SATURATED is not raised by an edge counter).
 //  Brief ZERO_GLITCH samples are tolerated (RpmHealth::isTrustworthy):
 //  the last real reading is held instead of publishing a healthy 0 RPM.
 // ============================================================
@@ -90,7 +91,7 @@ public:
 
         float newRpm = ((float)delta / _ppr) * (60000.0f / (float)dt);
 
-        _updateHealth(newRpm, (int)delta, dt);
+        _updateHealth(newRpm, dt);
 
         // ZERO_GLITCH is tolerable (Types.h isTrustworthy): hold the last real
         // reading for the few glitch ticks instead of publishing a healthy
@@ -140,17 +141,23 @@ private:
     int                _zeroCount= 0;
     RpmHealth          _health;
 
-    void _updateHealth(float rpm, int delta, unsigned long dt) {
+    void _updateHealth(float rpm, unsigned long dt) {
         _health.clear();
 
-        // Saturated: pulse counter not advancing even though RPM was non-zero.
-        // The old check (rpm > 0 && _lastCount == 0) was impossible — if _lastCount
-        // is 0 there are no pulses, so rpm would also be 0.  The real fault is a
-        // sensor stuck high (hardware oscillating) or suddenly silent after running.
+        // "Clearly running" reference: a small fraction of the engine's RPM
+        // limit, floored so it stays meaningful on a low-limit shaft (e.g. a
+        // free power turbine) and never triggers on sensor noise. This replaces
+        // a fixed 2000 RPM, which left a detection gap for any shaft that idles
+        // below 2000 RPM — a dead sensor dropping it to zero was never flagged.
+        const float runningRpm = fmaxf(rpmLimit * 0.03f, 200.0f);
         int requiredZeros = zeroStuckLimit > 0 ? zeroStuckLimit : 1;
-        if (_prevRpm > 2000.0f && delta == 0 && (_zeroCount + 1) >= requiredZeros) {
-            _health.set(RpmHealth::SATURATED);
-        }
+
+        // Note: RpmHealth::SATURATED ("stuck at max") is intentionally not
+        // raised here. With a bare edge counter a stuck-high line produces no
+        // edges, so it is indistinguishable from a silent sensor and is already
+        // covered by ZERO_STUCK below. A genuinely over-range reading is
+        // deliberately NOT flagged unhealthy, so it can never suppress the
+        // raw-reading overspeed trip.
 
         // Implausible jump: max allowed RPM/s = jumpThreshold × rpmLimit.
         // e.g. jumpThreshold=0.40, rpmLimit=100000 → 40000 RPM/s max rate.
@@ -161,11 +168,11 @@ private:
             }
         }
 
-        // Zero-stuck: engine clearly running but reading zero.
+        // Zero-stuck: shaft was clearly running but now reads zero.
         // The streak continues while the reading stays zero (_zeroCount > 0):
         // _prevRpm alone is 0 from the second zero tick onward and would
         // reset the counter, making ZERO_STUCK unreachable.
-        if (rpm < 1.0f && (_prevRpm > 2000.0f || _zeroCount > 0)) {
+        if (rpm < 1.0f && (_prevRpm > runningRpm || _zeroCount > 0)) {
             if (++_zeroCount >= requiredZeros) {
                 _health.set(RpmHealth::ZERO_STUCK);
             } else {

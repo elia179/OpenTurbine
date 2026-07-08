@@ -660,10 +660,6 @@ textarea.field-changed {
 .save-recap-table td.val-was { color: var(--dim); font-size: .75rem; }
 .save-recap-table td.val-now { color: var(--yellow); font-weight: 600; }
 .save-recap-table tr:last-child td { border-bottom: none; }
-.save-recap-empty {
-  padding: 1.2rem; text-align: center;
-  font-size: .8rem; color: var(--dim);
-}
 .save-recap-footer {
   display: flex; align-items: center; justify-content: flex-end;
   gap: .6rem; padding: .7rem 1.1rem;
@@ -718,22 +714,6 @@ textarea.field-changed {
 .tool-desc  { font-size: 0.71rem; color: var(--dim); flex: 1; line-height: 1.4; font-family: var(--font-ui); }
 .tool-time  { font-size: 0.68rem; color: var(--dim); min-width: 2.8rem; text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 .tool-divider { border: none; border-top: 1px solid var(--border); margin: 0.5rem 0 0.9rem; }
-
-/* ── Log page ────────────────────────────────────────────────── */
-.log-entry {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--border);
-  line-height: 1.5;
-  display: flex;
-  gap: 0.75rem;
-  color: var(--text-2);
-}
-.log-entry:last-child { border-bottom: none; }
-.log-time  { color: var(--dim); white-space: nowrap; flex-shrink: 0; }
-.log-event { color: var(--accent); flex-shrink: 0; }
-.log-detail { color: var(--text-2); word-break: break-word; }
 
 /* ── Hardware page section headers ───────────────────────────── */
 .hw-section {
@@ -939,6 +919,9 @@ textarea.field-changed {
   font-family: var(--font-ui);
 }
 .hw-sub:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+/* A subsection label directly under the section title needs no divider of its
+   own — the title already carries a bottom border (avoids a doubled rule). */
+.hw-title + .hw-sub { border-top: none; padding-top: 0; margin-top: 0; }
 
 .hw-grid  { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.65rem; align-items: start; }
 .hw-field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
@@ -994,7 +977,6 @@ textarea.field-changed {
 select option.pin-strap  { color: #c8a000; }
 select option.pin-uart   { color: #888; }
 select option.pin-inonly { color: #5ba3e0; }
-select option.pin-adc2   { color: #c07030; }
 
 /* ── Log page ────────────────────────────────────────────────── */
 .tab-strip { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
@@ -1157,7 +1139,6 @@ select option.pin-adc2   { color: #c07030; }
   transition: border-color 0.15s;
 }
 .block-card:hover     { border-color: var(--accent); }
-.block-card.drag-over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface-2)); }
 
 .block-header {
   display: flex; align-items: center; gap: 0.7rem;

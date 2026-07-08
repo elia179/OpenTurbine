@@ -54,8 +54,8 @@ public:
         // there with "div_param=0" while the classic's 80 MHz clock succeeds.
         // Retry at progressively lower resolution so the output still works
         // with slightly coarser duty steps instead of not attaching at all.
-        // _maxDuty and the P-controller's maxDuty() track the resolution
-        // actually used, so duty scaling stays correct.
+        // _maxDuty tracks the resolution actually used, so duty scaling
+        // stays correct.
         bool ok = ledcAttach(_pin, _freqHz, _resBits);
         while (!ok && _resBits > MIN_RES_BITS) {
             _resBits--;
@@ -86,13 +86,6 @@ public:
     }
 
     const char* name() override { return _name; }
-
-    // Raw duty access for P-controller that works in counts
-    void setDuty(uint32_t duty) {
-        writeDuty((uint32_t)constrain((int)duty, 0, (int)_maxDuty));
-    }
-
-    uint32_t maxDuty() const { return _maxDuty; }
 
 private:
     static constexpr uint32_t NO_DUTY = UINT32_MAX;

@@ -11,7 +11,6 @@
 //   completes normally (no pressure feedback available).
 class OilPrime : public IBlock {
 public:
-    float         oilArmBar        = 2.5f;
     float         oilArmMinBar     = 1.5f;
     unsigned long timeoutMs        = 3000;
     float         startupOilDemand = 2.5f;  // bar pressure target (with sensor)

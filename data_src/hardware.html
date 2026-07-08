@@ -212,6 +212,7 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">Pulses / Rev</span>
+          <span class="hw-desc">Hall sensor pulses per shaft revolution.</span>
           <input type="number" id="f-n2-ppr" min="0.01" step="0.001" oninput="setSensor('n2_rpm','ppr',this.value===''?null:+this.value)">
         </div>
         <div class="hw-field">
@@ -696,7 +697,7 @@
     </div>
     <div class="hw-sub">Current Sensing</div>
     <div style="font-size:.63rem;color:var(--dim);margin-bottom:.55rem;line-height:1.4">
-      Wire an ACS712/ACS758 (or similar Hall-effect sensor) in series with the output. These output ~1.65 V at 0 A and shift by their rated mV/A sensitivity. Use an ADC1-capable GPIO only.
+      Current sensors are enabled inline under each actuator below (oil pump, glow plug, igniters). Wire an ACS712/ACS758 (or similar Hall-effect sensor) in series with the output. These output ~1.65 V at 0 A and shift by their rated mV/A sensitivity. Use an ADC1-capable GPIO only.
     </div>
   </div>
 
@@ -741,6 +742,7 @@
         </div>
         <div class="act-subgroup" id="grp-thr-ledc" style="display:none">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">PWM frequency (Hz)</span>
               <input type="number" id="f-thr-lfreq" min="100" max="80000" oninput="setAct('throttle','ledc_freq',+this.value)"></div>
@@ -751,6 +753,7 @@
             <div class="hw-field"><span class="hw-label">Max output (%)</span>
               <input type="number" id="f-thr-pwm-max" min="0" max="100" step="0.1" oninput="setAct('throttle','pwm_max_pct',+this.value)"></div>
             <div class="hw-field"><span class="hw-label">Invert signal</span>
+              <span class="hw-desc">Reverses PWM duty (0%→100%). Only if your ESC expects inverted drive — verify with the Tools idle test before fueling.</span>
               <div class="hw-toggle" style="margin-top:.25rem">
                 <input type="checkbox" id="f-thr-inv" onchange="setAct('throttle','inverted',this.checked)">
                 <span>Inverted</span>
@@ -808,6 +811,7 @@
         </div>
         <div class="act-subgroup" id="grp-str-ledc" style="display:none">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-str-lfreq" min="100" max="80000" oninput="setAct('starter','ledc_freq',+this.value)"></div>
@@ -818,6 +822,7 @@
             <div class="hw-field"><span class="hw-label">Max output (%)</span>
               <input type="number" id="f-str-pwm-max" min="0" max="100" step="0.1" oninput="setAct('starter','pwm_max_pct',+this.value)"></div>
             <div class="hw-field"><span class="hw-label">Invert signal</span>
+              <span class="hw-desc">Reverses PWM duty (0%→100%). Only if your ESC expects inverted drive — verify with the Tools idle test before fueling.</span>
               <div class="hw-toggle" style="margin-top:.25rem">
                 <input type="checkbox" id="f-str-inv" onchange="setAct('starter','inverted',this.checked)">
                 <span>Inverted</span>
@@ -942,6 +947,7 @@
         </div>
         <div class="act-subgroup" id="grp-op-pwm">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-op-freq" min="100" max="40000" oninput="setAct('oil_pump','freq_hz',+this.value)"></div>
@@ -1029,6 +1035,7 @@
         </div>
         <div class="act-subgroup" id="grp-oscav-pwm">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-oscav-freq" min="100" max="40000" oninput="setAct('oil_scavenge_pump','freq_hz',+this.value)"></div>
@@ -1169,8 +1176,10 @@
           <span>COIL PWM TIMING</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Dwell (ms)</span>
+              <span class="hw-desc">Coil ON time per cycle — fixed duty fraction.</span>
               <input type="number" id="f-ign2-dwell" min="1" max="200" oninput="setAct('igniter2','dwell_ms',+this.value)"></div>
             <div class="hw-field"><span class="hw-label">Rest (ms)</span>
+              <span class="hw-desc">Coil OFF time per cycle.</span>
               <input type="number" id="f-ign2-rest" min="1" max="200" oninput="setAct('igniter2','rest_ms',+this.value)"></div>
           </div>
         </div>
@@ -1263,6 +1272,7 @@
           </div>
           <div class="act-subgroup" id="grp-abp-pwm">
             <span>PWM OUTPUT SETTINGS</span>
+            <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
             <div class="hw-grid">
               <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
                 <input type="number" id="f-abp-freq" min="100" max="40000" oninput="setAct('ab_pump','freq_hz',+this.value)"></div>
@@ -1432,6 +1442,7 @@
         </div>
         <div class="act-subgroup" id="grp-fan-pwm" style="display:none">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-fan-freq" min="100" max="40000" oninput="setAct('cool_fan','freq_hz',+this.value)"></div>
@@ -1494,6 +1505,7 @@
         </div>
         <div class="act-subgroup" id="grp-fp2-pwm" style="display:none">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-fp2-freq" min="100" max="40000" oninput="setAct('fuel_pump2','freq_hz',+this.value)"></div>
@@ -1534,9 +1546,9 @@
             <select id="f-bleed-pin" onchange="setAct('bleed_valve','pin',+this.value)"></select></div>
           <div class="hw-field"><span class="hw-label">Output type</span>
             <select id="f-bleed-type" onchange="setBleedType(+this.value)">
-              <option value="0">On / Off (relay / solenoid)</option>
               <option value="1">Servo PWM (1000–2000 µs)</option>
               <option value="2">Motor PWM (LEDC)</option>
+              <option value="0">On / Off (relay / solenoid)</option>
             </select>
           </div>
         </div>
@@ -1565,6 +1577,7 @@
         </div>
         <div class="act-subgroup" id="grp-bleed-pwm" style="display:none">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-bleed-freq" min="100" max="40000" oninput="setAct('bleed_valve','freq_hz',+this.value)"></div>
@@ -1613,6 +1626,7 @@
         </div>
         <div class="act-subgroup" id="grp-pp-pwm" style="display:none">
           <span>PWM OUTPUT SETTINGS</span>
+          <span class="hw-desc" style="display:block;margin-bottom:.4rem">Frequency/Resolution = PWM carrier (match your ESC/MOSFET). Min non-zero % = smallest duty sent for any nonzero demand (overcomes ESC/pump deadband). Max output % = caps the top duty.</span>
           <div class="hw-grid">
             <div class="hw-field"><span class="hw-label">Frequency (Hz)</span>
               <input type="number" id="f-pp-freq" min="100" max="40000" oninput="setAct('prop_pitch','freq_hz',+this.value)"></div>
@@ -1662,7 +1676,6 @@
             <span class="hw-desc">Wet glow adds a delayed pilot-fuel output while sequencer blocks still command the glow normally.</span>
             <select id="f-glow-type" onchange="setGlowType(+this.value)">
               <option value="0">Plain glow plug</option>
-              <option value="1">Current-sensed glow plug</option>
               <option value="2">Wet glow plug</option>
             </select></div>
         </div>
@@ -1868,13 +1881,8 @@
           <select id="f-cl-rx" onchange="setNested('cluster_serial','rx_pin',+this.value)"></select>
         </div>
         <div class="hw-field">
-          <span class="hw-label">Protocol</span>
-          <select id="f-cl-protocol" onchange="setNested('cluster_serial','protocol',+this.value)">
-            <option value="1">OT Cluster v1</option>
-          </select>
-        </div>
-        <div class="hw-field">
           <span class="hw-label">Baud rate</span>
+          <span class="hw-desc">Must match the receiving display / ground-station serial setting, or there is no communication.</span>
           <select id="f-cl-baud" onchange="setNested('cluster_serial','baud',+this.value)">
             <option value="9600">9600</option>
             <option value="19200">19200</option>
@@ -1914,6 +1922,7 @@
         </div>
         <div class="hw-field">
           <span class="hw-label">Baud rate</span>
+          <span class="hw-desc">Must match the receiving display / ground-station serial setting, or there is no communication.</span>
           <select id="f-mav-baud" onchange="setNested('mavlink','baud',+this.value)">
             <option value="57600">57600</option>
             <option value="115200">115200</option>
@@ -2739,7 +2748,7 @@ function populate() {
   updateGroupEnabled('grp-starter', str.enabled || false);
   const strType = str.type ?? 0;
   document.getElementById('f-str-type').value = strType;
-  v('f-str-min',   str.min_us   ?? 1500);
+  v('f-str-min',   str.min_us   ?? 1000);
   v('f-str-max',   str.max_us   ?? 2000);
   v('f-str-lfreq', str.ledc_freq ?? 10000);
   v('f-str-lbits', str.ledc_bits ?? 12);
@@ -2892,8 +2901,6 @@ function populate() {
   const cl = cfg.cluster_serial || {};
   chk('en-cluster', cl.enabled || false);
   updateGroupEnabled('grp-cluster', cl.enabled || false);
-  const clProtocol = document.getElementById('f-cl-protocol');
-  if (clProtocol) clProtocol.value = (cl.protocol || 1).toString();
   const clBaud = document.getElementById('f-cl-baud');
   if (clBaud) {
     const bv = (cl.baud || 115200).toString();
@@ -3000,7 +3007,7 @@ function populate() {
   const glow = a.glow_plug || {};
   chk('en-glowplug', glow.enabled || false);
   updateGroupEnabled('grp-glowplug', glow.enabled || false);
-  v('f-glow-type', glow.type ?? (glow.has_current ? 1 : 0));
+  v('f-glow-type', Number(glow.type) === 2 ? 2 : 0);  // plain(0)/wet(2); legacy 1 shows as plain
   v('f-glow-output-type', glow.output_type ?? 0);
   chk('f-glow-activeh', glow.active_h !== false);
   v('f-glow-freq', glow.freq_hz  ?? 1000);
@@ -3692,22 +3699,16 @@ function updateFanTypeUI(t) {
 function setGlowCurrentEnabled(en) {
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.glow_plug) cfg.actuators.glow_plug = {};
-  cfg.actuators.glow_plug.has_current = en;
-  if (en && Number(cfg.actuators.glow_plug.type || 0) === 0) cfg.actuators.glow_plug.type = 1;
-  if (!en && Number(cfg.actuators.glow_plug.type || 0) === 1) cfg.actuators.glow_plug.type = 0;
-  v('f-glow-type', cfg.actuators.glow_plug.type);
-  setOptionalGroupVisible('grp-wetglow', cfg.actuators.glow_plug.type === 2);
+  cfg.actuators.glow_plug.has_current = en;   // independent of glow type (plain/wet)
   setOptionalGroupVisible('grp-glowcurrent', en);
   refreshAllPins(); dirty();
 }
 function setGlowType(type) {
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.glow_plug) cfg.actuators.glow_plug = {};
-  cfg.actuators.glow_plug.type = Math.max(0, Math.min(2, Number(type) || 0));
-  if (cfg.actuators.glow_plug.type === 1) cfg.actuators.glow_plug.has_current = true;
-  if (cfg.actuators.glow_plug.type === 0) cfg.actuators.glow_plug.has_current = false;
-  chk('en-glowcurrent', !!cfg.actuators.glow_plug.has_current);
-  setOptionalGroupVisible('grp-glowcurrent', !!cfg.actuators.glow_plug.has_current);
+  // Plain(0) or Wet(2). Current sensing is the separate "Enable current
+  // sensing" checkbox (has_current), not a glow type.
+  cfg.actuators.glow_plug.type = (Number(type) === 2) ? 2 : 0;
   setOptionalGroupVisible('grp-wetglow', cfg.actuators.glow_plug.type === 2);
   refreshAllPins(); dirty();
 }
@@ -4088,13 +4089,6 @@ function updateAbFlameUI(checked) {
   if (grp) grp.style.display = checked ? '' : 'none';
 }
 
-function setFeature(key, val) {
-  cfg['has_' + key] = val;
-  dirty();
-  updateFeaturesUI();
-  updateHardwarePrerequisites(true);
-  refreshAllPins();
-}
 
 let _pendingPresetType = null;
 

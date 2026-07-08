@@ -728,10 +728,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
                                    (HardwareConfig::idleInputRcPwm ? "servo" : "adc");
     if (HardwareConfig::throttleInputRcPwm) doc["throttle_input_us"] = ed.throttleInputRaw;
     if (HardwareConfig::idleInputRcPwm)     doc["idle_input_us"]     = ed.idleInputRaw;
-    doc["rc_throttle_valid"]     = ed.rcThrottleValid;
     doc["rc_throttle_norm"]      = (float)(int)(ed.rcThrottleNorm * 1000) / 1000.0f;
-    doc["rc_idle_valid"]         = ed.rcIdleValid;
-    doc["rc_idle_norm"]          = (float)(int)(ed.rcIdleNorm * 1000) / 1000.0f;
     // ── Health, actuators, switches ───────────────────────────────────────
     doc["oil_pct"]               = (int)ed.oilPumpPct;
     doc["n1_healthy"]            = ed.n1Healthy;
@@ -749,12 +746,10 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["oil_failsafe_active"]   = ed.oilFailsafeActive;
     doc["oil_min_bar"]           = (float)(int)(ed.oilMinBar * 100) / 100.0f;
     doc["standby_oil_feed_active"] = ed.standbyOilFeedActive;
-    doc["standby_oil_feed_bar"]  = Config::standbyOilFeedBar;
     doc["last_event"]            = ed.lastEvent;
     doc["dev_mode"]              = ed.devMode;
     doc["skip_safety_checks"]    = ed.skipSafetyChecks;
     doc["bench_mode"]            = ed.benchMode;
-    doc["ota_in_progress"]       = _maintenanceUploadInProgress();
     doc["relight_armed"]         = ed.relightArmed;
     doc["relight_attempts"]      = (int)ed.relightAttempts;
     doc["extra_cooldown_active"] = ed.extraCooldownActive;
@@ -874,9 +869,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         // Input type strings (hardware topology — doesn't change at runtime)
         doc["rc_pwm_active"]         = HardwareConfig::throttleInputRcPwm
                                        || HardwareConfig::idleInputRcPwm;
-        doc["idle_use_n2"]           = Config::idleUseN2;
         doc["limp_throttle_cap"]     = Config::limpMaxThrottlePct;
-        doc["fuel_idle_max_pct"]     = Config::fuelPumpIdleMaxPct;
+        doc["fuel_idle_max_pct"]     = Config::throttleIdleMaxPct;  // unified idle ceiling
         doc["fuel_pump_min_pct"]     = Config::fuelPumpMinPct;
         doc["oil_pump_on_pct"]       = Config::oilPumpOnPct;
         doc["has_throttle"]          = HardwareConfig::hasThrottle;
@@ -889,7 +883,6 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_oil_pump"]          = HardwareConfig::hasOilPump;
         doc["has_dynamic_idle"]      = HardwareConfig::hasDynamicIdle;
         doc["ws_interval_ms"]        = Config::wsIntervalMs;
-        doc["has_oil_loop"]          = HardwareConfig::instance().hasOilLoop;
         bool relightIgnitionOk = false;
         switch (Config::relightIgnitionTarget) {
             case 1: relightIgnitionOk = HardwareConfig::hasIgniter2; break;
@@ -902,20 +895,12 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["flameout_source"]       = Config::flameoutSource;
         doc["flameout_n1_min_rpm"]   = Config::flameoutN1MinRpm;
         doc["flameout_tot_drop_c"]   = Config::flameoutTotDropC;
-        doc["relight_ignition_target"] = Config::relightIgnitionTarget;
-        doc["relight_confirm_source"] = Config::relightConfirmSource;
-        doc["relight_min_rpm"]       = Config::relightMinRpm;
-        doc["relight_confirm_rpm"]   = Config::relightConfirmRpm;
-        doc["relight_tot_rise_c"]    = Config::relightTotRiseC;
         doc["dev_mode_fw"]           = true;
         doc["config_locked"]         = Config::isLocked();
         doc["config_storage_fault"]  = ed.configStorageFault;
         // Boot-load accept+warn notice (out-of-cap safety limits etc.)
         doc["config_load_warning"]   = Config::loadWarning[0] ? Config::loadWarning : nullptr;
         doc["ui_theme"]              = Config::uiTheme;
-        doc["config_version_firmware"] = Config::CONFIG_VERSION;
-        doc["hardware_profile"]      = HardwareConfig::profileId;
-        doc["hw_json_loaded"]        = true;
         // Session / boot stats
         doc["run_count"]             = Config::runCount;   // persisted lifetime count
         doc["start_attempt_count"]   = Config::startAttemptCount;
@@ -963,7 +948,6 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_fuel_press"]        = HardwareConfig::hasFuelPress;
         doc["has_governor"]          = HardwareConfig::hasGovernor;
         doc["has_glow_plug"]         = HardwareConfig::hasGlowPlug;
-        doc["glow_plug_type"]        = HardwareConfig::glowPlugType;
         doc["glow_plug_output_type"] = HardwareConfig::glowPlugOutputType;
         doc["has_wet_glow"]          = HardwareConfig::hasGlowPlug && HardwareConfig::glowPlugType == 2;
         doc["wet_glow_fuel_type"]    = HardwareConfig::wetGlowFuelType;
@@ -979,14 +963,11 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_cool_fan"]          = HardwareConfig::hasCoolFan;
         doc["has_airstarter"]        = HardwareConfig::hasAirstarterSol;
         doc["has_oil_scavenge"]      = HardwareConfig::hasOilScavengePump;
-        doc["has_mavlink"]           = HardwareConfig::hasMAVLink;
         doc["has_tit"]               = HardwareConfig::hasTit;
         doc["has_starter_assist"]    = HardwareConfig::hasStarter
                                        && HardwareConfig::starterAssistEnabled
                                        && (HardwareConfig::starterType != 2)
                                        && HardwareConfig::hasN1Rpm;
-        // Calibration / raw ADC (used by calibration page via /api/data REST)
-        doc["igniter_coil"]          = HardwareConfig::igniterCoil;
         // ── Channel labels ────────────────────────────────────────────────
         auto tlbl = doc["labels"].to<JsonObject>();
         tlbl["tot"]        = HardwareConfig::labelTot;
@@ -1617,9 +1598,14 @@ void WebServer::_setupRoutes() {
                 "{\"error\":\"Stop active actuator tools/cooldown before factory reset\"}");
             return;
         }
-        // Consume any Core-1 deferred save (e.g. hour meter) before wiping the
-        // config, so a stale _savePending cannot make tick() rewrite the old
-        // in-memory settings over it.  Writes the old config, which is removed next.
+        // Inhibit tick()'s deferred-save flush for the whole wipe by scheduling
+        // the reboot FIRST: tick() skips flushPendingSave() while _hwRebootPending
+        // is set. Otherwise a Core-1 _savePending raised after the drain below
+        // (e.g. an hour-meter tick) could be flushed by tick() in the window
+        // between the wipe and the reboot, recreating the file we just removed.
+        // The wipe completes in well under the reboot delay.
+        _scheduleRestart("factory reset");
+        // Drain any already-pending save to a known state, then wipe the config.
         Config::flushPendingSave();
         LittleFS.remove(Config::PATH);
         LittleFS.remove(HardwareConfig::PATH);
@@ -1628,9 +1614,12 @@ void WebServer::_setupRoutes() {
         // the compiled hardware_profile.h defaults (the normal case).
         if (LittleFS.exists(FACTORY_CONFIG_PATH)) {
             if (!_copyLittleFsFile(FACTORY_CONFIG_PATH, Config::PATH)) {
-                req->send(500, "application/json",
-                    "{\"error\":\"Failed to restore factory_config.json\"}");
-                return;
+                // The optional fleet override failed to copy, but the config is
+                // already wiped and the reboot is already scheduled — do NOT return
+                // a 500 (which would falsely imply nothing changed while the device
+                // reboots anyway). Fall through: the reboot regenerates the compiled
+                // hardware_profile.h defaults, a valid factory-reset outcome.
+                Serial.println("[WebServer] factory_config.json restore failed - falling back to compiled defaults");
             }
         }
         LittleFS.remove(FlightRecorder::PATH);
@@ -1654,7 +1643,7 @@ void WebServer::_setupRoutes() {
         }
         Serial.println("[WebServer] Factory reset - regenerating defaults, erased logs, rebooting");
         req->send(200, "application/json", "{\"ok\":true}");
-        _scheduleRestart("factory reset");
+        // Reboot was already scheduled at the top of the handler (see note there).
     });
 
     // GET /api/session/list — JSON array of available run numbers, newest first
@@ -1985,6 +1974,13 @@ void WebServer::_setupRoutes() {
                     "{\"ok\":false,\"error\":\"Current hardware section is too large to stage safely\"}");
                 return;
             }
+            // Snapshot the 5 threshold-based safety enable flags before applying,
+            // so we can auto-fill a default threshold for any newly-enabled one.
+            bool prevSafTit  = HardwareConfig::safetyTitOvertemp;
+            bool prevSafOilT = HardwareConfig::safetyOilTempHigh;
+            bool prevSafFP   = HardwareConfig::safetyFuelPressLow;
+            bool prevSafBatt = HardwareConfig::safetyBattLow;
+            bool prevSafSurge= HardwareConfig::safetySurge;
             bool ok = HardwareConfig::fromJson(g_webRxBuf, g_webRxLen);
             if (!ok) {
                 req->send(400, "application/json",
@@ -1998,6 +1994,10 @@ void WebServer::_setupRoutes() {
                 return;
             }
             Config::sanitizeForHardware();
+            // Auto-fill a sane threshold for any safety just enabled (and still
+            // active after sanitize) whose threshold is 0, so it isn't silently off.
+            Config::autoFillNewlyEnabledSafety(prevSafTit, prevSafOilT, prevSafFP,
+                                               prevSafBatt, prevSafSurge);
             if (!Config::save()) {
                 HardwareConfig::fromJson(g_webTxBuf, previousLen);
                 if (!HardwareConfig::save()) {

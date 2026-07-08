@@ -78,7 +78,7 @@ async function hasOption(page, selector, value) {
       cfg.di_channels = [];
       cfg.actuators.status_led = { enabled: true, pin: 4 };
       cfg.mavlink = { enabled: true, tx_pin: 4, baud: 115200, interval_ms: 200 };
-      cfg.cluster_serial = { enabled: true, protocol: 1, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };
+      cfg.cluster_serial = { enabled: true, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };
       const statusLedMav = _checkGpioConflicts().some(c =>
         c.pin === 4 && c.names.includes('Status LED') && c.names.includes('MAVLink TX'));
 
@@ -109,7 +109,7 @@ async function hasOption(page, selector, value) {
     results.push('hardware conflict logic covers status LED, serial pins, SPI bus sharing and hidden inactive pins');
 
     const txOnlyCluster = await page.evaluate(() => {
-      cfg.cluster_serial = { enabled: true, protocol: 1, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };
+      cfg.cluster_serial = { enabled: true, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };
       return _checkGpioConflicts().some(c => c.names.some(n => n.startsWith('Cluster Serial')));
     });
     assert.equal(txOnlyCluster, false, 'TX-only cluster mode must not create a false RX conflict');

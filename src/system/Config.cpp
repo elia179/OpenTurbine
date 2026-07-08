@@ -71,6 +71,7 @@ float Config::idleRampDownMs        = 20000;
 float Config::idleDeadbandRpm       = 300;
 float Config::idleRpmLimit          = 60000;
 float Config::idleMinMultiplier     = 0.75f;
+float Config::idleMaxMultiplier     = 1.50f;
 bool  Config::idleUseN2             = kIdleUseN2Default;
 float Config::idleIGain             = 0.0f;   // 0 = off by default (pure ramp mode), enable in config
 float Config::idleIMax              = 0.10f;  // ±10% integral authority
@@ -162,8 +163,6 @@ int      Config::waitForInputTimeoutMs = 0;
 
 int      Config::cooldownSkipHoldMs  = 1000;
 
-float    Config::fuelPumpIdleMaxPct  = 18.0f;
-
 int      Config::timedDelayMs            = 1000;
 float    Config::modifiedIdleMultiplier  = 1.0f;
 int      Config::fuelPulsePulseMs        = 200;
@@ -211,7 +210,7 @@ float    Config::abStabilizeMaxTot          = 0.0f;      // 0 = disabled
 float    Config::rpmJumpThreshold    = 0.40f;
 int      Config::rpmZeroStuckTicks   = 5;
 
-float    Config::n1WarnRpm          = 90000.0f;   // default = rpmLimit * 0.9
+float    Config::n1WarnRpm          = 0.0f;       // 0 = auto (rpmLimit * 0.9)
 float    Config::n2WarnRpm          = 22000.0f;
 float    Config::totWarnC           = 0.0f;       // 0 = auto (selected EGT limit - totSafeMargin)
 float    Config::oilWarnBar         = 0.0f;       // 0 = auto (oilRunningMin)
@@ -237,9 +236,12 @@ float Config::glowPreheatMaxPct     = 80.0f;
 float Config::glowHoldPct           = 30.0f;
 bool  Config::glowWaitUntilHot      = false;
 
-uint32_t Config::totalRunSeconds    = 0;
-uint32_t Config::startAttemptCount  = 0;
-uint32_t Config::runCount           = 0;
+volatile uint32_t Config::totalRunSeconds    = 0;
+volatile uint32_t Config::startAttemptCount  = 0;
+volatile uint32_t Config::runCount           = 0;
+// Guards the read-modify-write of the three persisted counters above so a
+// Core 0 config-restore merge cannot lose a concurrent Core 1 increment.
+static portMUX_TYPE s_statsMux = portMUX_INITIALIZER_UNLOCKED;
 
 int   Config::throttleMinRaw        = 0;
 int   Config::throttleMaxRaw        = 4095;
@@ -495,9 +497,6 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         th["pullback_egt_hard_c"].as<float>() > 0.0f &&
         th["pullback_egt_hard_c"].as<float>() <= th["pullback_egt_soft_c"].as<float>()) return false;
 
-    JsonVariantConst fp = doc["fuel_pump"];
-    if (present(fp) && (!fp.is<JsonObjectConst>() ||
-        !validNumber(fp["idle_max_pct"], 0.0f, 100.0f))) return false;
 
     JsonVariantConst tools = doc["tools"];
     if (present(tools) && (!tools.is<JsonObjectConst>() ||
@@ -588,6 +587,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(di["deadband_rpm"], 0.0f, 500000.0f) ||
         !validNumber(di["rpm_limit"], 0.0f, 500000.0f) ||
         !validNumber(di["min_multiplier"], 0.0f, 1.0f) ||
+        !validNumber(di["max_multiplier"], 1.0f, 3.0f) ||
         !validBool(di["use_n2"]) ||
         !validNumber(di["i_gain"], 0.0f, 2.0f) ||
         !validNumber(di["i_max"], 0.0f, 0.5f))) return false;
@@ -650,11 +650,14 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     // Groups below were read/written but never validated — a restore or raw
     // API write could persist values far outside the UI ranges and only get
     // silently clamped (or not) after load.
+    // NOTE: these telemetry bounds MUST mirror the boot-load clamps in
+    // _fromDoc (ws>=333, snapshot>=500, control_loop 50..1000) so a value the
+    // API accepts is exactly the value that survives the next reboot.
     JsonVariantConst tmv = doc["telemetry"];
     if (present(tmv) && (!tmv.is<JsonObjectConst>() ||
-        !validInt(tmv["ws_interval_ms"], 50, 60000) ||
-        !validInt(tmv["snapshot_interval_ms"], 100, 3600000) ||
-        !validInt(tmv["control_loop_hz"], 20, 2000) ||
+        !validInt(tmv["ws_interval_ms"], 333, 60000) ||
+        !validInt(tmv["snapshot_interval_ms"], 500, 3600000) ||
+        !validInt(tmv["control_loop_hz"], 50, 1000) ||
         !validBool(tmv["log_standby"]))) return false;
 
     JsonVariantConst sav = doc["starter_assist"];
@@ -667,13 +670,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (present(oilxv) && (!oilxv.is<JsonObjectConst>() ||
         !validNumber(oilxv["zero_bar"], 0.0f, 100.0f) ||
         !validNumber(oilxv["deadband_bar"], 0.0f, 100.0f))) return false;
-
-    JsonVariantConst sobv = doc["standby_oil"];
-    if (present(sobv) && (!sobv.is<JsonObjectConst>() ||
-        !validInt(sobv["source"], 0, 10) ||
-        !validNumber(sobv["rpm_limit"], 0.0f, 1000000.0f) ||
-        !validNumber(sobv["feed_pct"], 0.0f, 100.0f) ||
-        !validNumber(sobv["feed_bar"], 0.0f, 20.0f))) return false;
+    // (standby_oil is validated once above near the top of this function.)
 
     JsonVariantConst limpv = doc["limp_mode"];
     if (present(limpv) && (!limpv.is<JsonObjectConst>() ||
@@ -864,6 +861,29 @@ bool Config::acquireStorageWrite() {
 
 void Config::releaseStorageWrite() {
     if (s_configWriteMutex) xSemaphoreGive(s_configWriteMutex);
+}
+
+void Config::autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
+                                        bool prevFuelPress, bool prevBatt, bool prevSurge) {
+    // For each of the 5 threshold-based safeties: if it just transitioned
+    // OFF->ON (user ticked it) and is still active after hardware sanitize (its
+    // sensor is present) but its threshold is 0 (= disabled), fill a sane
+    // default so a ticked safety can't sit silently off. This runs only on the
+    // enable EVENT, so deliberately setting a threshold to 0 later still
+    // disables the safety. Each fill is recorded in the flight log.
+    auto fill = [](bool was, bool now, float& thr, float def, const char* field) {
+        if (!was && now && thr <= 0.0f) {
+            FlightRecorder::logConfigChange(field, 0.0f, def);
+            Serial.printf("[Config] %s enabled with no threshold - auto-set to %.1f\n",
+                          field, (double)def);
+            thr = def;
+        }
+    };
+    fill(prevTit,       HardwareConfig::safetyTitOvertemp,  titLimit,               900.0f,    "autofill:tit_limit_c");
+    fill(prevOilTemp,   HardwareConfig::safetyOilTempHigh,  oilTempLimit,           120.0f,    "autofill:oil_temp_limit_c");
+    fill(prevFuelPress, HardwareConfig::safetyFuelPressLow, fuelPressMin,           0.5f,      "autofill:fuel_press_min_bar");
+    fill(prevBatt,      HardwareConfig::safetyBattLow,      battVoltMin,            10.5f,     "autofill:batt_volt_min_v");
+    fill(prevSurge,     HardwareConfig::safetySurge,        surgeDetectRpmVariance, 500000.0f, "autofill:surge_variance");
 }
 
 void Config::sanitizeForHardware() {
@@ -1080,9 +1100,29 @@ void Config::clearRuntimeStats() {
     stats.remove(startKey);
     stats.remove(rcKey);
     stats.end();
+    portENTER_CRITICAL(&s_statsMux);
     totalRunSeconds = 0;
     startAttemptCount = 0;
     runCount = 0;
+    portEXIT_CRITICAL(&s_statsMux);
+}
+
+void Config::addRunSeconds(uint32_t seconds) {
+    portENTER_CRITICAL(&s_statsMux);
+    totalRunSeconds += seconds;
+    portEXIT_CRITICAL(&s_statsMux);
+}
+
+void Config::incStartAttemptCount() {
+    portENTER_CRITICAL(&s_statsMux);
+    startAttemptCount++;
+    portEXIT_CRITICAL(&s_statsMux);
+}
+
+void Config::incRunCount() {
+    portENTER_CRITICAL(&s_statsMux);
+    runCount++;
+    portEXIT_CRITICAL(&s_statsMux);
 }
 
 bool Config::save() {
@@ -1265,7 +1305,7 @@ void Config::_applyDefaults() {
     pullbackEgtSoftC = 700.0f; pullbackEgtHardC = 750.0f;
     pullbackMinThrottlePct = 8.0f; pullbackStrength = 1.0f;
     idleTargetRpm = 44000; idleRampUpMs = 10000; idleRampDownMs = 20000;
-    idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f;
+    idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f; idleMaxMultiplier = 1.50f;
     idleUseN2 = kIdleUseN2Default; idleIGain = 0.0f; idleIMax = 0.10f;
     safetyCheckIntervalMs = 100; flameoutShutdownMs = 3000;
     egtSource = 0; flameoutSource = 0; flameoutN1MinRpm = 0.0f; flameoutTotDropC = 80.0f;
@@ -1289,7 +1329,6 @@ void Config::_applyDefaults() {
     standbyOilFeedBar = 0.0f;
     limpMaxThrottlePct = 50.0f; igniterOnStart = true; manualRelightIgnitionTarget = 0;
     cooldownSkipHoldMs = 1000;
-    fuelPumpIdleMaxPct = 18.0f;
     fp2StartPct = 0.0f; fp2EndPct = 80.0f; fp2RampMs = 3000; fp2DemandPct = 0.0f;
     govHoldTimeoutMs = 10000;
     abMinN1 = 30000.0f; abMaxN1 = 0.0f; abMaxTotForLight = 0.0f;
@@ -1300,7 +1339,7 @@ void Config::_applyDefaults() {
     abLightupPumpPct = 80.0f; abPumpMinPct = 80.0f; abPumpMaxPct = 100.0f; abPumpControlMode = 0;
     abMainFuelOffsetPct = 0.0f; abStabilizeMs = 1000; abStabilizeMaxTot = 0.0f;
     rpmJumpThreshold = 0.40f; rpmZeroStuckTicks = 5;
-    n1WarnRpm = 90000.0f; n2WarnRpm = 22000.0f; totWarnC = 0.0f; oilWarnBar = 0.0f;
+    n1WarnRpm = 0.0f; n2WarnRpm = 22000.0f; totWarnC = 0.0f; oilWarnBar = 0.0f;  // n1 0 = auto (rpmLimit*0.9)
     clusterEnabled = true;
     rcFailsafeMs = 500;
     governorTargetRpm = 0.0f; governorBandRpm = 500.0f;
@@ -1442,6 +1481,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     idleDeadbandRpm  = di["deadband_rpm"]  | idleDeadbandRpm;
     idleRpmLimit     = di["rpm_limit"]     | idleRpmLimit;
     idleMinMultiplier= di["min_multiplier"]| idleMinMultiplier;
+    idleMaxMultiplier= di["max_multiplier"]| idleMaxMultiplier;
     if (!di["use_n2"].isNull()) idleUseN2 = di["use_n2"].as<bool>();
     idleIGain        = di["i_gain"]        | idleIGain;
     idleIMax         = di["i_max"]         | idleIMax;
@@ -1564,8 +1604,12 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (!misc["igniter_on_start"].isNull()) igniterOnStart = misc["igniter_on_start"].as<bool>();
     manualRelightIgnitionTarget = misc["igniter_on_start_target"] | manualRelightIgnitionTarget;
 
-    auto fp = doc["fuel_pump"];
-    fuelPumpIdleMaxPct = fp["idle_max_pct"] | fuelPumpIdleMaxPct;
+    // Legacy migration: fuel_pump.idle_max_pct was merged into
+    // throttle.idle_max_pct (both drove the idle ceiling). Adopt the old value
+    // if a pre-merge config still carries it, so running idle isn't reset.
+    auto fpLegacy = doc["fuel_pump"];
+    if (!fpLegacy["idle_max_pct"].isNull())
+        throttleIdleMaxPct = fpLegacy["idle_max_pct"] | throttleIdleMaxPct;
 
     auto rh = doc["rpm_health"];
     rpmJumpThreshold  = rh["jump_threshold"]   | rpmJumpThreshold;
@@ -1638,12 +1682,17 @@ void Config::_fromDoc(const JsonDocument& doc) {
 
     auto stats = doc["stats"];
     if (!stats.isNull()) {
-        uint32_t fileRunSeconds = stats["total_run_seconds"] | totalRunSeconds;
-        if (fileRunSeconds > totalRunSeconds) totalRunSeconds = fileRunSeconds;
-        uint32_t fileStartAttempts = stats["start_attempt_count"] | startAttemptCount;
+        // Read the file values first (ArduinoJson lookups), then take the mux
+        // only for the compare-assign so the critical section stays tiny. A
+        // missing key reads as 0, which never beats the running counter.
+        uint32_t fileRunSeconds    = stats["total_run_seconds"]   | 0u;
+        uint32_t fileStartAttempts = stats["start_attempt_count"] | 0u;
+        uint32_t fileRuns          = stats["run_count"]           | 0u;
+        portENTER_CRITICAL(&s_statsMux);
+        if (fileRunSeconds    > totalRunSeconds)   totalRunSeconds   = fileRunSeconds;
         if (fileStartAttempts > startAttemptCount) startAttemptCount = fileStartAttempts;
-        uint32_t fileRuns = stats["run_count"] | runCount;
-        if (fileRuns > runCount) runCount = fileRuns;
+        if (fileRuns          > runCount)          runCount          = fileRuns;
+        portEXIT_CRITICAL(&s_statsMux);
     }
 
     // ── Automation rules ──────────────────────────────────────────
@@ -1775,6 +1824,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     clampToolMs(toolStarterEnTestMs, 1000u, 50u);
     clampToolMs(toolPropPitchTestMs, 3000u, 100u);
     toolPropPitchTestPct = constrain(toolPropPitchTestPct, 0.0f, 100.0f);
+    // These bounds mirror the PATCH validator in validateJson (telemetry group)
+    // so an accepted value survives a reboot unchanged — keep the two in sync.
     if (wsIntervalMs < 333u || wsIntervalMs > 60000u) wsIntervalMs = 333u;
     if (snapshotIntervalMs < 500u || snapshotIntervalMs > 3600000u) snapshotIntervalMs = 10000u;
     if (controlLoopHz < 50u || controlLoopHz > 1000u) controlLoopHz = 400u;
@@ -1805,6 +1856,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (idleDeadbandRpm < 0.0f) idleDeadbandRpm = 0.0f;
     if (idleRpmLimit < 0.0f) idleRpmLimit = 0.0f;
     idleMinMultiplier = constrain(idleMinMultiplier, 0.0f, 1.0f);
+    idleMaxMultiplier = constrain(idleMaxMultiplier, 1.0f, 3.0f);
     idleIGain = constrain(idleIGain, 0.0f, 2.0f);
     idleIMax = constrain(idleIMax, 0.0f, 0.5f);
     glowPreheatMaxPct = constrain(glowPreheatMaxPct, 0.0f, 100.0f);
@@ -1812,7 +1864,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
     starterAssistPct = constrain(starterAssistPct, 0.0f, 100.0f);
     standbyOilFeedPct = constrain(standbyOilFeedPct, 0.0f, 100.0f);
     standbyOilFeedBar = constrain(standbyOilFeedBar, 0.0f, 20.0f);
-    fuelPumpIdleMaxPct = constrain(fuelPumpIdleMaxPct, fuelPumpMinPct, 100.0f);
     if (modifiedIdleMultiplier < 0.0f) modifiedIdleMultiplier = 0.0f;
     fp2StartPct = constrain(fp2StartPct, 0.0f, 100.0f);
     fp2EndPct = constrain(fp2EndPct, 0.0f, 100.0f);
@@ -1896,6 +1947,14 @@ void Config::_fromDoc(const JsonDocument& doc) {
         snprintf(warnBuf, sizeof(warnBuf),
                  "tot_cooldown_target %.0f is not below tot_limit %.0f - cooldown ends immediately",
                  totCooldownTarget, totLimit);
+        appendLoadWarning(warnBuf);
+    }
+    // Oil target (oilMapMin) below the low-oil fault (oilRunningMin) makes the
+    // pump aim beneath the shutdown line -> nuisance low-oil trips.
+    if (oilRunningMin > 0.0f && oilMapMin > 0.0f && oilMapMin < oilRunningMin) {
+        snprintf(warnBuf, sizeof(warnBuf),
+                 "oil target %.1f is below low-oil fault %.1f bar - nuisance shutdowns likely",
+                 (double)oilMapMin, (double)oilRunningMin);
         appendLoadWarning(warnBuf);
     }
 
@@ -2011,6 +2070,7 @@ void Config::_toDoc(JsonDocument& doc) {
     di["deadband_rpm"]  = idleDeadbandRpm;
     di["rpm_limit"]     = idleRpmLimit;
     di["min_multiplier"]= idleMinMultiplier;
+    di["max_multiplier"]= idleMaxMultiplier;
     di["use_n2"]        = idleUseN2;
     di["i_gain"]        = idleIGain;
     di["i_max"]         = idleIMax;
@@ -2131,8 +2191,6 @@ void Config::_toDoc(JsonDocument& doc) {
     misc["igniter_on_start"]      = igniterOnStart;
     misc["igniter_on_start_target"] = manualRelightIgnitionTarget;
 
-    auto fp = doc["fuel_pump"].to<JsonObject>();
-    fp["idle_max_pct"] = fuelPumpIdleMaxPct;
 
     auto rh = doc["rpm_health"].to<JsonObject>();
     rh["jump_threshold"]   = rpmJumpThreshold;

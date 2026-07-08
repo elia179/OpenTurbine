@@ -237,7 +237,6 @@ async function optionDisabled(page, selector, value) {
     assert.equal(await page.locator('#f-oilpress-pin option[value="1"]').count(), 1);
     assert.equal(await page.locator('#f-cl-rx option[value="-1"]').count(), 1);
     assert.equal(await page.locator('#f-cl-rx option[value="22"]').count(), 0);
-    assert.equal(await page.locator('#f-cl-protocol').inputValue(), '1');
     results.push('hardware GPIO choices switch by ESP32 target and cluster RX keeps the telemetry-only -1 option');
 
     const n1UnlockTip = await page.locator('#en-n1rpm').getAttribute('title');

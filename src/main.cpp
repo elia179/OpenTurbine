@@ -1401,6 +1401,15 @@ static void checkGeneralDI() {
                 Serial.printf("[DI] ch%d limp_mode deactivated\n", i);
             }
         }
+
+        // limp_mode is level-authoritative while the switch is HELD: re-assert
+        // ON every tick so a software TOGGLE_LIMP_MODE can't desync from a
+        // physically-held switch. Release is handled by the falling edge above,
+        // and a software toggle still works when no limp switch is held.
+        if (strcmp(hw.diCh[i].role, "limp_mode") == 0 && ed.diState[i] &&
+            (hw.diCh[i].activeModes & (uint8_t)(1u << (int)ed.mode))) {
+            ed.limpMode = true;
+        }
     }
 
     if (hasDiAbArm) {
@@ -1725,7 +1734,7 @@ static void enterRunning() {
     // Dev mode and bench mode runs are not real engine starts — don't count toward run log
     if (!ed.benchMode && !ed.devMode) {
         ed.runCount = ed.runCount + 1;          // per-boot (kept for any internal use)
-        Config::runCount = Config::runCount + 1; // persisted lifetime count
+        Config::incRunCount();                  // persisted lifetime count (guarded RMW)
         Config::requestRuntimeStatsSave();
     }
     ed.relightArmed       = true;   // arm relight for this run
@@ -1831,7 +1840,7 @@ static void enterStandby() {
         // Bench / dev mode runs are not real engine time — don't count toward total
         if (!ed.benchMode && !ed.devMode) {
             uint32_t elapsed = (millis() - _runStartMs) / 1000;
-            Config::totalRunSeconds += elapsed;
+            Config::addRunSeconds(elapsed);     // guarded RMW
             // Runtime statistics are not engine configuration. Persist them
             // through NVS so stopping a run does not rewrite ecu_config.json.
             Config::requestRuntimeStatsSave();
@@ -2089,7 +2098,7 @@ static void handleCommand(const OTPacket& pkt) {
                 strncpy(ed.lastEvent, "Start sequence initiated", sizeof(ed.lastEvent) - 1);
                 Hardware::applyConfig();  // re-apply config before each start
                 if (!ed.benchMode && !ed.devMode) {
-                    Config::startAttemptCount++;
+                    Config::incStartAttemptCount(); // guarded RMW
                     Config::requestRuntimeStatsSave();
                 }
                 FlightRecorder::logStartAttempt();
@@ -2110,11 +2119,12 @@ static void handleCommand(const OTPacket& pkt) {
             break;
 
         case OTCommand::TOGGLE_DYNAMIC_IDLE:
-            if (HardwareConfig::hasDynamicIdle &&
-                (standbyLike || ed.mode == SysMode::RUNNING))
+            if (!HardwareConfig::hasDynamicIdle)
+                ed.dynamicIdleEnabled = false;   // feature absent — force off
+            else if (standbyLike || ed.mode == SysMode::RUNNING)
                 ed.dynamicIdleEnabled = !ed.dynamicIdleEnabled;
-            else
-                ed.dynamicIdleEnabled = false;
+            // STARTUP/SHUTDOWN: ignore mid-transition (don't disturb the
+            // current setting), matching the other toggle commands.
             break;
 
         case OTCommand::TOGGLE_LIMP_MODE:
@@ -2479,9 +2489,12 @@ static void checkStartSwitch() {
     }
 
     // Manual relight: operator holds START while RUNNING → force igniter on
-    // Controlled by Config::igniterOnStart (configurable in Misc section)
-    if (ed.mode == SysMode::RUNNING && Config::igniterOnStart) {
-        if (cur == LOW) {
+    // Controlled by Config::igniterOnStart (configurable in Misc section).
+    // The cleanup path is gated only on mode == RUNNING (igniterOnStart is
+    // checked inside) so that clearing igniterOnStart live while START is held
+    // still releases the igniter instead of latching it on until the next stop.
+    if (ed.mode == SysMode::RUNNING) {
+        if (Config::igniterOnStart && cur == LOW) {
             if (!ed.manualRelightActive) {
                 const uint8_t target = (uint8_t)Config::manualRelightIgnitionTarget;
                 if (ignitionTargetAvailable(target)) {
@@ -2491,14 +2504,15 @@ static void checkStartSwitch() {
                 }
             }
         } else if (ed.manualRelightActive) {
+            // START released, or manual relight disabled live → cut the igniter
             ed.manualRelightActive = false;
             commandIgnitionTarget((uint8_t)Config::manualRelightIgnitionTarget, false);
-            Serial.println("[OT] Manual relight - START released");
+            Serial.println("[OT] Manual relight - igniter cut");
         }
-    } else if (ed.mode != SysMode::RUNNING) {
-        // Mode changed away from RUNNING (fault, shutdown) — cut igniter immediately
-        // if it was lit by manual relight.  ImmediateCut will also clear it, but
-        // doing it here avoids a one-frame gap.
+    } else {
+        // Not RUNNING (fault, shutdown) — cut igniter immediately if it was lit
+        // by manual relight.  ImmediateCut also clears it, but doing it here
+        // avoids a one-frame gap.
         if (ed.manualRelightActive) {
             commandIgnitionTarget((uint8_t)Config::manualRelightIgnitionTarget, false);
         }

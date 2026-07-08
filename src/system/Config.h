@@ -82,6 +82,7 @@ public:
     static float idleDeadbandRpm;
     static float idleRpmLimit;
     static float idleMinMultiplier;
+    static float idleMaxMultiplier;      // idle ceiling = throttleIdleMaxPct * this (>=1)
     static bool  idleUseN2;          // false = N1 (default), true = N2
     static float idleIGain;          // integral gain (accumulated error → throttle %)
     static float idleIMax;           // max integral windup (fraction, e.g. 0.15 = ±15% authority)
@@ -187,7 +188,6 @@ public:
     static int   cooldownSkipHoldMs;     // hold both buttons this long in SHUTDOWN to skip cooldown
 
     // ── Throttle / fuel ESC idle range ────────────────────────
-    static float fuelPumpIdleMaxPct;     // throttle % at idle input maximum (~18%)
     static float fuelPumpMinPct;         // measured min % at which the fuel-pump ESC reliably spins; 0 = not calibrated. Non-standby commands below it are forced to zero.
 
     // ── New sequence block params ─────────────────────────────
@@ -226,7 +226,10 @@ public:
     static float abMinN1;              // minimum N1 to attempt AB ignition
     static float abMaxN1;              // maximum N1 above which AB will not fire (compressor too fast)
     static float abMaxTotForLight;     // maximum TOT to attempt lighting (°C); 0=disabled
-    static float abThrottleThreshold;  // throttle fraction (0–1) to trigger when source=throttle
+    static float abThrottleThreshold;  // throttle fraction 0-1 to trigger when source=throttle.
+                                       // NOTE: stored as a FRACTION (0.80 = 80%), unlike the other
+                                       // percent config fields which are 0-100. The web UI shows it
+                                       // x100; raw-API / JSON writers must use 0-1 for THIS key.
     // Ignition
     static bool  abUseTorch;           // spike main fuel through turbine (torch method)
     static bool  abUseIgniter;         // fire AB igniter (igniter2) on ignition
@@ -291,9 +294,12 @@ public:
     static bool  glowWaitUntilHot;       // hold at holdPct until current sensor confirms hot
 
     // ── Hour meter / run statistics ───────────────────────────
-    static uint32_t totalRunSeconds;         // accumulated engine-on time (persisted)
-    static uint32_t startAttemptCount;       // commanded start attempts (persisted)
-    static uint32_t runCount;                // successful entries into RUNNING (persisted, lifetime)
+    // volatile: Core 1 (ECU) increments these via the guarded add/inc helpers
+    // below while Core 0 (web) may merge them during a config restore. Single
+    // 32-bit reads (telemetry/serialize) are atomic; only the RMW is guarded.
+    static volatile uint32_t totalRunSeconds;   // accumulated engine-on time (persisted)
+    static volatile uint32_t startAttemptCount; // commanded start attempts (persisted)
+    static volatile uint32_t runCount;          // successful entries into RUNNING (persisted, lifetime)
 
     // ── Session data logger ───────────────────────────────────
     static constexpr uint32_t SLOG_N1         = 1u << 0;
@@ -385,12 +391,22 @@ public:
     static void load();
     static bool save();          // write-to-tmp + rename; returns false on LittleFS error
     static void sanitizeForHardware(); // clear settings that reference unequipped hardware
+    // Auto-fill a sane default threshold for any of the 5 threshold-based
+    // safeties just ENABLED (off->on) while its threshold is 0, so a ticked
+    // safety cannot stay silently off. Pass the pre-change enable flags.
+    static void autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
+                                           bool prevFuelPress, bool prevBatt, bool prevSurge);
     static void requestSave();   // Core 1: mark save needed, zero file I/O
     static bool flushPendingSave(); // Core 0: perform deferred save; returns true if it ran
     static void requestRuntimeStatsSave(); // Core 1: persist hour meter through NVS
     static bool flushPendingRuntimeStats(); // Core 0: perform deferred NVS write
     static void loadRuntimeStats(); // merge per-engine NVS hour meter after profile load
     static void clearRuntimeStats(); // factory reset current engine's hour meter
+    // Guarded RMW helpers for the persisted counters (called from the Core 1
+    // ECU path); protected against a concurrent Core 0 restore-merge.
+    static void addRunSeconds(uint32_t seconds);
+    static void incStartAttemptCount();
+    static void incRunCount();
     static bool isLocked();
     static bool acquireStorageWrite(); // serialize all ecu_config.json replacement operations
     static void releaseStorageWrite();

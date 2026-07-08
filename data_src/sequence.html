@@ -138,7 +138,7 @@
           oninput="setAbEntryNumber('max_n1', this.value)">
       </div>
       <div class="param-field" id="ab-edit-tot-wrap">
-        <span class="param-label">Maximum EGT To Light <span class="param-unit">(<span data-unit="temp">°C</span>, 0 = off)</span></span>
+        <span class="param-label">Maximum EGT To Light <span class="param-unit">(<span id="ab-edit-tot-unit">°C</span>, 0 = off)</span></span>
         <input class="param-input" id="ab-edit-max-tot" type="number" min="0" max="1000" step="10"
           oninput="setAbEntryTemp('max_tot_for_light', this.value)">
       </div>
@@ -357,7 +357,7 @@ const BLOCKS = {
       {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
         configKey:'starter_timeout_ms',
         desc:'Maximum spin time before fault. If no N1 sensor is fitted, the timeout determines when the block exits.'},
-      {key:'oil_startup_min_bar',label:'Oil min',       unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
+      {key:'oil_startup_min_bar',label:'Oil arm min',   unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
         visibleIf: hw => !!hw.sensors?.oil_press?.enabled, configKey:'oil_startup_min_bar',
         desc:'Shared with OilPrime arm threshold - both use the same config value.'},
     ]
@@ -932,7 +932,7 @@ const CONFIG_SECTIONS = {
   throttle_set_pct:        {sec:'sequence.startup', key:'throttle_set_pct'},
   preheat_ms:              {sec:'sequence.startup', key:'preheat_ms'},
   oil_pump_on_pct:         {sec:'sequence.startup', key:'oil_pump_on_pct'},
-  fp_idle_max_pct:         {sec:'fuel_pump',        key:'idle_max_pct'},
+  fp_idle_max_pct:         {sec:'throttle',         key:'idle_max_pct'},
   // FlameConfirm / SafetyHold exit action bools
   flame_turn_off_igniter:     {sec:'sequence.startup', key:'flame_turn_off_igniter'},
   safety_turn_off_starter:    {sec:'sequence.startup', key:'safety_turn_off_starter'},
@@ -1671,7 +1671,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     if (seq.includes('SafetyHold')) {
       const mn = cfg?.throttle?.fuel_pump_min_pct ?? 0;
       const mx = paramVals['FuelPumpIdle.fp_idle_max_pct']
-              ?? cfg?.throttle?.idle_max_pct ?? cfg?.fuel_pump?.idle_max_pct ?? 18;
+              ?? cfg?.throttle?.idle_max_pct ?? 18;
       if (idleRaw != null) {
         const norm = Math.max(0, Math.min(1, idleRaw / 4095));
         const pct  = (mn + norm * (mx - mn)).toFixed(1);
@@ -1807,6 +1807,10 @@ function buildAbCriteriaHtml() {
     maxTotInput.max = seqRound(toDispTemp(1000));
     maxTotInput.step = seqRound(tempUnit() === 'F' ? 18 : 10);
   }
+  // Keep the unit label in step with the value, which is shown in the user's
+  // selected temperature unit (this page has no [data-unit] auto-updater).
+  const totUnitEl = document.getElementById('ab-edit-tot-unit');
+  if (totUnitEl) totUnitEl.textContent = dispTempUnit();
   const throttleWrap = document.getElementById('ab-edit-throttle-wrap');
   const inputWrap = document.getElementById('ab-edit-input-wrap');
   const totWrap = document.getElementById('ab-edit-tot-wrap');

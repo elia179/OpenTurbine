@@ -28,7 +28,7 @@ src/
   engine/
     EngineData.{h,cpp}                       — singleton shared state (sensors, demands, mode, faults, peaks)
     SafetyMonitor.h                          — 12 fault checks, relight FSM, external-fault injection
-    Types.h                                  — SysMode, ABMode, RpmHealth, OTCommand enums
+    Types.h                                  — SysMode, RpmHealth only (OTCommand in system/CommandQueue.h; ABMode in engine/EngineData.h)
     controllers/                             — IController + ThrottleSlew/DynamicIdle/OilPressureLoop/PowerTurbineGovernor
     sequencer/
       SequenceEngine.h                       — block runner (onEnter / tick / onExit / callbacks)
@@ -37,8 +37,8 @@ src/
                                                TempConfirm, Spool, SafetyHold, ImmediateCut, RPMDrop, CooldownSpin,
                                                ABCheckReady, ABIgnite, ABFlameConfirm, ABStabilize, etc.)
   hal/
-    sensors/  — PCNTRpmSensor, MAX6675/31855/31856, DS18B20, NTC, AnalogLinear/Poly/Threshold, MockSensor
-    actuators/ — ServoActuator, LEDCActuator, RelayActuator, MockActuator
+    sensors/  — PCNTRpmSensor, MAX6675/31855/31856, DS18B20, NTC, AnalogLinear/Poly/Threshold
+    actuators/ — ServoActuator, LEDCActuator, RelayActuator
     RCInput.h  — interrupt-driven RC PWM decoder (2 IRAM ISRs)
   system/
     Config.{h,cpp}                           — settings (gains, limits, calibration, rules)   — LittleFS JSON
@@ -134,7 +134,7 @@ LittleFS-backed (`/ecu_config.json`, with `/config.json` legacy fallback at
 `Config.cpp:225-330`). Static members organised by section:
 
 - Engine limits: `rpmLimit`, `totLimit`, `titLimit`, `oilMinBar`, `oilTempLimit`, `fuelPressMin`, `battVoltMin`, `hotStartTotThreshold`, `totRiseRateLimit`.
-- Idle / governor: `idleTargetRpm`, `idleUseN2`, `idleMinPct`, `idleMaxPct`, `idleRampUpMs`, `idleRampDownMs`, `idleKi`, `governorTargetRpm`, `governorKp`, `governorBandRpm`, `usePropPitch`, `pitchRampSec`.
+- Idle / governor: `idleTargetRpm`, `idleUseN2`, `idleMinMultiplier`, `idleMaxMultiplier`, `idleRampUpMs`, `idleRampDownMs`, `idleIGain`, `idleIMax`, `governorTargetRpm`, `governorKp`, `governorBandRpm`, `usePropPitch`, `pitchRampSec`.
 - Throttle: `throttleMinRaw`, `throttleMaxRaw`, `throttleExpo`, `throttleIdleMinPct`, `rampUpMs`, `rampDownMs`, `limpMaxThrottlePct`.
 - Oil: `oilUseThrottleMap`, `oilMapMin`, `oilMapMax`, `oilKp`, `oilDeadband`, `oilFailsafePct`, `oilFailsafeDelayMs`, `standbyOilRpmLimit`, `standbyOilFeedPct`.
 - Calibration polynomials / linear maps: oil pressure cubic (`oilPolyA..D`, `oilPolyXMin/Max`), P1/P2/fuelPress linear two-point, fuel flow pulse rate.

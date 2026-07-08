@@ -256,9 +256,9 @@
       <div id="p1-mode-factory-panel" style="display:none">
         <div class="wizard-steps">
           Enter the sensor voltage at the ECU ADC pin after any divider or level shift:<br>
-          Voltage at <b>0 bar</b>: <input type="number" id="p1-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
-          &nbsp; Voltage at max bar: <input type="number" id="p1-v-max" min="0" max="3.3" step="0.01" placeholder="3.0 V" style="width:5rem;margin:0 .3rem"> V
-          &nbsp; Max bar value: <input type="number" id="p1-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10" style="width:5rem;margin:0 .3rem"> bar
+          ADC-pin voltage at <b>0 bar</b>: <input type="number" id="p1-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; ADC-pin voltage at <b>full-scale</b>: <input type="number" id="p1-v-max" min="0" max="3.3" step="0.01" placeholder="3.0 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Pressure at full-scale (bar): <input type="number" id="p1-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10 bar" style="width:5rem;margin:0 .3rem"> bar
           <br><span style="font-size:.72rem;color:var(--dim)">For common 0.5-4.5 V automotive transducers, use a divider or 3.3 V-rated sensor and enter the scaled ADC-pin voltage here.</span>
         </div>
       </div>
@@ -298,9 +298,9 @@
       <div id="p2-mode-factory-panel" style="display:none">
         <div class="wizard-steps">
           Enter the sensor voltage at the ECU ADC pin after any divider or level shift:<br>
-          Voltage at <b>0 bar</b>: <input type="number" id="p2-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
-          &nbsp; Voltage at max bar: <input type="number" id="p2-v-max" min="0" max="3.3" step="0.01" placeholder="3.0 V" style="width:5rem;margin:0 .3rem"> V
-          &nbsp; Max bar value: <input type="number" id="p2-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10" style="width:5rem;margin:0 .3rem"> bar
+          ADC-pin voltage at <b>0 bar</b>: <input type="number" id="p2-v-zero" min="0" max="3.3" step="0.01" placeholder="0.5 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; ADC-pin voltage at <b>full-scale</b>: <input type="number" id="p2-v-max" min="0" max="3.3" step="0.01" placeholder="3.0 V" style="width:5rem;margin:0 .3rem"> V
+          &nbsp; Pressure at full-scale (bar): <input type="number" id="p2-v-valmax" min="0.1" max="1000" step="0.1" placeholder="10 bar" style="width:5rem;margin:0 .3rem"> bar
           <br><span style="font-size:.72rem;color:var(--dim)">For common 0.5-4.5 V automotive transducers, use a divider or 3.3 V-rated sensor and enter the scaled ADC-pin voltage here.</span>
         </div>
       </div>
@@ -1059,7 +1059,7 @@ window.applyData = function(d) {
   }
 
   if (hasOilTemp && d.oil_temp !== undefined) {
-    setText('cal-oiltemp', Number(d.oil_temp).toFixed(1) + ' °C');
+    setText('cal-oiltemp', toDispTemp(Number(d.oil_temp)).toFixed(1) + ' ' + dispTempUnit());
     bar('bar-oiltemp', d.oil_temp, 0, 150, d.oil_temp_healthy !== false);
   }
   if (hasBattVolt && d.batt_voltage !== undefined) {

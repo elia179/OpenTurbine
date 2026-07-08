@@ -37,15 +37,23 @@ OpenTurbine/
 ├── partitions.csv              ← 4 MB OTA layout (esp32dev)
 ├── partitions_16mb.csv         ← 16 MB OTA layout (esp32s3dev)
 ├── README.md
-├── DESIGN_SPEC.md
+├── CHANGELOG.md
+├── LICENSE
+│
+├── dev/                        ← developer docs (DESIGN_SPEC.md, CODEMAP.md, bench rig)
+├── docs/                       ← user/protocol docs (beta guide, OTC cluster protocol)
+├── examples/                   ← reference client code (OTCClusterClient.h)
 │
 ├── data/                       ← web UI assets (LittleFS, uploaded via uploadfs)
 │   ├── index.html
+│   ├── hardware.html
 │   ├── calibration.html
 │   ├── config.html
+│   ├── sequence.html
 │   ├── log.html
 │   ├── tools.html
 │   ├── app.js
+│   ├── theme.js
 │   └── style.css
 │
 └── src/
@@ -58,15 +66,13 @@ OpenTurbine/
     │   │   ├── PCNTRpmSensor.h       ← ESP32 PCNT hall-effect RPM counter
     │   │   ├── AnalogSensor.h        ← ADC: polynomial, linear, threshold variants
     │   │   ├── MAX6675TempSensor.h   ← SPI MAX6675 thermocouple
-    │   │   ├── MAX31855TempSensor.h  ← SPI MAX31855 thermocouple (bit-banged)
-    │   │   └── MockSensor.h          ← scripted values for DEV_MODE / testing
+    │   │   └── MAX31855TempSensor.h  ← SPI MAX31855 thermocouple (bit-banged)
     │   │
     │   ├── actuators/
     │   │   ├── IActuator.h     ← interface all actuators implement
     │   │   ├── ServoActuator.h ← servo PWM 1000–2000 µs (throttle, starter ESC)
     │   │   ├── LEDCActuator.h  ← high-freq LEDC PWM (oil pump, fans)
-    │   │   ├── RelayActuator.h ← relay / MOSFET (solenoids, igniters)
-    │   │   └── MockActuator.h  ← logs calls only, DEV_MODE
+    │   │   └── RelayActuator.h ← relay / MOSFET (solenoids, igniters)
     │   │
     │   └── RCInput.h           ← optional RC PWM input (idle pot / throttle position)
     │
@@ -90,7 +96,6 @@ OpenTurbine/
     │           ├── PreIgnSpark.h    ← igniter fire while starter spins
     │           ├── FuelOpen.h       ← open fuel solenoid
     │           ├── FlameConfirm.h   ← wait for N consecutive flame detections
-    │           ├── PostIgnDwell.h   ← brief hold after flame confirm
     │           ├── Spool.h          ← wait for N1 to reach spool target
     │           ├── SafetyHold.h     ← final pre-running safety check
     │           ├── ImmediateCut.h   ← shutdown: cut fuel/ignition instantly
@@ -219,7 +224,6 @@ sequence) — it is illustrative, not the default.
 #define OT_SAFETY_OVERTEMP        // TOT > TOT_LIMIT → shutdown
 #define OT_SAFETY_LOW_OIL         // oil < min bar → shutdown
 #define OT_SAFETY_FLAMEOUT        // flame lost sustained → shutdown
-// #define OT_SAFETY_LOW_FUEL     // requires OT_HAS_FUEL_FLOW
 
 // ── Startup sequence (order matters, comment to remove a block) ─
 #define OT_STARTUP_SEQ \
@@ -228,7 +232,6 @@ sequence) — it is illustrative, not the default.
     OT_BLOCK(PreIgnSpark)    \
     OT_BLOCK(FuelOpen)       \
     OT_BLOCK(FlameConfirm)   \
-    OT_BLOCK(PostIgnDwell)   \
     OT_BLOCK(Spool)          \
     OT_BLOCK(SafetyHold)
 
@@ -334,7 +337,6 @@ public:
 | `AnalogThresholdSensor` | ADC + threshold cal | bool as 0.0/1.0 |
 | `MAX6675TempSensor` | SPI MAX6675 | °C |
 | `MAX31855TempSensor` | SPI MAX31855 | °C |
-| `MockSensor` | scripted values | any (DEV_MODE) |
 
 Health reporting per sensor type:
 - RPM: uses RpmHealth fault bitmask (SATURATED, JUMP, ZERO_STUCK, ZERO_GLITCH)
@@ -367,7 +369,6 @@ public:
 | `ServoActuator` | PWM 1000–2000µs | throttle ESC, starter ESC |
 | `LEDCActuator` | High-freq PWM | oil pump, fans |
 | `RelayActuator` | Digital on/off | solenoids, igniters, enables |
-| `MockActuator` | logs calls only | DEV_MODE |
 
 ---
 
@@ -411,9 +412,8 @@ The engine iterates them — no dynamic allocation.
 | Block | Entry condition | Success | Fail route |
 |---|---|---|---|
 | `OilPrime` | always | oil >= threshold within timeout | Abort |
-| `StarterStage1` | oil gate passed | N1 >= start_rpm | Fault |
-| `StarterStage2` | stage 1 done | N1 >= pre_ign_rpm | Fault |
-| `PreIgnSpark` | stage 2 done | timer elapsed | — |
+| `StarterSpin` | oil gate passed | N1 >= pre_ign_rpm | Fault |
+| `PreIgnSpark` | starter at speed | timer elapsed | — |
 | `FuelOpen` | spark done | immediately | — |
 | `FlameConfirm` | fuel open | 3 consecutive detections | Abort |
 | `Spool` | flame confirmed | N1 >= rpm_target | Fault |
@@ -538,7 +538,7 @@ All parameters from ecu_config.json.
     "shutdown": {
       "rpm_drop_threshold": 5000,
       "rpm_drop_timeout_ms": 15000,
-      "cooldown_timeout_ms": 200000,
+      "cooldown_timeout_ms": 60000,
       "final_stop_timeout_ms": 10000,
       "cooldown_use_starter": true,
       "cooldown_use_oil": true
@@ -558,6 +558,7 @@ All parameters from ecu_config.json.
     "deadband_rpm": 300,
     "rpm_limit": 60000,
     "min_multiplier": 0.75,
+    "max_multiplier": 1.50,
     "use_n2": false
   },
   "safety": {
@@ -607,15 +608,15 @@ All parameters from ecu_config.json.
     "fuel_sol_test_ms": 1000
   },
   "telemetry": {
-    "ws_interval_ms": 200,
-    "snapshot_interval_ms": 5000
+    "ws_interval_ms": 333,
+    "snapshot_interval_ms": 10000
   },
   "cluster": {
-    "n1_warn_rpm": 90000,
+    "n1_warn_rpm": 0,
     "n2_warn_rpm": 22000,
     "tot_warn_c": 0,
     "oil_warn_bar": 0,
-    "enabled": false
+    "enabled": true
   },
   "display": {
     "pressure_sensors": false
@@ -634,8 +635,8 @@ All parameters from ecu_config.json.
     "p1": false, "p2": false, "throttle": false, "mode": false
   },
   "calibration": {
-    "throttle_min_raw": 950,
-    "throttle_max_raw": 3150,
+    "throttle_min_raw": 0,
+    "throttle_max_raw": 4095,
     "flame_threshold": 500,
     "oil_poly": { "a": 0, "b": 0, "c": 0, "d": 0, "x_min": 0, "x_max": 4095 },
     "p1_zero_bar": 0,
@@ -675,7 +676,7 @@ Written by ECU loop only. Web server reads for display/download.
 ```
 
 ### Capacity
-Configurable ring buffer, default 500 records. Oldest overwritten when full.
+Fixed ring buffer, 2200 records. Oldest 20% evicted when full.
 Full log downloadable as JSON from web UI. Individual run summaries shown in log page.
 
 ---
@@ -709,6 +710,7 @@ GET   /api/data      → current EngineData snapshot (JSON)
 GET   /api/config    → current settings section from ecu_config.json
 POST  /api/config    → replace settings section (locked while active unless Dev Mode)
 PATCH /api/config    → merge settings patch / calibration field save
+POST  /api/theme     → save UI theme only (no engine-config re-apply)
 GET   /api/hardware  → current hardware section from ecu_config.json
 POST  /api/hardware  → replace hardware section, STANDBY-only, schedules reboot
 PATCH /api/hardware  → calibration/topology patch, STANDBY-only
@@ -716,11 +718,16 @@ GET   /api/ecu_config → download full engine file
 POST  /api/ecu_config → restore full engine file, STANDBY-only, schedules reboot
 GET   /api/log       → full flight recorder log (JSON)
 GET   /api/log/csv   → log as CSV download
+GET    /api/log/raw   → raw flight recorder log file (STANDBY-only, standby logging off)
+GET   /api/session/list → list of available per-run session CSVs
 GET   /api/session/log → current or selected per-run session CSV
+DELETE /api/session/all → delete all per-run session CSVs
 POST  /api/command   → queue a command (FuelPrime, IGNtest, etc.)
 POST  /api/start     → queue START command
 POST  /api/stop      → immediate STOP (direct, not queued)
 GET   /api/status    → mode, health summary, lock state
+POST  /api/factory_reset → regenerate default config, STANDBY-only, schedules reboot
+POST  /api/web_assets → upload replacement web UI assets to LittleFS, STANDBY-only
 POST  /update        → OTA firmware upload (binary, writes to inactive OTA slot, reboots)
 WS    /ws            → client-pulled live telemetry frames
 ```
@@ -857,7 +864,7 @@ ECU drains at top of each loop tick. Commands are non-blocking on both ends.
 enum class OTCommand {
     START, STOP,
     FUEL_PRIME, OIL_PRIME, IGN_TEST, START_TEST, FUEL_SOL_TEST, IDLE_TEST,
-    SET_OIL_PRESSURE,   // float param
+    SET_OIL_DEMAND,     // fParam = bar target
     SET_OIL_PCT,        // int param
     CALIBRATE_OIL,
     CALIBRATE_THROTTLE,

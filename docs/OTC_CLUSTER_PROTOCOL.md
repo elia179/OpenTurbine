@@ -181,6 +181,6 @@ traffic full of unused values. A named `SUB,...` request may include unavailable
 fields; those values are returned as IEEE float `NaN`, which is the protocol's
 NIL value.
 
-`TOT_RATE` is a legacy-stable subscription key. In firmware 1.2 and newer its
+`TOT_RATE` is a legacy-stable subscription key. Its
 value is the selected primary EGT rise rate, so TIT-primary setups can still
 stream the rate under the existing protocol field id/key.

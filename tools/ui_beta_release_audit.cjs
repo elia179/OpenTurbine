@@ -3,6 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
 
+// The firmware/UI source assertions below read repo-relative paths (src/, data_src/),
+// so anchor the working directory to the repo root regardless of where node was launched.
+process.chdir(path.resolve(__dirname, '..'));
+
 const port = 10300 + Math.floor(Math.random() * 500);
 const base = `http://127.0.0.1:${port}`;
 
@@ -133,7 +137,7 @@ function enumNames(source, marker) {
         patch: {
           has_two_shaft: false,
           has_afterburner: false,
-          cluster_serial: { enabled: true, tx_pin: 5, rx_pin: -1, protocol: 1 },
+          cluster_serial: { enabled: true, tx_pin: 5, rx_pin: -1 },
           sensors: { n2_rpm: { enabled: true }, tit: { enabled: false }, fuel_press: { enabled: false } },
           actuators: { prop_pitch: { enabled: false }, ab_sol: { enabled: true }, ab_pump: { enabled: true } }
         },
@@ -174,7 +178,7 @@ function enumNames(source, marker) {
         name: 'ESP32-S3 external telemetry',
         patch: {
           platform: 'esp32s3',
-          cluster_serial: { enabled: true, tx_pin: 1, rx_pin: 46, protocol: 1 },
+          cluster_serial: { enabled: true, tx_pin: 1, rx_pin: 46 },
           mavlink: { enabled: true, tx_pin: 4 },
           buzzer: { enabled: true, pin: 6 },
           actuators: { status_led: { enabled: true, pin: 5 } }

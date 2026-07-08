@@ -31,7 +31,6 @@ public:
         for (int i = 0; i < _filled; i++) s += _buf[i];
         return (float)s / _filled;
     }
-    int last() const { return _buf[(_idx + N - 1) % N]; }
 private:
     int _buf[N]  = {};
     int _idx     = 0;
