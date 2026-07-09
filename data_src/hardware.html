@@ -702,8 +702,11 @@
   </div>
 
   <!-- ── Actuators ─────────────────────────────────────── -->
-  <div class="hw-section">
-    <div class="hw-title">Actuators</div>
+  <div class="hw-section" id="hw-actuators">
+    <div class="hw-title">Actuators
+      <button type="button" id="btn-hide-unsel-act" title="Collapse the actuator list to just the ones you've enabled (and back)" onclick="toggleHideUnselectedActuators()"
+              style="float:right;font-size:.66rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.15rem .55rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Hide unselected</button>
+    </div>
 
     <div class="hw-sub">Main Fuel / Throttle</div>
 
@@ -724,7 +727,7 @@
             <span class="hw-label">ESC type</span>
             <select id="f-thr-type" onchange="setThrType(+this.value)">
               <option value="0">Servo PWM (1000–2000 µs)</option>
-              <option value="1">Motor PWM</option>
+              <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
           </div>
@@ -793,7 +796,7 @@
             <span class="hw-label">ESC type</span>
             <select id="f-str-type" onchange="setStrType(+this.value)">
               <option value="0">Servo PWM (1000–2000 µs)</option>
-              <option value="1">Motor PWM</option>
+              <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
           </div>
@@ -931,7 +934,7 @@
             <span class="hw-label">Drive type</span>
             <select id="f-op-type" onchange="setOpType(+this.value)">
               <option value="0">Servo PWM (1000–2000 µs)</option>
-              <option value="1">Motor PWM</option>
+              <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
           </div>
@@ -1017,7 +1020,7 @@
             <span class="hw-label">Drive type</span>
             <select id="f-oscav-type" onchange="setOscavType(+this.value)">
               <option value="0">Servo PWM (1000–2000 µs)</option>
-              <option value="1">Motor PWM</option>
+              <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
           </div>
@@ -1256,7 +1259,7 @@
               <span class="hw-label">Drive type</span>
               <select id="f-abp-type" onchange="setAbpType(+this.value)">
                 <option value="0">Servo PWM (1000–2000 µs)</option>
-                <option value="1">Motor PWM</option>
+                <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
                 <option value="2">On / Off (relay / MOSFET)</option>
               </select>
             </div>
@@ -1426,7 +1429,7 @@
             <span class="hw-label">Drive type</span>
             <select id="f-fan-type" onchange="setFanType(+this.value)">
               <option value="0">Servo PWM (1000–2000 µs)</option>
-              <option value="1">Motor PWM</option>
+              <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
           </div>
@@ -1487,7 +1490,7 @@
             <span class="hw-label">Drive type</span>
             <select id="f-fp2-type" onchange="setFp2Type(+this.value)">
               <option value="0">Servo PWM (1000–2000 µs)</option>
-              <option value="1">Motor PWM</option>
+              <option value="1">Motor PWM (direct MOSFET / motor driver)</option>
               <option value="2">On / Off (relay / MOSFET)</option>
             </select>
           </div>
@@ -2897,6 +2900,7 @@ function populate() {
   const buz = cfg.buzzer || {};
   chk('en-buzzer', !!buz.enabled);
   updateGroupEnabled('grp-buzzer', !!buz.enabled);
+  applyActuatorVisibility();   // re-apply hide-unselected after (re)loading actuator states
 
   const cl = cfg.cluster_serial || {};
   chk('en-cluster', cl.enabled || false);
@@ -3452,6 +3456,42 @@ function setStatusLedColor(key, value) {
   dirty();
   updateStatusLedTypeUI();
 }
+// ── "Hide unselected" actuator toggle ────────────────────────
+// Collapses the Actuators section to just the enabled cards (and hides a
+// sub-header whose cards are all hidden). View-only; persisted per browser.
+var _hideUnselActive = false;
+try { _hideUnselActive = localStorage.getItem('ot_hide_unsel_act') === '1'; } catch (e) {}
+
+function toggleHideUnselectedActuators() {
+  _hideUnselActive = !_hideUnselActive;
+  try { localStorage.setItem('ot_hide_unsel_act', _hideUnselActive ? '1' : '0'); } catch (e) {}
+  applyActuatorVisibility();
+}
+
+function applyActuatorVisibility() {
+  var sec = document.getElementById('hw-actuators');
+  if (!sec) return;
+  var cards = sec.querySelectorAll('.hw-item-card');
+  cards.forEach(function (card) {
+    var en = card.querySelector('input[type=checkbox][id^="en-"]');
+    var checked = en ? en.checked : true;
+    card.style.display = (_hideUnselActive && !checked) ? 'none' : '';
+  });
+  // Hide a sub-header when every card up to the next header is hidden.
+  var kids = Array.prototype.slice.call(sec.children);
+  for (var i = 0; i < kids.length; i++) {
+    if (!kids[i].classList || !kids[i].classList.contains('hw-sub')) continue;
+    var anyVisible = false;
+    for (var j = i + 1; j < kids.length; j++) {
+      if (kids[j].classList && kids[j].classList.contains('hw-sub')) break;
+      if (kids[j].classList && kids[j].classList.contains('hw-item-card') && kids[j].style.display !== 'none') { anyVisible = true; break; }
+    }
+    kids[i].style.display = (_hideUnselActive && !anyVisible) ? 'none' : '';
+  }
+  var b = document.getElementById('btn-hide-unsel-act');
+  if (b) b.textContent = _hideUnselActive ? 'Show all' : 'Hide unselected';
+}
+
 function setActEnabled(act, grpId, val) {
   if (!val && cfg.actuators?.[act]?.enabled && !dependencyWarning('actuator', act)) {
     chk('en-' + grpId, true);
@@ -3462,6 +3502,7 @@ function setActEnabled(act, grpId, val) {
   updateGroupEnabled('grp-' + grpId, val);
   updateHardwarePrerequisites(true);
   applyEnableDependencyTooltips();
+  if (_hideUnselActive) applyActuatorVisibility();
 }
 function setBuzzerEnabled(val) {
   if (!cfg.buzzer) cfg.buzzer = {};
@@ -4697,10 +4738,26 @@ async function resetDefaults() {
 // the old page-local downloadBackup()/handleRestore() helpers were unused
 // and have been removed so nobody wires them back by accident.
 
+// Local copy of app.js's applyContextTooltips (this page deliberately does not
+// load app.js). Gives every documented .hw-field a hover tooltip built from its
+// visible label + description, so a user can hover any control for help without
+// reading the docs — matching the other pages that load app.js.
+function applyContextTooltips(root) {
+  (root || document).querySelectorAll('.hw-field').forEach(el => {
+    if (el.title) return;
+    const lab = el.querySelector('.hw-label, b');
+    const des = el.querySelector('.hw-desc');
+    const l = lab && lab.textContent ? lab.textContent.trim() : '';
+    const d = des && des.textContent ? des.textContent.trim() : '';
+    if (d) el.title = l ? l + ': ' + d : d;
+  });
+}
+
 window.addEventListener('load', () => {
   startStatusPoll();
   connectWs();
   loadHardware();
+  applyContextTooltips();
 });
 </script>
 </body>

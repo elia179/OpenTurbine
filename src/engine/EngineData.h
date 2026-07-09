@@ -38,6 +38,8 @@ struct EngineData {
     // ── Sensor values ─────────────────────────────────────────
     volatile float    n1Rpm           = 0;      // RPM  (gas generator / main shaft)
     volatile float    n2Rpm           = 0;      // RPM  (power turbine / compressor 2)
+    volatile float    n1RpmAccel      = 0;      // filtered dN1/dt (RPM/s) — predictive limiter & advanced idle
+    volatile float    n2RpmAccel      = 0;      // filtered dN2/dt (RPM/s)
     volatile float    tot             = 0;      // °C   turbine outlet temp
     volatile float    tit             = 0;      // °C   turbine inlet temp (optional)
     volatile float    oilPressure     = 0;      // bar  engine oil

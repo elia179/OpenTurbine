@@ -128,6 +128,11 @@ const SCHEMA = [
     { key:'pb_egth', path:['throttle','pullback_egt_hard_c'], label:'EGT Pullback Full', unitType:'temp', desc:'Selected EGT where soft pullback reaches full authority.', step:10, min:0, max:1400 },
     { key:'pb_min', path:['throttle','pullback_min_pct'], label:'Pullback Floor %', desc:'Lowest throttle allowed by soft pullback. Hard safety can still cut lower.', step:1, min:0, max:100, basic:true },
     { key:'pb_str', path:['throttle','pullback_strength'], label:'Pullback Strength', desc:'How hard soft pullback pulls throttle down near the limit. 1.0 = nominal; higher = more aggressive reduction, lower = gentler. Too high can cause throttle oscillation.', step:0.1, min:0, max:5 },
+    { key:'rl_mode', path:['throttle','rpm_limiter_mode'], label:'RPM Limiter Mode', type:'select', options:[{v:0,l:'Simple (reactive)'},{v:1,l:'Advanced (predictive)'}], desc:'Simple pulls throttle back on the current RPM. Advanced projects RPM from its rate of rise and eases fuel off BEFORE an overshoot during a fast spool, and softens the throttle-open ramp near the limit. EGT pullback stays reactive. Default Simple = unchanged behaviour.', basic:true },
+    { key:'rl_look', path:['throttle','pullback_lookahead_ms'], label:'Predict Lookahead (ms)', desc:'How far ahead to project RPM from its acceleration (Advanced mode). Typical 1000-2000 ms.', step:100, min:0 },
+    { key:'rl_ramp', path:['throttle','pullback_near_limit_rampup_ms'], label:'Near-limit Ramp (ms 0-100%)', desc:'Slower throttle-open time used as predicted RPM nears the soft limit (Advanced mode). Larger = gentler approach.', step:100, min:0 },
+    { key:'rl_zone', path:['throttle','pullback_approach_zone_rpm'], label:'Approach Zone (RPM, 0=auto)', desc:'RPM band below the soft limit where ramp-softening begins (Advanced mode). 0 = auto (4x the soft/hard band).', step:500, min:0 },
+    { key:'rl_acc', path:['throttle','rpm_accel_filter'], label:'RPM Accel Filter (0-1)', desc:'Smoothing weight for the RPM-acceleration estimate shared by the predictive limiter and advanced idle. Lower = smoother/slower; higher = more responsive/noisier.', step:0.01, min:0.02, max:1 },
   ]},
   { title: 'Limp Mode', fields: [
     { key:'lm_mt', path:['limp_mode','max_throttle_pct'], label:'Limp Throttle Cap %', desc:'Throttle cap when limp mode is active. Toggle limp mode from the Tools page. Useful for tuning low-power behaviour or protecting a marginal engine.', step:5, min:0, max:100, basic:true },
@@ -143,6 +148,16 @@ const SCHEMA = [
     { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Use N2 Speed',     desc:'Use N2 shaft RPM as the idle controller feedback source. N1-only protections only run when an N1 sensor is fitted.', type:'checkbox' },
     { key:'di_ig', path:['dynamic_idle','i_gain'],       label:'I-Gain',           desc:'Integral gain (0 = off). Eliminates steady-state RPM error caused by load changes (e.g. oil pump startup). Start small: 0.05–0.15. Only active when Dynamic Idle is enabled.', step:0.01, min:0, max:2 },
     { key:'di_im', path:['dynamic_idle','i_max'],        label:'I-Max Authority',  desc:'Maximum integral authority (fraction of throttle range). Limits wind-up so the integrator alone cannot over-speed the engine. 0.10 = ±10% throttle range.', step:0.01, min:0, max:0.5 },
+    { key:'di_mode', path:['dynamic_idle','idle_mode'], label:'Idle Mode', type:'select', options:[{v:0,l:'Simple (PI)'},{v:1,l:'Advanced (decel-catch)'}], desc:'Simple is the PI loop above. Advanced adds decel-catch (drops just below a learned hold on a fast chop from high RPM so it settles without hanging or flaming out), a learned idle-hold (replaces the integrator), and predictive trim. Default Simple = unchanged behaviour.', basic:true },
+    { key:'di_de', path:['dynamic_idle','decel_enter_rpm'], label:'Decel-catch Enter (RPM over target)', desc:'Enter decel-catch when RPM is more than this above target (Advanced mode).', step:100, min:0 },
+    { key:'di_dd', path:['dynamic_idle','decel_drop_pct'], label:'Decel-catch Drop (%)', desc:'How far below the learned hold to drop during decel-catch (Advanced mode).', step:0.5, min:0 },
+    { key:'di_lk', path:['dynamic_idle','lookahead_ms'], label:'Trim Lookahead (ms)', desc:'How far ahead to project RPM (signed) for the idle trim (Advanced mode).', step:100, min:0 },
+    { key:'di_sb', path:['dynamic_idle','settle_band_rpm'], label:'Settle Band (RPM)', desc:'No trim, and (re)learn the hold, within this RPM band of target (Advanced mode).', step:100, min:0 },
+    { key:'di_fr', path:['dynamic_idle','full_response_rpm'], label:'Full-response Error (RPM)', desc:'RPM error at which the idle trim reaches its full rate (Advanced mode).', step:500, min:0 },
+    { key:'di_tu', path:['dynamic_idle','trim_up_pct_s'], label:'Trim Up (%/s)', desc:'Maximum idle-trim increase rate (Advanced mode).', step:0.5, min:0 },
+    { key:'di_td', path:['dynamic_idle','trim_down_pct_s'], label:'Trim Down (%/s)', desc:'Maximum idle-trim decrease rate (Advanced mode).', step:0.5, min:0 },
+    { key:'di_lr', path:['dynamic_idle','learn_rate'], label:'Hold Learn Rate', desc:'How quickly the learned idle-hold adapts once settled (0-1, Advanced mode). Small = stable.', step:0.01, min:0 },
+    { key:'di_la', path:['dynamic_idle','learn_accel_max'], label:'Learn Accel Max (RPM/s)', desc:'Only re-learn the hold while |RPM acceleration| is below this (Advanced mode).', step:100, min:0 },
   ]},
   { title: 'Safety Monitor', id: 'safety-monitor', fields: [
     { key:'sf_ci', path:['safety','check_interval_ms'],    label:'Check Interval (ms)',          desc:'How often the safety checks run (milliseconds). Lower = faster response. Default 100 ms. Rarely needs changing.',                                                     step:10,  min:10 },
@@ -440,6 +455,35 @@ function setCfgFieldVisible(key, show) {
   setCfgFieldVisibleByElement(el?.closest('.cfg-field'), show);
 }
 
+// Advanced-only tuning fields appear only when their mode select = Advanced
+// (and, being basic:false, only in Expert view — applyView() finalises that).
+// The field's own description also rewrites to explain the CURRENTLY selected
+// mode, so picking Simple or Advanced shows exactly what that choice does.
+const _RL_MODE_DESC = {
+  0: 'Simple (reactive) — original behaviour: throttle eases back based on the shaft\'s current RPM as it approaches the soft limit.',
+  1: 'Advanced (predictive) — anticipates RPM from its rate of rise (spool rate) and eases fuel off BEFORE an overshoot during a fast spool, then slows the throttle-open ramp as RPM nears the limit. EGT pullback stays reactive. Tune with the fields below (Expert view).'
+};
+const _DI_MODE_DESC = {
+  0: 'Simple (PI) — original behaviour: a proportional-integral loop holds the idle RPM setpoint.',
+  1: 'Advanced (decel-catch) — on a fast chop from high RPM it drops just below a learned idle-hold so it settles without hanging high or dipping toward flameout; near idle it trims against predicted RPM and re-learns the hold. Tune with the fields below (Expert view).'
+};
+function _setFieldDesc(key, text) {
+  const el = document.getElementById('cf-' + key);
+  const wrap = el ? el.closest('.cfg-field') : null;
+  const d = wrap ? wrap.querySelector('.cfg-desc') : null;
+  if (d) d.textContent = text;
+}
+function updateRpmLimiterFields() {
+  const adv = parseInt((document.getElementById('cf-rl_mode') || {}).value || 0) === 1;
+  _setFieldDesc('rl_mode', _RL_MODE_DESC[adv ? 1 : 0]);
+  ['rl_look', 'rl_ramp', 'rl_zone', 'rl_acc'].forEach(k => setCfgFieldVisible(k, adv));
+}
+function updateIdleModeFields() {
+  const adv = parseInt((document.getElementById('cf-di_mode') || {}).value || 0) === 1;
+  _setFieldDesc('di_mode', _DI_MODE_DESC[adv ? 1 : 0]);
+  ['di_de', 'di_dd', 'di_lk', 'di_sb', 'di_fr', 'di_tu', 'di_td', 'di_lr', 'di_la'].forEach(k => setCfgFieldVisible(k, adv));
+}
+
 function _fieldToDisplay(f, value) {
   let out = value;
   if (f.zeroOff && Number(out) === 0) return 0;
@@ -594,6 +638,14 @@ function renderForm() {
   if (_flSrcEl) _flSrcEl.addEventListener('change', applyFlameoutRelightVisibility);
   if (_rlSrcEl) _rlSrcEl.addEventListener('change', applyFlameoutRelightVisibility);
   applyFlameoutRelightVisibility();
+
+  // Wire RPM-limiter & dynamic-idle advanced-mode conditional fields
+  updateRpmLimiterFields();
+  updateIdleModeFields();
+  const _rlModeEl = document.getElementById('cf-rl_mode');
+  const _diModeEl = document.getElementById('cf-di_mode');
+  if (_rlModeEl) _rlModeEl.addEventListener('change', () => { updateRpmLimiterFields(); applyView(); });
+  if (_diModeEl) _diModeEl.addEventListener('change', () => { updateIdleModeFields(); applyView(); });
 
   // Mark form dirty whenever any input changes
   const cfgForm = document.getElementById('cfg-form');

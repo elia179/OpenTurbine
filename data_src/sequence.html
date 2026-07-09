@@ -300,6 +300,26 @@
 </div>
 
 <script>
+// Local applyContextTooltips (this page does not load app.js): hover help built
+// from each .param-field's visible label + description; a MutationObserver keeps
+// the dynamically-built block-editor fields covered too.
+function applyContextTooltips(root) {
+  (root || document).querySelectorAll('.param-field').forEach(function (el) {
+    if (el.title) return;
+    var lab = el.querySelector('.param-label');
+    var des = el.querySelector('.param-desc');
+    var l = lab && lab.textContent ? lab.textContent.trim() : '';
+    var d = des && des.textContent ? des.textContent.trim() : '';
+    if (d) el.title = l ? l + ': ' + d : d;
+  });
+}
+document.addEventListener('DOMContentLoaded', function () {
+  applyContextTooltips();
+  new MutationObserver(function (recs) {
+    recs.forEach(function (r) { r.addedNodes.forEach(function (n) { if (n.nodeType === 1) applyContextTooltips(n); }); });
+  }).observe(document.body, { childList: true, subtree: true });
+});
+
 // ------ Block definitions ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // type: 'while'=waits for condition  'action'=instant  'wait'=timer  'check'=verify+fault
 // timeout_action: 'fault'|'abort'|'continue'|null

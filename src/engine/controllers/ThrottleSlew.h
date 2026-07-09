@@ -14,6 +14,16 @@
 //
 //  Safety pullback: reduces output when approaching overspeed
 //  or overtemp limits (soft-guard before safety monitor fires).
+//
+//  RPM-limiter mode:
+//    Simple (0, default) — pulls back on the CURRENT shaft RPM
+//      (reactive). Byte-for-byte the original behaviour.
+//    Advanced (1) — pulls back on RPM projected forward from the
+//      filtered acceleration (ed.n1RpmAccel / n2RpmAccel), so fuel
+//      eases off BEFORE an overshoot during a fast spool, and the
+//      throttle-open ramp softens as the predicted RPM nears the
+//      soft limit. EGT pullback stays reactive in both modes
+//      (temperature is not predicted).
 // ============================================================
 
 class ThrottleSlew : public IController {
@@ -34,6 +44,13 @@ public:
     float n2HardLimit       = 0.0f;
     float minPullbackThrottle = 0.08f;
     float pullbackStrength  = 1.0f;
+
+    // ── Advanced (predictive) RPM-limiter mode ────────────────
+    // Simple (0) leaves every value below unused → identical behaviour.
+    int   rpmLimiterMode            = 0;       // 0 = simple (reactive), 1 = advanced (predictive)
+    float pullbackLookaheadMs       = 1500.0f; // project RPM this far ahead from accel
+    float pullbackNearLimitRampUpMs = 4000.0f; // slower throttle-open ramp near the limit (≈25 %/s)
+    float pullbackApproachZoneRpm   = 0.0f;    // RPM band below soft limit where softening begins (assigned in Hardware.h; 0 = auto)
 
     void begin() override {
         // Carry forward the current throttle demand so the physical actuator
@@ -70,8 +87,28 @@ public:
             float reduction = over * authority * pullbackStrength;
             target = constrain(target - reduction, floor, target);
         };
-        if (n1PullbackEnabled && ed.n1Healthy) applyPullback(ed.n1Rpm, rpmSoftLimit, rpmHardLimit, 0.30f);
-        if (n2PullbackEnabled && ed.n2Healthy) applyPullback(ed.n2Rpm, n2SoftLimit, n2HardLimit, 0.40f);
+
+        // RPM fed to the pullback: current (Simple) or accel-predicted (Advanced),
+        // and effRampUpMs softens the throttle-open rate near the limit (Advanced
+        // only). In Simple mode n1val/n2val == current RPM and effRampUpMs ==
+        // rampUpMs, so the pullback and slew below are the original behaviour.
+        float n1val = ed.n1Rpm;
+        float n2val = ed.n2Rpm;
+        float effRampUpMs = rampUpMs;
+        if (rpmLimiterMode == 1) {
+            const float horizon = pullbackLookaheadMs * 0.001f;
+            n1val = ed.n1Rpm + fmaxf(0.0f, ed.n1RpmAccel) * horizon;   // only anticipate a rising shaft
+            n2val = ed.n2Rpm + fmaxf(0.0f, ed.n2RpmAccel) * horizon;
+            if (ed.n1Healthy && pullbackApproachZoneRpm > 0.0f) {
+                const float approachStart = rpmSoftLimit - pullbackApproachZoneRpm;
+                if (n1val > approachStart) {
+                    const float f = constrain((n1val - approachStart) / pullbackApproachZoneRpm, 0.0f, 1.0f);
+                    effRampUpMs = rampUpMs + (pullbackNearLimitRampUpMs - rampUpMs) * f;  // larger ms = slower open
+                }
+            }
+        }
+        if (n1PullbackEnabled && ed.n1Healthy) applyPullback(n1val, rpmSoftLimit, rpmHardLimit, 0.30f);
+        if (n2PullbackEnabled && ed.n2Healthy) applyPullback(n2val, n2SoftLimit, n2HardLimit, 0.40f);
         if (egtPullbackEnabled && Config::primaryEgtHealthy(ed)) {
             applyPullback(Config::primaryEgtC(ed), totSoftLimit, totHardLimit, 0.20f);
         }
@@ -80,7 +117,7 @@ public:
         // dividing would produce Inf or NaN.  Treat 0 ms ramp as instant (maxStep=1).
         float maxStep;
         if (target > _current) {
-            maxStep = rampUpMs   > 0.0f ? dt / (rampUpMs   / 1000.0f) : 1.0f;
+            maxStep = effRampUpMs > 0.0f ? dt / (effRampUpMs / 1000.0f) : 1.0f;
         } else {
             maxStep = rampDownMs > 0.0f ? dt / (rampDownMs / 1000.0f) : 1.0f;
         }

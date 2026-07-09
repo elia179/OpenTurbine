@@ -664,6 +664,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["mode"]                  = sysModeStr(ed.mode);
     doc["n1"]                    = (int)ed.n1Rpm;
     doc["n2"]                    = (int)ed.n2Rpm;
+    doc["n1_rpm_accel"]          = (int)ed.n1RpmAccel;   // RPM/s — predictive limiter / advanced idle
+    doc["n2_rpm_accel"]          = (int)ed.n2RpmAccel;
     doc["tot"]                   = (float)(int)(ed.tot * 10) / 10.0f;
     doc["tit"]                   = (float)(int)(ed.tit * 10) / 10.0f;
     doc["oil"]                   = (float)(int)(ed.oilPressure * 100) / 100.0f;

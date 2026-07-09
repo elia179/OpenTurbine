@@ -524,6 +524,12 @@ namespace Hardware {
             g_ctrlThrottleSlew.totSoftLimit = Config::pullbackEgtSoftC > 0.0f ? Config::pullbackEgtSoftC : (egtLimit - Config::totSafeMargin);
             g_ctrlThrottleSlew.minPullbackThrottle = Config::pullbackMinThrottlePct / 100.0f;
             g_ctrlThrottleSlew.pullbackStrength = Config::pullbackStrength;
+            g_ctrlThrottleSlew.rpmLimiterMode            = Config::rpmLimiterMode;
+            g_ctrlThrottleSlew.pullbackLookaheadMs       = Config::pullbackLookaheadMs;
+            g_ctrlThrottleSlew.pullbackNearLimitRampUpMs = Config::pullbackNearLimitRampUpMs;
+            g_ctrlThrottleSlew.pullbackApproachZoneRpm   = (Config::pullbackApproachZoneRpm > 0.0f)
+                ? Config::pullbackApproachZoneRpm
+                : 4.0f * (g_ctrlThrottleSlew.rpmHardLimit - g_ctrlThrottleSlew.rpmSoftLimit);
         }
         if (hw.hasDynamicIdle) {
             g_ctrlDynamicIdle.targetRpm     = Config::idleTargetRpm;
@@ -533,6 +539,16 @@ namespace Hardware {
             g_ctrlDynamicIdle.rpmLimit      = Config::idleRpmLimit;
             g_ctrlDynamicIdle.minMultiplier = Config::idleMinMultiplier;
             g_ctrlDynamicIdle.maxMultiplier = Config::idleMaxMultiplier;
+            g_ctrlDynamicIdle.idleMode              = Config::idleMode;
+            g_ctrlDynamicIdle.idleDecelEnterRpm     = Config::idleDecelEnterRpm;
+            g_ctrlDynamicIdle.idleDecelDropPct      = Config::idleDecelDropPct;
+            g_ctrlDynamicIdle.idleLookaheadMs       = Config::idleLookaheadMs;
+            g_ctrlDynamicIdle.idleSettleBandRpm     = Config::idleSettleBandRpm;
+            g_ctrlDynamicIdle.idleFullResponseRpm   = Config::idleFullResponseRpm;
+            g_ctrlDynamicIdle.idleTrimUpPctPerSec   = Config::idleTrimUpPctPerSec;
+            g_ctrlDynamicIdle.idleTrimDownPctPerSec = Config::idleTrimDownPctPerSec;
+            g_ctrlDynamicIdle.idleLearnRate         = Config::idleLearnRate;
+            g_ctrlDynamicIdle.idleLearnAccelMax     = Config::idleLearnAccelMax;
         }
         if (hw.hasOilPress) {
             PolyCal pc;
@@ -623,11 +639,17 @@ namespace Hardware {
         }
     }
 
+    // Filtered RPM-acceleration state (single instance; reset in initSensors()).
+    inline unsigned long _accelLastMs = 0;
+    inline float         _accelPrevN1 = 0.0f;
+    inline float         _accelPrevN2 = 0.0f;
+
     // ── Sensor init ───────────────────────────────────────────
     inline void initSensors() {
         auto& hw = HardwareConfig::instance();
         if (hw.hasN1Rpm)   g_sensorN1Rpm.begin(hw.n1RpmPin, hw.n1RpmPpr);
         if (hw.hasN2Rpm)   g_sensorN2Rpm.begin(hw.n2RpmPin, hw.n2RpmPpr);
+        _accelLastMs = 0; _accelPrevN1 = 0.0f; _accelPrevN2 = 0.0f;   // clean RPM-accel start
         if (hw.hasTot) {
             if (strncmp(hw.totChip, "max31856", 8) == 0) {
                 g_sensorTot31856 = MAX31856TempSensor(hw.totClk, hw.totCs, hw.totMiso, hw.totMosi, hw.totTcType, "TOT_31856");
@@ -765,6 +787,29 @@ namespace Hardware {
             g_sensorN2Rpm.update();
             ed.n2Rpm     = g_sensorN2Rpm.getValue();
             ed.n2Healthy = g_sensorN2Rpm.isHealthy();
+        }
+        // Filtered RPM acceleration (RPM/s) — one trustworthy source for the
+        // predictive RPM limiter and advanced dynamic-idle. Follows the RPM read
+        // cadence; unhealthy shaft ⇒ 0; a >1 s gap resets (never integrate a stall).
+        {
+            unsigned long anow = millis();
+            float adt = (anow - _accelLastMs) / 1000.0f;
+            if (_accelLastMs != 0 && adt > 0.0f && adt < 1.0f) {
+                if (ed.n1Healthy) {
+                    float raw = (ed.n1Rpm - _accelPrevN1) / adt;
+                    ed.n1RpmAccel += (raw - ed.n1RpmAccel) * Config::rpmAccelFilter;
+                } else ed.n1RpmAccel = 0;
+                if (ed.n2Healthy) {
+                    float raw = (ed.n2Rpm - _accelPrevN2) / adt;
+                    ed.n2RpmAccel += (raw - ed.n2RpmAccel) * Config::rpmAccelFilter;
+                } else ed.n2RpmAccel = 0;
+            } else if (adt >= 1.0f) {
+                ed.n1RpmAccel = 0;
+                ed.n2RpmAccel = 0;
+            }
+            _accelPrevN1 = ed.n1Rpm;
+            _accelPrevN2 = ed.n2Rpm;
+            _accelLastMs = anow;
         }
         if (hw.hasTot && g_pSensorTot) {
             g_pSensorTot->update();

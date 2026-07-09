@@ -64,6 +64,11 @@ float Config::pullbackEgtSoftC      = 700.0f;
 float Config::pullbackEgtHardC      = 750.0f;
 float Config::pullbackMinThrottlePct = 8.0f;
 float Config::pullbackStrength      = 1.0f;
+int   Config::rpmLimiterMode            = 0;
+float Config::pullbackLookaheadMs       = 1500.0f;
+float Config::pullbackNearLimitRampUpMs = 4000.0f;
+float Config::pullbackApproachZoneRpm   = 0.0f;
+float Config::rpmAccelFilter            = 0.20f;
 
 float Config::idleTargetRpm         = 44000;
 float Config::idleRampUpMs          = 10000;
@@ -75,6 +80,16 @@ float Config::idleMaxMultiplier     = 1.50f;
 bool  Config::idleUseN2             = kIdleUseN2Default;
 float Config::idleIGain             = 0.0f;   // 0 = off by default (pure ramp mode), enable in config
 float Config::idleIMax              = 0.10f;  // ±10% integral authority
+int   Config::idleMode                  = 0;
+float Config::idleDecelEnterRpm         = 1000.0f;
+float Config::idleDecelDropPct          = 2.0f;
+float Config::idleLookaheadMs           = 2500.0f;
+float Config::idleSettleBandRpm         = 1500.0f;
+float Config::idleFullResponseRpm       = 12000.0f;
+float Config::idleTrimUpPctPerSec       = 4.0f;
+float Config::idleTrimDownPctPerSec     = 2.0f;
+float Config::idleLearnRate             = 0.02f;
+float Config::idleLearnAccelMax         = 1200.0f;
 
 int   Config::safetyCheckIntervalMs      = 100;
 float Config::flameoutShutdownMs         = 3000;
@@ -1304,9 +1319,14 @@ void Config::_applyDefaults() {
     pullbackN2SoftRpm = 0.0f; pullbackN2HardRpm = 0.0f;
     pullbackEgtSoftC = 700.0f; pullbackEgtHardC = 750.0f;
     pullbackMinThrottlePct = 8.0f; pullbackStrength = 1.0f;
+    rpmLimiterMode = 0; pullbackLookaheadMs = 1500.0f; pullbackNearLimitRampUpMs = 4000.0f;
+    pullbackApproachZoneRpm = 0.0f; rpmAccelFilter = 0.20f;
     idleTargetRpm = 44000; idleRampUpMs = 10000; idleRampDownMs = 20000;
     idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f; idleMaxMultiplier = 1.50f;
     idleUseN2 = kIdleUseN2Default; idleIGain = 0.0f; idleIMax = 0.10f;
+    idleMode = 0; idleDecelEnterRpm = 1000.0f; idleDecelDropPct = 2.0f; idleLookaheadMs = 2500.0f;
+    idleSettleBandRpm = 1500.0f; idleFullResponseRpm = 12000.0f; idleTrimUpPctPerSec = 4.0f;
+    idleTrimDownPctPerSec = 2.0f; idleLearnRate = 0.02f; idleLearnAccelMax = 1200.0f;
     safetyCheckIntervalMs = 100; flameoutShutdownMs = 3000;
     egtSource = 0; flameoutSource = 0; flameoutN1MinRpm = 0.0f; flameoutTotDropC = 80.0f;
     totRiseRateLimitDegPerSec = 0.0f; titLimit = 0.0f; oilTempLimit = 120.0f;
@@ -1473,6 +1493,11 @@ void Config::_fromDoc(const JsonDocument& doc) {
     pullbackEgtHardC = th["pullback_egt_hard_c"] | pullbackEgtHardC;
     pullbackMinThrottlePct = th["pullback_min_pct"] | pullbackMinThrottlePct;
     pullbackStrength = th["pullback_strength"] | pullbackStrength;
+    rpmLimiterMode            = th["rpm_limiter_mode"]              | rpmLimiterMode;
+    pullbackLookaheadMs       = th["pullback_lookahead_ms"]         | pullbackLookaheadMs;
+    pullbackNearLimitRampUpMs = th["pullback_near_limit_rampup_ms"] | pullbackNearLimitRampUpMs;
+    pullbackApproachZoneRpm   = th["pullback_approach_zone_rpm"]    | pullbackApproachZoneRpm;
+    rpmAccelFilter            = th["rpm_accel_filter"]              | rpmAccelFilter;
 
     auto di = doc["dynamic_idle"];
     idleTargetRpm    = di["target_rpm"]    | idleTargetRpm;
@@ -1485,6 +1510,16 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (!di["use_n2"].isNull()) idleUseN2 = di["use_n2"].as<bool>();
     idleIGain        = di["i_gain"]        | idleIGain;
     idleIMax         = di["i_max"]         | idleIMax;
+    idleMode              = di["idle_mode"]         | idleMode;
+    idleDecelEnterRpm     = di["decel_enter_rpm"]   | idleDecelEnterRpm;
+    idleDecelDropPct      = di["decel_drop_pct"]    | idleDecelDropPct;
+    idleLookaheadMs       = di["lookahead_ms"]      | idleLookaheadMs;
+    idleSettleBandRpm     = di["settle_band_rpm"]   | idleSettleBandRpm;
+    idleFullResponseRpm   = di["full_response_rpm"] | idleFullResponseRpm;
+    idleTrimUpPctPerSec   = di["trim_up_pct_s"]     | idleTrimUpPctPerSec;
+    idleTrimDownPctPerSec = di["trim_down_pct_s"]   | idleTrimDownPctPerSec;
+    idleLearnRate         = di["learn_rate"]        | idleLearnRate;
+    idleLearnAccelMax     = di["learn_accel_max"]   | idleLearnAccelMax;
 
     auto sf = doc["safety"];
     safetyCheckIntervalMs         = sf["check_interval_ms"]         | safetyCheckIntervalMs;
@@ -1852,6 +1887,11 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (pullbackEgtHardC > 0.0f && pullbackEgtHardC <= pullbackEgtSoftC) pullbackEgtHardC = pullbackEgtSoftC + 1.0f;
     pullbackMinThrottlePct = constrain(pullbackMinThrottlePct, 0.0f, 100.0f);
     pullbackStrength = constrain(pullbackStrength, 0.0f, 5.0f);
+    rpmLimiterMode = constrain(rpmLimiterMode, 0, 1);
+    pullbackLookaheadMs = constrain(pullbackLookaheadMs, 0.0f, 5000.0f);
+    pullbackNearLimitRampUpMs = constrain(pullbackNearLimitRampUpMs, 0.0f, 20000.0f);
+    if (pullbackApproachZoneRpm < 0.0f) pullbackApproachZoneRpm = 0.0f;
+    rpmAccelFilter = constrain(rpmAccelFilter, 0.02f, 1.0f);
     if (idleTargetRpm < 0.0f) idleTargetRpm = 0.0f;
     if (idleDeadbandRpm < 0.0f) idleDeadbandRpm = 0.0f;
     if (idleRpmLimit < 0.0f) idleRpmLimit = 0.0f;
@@ -1859,6 +1899,16 @@ void Config::_fromDoc(const JsonDocument& doc) {
     idleMaxMultiplier = constrain(idleMaxMultiplier, 1.0f, 3.0f);
     idleIGain = constrain(idleIGain, 0.0f, 2.0f);
     idleIMax = constrain(idleIMax, 0.0f, 0.5f);
+    idleMode = constrain(idleMode, 0, 1);
+    if (idleDecelEnterRpm < 0.0f) idleDecelEnterRpm = 0.0f;
+    idleDecelDropPct = constrain(idleDecelDropPct, 0.0f, 50.0f);
+    idleLookaheadMs = constrain(idleLookaheadMs, 0.0f, 5000.0f);
+    if (idleSettleBandRpm < 0.0f) idleSettleBandRpm = 0.0f;
+    if (idleFullResponseRpm < 1.0f) idleFullResponseRpm = 1.0f;
+    idleTrimUpPctPerSec = constrain(idleTrimUpPctPerSec, 0.0f, 50.0f);
+    idleTrimDownPctPerSec = constrain(idleTrimDownPctPerSec, 0.0f, 50.0f);
+    idleLearnRate = constrain(idleLearnRate, 0.0f, 1.0f);
+    if (idleLearnAccelMax < 0.0f) idleLearnAccelMax = 0.0f;
     glowPreheatMaxPct = constrain(glowPreheatMaxPct, 0.0f, 100.0f);
     glowHoldPct = constrain(glowHoldPct, 0.0f, 100.0f);
     starterAssistPct = constrain(starterAssistPct, 0.0f, 100.0f);
@@ -2062,6 +2112,11 @@ void Config::_toDoc(JsonDocument& doc) {
     th["pullback_egt_hard_c"] = pullbackEgtHardC;
     th["pullback_min_pct"] = pullbackMinThrottlePct;
     th["pullback_strength"] = pullbackStrength;
+    th["rpm_limiter_mode"]              = rpmLimiterMode;
+    th["pullback_lookahead_ms"]         = pullbackLookaheadMs;
+    th["pullback_near_limit_rampup_ms"] = pullbackNearLimitRampUpMs;
+    th["pullback_approach_zone_rpm"]    = pullbackApproachZoneRpm;
+    th["rpm_accel_filter"]              = rpmAccelFilter;
 
     auto di = doc["dynamic_idle"].to<JsonObject>();
     di["target_rpm"]    = idleTargetRpm;
@@ -2074,6 +2129,16 @@ void Config::_toDoc(JsonDocument& doc) {
     di["use_n2"]        = idleUseN2;
     di["i_gain"]        = idleIGain;
     di["i_max"]         = idleIMax;
+    di["idle_mode"]           = idleMode;
+    di["decel_enter_rpm"]     = idleDecelEnterRpm;
+    di["decel_drop_pct"]      = idleDecelDropPct;
+    di["lookahead_ms"]        = idleLookaheadMs;
+    di["settle_band_rpm"]     = idleSettleBandRpm;
+    di["full_response_rpm"]   = idleFullResponseRpm;
+    di["trim_up_pct_s"]       = idleTrimUpPctPerSec;
+    di["trim_down_pct_s"]     = idleTrimDownPctPerSec;
+    di["learn_rate"]          = idleLearnRate;
+    di["learn_accel_max"]     = idleLearnAccelMax;
 
     auto sf = doc["safety"].to<JsonObject>();
     sf["check_interval_ms"]           = safetyCheckIntervalMs;

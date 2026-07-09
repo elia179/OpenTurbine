@@ -74,6 +74,12 @@ public:
     static float pullbackEgtHardC;
     static float pullbackMinThrottlePct;
     static float pullbackStrength;
+    // Advanced RPM-limiter mode (Simple/0 = current reactive behaviour)
+    static int   rpmLimiterMode;
+    static float pullbackLookaheadMs;
+    static float pullbackNearLimitRampUpMs;
+    static float pullbackApproachZoneRpm;   // 0 = auto (4× soft/hard band)
+    static float rpmAccelFilter;            // EMA weight for the dRPM/dt estimate
 
     // ── Dynamic idle ──────────────────────────────────────────
     static float idleTargetRpm;
@@ -86,6 +92,17 @@ public:
     static bool  idleUseN2;          // false = N1 (default), true = N2
     static float idleIGain;          // integral gain (accumulated error → throttle %)
     static float idleIMax;           // max integral windup (fraction, e.g. 0.15 = ±15% authority)
+    // Advanced dynamic-idle mode (Simple/0 = current PI behaviour)
+    static int   idleMode;
+    static float idleDecelEnterRpm;
+    static float idleDecelDropPct;
+    static float idleLookaheadMs;
+    static float idleSettleBandRpm;
+    static float idleFullResponseRpm;
+    static float idleTrimUpPctPerSec;
+    static float idleTrimDownPctPerSec;
+    static float idleLearnRate;
+    static float idleLearnAccelMax;
 
     // ── Safety ────────────────────────────────────────────────
     static int   safetyCheckIntervalMs;
@@ -385,7 +402,7 @@ public:
     static char    loadWarning[192];
 
     // ── Config version ────────────────────────────────────────
-    static constexpr uint8_t CONFIG_VERSION = 2;
+    static constexpr uint8_t CONFIG_VERSION = 3;
 
     // ── API ───────────────────────────────────────────────────
     static void load();

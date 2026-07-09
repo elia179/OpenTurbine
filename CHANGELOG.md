@@ -8,6 +8,37 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ---
 
+## [1.7.0] — 2026-07-09
+
+Opt-in advanced control modes (default **Simple** = current behaviour — nothing changes until
+you switch a mode on) plus a Hardware-page convenience toggle. Config schema → v3 with free
+forward-migration (a v2 file loads with the new keys at their Simple defaults).
+
+### Added
+- **RPM Limiter — Advanced (predictive) mode** (`throttle.rpm_limiter_mode`; default Simple).
+  Advanced projects shaft RPM from a filtered acceleration estimate and eases fuel off *before*
+  an overshoot during a fast spool, then softens the throttle-open ramp near the limit. EGT
+  pullback stays reactive. Tunables: predict lookahead, near-limit ramp, approach zone
+  (0 = auto), RPM-accel filter weight.
+- **Dynamic Idle — Advanced (decel-catch) mode** (`dynamic_idle.idle_mode`; default Simple).
+  Advanced adds a decel-catch (drops just below a learned idle-hold on a fast chop from high
+  RPM so it settles without hanging or dipping toward flameout), a learned idle-hold replacing
+  the integrator, and a predictive trim. The learned hold is per-run (not persisted to flash).
+  Tunables for decel enter/drop, trim lookahead, settle band, full-response error, trim
+  up/down rates, hold learn rate, and the learn-accel gate.
+- **Filtered RPM acceleration** — one shared `dRPM/dt` source (`n1RpmAccel`/`n2RpmAccel`),
+  exposed as `n1_rpm_accel`/`n2_rpm_accel` in the live telemetry frame.
+- **Hardware page "Hide unselected"** toggle — collapses the Actuators section to just the
+  enabled cards (and hides emptied sub-headers). Per-browser preference; view-only.
+
+### Changed
+- Config schema version **2 → 3** (additive only).
+- **Hover help on every page** — the Hardware and Sequence pages (which don't load app.js)
+  now also give a hover tooltip on each documented control, so a user can hover any setting
+  for its explanation instead of reading the docs, matching the pages that already did.
+
+---
+
 ## [1.6.0] — 2026-07-08
 
 Code-quality and configuration-clarity release. A deep, repeated end-to-end audit of the firmware
