@@ -8,7 +8,7 @@ OpenTurbine is an open-source engine control unit for small jet turbines. It run
 
 Most users should start with the Windows setup tool:
 
-1. Download `OpenTurbineSetupTool.exe` from the latest GitHub release.
+1. Download [`OpenTurbineSetupTool.exe`](https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe).
 2. Double-click it.
 3. Choose **Set up a new board** for a blank ESP32/ESP32-S3, or **Update my OpenTurbine board** for an existing install.
 4. Follow the on-screen steps, then connect to the board Wi-Fi and open `http://192.168.4.1`.
