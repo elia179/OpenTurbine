@@ -341,6 +341,11 @@ pio run -e esp32s3dev -t upload
 pio run -e esp32s3dev -t uploadfs
 ```
 
+For user-friendly Windows installs and Wi-Fi updates, see
+[`docs/SETUP_TOOL.md`](docs/SETUP_TOOL.md). It documents the setup-tool release
+assets and the `tools/build_setup_package.py` helper that creates
+`OpenTurbine_Recommended.zip`.
+
 Fresh beta installs and partition-table changes require serial firmware upload
 plus `uploadfs`. OTA firmware alone does not replace the partition table.
 The current storage layout uses a `data/littlefs` partition named `littlefs`.

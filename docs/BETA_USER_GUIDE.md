@@ -18,6 +18,11 @@ controlled first test. It assumes you have already read the safety warning in
 
 ## 2. Flash The ECU
 
+Recommended Windows path: use `OpenTurbineSetupTool.exe` from the release. It
+downloads or uses `OpenTurbine_Recommended.zip`, flashes a new board over USB,
+and can update an existing board over Wi-Fi while backing up `ecu_config.json`.
+Release packaging details are in [`SETUP_TOOL.md`](SETUP_TOOL.md).
+
 Choose the correct PlatformIO environment:
 
 | Board | Environment |

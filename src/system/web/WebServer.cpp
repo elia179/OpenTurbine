@@ -1171,6 +1171,39 @@ void WebServer::_setupRoutes() {
         req->send(resp);
     });
 
+    // GET /api/device_info - updater-friendly board identity and maintenance state.
+    _server.on("/api/device_info", HTTP_GET, [](AsyncWebServerRequest* req) {
+        auto& ed = EngineData::instance();
+#if defined(OT_PLATFORM_ESP32S3)
+        const char* target = "esp32s3dev";
+        const char* chip = "ESP32-S3";
+#else
+        const char* target = "esp32dev";
+        const char* chip = "ESP32";
+#endif
+        const bool standbyLike = _isStandbyLike(ed.mode);
+        const bool outputsActive = _outputsActiveForOta();
+        const bool otaAllowed = standbyLike && !outputsActive && !_maintenanceUploadInProgress();
+
+        snprintf(g_webTxBuf, sizeof(g_webTxBuf),
+            "{\"project\":\"OpenTurbine\","
+            "\"firmware_version\":\"%s\","
+            "\"target\":\"%s\","
+            "\"chip\":\"%s\","
+            "\"state\":\"%s\","
+            "\"outputs_active\":%s,"
+            "\"ota_allowed\":%s}",
+            OT_VERSION,
+            target,
+            chip,
+            sysModeStr(ed.mode),
+            outputsActive ? "true" : "false",
+            otaAllowed ? "true" : "false");
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
+        _finalizeJsonResponse(resp);
+        req->send(resp);
+    });
+
     // GET /api/config — expose the settings section for page editors.
     // Serialize into the static TX buffer and send with a fixed
     // Content-Length (same path as /api/data). AsyncResponseStream silently
