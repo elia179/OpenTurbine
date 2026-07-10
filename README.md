@@ -4,9 +4,22 @@
 
 OpenTurbine is an open-source engine control unit for small jet turbines. It runs on a standard ESP32 (or ESP32-S3) development board and provides a complete control loop — startup sequencing, oil pump control, safety shutdowns, afterburner management, and a Wi-Fi web interface — with zero code changes between different engine builds. A compile-time profile provides safe factory defaults; the complete per-engine hardware and settings file is then tuned at runtime via the web UI.
 
-For a practical first-setup walkthrough, use [`docs/BETA_USER_GUIDE.md`](docs/BETA_USER_GUIDE.md).
-That guide is the best starting point for beta testers. This README is the
-broader feature and build reference.
+## Start Here: Install OpenTurbine On A Board
+
+Most users should start with the Windows setup tool:
+
+1. Download `OpenTurbineSetupTool.exe` from the latest GitHub release.
+2. Double-click it.
+3. Choose **Set up a new board** for a blank ESP32/ESP32-S3, or **Update my OpenTurbine board** for an existing install.
+4. Follow the on-screen steps, then connect to the board Wi-Fi and open `http://192.168.4.1`.
+
+The setup tool installs the firmware and web dashboard files for you. See
+[`docs/BETA_USER_GUIDE.md`](docs/BETA_USER_GUIDE.md) for the practical first
+setup walkthrough, and [`docs/SETUP_TOOL.md`](docs/SETUP_TOOL.md) for release
+packaging details.
+
+Developers can still build and flash manually with PlatformIO; see
+[Quick start](#quick-start).
 
 ---
 
