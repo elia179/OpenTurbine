@@ -83,9 +83,69 @@ Attach these assets to the GitHub release:
 
 ```text
 OpenTurbineSetupTool.exe
+OpenTurbineSetupTool.exe.sha256
 OpenTurbine_Recommended.zip
 OpenTurbine_Recommended.zip.sha256
 ```
+
+## Code Signing
+
+Public Windows releases should be Authenticode-signed before publishing. An
+unsigned or new low-reputation EXE can trigger Microsoft Defender SmartScreen,
+browser download warnings, or Windows 11 Smart App Control. A signature does not
+guarantee that Microsoft will immediately stop warning on a brand-new app, but it
+gives Windows a verified publisher identity and lets reputation carry forward
+across releases signed by the same publisher.
+
+Use a production OV/EV code-signing certificate issued by a CA trusted by
+Windows. For local signing from a PFX:
+
+```powershell
+$env:WINDOWS_SIGNING_CERT_PASSWORD = "pfx-password"
+.\tools\sign_windows_setup_tool.ps1 `
+  -ExePath .\dist\setup_tool\OpenTurbineSetupTool.exe `
+  -CertificatePath C:\secure\OpenTurbineCodeSigning.pfx `
+  -CertificatePassword $env:WINDOWS_SIGNING_CERT_PASSWORD
+```
+
+For a certificate already installed in the Windows certificate store, or on a
+local hardware token exposed through the certificate store:
+
+```powershell
+.\tools\sign_windows_setup_tool.ps1 `
+  -ExePath .\dist\setup_tool\OpenTurbineSetupTool.exe `
+  -CertificateThumbprint "certificate-thumbprint"
+```
+
+Generate `OpenTurbineSetupTool.exe.sha256` only after signing:
+
+```powershell
+$hash = (Get-FileHash .\dist\setup_tool\OpenTurbineSetupTool.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+"$hash  OpenTurbineSetupTool.exe" | Set-Content -Encoding ascii .\dist\setup_tool\OpenTurbineSetupTool.exe.sha256
+Get-AuthenticodeSignature .\dist\setup_tool\OpenTurbineSetupTool.exe
+```
+
+GitHub Actions can sign the setup tool automatically when these repository
+secrets are configured:
+
+```text
+WINDOWS_SIGNING_CERT_BASE64   base64-encoded PFX file
+WINDOWS_SIGNING_CERT_PASSWORD PFX password
+```
+
+The CI job intentionally skips signing when those secrets are absent, so pull
+requests and local forks can still build. The Windows job uploads
+`OpenTurbineSetupTool` as a workflow artifact containing the EXE and checksum;
+attach those files to the GitHub release after confirming the EXE is signed. If
+your production certificate uses a cloud HSM, Azure Trusted Signing, or a USB
+token that cannot be exported as a PFX, run that provider's signing step before
+the checksum step and keep the same publish rule: sign first, hash second.
+
+References:
+
+- Microsoft SmartScreen reputation for Windows app developers: https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation
+- Microsoft Smart App Control overview: https://learn.microsoft.com/en-us/windows/apps/develop/smart-app-control/overview
+- Microsoft SignTool reference: https://learn.microsoft.com/en-us/windows/win32/seccrypto/signtool
 
 The ZIP must contain:
 

@@ -24,9 +24,9 @@ If the download link says **Not Found**, the first public release has not been p
 
 ### If Windows blocks the installer
 
-The current installer may be unsigned, so Microsoft Edge, Chrome, or SmartScreen may warn about a new or uncommon application.
+The current installer may be unsigned or may not yet have Microsoft download reputation, so Microsoft Edge, Chrome, or SmartScreen may warn about a new or uncommon application. Windows 11 Smart App Control can block unsigned or untrusted apps more strictly.
 
-Only continue when the file came from the official `elia179/OpenTurbine` release page. In SmartScreen choose **More info → Run anyway**. If a browser blocks the download, open its Downloads panel and choose to keep the file. A release may also include a `.sha256` file for checksum verification.
+Only continue when the file came from the official `elia179/OpenTurbine` release page. In SmartScreen choose **More info → Run anyway**. If a browser blocks the download, open its Downloads panel and choose to keep the file. Do not disable Windows security globally for OpenTurbine. A release may also include a `.sha256` file for checksum verification.
 
 The setup tool can install the USB serial driver needed by common CP210x and CH340 boards. Reconnect the board after driver installation.
 

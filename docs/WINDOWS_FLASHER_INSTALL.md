@@ -19,7 +19,15 @@ Open the browser’s Downloads panel, inspect the source URL, and choose to keep
 3. Confirm the application is `OpenTurbineSetupTool.exe` from the official release.
 4. Choose **Run anyway**.
 
-The warning occurs because the current executable may not yet have a trusted code-signing reputation. The long-term solution is a signed release, not asking users to disable Windows security globally.
+The warning occurs because the current executable may be unsigned or may not yet
+have Microsoft download reputation.
+
+## Smart App Control
+
+Windows 11 Smart App Control can block unsigned or untrusted apps without the
+same **Run anyway** path. The release fix is an Authenticode-signed EXE
+published from the official release page, not asking users to disable Windows
+security globally.
 
 ## Verify a checksum
 

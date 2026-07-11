@@ -45,6 +45,8 @@ jobs:
 
   windows-installer:
     runs-on: windows-latest
+    env:
+      WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
     defaults:
       run:
         working-directory: tools/setup_tool
@@ -59,4 +61,34 @@ jobs:
         working-directory: .
         run: git diff --exit-code -- tools/setup_tool/main.go tools/setup_tool/main_test.go
       - run: go test ./...
+      - name: Generate Windows icon and manifest resources
+        run: go run github.com/akavel/rsrc@v0.10.2 -ico OpenTurbineSetupTool.ico -manifest OpenTurbineSetupTool.manifest -o rsrc_windows_amd64.syso
       - run: go build -ldflags="-H windowsgui -s -w" -o OpenTurbineSetupTool.exe .
+      - name: Sign setup tool when a signing certificate is configured
+        if: env.WINDOWS_SIGNING_CERT_BASE64 != ''
+        env:
+          WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "OpenTurbineCodeSigning.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
+          try {
+            & ..\sign_windows_setup_tool.ps1 `
+              -ExePath .\OpenTurbineSetupTool.exe `
+              -CertificatePath $certPath `
+              -CertificatePassword $env:WINDOWS_SIGNING_CERT_PASSWORD
+          } finally {
+            Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+          }
+      - name: Write setup tool SHA-256
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash .\OpenTurbineSetupTool.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  OpenTurbineSetupTool.exe" | Set-Content -Encoding ascii .\OpenTurbineSetupTool.exe.sha256
+      - name: Upload setup tool artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenTurbineSetupTool
+          path: |
+            tools/setup_tool/OpenTurbineSetupTool.exe
+            tools/setup_tool/OpenTurbineSetupTool.exe.sha256
