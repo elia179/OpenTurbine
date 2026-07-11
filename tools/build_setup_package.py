@@ -9,7 +9,7 @@ Run after both firmware environments and their LittleFS images have been built:
     pio run -e esp32s3dev -t buildfs
     python tools/build_setup_package.py --esptool C:\path\to\esptool.exe \
         --cp210x-driver C:\path\to\extracted\CP210x_Windows_Drivers \
-        --ch340-driver C:\path\to\extracted\CH341SER
+        --ch340-driver C:\path\to\extracted\wch-serial-drivers
 
 The output ZIP is intentionally deterministic enough for release checks and is
 validated before it is written.
@@ -139,7 +139,7 @@ def copy_required(src: Path, dst: Path, missing: list[str]) -> None:
         missing.append(str(src.relative_to(ROOT) if src.is_relative_to(ROOT) else src))
 
 
-def copy_driver_package(src: str | None, dst: Path, *, require_inf: bool) -> None:
+def copy_driver_package(src: str | None, dst: Path, *, require_inf: bool, allow_exe: bool = False) -> None:
     if not src:
         return
     path = Path(src).expanduser()
@@ -148,10 +148,17 @@ def copy_driver_package(src: str | None, dst: Path, *, require_inf: bool) -> Non
     source_dir = path if path.is_dir() else path.parent
     # CP210xVCPInstaller is DPInst, not a self-contained installer. It needs
     # the INF, CAT, and SYS files shipped beside it.
-    if require_inf and not any(source_dir.rglob("*.inf")):
+    has_inf = any(source_dir.rglob("*.inf"))
+    has_exe = any(source_dir.rglob("*.exe"))
+    if require_inf and not has_inf:
         raise RuntimeError(
             f"CP210x driver package {source_dir} has no .inf file. Pass the extracted "
             "Silicon Labs CP210x Windows driver folder, not a lone installer EXE."
+        )
+    if not require_inf and not has_inf and not (allow_exe and has_exe):
+        raise RuntimeError(
+            f"WCH driver package {source_dir} has no .inf file or installer EXE. Pass the "
+            "extracted CH341/CH343 driver folder, not an empty wrapper directory."
         )
     shutil.copytree(source_dir, dst, dirs_exist_ok=True)
 
@@ -161,7 +168,7 @@ def stage_package(stage: Path, esptool: Path, cp210x: str | None, ch340: str | N
     (stage / "tools").mkdir(parents=True, exist_ok=True)
     copy_required(esptool, stage / "tools" / "esptool.exe", missing)
     copy_driver_package(cp210x, stage / "drivers" / "cp210x", require_inf=True)
-    copy_driver_package(ch340, stage / "drivers" / "ch340", require_inf=False)
+    copy_driver_package(ch340, stage / "drivers" / "ch340", require_inf=False, allow_exe=True)
 
     boot_app0 = find_boot_app0()
     if boot_app0 is None:

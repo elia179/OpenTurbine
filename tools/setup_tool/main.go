@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	appVersion              = "0.5.21"
+	appVersion              = "0.5.22"
 	appTitle                = "OpenTurbine Setup Tool"
 	ecuBaseURL              = "http://192.168.4.1"
 	defaultPackageURL       = "https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbine_Recommended.zip"
@@ -136,6 +136,9 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--run-driver-installer" {
 		os.Exit(runDriverInstallerHelper(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--install-inf-driver" {
+		os.Exit(runINFDriverInstallHelper(os.Args[2:]))
 	}
 	runtime.LockOSThread()
 	setProcessDPIAware()
@@ -2038,18 +2041,25 @@ func unzip(src, dst string) error {
 
 func startDriverInstaller(app *App, pkg *Package, kind string) error {
 	if strings.EqualFold(kind, "cp210x") {
-		return startCP210xDriverInstaller(app)
+		return startCP210xDriverInstaller(app, pkg)
 	}
 	path, err := findDriverInstaller(pkg, kind)
-	if err != nil {
+	if err == nil {
+		return startEXEDriverInstaller(app, path, kind)
+	}
+	root, infErr := findDriverINFRoot(pkg, kind)
+	if infErr != nil {
 		return err
 	}
-	return startEXEDriverInstaller(app, path, kind)
+	return startINFDriverInstaller(app, root, kind)
 }
 
-func startCP210xDriverInstaller(app *App) error {
+func startCP210xDriverInstaller(app *App, pkg *Package) error {
 	if app == nil {
 		return fmt.Errorf("setup tool data folder is unavailable")
+	}
+	if err := prepareBundledCP210xDriver(app, pkg); err != nil {
+		return err
 	}
 	if _, err := prepareCP210xDriver(app); err != nil {
 		return err
@@ -2062,6 +2072,47 @@ func startCP210xDriverInstaller(app *App) error {
 	_ = os.Remove(resultPath)
 	params := strings.Join([]string{
 		syscall.EscapeArg("--install-cp210x-driver"),
+		syscall.EscapeArg("--result"),
+		syscall.EscapeArg(resultPath),
+	}, " ")
+	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("runas"))), uintptr(unsafe.Pointer(utf16Ptr(exe))), uintptr(unsafe.Pointer(utf16Ptr(params))), uintptr(unsafe.Pointer(utf16Ptr(filepath.Dir(exe)))), 0)
+	if ret <= 32 {
+		return fmt.Errorf("Windows could not start the administrator driver installer")
+	}
+	result, err := waitForDriverInstallResult(resultPath, 3*time.Minute)
+	if err != nil {
+		return err
+	}
+	if result.ExitCode == 0 || result.ExitCode == 3010 {
+		return nil
+	}
+	msg := strings.TrimSpace(result.Error)
+	if msg == "" {
+		msg = strings.TrimSpace(result.Output)
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("pnputil exited with code %d", result.ExitCode)
+	}
+	return errors.New(msg)
+}
+
+func startINFDriverInstaller(app *App, driverRoot, kind string) error {
+	if app == nil {
+		return fmt.Errorf("setup tool data folder is unavailable")
+	}
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return fmt.Errorf("could not find this setup tool executable")
+	}
+	if !dirExists(driverRoot) {
+		return fmt.Errorf("%s driver folder was not found", kind)
+	}
+	resultPath := filepath.Join(app.workDir, "drivers", strings.ToLower(kind)+"-inf-install-result.json")
+	_ = os.Remove(resultPath)
+	params := strings.Join([]string{
+		syscall.EscapeArg("--install-inf-driver"),
+		syscall.EscapeArg("--driver-root"),
+		syscall.EscapeArg(driverRoot),
 		syscall.EscapeArg("--result"),
 		syscall.EscapeArg(resultPath),
 	}, " ")
@@ -2174,6 +2225,37 @@ func runDriverInstallerHelper(args []string) int {
 	return 1
 }
 
+func runINFDriverInstallHelper(args []string) int {
+	driverRoot, resultPath := "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--driver-root":
+			if i+1 < len(args) {
+				driverRoot = args[i+1]
+				i++
+			}
+		case "--result":
+			if i+1 < len(args) {
+				resultPath = args[i+1]
+				i++
+			}
+		}
+	}
+	if driverRoot == "" || resultPath == "" {
+		return 2
+	}
+	result := installINFDriverPackage(driverRoot)
+	data, _ := json.MarshalIndent(result, "", "  ")
+	_ = os.MkdirAll(filepath.Dir(resultPath), 0755)
+	if err := os.WriteFile(resultPath, data, 0644); err != nil {
+		return 1
+	}
+	if result.ExitCode == 0 || result.ExitCode == 3010 {
+		return 0
+	}
+	return 1
+}
+
 func runDriverInstallerEXE(installerPath string) driverInstallResult {
 	if !fileExists(installerPath) {
 		return driverInstallResult{ExitCode: 1, Error: filepath.Base(installerPath) + " was not found"}
@@ -2191,6 +2273,45 @@ func runDriverInstallerEXE(installerPath string) driverInstallResult {
 	} else {
 		result.ExitCode = 0
 	}
+	if result.ExitCode == 3010 {
+		result.RebootRequired = true
+	}
+	return result
+}
+
+func installINFDriverPackage(driverRoot string) driverInstallResult {
+	if !dirExists(driverRoot) {
+		return driverInstallResult{ExitCode: 1, Error: "driver folder was not found"}
+	}
+	infs := driverINFs(driverRoot)
+	if len(infs) == 0 {
+		return driverInstallResult{ExitCode: 1, Error: "driver folder does not contain an INF file"}
+	}
+	pnputil := filepath.Join(os.Getenv("SystemRoot"), "System32", "pnputil.exe")
+	if !fileExists(pnputil) {
+		pnputil = "pnputil.exe"
+	}
+	var combined strings.Builder
+	result := driverInstallResult{}
+	for _, inf := range infs {
+		cmd := exec.Command(pnputil, "/add-driver", inf, "/install")
+		prepareHiddenCommand(cmd)
+		out, err := cmd.CombinedOutput()
+		if combined.Len() > 0 {
+			combined.WriteString("\n\n")
+		}
+		combined.WriteString(strings.TrimSpace(string(out)))
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+			result.Error = strings.TrimSpace(string(out))
+			break
+		} else if err != nil {
+			result.ExitCode = 1
+			result.Error = err.Error()
+			break
+		}
+	}
+	result.Output = strings.TrimSpace(combined.String())
 	if result.ExitCode == 3010 {
 		result.RebootRequired = true
 	}
@@ -2252,6 +2373,27 @@ func installCP210xDriver(app *App) driverInstallResult {
 	return result
 }
 
+func prepareBundledCP210xDriver(app *App, pkg *Package) error {
+	if app == nil || pkg == nil {
+		return nil
+	}
+	src := findCP210xINFRoot(pkg)
+	if src == "" {
+		return nil
+	}
+	dst := filepath.Join(app.workDir, "drivers", "cp210x-universal-11.5.0")
+	if samePath(src, dst) {
+		return nil
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	if err := copyDir(src, dst); err != nil {
+		return fmt.Errorf("could not prepare bundled CP210x driver: %w", err)
+	}
+	return nil
+}
+
 func prepareCP210xDriver(app *App) (string, error) {
 	if app == nil {
 		return "", fmt.Errorf("setup tool data folder is unavailable")
@@ -2287,18 +2429,27 @@ func prepareCP210xDriver(app *App) (string, error) {
 	return root, nil
 }
 
+func driverPackageRoots(pkg *Package, kind string) []string {
+	if pkg == nil {
+		return nil
+	}
+	switch strings.ToLower(kind) {
+	case "cp210x":
+		return []string{filepath.Join(pkg.Root, "drivers", "cp210x"), filepath.Join(pkg.Root, "drivers", "CP210x")}
+	case "ch340":
+		return []string{filepath.Join(pkg.Root, "drivers", "ch340"), filepath.Join(pkg.Root, "drivers", "CH340"), filepath.Join(pkg.Root, "drivers", "ch341")}
+	default:
+		return nil
+	}
+}
+
 func findDriverInstaller(pkg *Package, kind string) (string, error) {
 	if pkg == nil {
 		return "", fmt.Errorf("setup package is not loaded")
 	}
 	kind = strings.ToLower(kind)
-	var roots []string
-	switch kind {
-	case "cp210x":
-		roots = []string{filepath.Join(pkg.Root, "drivers", "cp210x"), filepath.Join(pkg.Root, "drivers", "CP210x")}
-	case "ch340":
-		roots = []string{filepath.Join(pkg.Root, "drivers", "ch340"), filepath.Join(pkg.Root, "drivers", "CH340"), filepath.Join(pkg.Root, "drivers", "ch341")}
-	default:
+	roots := driverPackageRoots(pkg, kind)
+	if len(roots) == 0 {
 		return "", fmt.Errorf("unknown driver type")
 	}
 	preferred := []string{}
@@ -2349,6 +2500,104 @@ func findDriverInstaller(pkg *Package, kind string) (string, error) {
 		return "", fmt.Errorf("expected drivers\\cp210x\\CP210xVCPInstaller_x64.exe inside OpenTurbine_Recommended.zip")
 	}
 	return "", fmt.Errorf("expected drivers\\ch340\\CH341SER.EXE inside OpenTurbine_Recommended.zip")
+}
+
+func findDriverINFRoot(pkg *Package, kind string) (string, error) {
+	if pkg == nil {
+		return "", fmt.Errorf("setup package is not loaded")
+	}
+	for _, root := range driverPackageRoots(pkg, kind) {
+		if driverRootHasINF(root) {
+			return root, nil
+		}
+	}
+	return "", fmt.Errorf("expected a signed INF driver package inside OpenTurbine_Recommended.zip")
+}
+
+func findCP210xINFRoot(pkg *Package) string {
+	for _, root := range driverPackageRoots(pkg, "cp210x") {
+		if fileExists(filepath.Join(root, "silabser.inf")) && fileExists(filepath.Join(root, "silabser.cat")) {
+			return root
+		}
+		var found string
+		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || found != "" {
+				return nil
+			}
+			if strings.EqualFold(filepath.Base(path), "silabser.inf") && fileExists(filepath.Join(filepath.Dir(path), "silabser.cat")) {
+				found = filepath.Dir(path)
+			}
+			return nil
+		})
+		if found != "" {
+			return found
+		}
+	}
+	return ""
+}
+
+func driverRootHasINF(root string) bool {
+	return len(driverINFs(root)) > 0
+}
+
+func driverINFs(root string) []string {
+	if !dirExists(root) {
+		return nil
+	}
+	var infs []string
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		if strings.EqualFold(filepath.Ext(path), ".inf") {
+			infs = append(infs, path)
+		}
+		return nil
+	})
+	return infs
+}
+
+func samePath(a, b string) bool {
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	return strings.EqualFold(filepath.Clean(aa), filepath.Clean(bb))
+}
+
+func copyDir(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return err
+		}
+		out, err := os.Create(target)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(out, in)
+		closeErr := out.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	})
 }
 
 func findEsptool(pkg *Package) (string, error) {

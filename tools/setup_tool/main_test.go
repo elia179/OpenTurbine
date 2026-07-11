@@ -2,7 +2,11 @@
 
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseDetectedBoardRejectsC3(t *testing.T) {
 	board, err := parseDetectedBoard("COM7", "Chip is ESP32-C3 (revision v0.4)", nil)
@@ -79,5 +83,57 @@ func TestTargetFromIdentity(t *testing.T) {
 	}
 	if _, err := targetFromIdentity("", "ESP32-C3"); err == nil {
 		t.Fatal("unsupported ESP32-C3 identity must not select classic ESP32 firmware")
+	}
+}
+
+func TestFindDriverINFRootAcceptsNestedWCHPackages(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "drivers", "ch340", "ch341ser", "CH341SER.INF"), "inf")
+	writeTestFile(t, filepath.Join(root, "drivers", "ch340", "ch343ser", "CH343SER.INF"), "inf")
+
+	got, err := findDriverINFRoot(&Package{Root: root}, "ch340")
+	want := filepath.Join(root, "drivers", "ch340")
+	if err != nil || got != want {
+		t.Fatalf("got %q err=%v, want %q", got, err, want)
+	}
+}
+
+func TestFindCP210xINFRootFindsNestedUniversalDriver(t *testing.T) {
+	root := t.TempDir()
+	driverRoot := filepath.Join(root, "drivers", "cp210x", "Universal")
+	writeTestFile(t, filepath.Join(driverRoot, "silabser.inf"), "inf")
+	writeTestFile(t, filepath.Join(driverRoot, "silabser.cat"), "cat")
+
+	got := findCP210xINFRoot(&Package{Root: root})
+	if got != driverRoot {
+		t.Fatalf("got %q, want %q", got, driverRoot)
+	}
+}
+
+func TestPrepareBundledCP210xDriverCopiesToWorkDir(t *testing.T) {
+	pkgRoot := t.TempDir()
+	workDir := filepath.Join(t.TempDir(), "work")
+	srcRoot := filepath.Join(pkgRoot, "drivers", "cp210x")
+	writeTestFile(t, filepath.Join(srcRoot, "silabser.inf"), "inf")
+	writeTestFile(t, filepath.Join(srcRoot, "silabser.cat"), "cat")
+	writeTestFile(t, filepath.Join(srcRoot, "x64", "silabser.sys"), "sys")
+
+	if err := prepareBundledCP210xDriver(&App{workDir: workDir}, &Package{Root: pkgRoot}); err != nil {
+		t.Fatalf("prepareBundledCP210xDriver failed: %v", err)
+	}
+
+	dstRoot := filepath.Join(workDir, "drivers", "cp210x-universal-11.5.0")
+	if !fileExists(filepath.Join(dstRoot, "silabser.inf")) || !fileExists(filepath.Join(dstRoot, "x64", "silabser.sys")) {
+		t.Fatalf("bundled CP210x driver was not copied to %s", dstRoot)
+	}
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
 	}
 }

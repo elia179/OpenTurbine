@@ -35,14 +35,15 @@ Build the recommended ZIP from the repository root:
 python tools/build_setup_package.py `
   --esptool "$env:USERPROFILE\.platformio\penv\Scripts\esptool.exe" `
   --cp210x-driver C:\path\to\extracted\CP210x_Windows_Drivers `
-  --ch340-driver C:\path\to\extracted\CH341SER
+  --ch340-driver C:\path\to\extracted\wch-serial-drivers
 ```
 
 Release packages require both complete driver packages. Keep each full extracted
 vendor folder; a copied installer alone is not sufficient. The setup tool can
 also download the pinned Silicon Labs CP210x Universal driver directly and
 install its signed INF/CAT package with `pnputil`. CH340/CH341/CH343 fallback
-installation uses the WCH installer bundled in the recommended ZIP.
+installation uses either the WCH installer or signed INF/CAT/SYS folders bundled
+in the recommended ZIP.
 
 For local packaging validation only, `--allow-missing-drivers` may be used. Do
 not publish that development package as the recommended release.

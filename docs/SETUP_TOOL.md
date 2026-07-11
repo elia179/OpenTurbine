@@ -60,12 +60,18 @@ Then create the release ZIP with both extracted driver packages:
 python tools/build_setup_package.py ^
   --esptool C:\path\to\esptool.exe ^
   --cp210x-driver C:\path\to\extracted\CP210x_Windows_Drivers ^
-  --ch340-driver C:\path\to\extracted\CH341SER
+  --ch340-driver C:\path\to\extracted\wch-serial-drivers
 ```
 
 Pass the extracted vendor folder, not a copied installer EXE. In particular,
 `CP210xVCPInstaller_x64.exe` is DPInst and cannot install anything unless its
 `.inf`, `.cat`, and driver files remain beside it:
+
+For WCH bridges, the setup tool accepts either the vendor installer EXE or
+signed driver folders containing `.inf`, `.cat`, and `.sys` files. A package can
+include both CH340/CH341 and CH343/CH910x driver folders under
+`drivers/ch340/`; the setup tool installs matching devices with Windows
+`pnputil`.
 
 For local packaging tests only, `--allow-missing-drivers` bypasses the release
 requirement. Never publish a package built with that flag.
@@ -156,7 +162,12 @@ drivers/cp210x/CP210xVCPInstaller_x64.exe
 drivers/cp210x/*.inf
 drivers/cp210x/*.cat
 drivers/cp210x/*.(driver payload files)
-drivers/ch340/CH341SER.EXE
+drivers/ch340/**/CH341SER.INF
+drivers/ch340/**/CH341SER.CAT
+drivers/ch340/**/CH341*.SYS
+drivers/ch340/**/CH343SER.INF
+drivers/ch340/**/CH343SER.CAT
+drivers/ch340/**/CH343*.SYS
 esp32dev/bootloader.bin
 esp32dev/partitions.bin
 esp32dev/boot_app0.bin
