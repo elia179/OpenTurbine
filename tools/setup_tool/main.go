@@ -1468,7 +1468,7 @@ func (j *Job) runNewBoard() {
 			j.fail(fmt.Errorf("only unsupported ESP chips were found: %s. OpenTurbine currently supports classic ESP32 and ESP32-S3 only; no board was erased", strings.Join(unsupported, ", ")))
 			return
 		}
-		action := j.showDriverHelp(pkg, "A COM port was found, but the ESP32 bootloader did not answer. The port may be busy, the board may need BOOT held, or the wrong driver may be installed.")
+		action := j.showDriverHelp(pkg, "A COM port was found, but the ESP32 bootloader did not answer. The USB serial driver is probably working; the board may need BOOT held, EN/RESET tapped, a direct USB data cable, or another app may be holding the port.")
 		if action == "cancel" {
 			j.cancelToHome("Clean USB install was cancelled.")
 			return
