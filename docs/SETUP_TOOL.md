@@ -1,11 +1,24 @@
 # OpenTurbine Setup Tool
 
-The Windows setup tool lets users install a blank board over USB or update an
-existing OpenTurbine board over Wi-Fi. Users download only:
+The Windows setup tool provides two deliberately distinct paths: **Clean install
+/ reinstall** erases a blank or previously used board over USB, while **Update
+and keep my setup** updates an existing OpenTurbine board over Wi-Fi without a
+factory reset. Users download only:
 
 ```text
 OpenTurbineSetupTool.exe
 ```
+
+The authoritative user installation and operating guide is the repository root
+[`README.md`](../README.md). Focused browser and SmartScreen troubleshooting is
+in [`WINDOWS_FLASHER_INSTALL.md`](WINDOWS_FLASHER_INSTALL.md). The rest of this
+file is for setup-tool developers and release packagers.
+
+The CP210x button downloads Silicon Labs' complete CP210x Universal Windows
+Driver v11.5.0 directly from the official Silicon Labs URL, verifies a pinned
+SHA-256, and installs its signed INF/CAT package through Windows `pnputil`.
+Driver installation therefore works even if an older firmware package contains
+only the legacy DPInst EXE, while the OpenTurbine EXE remains fully open source.
 
 On launch, the app looks for a local `OpenTurbine_Recommended.zip` next to the
 EXE first. If it is not there, it downloads this release asset:
@@ -41,21 +54,21 @@ pio run -e esp32s3dev
 pio run -e esp32s3dev -t buildfs
 ```
 
-Then create the release ZIP:
-
-```bash
-python tools/build_setup_package.py --esptool C:\path\to\esptool.exe
-```
-
-Optional driver installers can be included for the setup tool's Driver Help
-screen:
+Then create the release ZIP with both extracted driver packages:
 
 ```bash
 python tools/build_setup_package.py ^
   --esptool C:\path\to\esptool.exe ^
-  --cp210x-driver C:\path\to\CP210xVCPInstaller_x64.exe ^
-  --ch340-driver C:\path\to\CH341SER.EXE
+  --cp210x-driver C:\path\to\extracted\CP210x_Windows_Drivers ^
+  --ch340-driver C:\path\to\extracted\CH341SER
 ```
+
+Pass the extracted vendor folder, not a copied installer EXE. In particular,
+`CP210xVCPInstaller_x64.exe` is DPInst and cannot install anything unless its
+`.inf`, `.cat`, and driver files remain beside it:
+
+For local packaging tests only, `--allow-missing-drivers` bypasses the release
+requirement. Never publish a package built with that flag.
 
 The script writes:
 
@@ -80,6 +93,9 @@ The ZIP must contain:
 manifest.json
 tools/esptool.exe
 drivers/cp210x/CP210xVCPInstaller_x64.exe
+drivers/cp210x/*.inf
+drivers/cp210x/*.cat
+drivers/cp210x/*.(driver payload files)
 drivers/ch340/CH341SER.EXE
 esp32dev/bootloader.bin
 esp32dev/partitions.bin
@@ -95,7 +111,9 @@ esp32s3dev/littlefs.bin
 esp32s3dev/web_assets/*.gz
 ```
 
-Driver installers under `drivers/` are optional but recommended.
+Do not publish a CP210x installer without its adjacent driver payload. The setup
+tool rejects that incomplete package instead of opening an installer that cannot
+install a driver.
 
 Recommended driver sources:
 

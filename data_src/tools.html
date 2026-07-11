@@ -4,9 +4,9 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260706a">
+<link rel="stylesheet" href="/style.css?v=20260711f">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<script src="/theme.js?v=20260706a"></script>
+<script src="/theme.js?v=20260711f"></script>
 </head>
 <body>
 <nav>
@@ -20,11 +20,23 @@
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-  <h2 style="margin-bottom:.6rem;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Tools</h2>
-  <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.1rem">
+  <div id="tools-page-head" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.6rem">
+    <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Tools</h2>
+    <button id="btn-test-settings" onclick="openTestSettings()" title="Edit durations and proportional output levels for fitted bench-test hardware.">Test settings</button>
+  </div>
+  <div id="tools-status-row" style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.1rem">
     <span style="font-size:.78rem;color:var(--dim)">Engine:</span>
     <span id="mode-badge" class="mode-badge" style="font-size:.78rem;padding:.2rem .8rem">—</span>
     <span id="lock-warn" style="font-size:.75rem;color:var(--red);display:none">Stop engine before using actuator tools</span>
+  </div>
+
+  <div id="test-settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)closeTestSettings()">
+    <div style="width:min(760px,96vw);max-height:88vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><div><b>Bench-test settings</b><div style="font-size:.72rem;color:var(--dim)">Only fitted testable hardware is shown. Settings do not run an actuator.</div></div><button onclick="closeTestSettings()" title="Close">✕</button></div>
+      <div id="test-settings-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.65rem;margin-top:.8rem"></div>
+      <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem"><button onclick="closeTestSettings()">Cancel</button><button class="primary" onclick="saveTestSettings()">Save settings</button></div>
+      <div id="test-settings-status" style="font-size:.75rem;color:var(--dim);margin-top:.4rem"></div>
+    </div>
   </div>
 
   <div id="tool-area"></div>
@@ -52,7 +64,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260706a"></script>
+<script src="/app.js?v=20260711f"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -121,6 +133,34 @@ function extraCooldownAvailable() {
   );
 }
 
+const TEST_OUTPUT_KEYS={START_TEST:'start_test_pct',GLOW_TEST:'glow_test_pct',FUEL_PUMP2_TEST:'fuel_pump2_test_pct',AB_PUMP_TEST:'ab_pump_test_pct',PROP_PITCH_TEST:'prop_pitch_test_pct'};
+function openTestSettings(){
+  if(engineMode!=='STANDBY'&&engineMode!=='FAULT'){alert('Bench-test settings can only be changed in STANDBY or FAULT.');return;}
+  const body=document.getElementById('test-settings-body'); let html='';
+  TOOLS.filter(t=>t.durationMs>0&&(!t.visibleIf||t.visibleIf(hwCfg))).forEach(t=>{
+    const durationKey=t.configKey?.split('.')[1]; if(!durationKey)return;
+    const ms=Number(cfgData?.tools?.[durationKey]??t.durationMs);
+    const outKey=TEST_OUTPUT_KEYS[t.id], out=outKey?Number(cfgData?.tools?.[outKey]??100):null;
+    html+=`<div class="tool-card" style="margin:0"><div class="tool-name">${t.name}</div><label class="tool-desc">Duration (seconds)<input class="test-setting" data-key="${durationKey}" data-kind="seconds" type="number" min="0.05" step="0.05" value="${ms/1000}" title="How long this test command remains active."></label>${outKey?`<label class="tool-desc">Output (%)<input class="test-setting" data-key="${outKey}" data-kind="percent" type="number" min="0" max="100" step="1" value="${out}" title="Proportional output used by this test. Relay outputs ignore percentage."></label>`:''}</div>`;
+  });
+  body.innerHTML=html||'<div style="color:var(--dim)">No configurable actuator tests match the fitted hardware.</div>';
+  document.getElementById('test-settings-status').textContent='';
+  document.getElementById('test-settings-modal').style.display='flex';
+}
+function closeTestSettings(){document.getElementById('test-settings-modal').style.display='none';}
+async function saveTestSettings(){
+  const toolsPatch={};
+  for(const el of document.querySelectorAll('.test-setting')){
+    const v=Number(el.value); if(!Number.isFinite(v)||v<0){alert('Enter valid non-negative test settings.');return;}
+    toolsPatch[el.dataset.key]=el.dataset.kind==='seconds'?Math.round(v*1000):v;
+  }
+  const r=await fetch('/api/config',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({tools:toolsPatch})});
+  const d=await r.json().catch(()=>({})); if(!r.ok||d.ok===false){document.getElementById('test-settings-status').textContent='Save failed: '+(d.error||d.reason||r.status);return;}
+  cfgData.tools={...(cfgData.tools||{}),...toolsPatch};
+  TOOLS.forEach(t=>{const k=t.configKey?.split('.')[1];if(k&&toolsPatch[k]!=null)t.durationMs=toolsPatch[k];});
+  renderTools(); document.getElementById('test-settings-status').textContent='Saved.'; setTimeout(closeTestSettings,500);
+}
+
 // ── Render ────────────────────────────────────────────────────
 function renderTools() {
   let html = '';
@@ -138,7 +178,7 @@ function renderTools() {
       ${!isToggle ? `<div class="prog-track"><div class="prog-fill" id="prog-${t.id}"></div></div>` : ''}
       <div class="tool-footer">
         <div class="tool-desc">${t.desc}${t.id === 'TOGGLE_LIMP_MODE' ? ' <span id="limp-cap-inline" style="color:var(--yellow)"></span>' : ''}</div>
-        ${!isToggle ? `<div class="tool-time" id="time-${t.id}">${(t.durationMs/1000).toFixed(0)} s</div>` : ''}
+        ${!isToggle ? `<div class="tool-time" id="time-${t.id}">${Number((t.durationMs/1000).toFixed(2))} s</div>` : ''}
         <button id="btn-${t.id}" onclick="runTool('${t.id}')" disabled>
           ${isToggle ? 'Toggle' : 'Run'}
         </button>
@@ -176,17 +216,18 @@ function renderTools() {
   </div>`;
   }
 
-  // ── Config Backup & Restore ──────────────────────────────────
+  // ── Complete engine file backup & restore ────────────────────
   html += `<hr class="tool-divider">
   <div class="tool-card" id="card-CONFIG_BACKUP" title="Export or restore the complete engine configuration file while the engine is stopped.">
     <div class="tool-header">
-      <div class="tool-name">Config Backup &amp; Restore</div>
+      <div class="tool-name">Engine File Backup &amp; Restore</div>
       <div class="tool-state off" id="cfg-backup-state">Ready</div>
     </div>
     <div class="tool-footer" style="margin-top:.5rem;flex-wrap:wrap;gap:.5rem">
       <div class="tool-desc" style="flex:1;min-width:140px">
-        Download a full backup of hardware + settings as <code>ecu_config.json</code>,
-        or restore from a previously saved file. Engine must be in STANDBY to restore.
+        Download one complete engine file containing hardware, settings, sequences,
+        and calibration, or restore a previously saved file. The engine must be in
+        STANDBY (or FAULT) to restore.
         <br><span style="color:var(--yellow)">Note: the backup is complete by design —
         it includes the Wi-Fi AP password. Review before sharing the file.</span>
       </div>
@@ -199,8 +240,17 @@ function renderTools() {
     <div id="cfg-backup-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
   </div>`;
 
-  // ── OTA Firmware Update ─────────────────────────────────────
+  // ── Manual update tools ─────────────────────────────────────
+  // Keep raw firmware/assets upload available without placing developer-facing
+  // file selection in the normal user path. The Windows setup tool performs
+  // both halves together and is the safer default.
   html += `<hr class="tool-divider">
+  <details id="manual-update-tools" style="margin:.75rem 0">
+    <summary style="cursor:pointer;color:var(--dim);font-size:.78rem;font-weight:700;padding:.55rem .2rem">Manual firmware and web update (advanced)</summary>
+    <div style="font-size:.72rem;color:var(--dim);line-height:1.5;margin:.25rem 0 .65rem">
+      For normal updates, use <b style="color:var(--text)">OpenTurbine Setup Tool → Update and keep my setup</b>.
+      The controls below are for developers who already have matching compiled files for this exact ESP32 target.
+    </div>
   <div class="tool-card" id="card-OTA" title="Upload firmware only. Upload web UI assets separately when dashboard pages also change.">
     <div class="tool-header">
       <div class="tool-name">OTA Firmware Update</div>
@@ -246,7 +296,8 @@ function renderTools() {
       </label>
     </div>
     <div id="assets-msg" style="font-size:.72rem;margin-top:.45rem;display:none"></div>
-  </div>`;
+  </div>
+  </details>`;
 
   document.getElementById('tool-area').innerHTML = html;
 
@@ -283,10 +334,10 @@ function renderTools() {
     </div>
     <div class="tool-footer">
       <div class="tool-desc" style="color:var(--dim)">
-        Erases all config, hardware settings, and flight logs, then reboots to the
-        built-in defaults — identical to a brand-new device (the minimal profile).
-        Review the Hardware page afterward to re-add your engine's hardware.
-        Use if config is corrupted or you want to start fresh. <b style="color:var(--red)">Cannot be undone.</b>
+        Erases all engine settings, sequences, hardware assignments, calibration,
+        Wi-Fi password, event logs, and session logs, then reboots to the built-in
+        minimal profile. Download a complete engine file first if anything may be
+        needed later. <b style="color:var(--red)">Cannot be undone.</b>
       </div>
       <button onclick="factoryReset()" class="danger" id="btn-factory-reset">Factory Reset</button>
     </div>
@@ -785,15 +836,17 @@ function backupConfig() {
       };
       const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' });
       const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const profile = String(cfg._backup_meta.profile || 'OpenTurbine')
+        .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'OpenTurbine';
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = 'ecu_config_' + ts + '.json';
+      a.download = 'OpenTurbine_' + profile + '_' + ts + '.json';
       a.click();
       URL.revokeObjectURL(url);
       document.getElementById('cfg-backup-state').textContent = 'Downloaded';
       document.getElementById('cfg-backup-state').className   = 'tool-state done';
-      if (msg) { msg.textContent = 'Config downloaded successfully.'; msg.style.color = 'var(--green)'; msg.style.display = ''; }
+      if (msg) { msg.textContent = 'Complete engine file downloaded successfully.'; msg.style.color = 'var(--green)'; msg.style.display = ''; }
       setTimeout(() => {
         document.getElementById('cfg-backup-state').textContent = 'Ready';
         document.getElementById('cfg-backup-state').className   = 'tool-state off';
@@ -807,7 +860,12 @@ function backupConfig() {
 
 // ── Factory reset ─────────────────────────────────────────────
 function factoryReset() {
-  if (!confirm('⚠ Factory Reset\n\nThis will ERASE:\n• All engine config\n• Hardware pin assignments\n• Flight logs\n\nThe device will reboot to factory defaults.\n\nThis cannot be undone. Are you sure?')) return;
+  if (!confirm('⚠ Factory Reset\n\nThis will permanently ERASE:\n• Engine settings and sequences\n• Hardware assignments\n• All calibration\n• Wi-Fi password\n• Event and session logs\n\nDownload a complete engine file first if you may need this setup.\n\nContinue to the final confirmation?')) return;
+  const typed = prompt('Final confirmation\n\nType RESET to erase this ECU and reboot with built-in defaults.');
+  if (typed !== 'RESET') {
+    alert('Factory reset cancelled. Nothing was erased.');
+    return;
+  }
   const msg = document.getElementById('factory-reset-msg');
   const btn = document.getElementById('btn-factory-reset');
   if (btn) btn.disabled = true;
@@ -839,11 +897,11 @@ function restoreConfig(input) {
   const msg = document.getElementById('cfg-backup-msg');
   const btn = document.getElementById('cfg-restore-btn');
   if (!isStandbyLike(engineMode)) {
-    alert('Engine must be in STANDBY (or FAULT) to restore config.');
+    alert('Engine must be in STANDBY (or FAULT) to restore an engine file.');
     input.value = '';
     return;
   }
-  if (!confirm('Restore config from "' + file.name + '"?\n\nThis will overwrite ALL settings and hardware config, then reboot.')) {
+  if (!confirm('Restore complete engine file from "' + file.name + '"?\n\nThis replaces hardware assignments, settings, sequences, calibration, profile/Wi-Fi details, and runtime statistics, then reboots. Current event and session logs remain on this ECU.\n\nDownload the current engine file first if it may be needed.')) {
     input.value = '';
     return;
   }

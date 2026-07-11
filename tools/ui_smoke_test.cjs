@@ -217,15 +217,17 @@ function installedBrowser() {
     await page.request.post(`${base}/__sim/data`, { data: { throttle_input_us: 1120, throttle_input_norm: 0.12 } });
     await page.waitForFunction(() => document.querySelector('#cal-th-raw').textContent.includes('1120'));
     await page.locator('#throttle-cal-row button', { hasText: 'Capture Min' }).click();
+    await page.waitForTimeout(1100); // endpoint capture averages one second
     await page.request.post(`${base}/__sim/data`, { data: { throttle_input_us: 1880, throttle_input_norm: 0.88 } });
     await page.waitForFunction(() => document.querySelector('#cal-th-raw').textContent.includes('1880'));
     await page.locator('#throttle-cal-row button', { hasText: 'Capture Max' }).click();
+    await page.waitForTimeout(1100);
     await page.locator('#btn-th-save').click();
     await page.waitForTimeout(100);
     saved = await state(page);
-    assert.equal(saved.settings.calibration.throttle_min_raw, 1120);
-    assert.equal(saved.settings.calibration.throttle_max_raw, 1880);
-    results.push('servo throttle calibration captures pulse widths and persists them');
+    assert.equal(saved.settings.calibration.throttle_min_raw, 1135); // +2% of 760 span
+    assert.equal(saved.settings.calibration.throttle_max_raw, 1872); // -1% of 760 span
+    results.push('servo throttle calibration averages endpoints and persists the 2%/1% safety margins');
 
     await page.goto(`${base}/hardware.html`);
     await page.waitForSelector('#f-thinput-type');
@@ -285,6 +287,8 @@ function installedBrowser() {
     assert.equal(await page.locator('#card-TOGGLE_BENCH_MODE').isVisible(), false);
     assert.equal(await page.locator('#card-TOGGLE_SAFETY_CHECKS').isVisible(), false);
     assert.equal(await page.locator('#card-TOGGLE_DYNAMIC_IDLE').count(), 0);
+    assert.equal(await page.locator('#btn-test-settings').count(), 1);
+    assert.equal(await page.locator('.tool-card button[title*="bench-test timing"]').count(), 0);
     await page.request.post(`${base}/__sim/data`, { data: { dev_mode: true } });
     await waitShown(page, '#card-TOGGLE_BENCH_MODE', true);
     assert.match(await text(page, '#card-WEB-ASSETS'), /without erasing config or logs/);
@@ -439,7 +443,7 @@ function installedBrowser() {
     await page.reload();
     await page.waitForFunction(() => document.body.textContent.includes('Run #'));
     assert.match(await page.locator('body').textContent(), /TIT 1544/);
-    results.push('flight log renders firmware event keys, TIT peaks, and follows the unit preference');
+    results.push('event log renders firmware event keys, TIT peaks, and follows the unit preference');
 
     console.log(`UI smoke test passed (${results.length} checks):`);
     results.forEach(result => console.log(`- ${result}`));

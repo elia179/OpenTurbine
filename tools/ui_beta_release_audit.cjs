@@ -128,6 +128,15 @@ function enumNames(source, marker) {
     assert.equal(hardware.sensors.oil_temp.enabled, oilTempBefore.enabled);
     assert.equal(hardware.sensors.oil_temp.pin, oilTempBefore.pin);
     assert.equal(hardware.sensors.oil_temp.chip, oilTempBefore.chip);
+    response = await page.request.patch(`${base}/api/hardware`, {
+      data: { sensors: { oil_temp: { use_raw_poly: true, poly_a: 0.000001, poly_b: -0.001, poly_c: 0.5, poly_d: -20, poly_x_min: 420, poly_x_max: 3400 } } }
+    });
+    assert.equal(response.ok(), true, 'known-point oil-temperature range should save');
+    hardware = await (await page.request.get(`${base}/api/hardware`)).json();
+    assert.equal(hardware.sensors.oil_temp.use_raw_poly, true);
+    assert.equal(hardware.sensors.oil_temp.poly_x_min, 420);
+    assert.equal(hardware.sensors.oil_temp.poly_x_max, 3400);
+    assert.equal(hardware.sensors.oil_temp.pin, oilTempBefore.pin);
     results.push('nested calibration PATCH preserves sibling hardware topology fields');
 
     await reset(page);
@@ -324,7 +333,7 @@ function enumNames(source, marker) {
 
     const indexHtml = fs.readFileSync(path.join('data_src', 'index.html'), 'utf8');
     assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|20260625a|20260705a|Primary thermal limit/);
-    assert.match(indexHtml, /20260706a/);
+    assert.match(indexHtml, /20260711f/);
     assert.match(indexHtml, /<body data-page="dashboard">/);
     assert.match(indexHtml, /id="profile-mismatch-banner" style="display:none"/);
     const appSource = fs.readFileSync(path.join('data_src', 'app.js'), 'utf8');
@@ -355,7 +364,7 @@ function enumNames(source, marker) {
     const webServer = fs.readFileSync(path.join('src', 'system', 'web', 'WebServer.cpp'), 'utf8');
     // Current strategy: shared assets served with no-cache (query-string
     // ?v= keys bust stale copies; the server does not use immutable caching).
-    assert.match(webServer, /SHARED_ASSET_CACHE = "no-cache"/);
+    assert.match(webServer, /SHARED_ASSET_CACHE = "public, max-age=31536000, immutable"/);
     assert.match(webServer, /app\.js\.gz", "application\/javascript", SHARED_ASSET_CACHE/);
     assert.match(webServer, /style\.css\.gz", "text\/css", SHARED_ASSET_CACHE/);
     assert.match(webServer, /static void _mergeJsonObject\(JsonObject dst, JsonObjectConst patch\)/);

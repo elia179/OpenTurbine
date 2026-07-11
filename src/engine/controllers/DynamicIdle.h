@@ -29,7 +29,7 @@
 //    disengage/re-engage within a run (only begin()/reset() clear it) and is
 //    intentionally NOT persisted to flash — idle hold is warm-state dependent.
 //
-//  Disengages above rpmLimit (pilot throttle takes over).
+//  Disengages above rpmLimit (operator throttle takes over).
 //  Only active when dynamicIdleEnabled = true in EngineData.
 // ============================================================
 
@@ -113,7 +113,7 @@ public:
                                    0.0f, 1.0f);
         // Ceiling near the calibrated idle max: a healthy-but-underreading N1
         // (e.g. wrong pulses-per-rev) keeps error positive forever and would
-        // otherwise wind the floor to 100% throttle that the pilot cannot
+        // otherwise wind the floor to 100% throttle that the operator cannot
         // override. The multiplier leaves headroom for load steps (oil pump,
         // cold oil) without giving the loop full-throttle authority.
         float maxFloor = constrain((Config::throttleIdleMaxPct / 100.0f) * maxMultiplier,

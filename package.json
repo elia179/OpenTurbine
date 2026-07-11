@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "audit:ui": "node tools/run_ui_audits.cjs"
+  },
+  "dependencies": {
+    "playwright": "1.61.1"
+  }
+}

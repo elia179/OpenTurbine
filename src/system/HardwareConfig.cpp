@@ -948,6 +948,15 @@ bool validatePlatformPins(const JsonDocument& doc) {
              !numberRange(oilTemp, "ntc_beta", 1000.0f, 10000.0f) ||
              !numberRange(oilTemp, "ntc_r0", 100.0f, 1000000.0f) ||
              !numberRange(oilTemp, "ntc_r_fixed", 100.0f, 1000000.0f))) return false;
+        if (strcmp(chip, "ntc") == 0 && (oilTemp["use_raw_poly"] | false)) {
+            if (!numberRange(oilTemp, "poly_a", -1000000.0f, 1000000.0f) ||
+                !numberRange(oilTemp, "poly_b", -1000000.0f, 1000000.0f) ||
+                !numberRange(oilTemp, "poly_c", -1000000.0f, 1000000.0f) ||
+                !numberRange(oilTemp, "poly_d", -1000000.0f, 1000000.0f) ||
+                !numberRange(oilTemp, "poly_x_min", 0.0f, 4095.0f) ||
+                !numberRange(oilTemp, "poly_x_max", 0.0f, 4095.0f) ||
+                (oilTemp["poly_x_max"] | 0.0f) <= (oilTemp["poly_x_min"] | 0.0f)) return false;
+        }
         if (strcmp(chip, "ds18b20") == 0 && !requiredPinAllowed(oilTemp, "pin", gpioAllowed)) return false;
         if (strcmp(chip, "ntc") != 0 && strcmp(chip, "ds18b20") != 0 &&
             (!requiredPinAllowed(oilTemp, "clk", outputGpioAllowed) ||
@@ -1290,6 +1299,10 @@ int   HardwareConfig::oilTempResolution = 12;
 float HardwareConfig::ntcBeta          = 3950.0f;
 float HardwareConfig::ntcR0            = 10000.0f;
 float HardwareConfig::ntcRFixed        = 10000.0f;
+bool  HardwareConfig::oilTempUseRawPoly = false;
+float HardwareConfig::oilTempPolyA = 0, HardwareConfig::oilTempPolyB = 0;
+float HardwareConfig::oilTempPolyC = 0, HardwareConfig::oilTempPolyD = 0;
+float HardwareConfig::oilTempPolyXMin = 0, HardwareConfig::oilTempPolyXMax = 4095;
 int   HardwareConfig::battVoltPin      = -1;
 float HardwareConfig::battVoltDivider  = 5.7f;
 int   HardwareConfig::torquePin        = -1;
@@ -1802,6 +1815,9 @@ void HardwareConfig::applyDefaults() {
     strncpy(oilTempTcType, "K", sizeof(oilTempTcType) - 1);
     oilTempResolution = 12;
     ntcBeta = 3950.0f; ntcR0 = 10000.0f; ntcRFixed = 10000.0f;
+    oilTempUseRawPoly = false;
+    oilTempPolyA = oilTempPolyB = oilTempPolyC = oilTempPolyD = 0.0f;
+    oilTempPolyXMin = 0.0f; oilTempPolyXMax = 4095.0f;
     battVoltPin = -1; battVoltDivider = 5.7f;
     torquePin = -1; torqueScale = 30.3f; torqueOffset = 0.0f;
     torqueHx711 = false; torqueDtPin = -1; torqueClkPin = -1;
@@ -2172,6 +2188,10 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     oilt["ntc_beta"]    = ntcBeta;
     oilt["ntc_r0"]      = ntcR0;
     oilt["ntc_r_fixed"] = ntcRFixed;
+    oilt["use_raw_poly"] = oilTempUseRawPoly;
+    oilt["poly_a"] = oilTempPolyA; oilt["poly_b"] = oilTempPolyB;
+    oilt["poly_c"] = oilTempPolyC; oilt["poly_d"] = oilTempPolyD;
+    oilt["poly_x_min"] = oilTempPolyXMin; oilt["poly_x_max"] = oilTempPolyXMax;
 
     auto bvs = sensors["batt_voltage"].to<JsonObject>();
     bvs["enabled"] = hasBattVoltage; bvs["pin"] = battVoltPin;
@@ -2559,6 +2579,13 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     ntcBeta   = oilt["ntc_beta"]    | ntcBeta;
     ntcR0     = oilt["ntc_r0"]      | ntcR0;
     ntcRFixed = oilt["ntc_r_fixed"] | ntcRFixed;
+    oilTempUseRawPoly = oilt["use_raw_poly"] | oilTempUseRawPoly;
+    oilTempPolyA = oilt["poly_a"] | oilTempPolyA;
+    oilTempPolyB = oilt["poly_b"] | oilTempPolyB;
+    oilTempPolyC = oilt["poly_c"] | oilTempPolyC;
+    oilTempPolyD = oilt["poly_d"] | oilTempPolyD;
+    oilTempPolyXMin = oilt["poly_x_min"] | oilTempPolyXMin;
+    oilTempPolyXMax = oilt["poly_x_max"] | oilTempPolyXMax;
 
     auto bvs = s["batt_voltage"];
     if (!bvs["enabled"].isNull()) hasBattVoltage = bvs["enabled"].as<bool>();

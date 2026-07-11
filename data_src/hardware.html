@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css?v=20260706a">
+<link rel="stylesheet" href="/style.css?v=20260711f">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
@@ -36,6 +36,8 @@
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
     <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
     <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
+    <button type="button" id="btn-hide-unsel-act" title="Hide hardware cards that are not enabled; view-only and does not change the saved setup" onclick="toggleHideUnselectedActuators()"
+            style="margin-left:auto;font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.25rem .65rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Hide unselected hardware</button>
   </div>
   <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
@@ -703,10 +705,7 @@
 
   <!-- ── Actuators ─────────────────────────────────────── -->
   <div class="hw-section" id="hw-actuators">
-    <div class="hw-title">Actuators
-      <button type="button" id="btn-hide-unsel-act" title="Collapse the actuator list to just the ones you've enabled (and back)" onclick="toggleHideUnselectedActuators()"
-              style="float:right;font-size:.66rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.15rem .55rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Hide unselected</button>
-    </div>
+    <div class="hw-title">Actuators</div>
 
     <div class="hw-sub">Main Fuel / Throttle</div>
 
@@ -2492,7 +2491,7 @@ function renderDiChannels(channels) {
         <div id="di${i}-fault-fields" style="display:${role==='fault'?'contents':'none'}">
           <div class="hw-field">
             <span class="hw-label">Fault code</span>
-            <span class="hw-desc">Short code logged in flight recorder (e.g. LOW_OIL_PRESSURE, FUEL_SHUTOFF).</span>
+            <span class="hw-desc">Short code logged in the event recorder (e.g. LOW_OIL_PRESSURE, FUEL_SHUTOFF).</span>
             <input type="text" maxlength="23" placeholder="e.g. LOW_OIL_PRESS" value="${escapeHtmlText(ch.fault_code || '')}"
               oninput="setDiChannel(${i},'fault_code',this.value)">
           </div>
@@ -3457,8 +3456,8 @@ function setStatusLedColor(key, value) {
   updateStatusLedTypeUI();
 }
 // ── "Hide unselected" actuator toggle ────────────────────────
-// Collapses the Actuators section to just the enabled cards (and hides a
-// sub-header whose cards are all hidden). View-only; persisted per browser.
+// Collapses fitted-hardware cards to enabled items. View-only; persisted per
+// browser. Profile/settings cards without an enable checkbox remain visible.
 var _hideUnselActive = false;
 try { _hideUnselActive = localStorage.getItem('ot_hide_unsel_act') === '1'; } catch (e) {}
 
@@ -3469,27 +3468,29 @@ function toggleHideUnselectedActuators() {
 }
 
 function applyActuatorVisibility() {
-  var sec = document.getElementById('hw-actuators');
-  if (!sec) return;
-  var cards = sec.querySelectorAll('.hw-item-card');
+  var main = document.querySelector('main');
+  if (!main) return;
+  var cards = main.querySelectorAll('.hw-item-card');
   cards.forEach(function (card) {
     var en = card.querySelector('input[type=checkbox][id^="en-"]');
     var checked = en ? en.checked : true;
-    card.style.display = (_hideUnselActive && !checked) ? 'none' : '';
+    card.classList.toggle('hw-hide-unselected', _hideUnselActive && !checked);
   });
-  // Hide a sub-header when every card up to the next header is hidden.
+  // Hide an actuator sub-header when every card up to the next header is hidden.
+  var sec = document.getElementById('hw-actuators');
+  if (!sec) return;
   var kids = Array.prototype.slice.call(sec.children);
   for (var i = 0; i < kids.length; i++) {
     if (!kids[i].classList || !kids[i].classList.contains('hw-sub')) continue;
     var anyVisible = false;
     for (var j = i + 1; j < kids.length; j++) {
       if (kids[j].classList && kids[j].classList.contains('hw-sub')) break;
-      if (kids[j].classList && kids[j].classList.contains('hw-item-card') && kids[j].style.display !== 'none') { anyVisible = true; break; }
+      if (kids[j].classList && kids[j].classList.contains('hw-item-card') && getComputedStyle(kids[j]).display !== 'none') { anyVisible = true; break; }
     }
-    kids[i].style.display = (_hideUnselActive && !anyVisible) ? 'none' : '';
+    kids[i].classList.toggle('hw-hide-unselected', _hideUnselActive && !anyVisible);
   }
   var b = document.getElementById('btn-hide-unsel-act');
-  if (b) b.textContent = _hideUnselActive ? 'Show all' : 'Hide unselected';
+  if (b) b.textContent = _hideUnselActive ? 'Show all hardware' : 'Hide unselected hardware';
 }
 
 function setActEnabled(act, grpId, val) {

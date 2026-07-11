@@ -48,7 +48,7 @@ function makeHardware() {
       p2: { enabled: true, pin: 34 },
       throttle_input: { enabled: true, pin: 4, rc_pwm: true },
       idle_input: { enabled: true, pin: 16, rc_pwm: true },
-      oil_temp: { enabled: true, chip: 'ntc', pin: 15, clk: -1, cs: -1, miso: -1, mosi: -1, tc_type: 'K', resolution: 12, ntc_beta: 3950, ntc_r0: 10000, ntc_r_fixed: 10000 },
+      oil_temp: { enabled: true, chip: 'ntc', pin: 15, clk: -1, cs: -1, miso: -1, mosi: -1, tc_type: 'K', resolution: 12, ntc_beta: 3950, ntc_r0: 10000, ntc_r_fixed: 10000, use_raw_poly: false, poly_a: 0, poly_b: 0, poly_c: 0, poly_d: 0, poly_x_min: 0, poly_x_max: 4095 },
       batt_voltage: { enabled: true, pin: 14, divider: 4.7 },
       torque: { enabled: true, pin: 13, scale: 1, offset: 0, hx711: false, dt_pin: -1, clk_pin: -1, hx_scale: 1, hx_zero: 0 }
     },

@@ -5,6 +5,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -28,10 +29,14 @@ import (
 )
 
 const (
-	appVersion        = "0.5.15"
-	appTitle          = "OpenTurbine Setup Tool"
-	ecuBaseURL        = "http://192.168.4.1"
-	defaultPackageURL = "https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbine_Recommended.zip"
+	appVersion              = "0.5.21"
+	appTitle                = "OpenTurbine Setup Tool"
+	ecuBaseURL              = "http://192.168.4.1"
+	defaultPackageURL       = "https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbine_Recommended.zip"
+	cp210xDriverURL         = "https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip"
+	cp210xDriverSHA256      = "7cba499e944f0cd6c6de4a3c80a4646e9b0307d6704bcfa155a11f05774345e8"
+	cleanSafetyButtonLabel  = "I understand — continue to erase"
+	updateSafetyButtonLabel = "My engine is safe — continue update"
 )
 
 var (
@@ -97,9 +102,22 @@ type Package struct {
 	Manifest Manifest
 }
 
+type driverInstallResult struct {
+	ExitCode       int    `json:"exit_code"`
+	Output         string `json:"output"`
+	Error          string `json:"error,omitempty"`
+	RebootRequired bool   `json:"reboot_required,omitempty"`
+}
+
+type detectedBoard struct {
+	Port, Target, Chip string
+}
+
 type App struct {
-	workDir string
-	config  AppConfig
+	workDir      string
+	config       AppConfig
+	packageMu    sync.Mutex
+	packageReady *Package
 }
 
 type Job struct {
@@ -113,7 +131,14 @@ type Job struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--install-cp210x-driver" {
+		os.Exit(runCP210xDriverInstallHelper(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--run-driver-installer" {
+		os.Exit(runDriverInstallerHelper(os.Args[2:]))
+	}
 	runtime.LockOSThread()
+	setProcessDPIAware()
 	app := newApp()
 	runGUI(app)
 }
@@ -155,9 +180,13 @@ var (
 	procPostMessageW       = user32.NewProc("PostMessageW")
 	procGetClientRect      = user32.NewProc("GetClientRect")
 	procInvalidateRect     = user32.NewProc("InvalidateRect")
+	procLoadIconW          = user32.NewProc("LoadIconW")
+	procLoadImageW         = user32.NewProc("LoadImageW")
 	procBeginPaint         = user32.NewProc("BeginPaint")
 	procEndPaint           = user32.NewProc("EndPaint")
 	procSetWindowTextW     = user32.NewProc("SetWindowTextW")
+	procSetProcessDPIAware = user32.NewProc("SetProcessDPIAware")
+	procSetDPIContext      = user32.NewProc("SetProcessDpiAwarenessContext")
 	procLoadCursorW        = user32.NewProc("LoadCursorW")
 	procOpenClipboard      = user32.NewProc("OpenClipboard")
 	procEmptyClipboard     = user32.NewProc("EmptyClipboard")
@@ -167,19 +196,26 @@ var (
 	procGlobalLock         = kernel32.NewProc("GlobalLock")
 	procGlobalUnlock       = kernel32.NewProc("GlobalUnlock")
 
-	procCreateFontW      = gdi32.NewProc("CreateFontW")
-	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
-	procCreatePen        = gdi32.NewProc("CreatePen")
-	procSelectObject     = gdi32.NewProc("SelectObject")
-	procDeleteObject     = gdi32.NewProc("DeleteObject")
-	procFillRect         = user32.NewProc("FillRect")
-	procRoundRect        = gdi32.NewProc("RoundRect")
-	procRectangle        = gdi32.NewProc("Rectangle")
-	procDrawTextW        = user32.NewProc("DrawTextW")
-	procSetTextColor     = gdi32.NewProc("SetTextColor")
-	procSetBkMode        = gdi32.NewProc("SetBkMode")
-	procMoveToEx         = gdi32.NewProc("MoveToEx")
-	procLineTo           = gdi32.NewProc("LineTo")
+	procCreateFontW            = gdi32.NewProc("CreateFontW")
+	procCreateSolidBrush       = gdi32.NewProc("CreateSolidBrush")
+	procCreatePen              = gdi32.NewProc("CreatePen")
+	procSelectObject           = gdi32.NewProc("SelectObject")
+	procDeleteObject           = gdi32.NewProc("DeleteObject")
+	procFillRect               = user32.NewProc("FillRect")
+	procRoundRect              = gdi32.NewProc("RoundRect")
+	procRectangle              = gdi32.NewProc("Rectangle")
+	procDrawTextW              = user32.NewProc("DrawTextW")
+	procSetTextColor           = gdi32.NewProc("SetTextColor")
+	procSetBkMode              = gdi32.NewProc("SetBkMode")
+	procMoveToEx               = gdi32.NewProc("MoveToEx")
+	procLineTo                 = gdi32.NewProc("LineTo")
+	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
+	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
+	procDeleteDC               = gdi32.NewProc("DeleteDC")
+	procBitBlt                 = gdi32.NewProc("BitBlt")
+	procSaveDC                 = gdi32.NewProc("SaveDC")
+	procRestoreDC              = gdi32.NewProc("RestoreDC")
+	procIntersectClipRect      = gdi32.NewProc("IntersectClipRect")
 
 	procShellExecuteW         = shell32.NewProc("ShellExecuteW")
 	procDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
@@ -189,12 +225,17 @@ const (
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
 	createNoWindow     = 0x08000000
+	imageIcon          = 1
+	lrDefaultSize      = 0x00000040
 
 	wmCreate        = 0x0001
 	wmDestroy       = 0x0002
 	wmSize          = 0x0005
+	wmGetMinMaxInfo = 0x0024
 	wmPaint         = 0x000F
+	wmEraseBkgnd    = 0x0014
 	wmLButtonDown   = 0x0201
+	wmMouseWheel    = 0x020A
 	wmMouseMove     = 0x0200
 	wmSetCursor     = 0x0020
 	wmUser          = 0x0400
@@ -216,6 +257,7 @@ const (
 
 	transparent = 1
 	psSolid     = 0
+	srcCopy     = 0x00CC0020
 
 	cursorArrow = 32512
 	cursorHand  = 32649
@@ -223,6 +265,9 @@ const (
 
 type rect struct{ left, top, right, bottom int32 }
 type point struct{ x, y int32 }
+type minMaxInfo struct {
+	reserved, maxSize, maxPosition, minTrackSize, maxTrackSize point
+}
 type msg struct {
 	hwnd           uintptr
 	message        uint32
@@ -263,6 +308,7 @@ const (
 	screenDone
 	screenError
 	screenDriverHelp
+	screenBoardChoice
 )
 
 type clickZone struct {
@@ -280,24 +326,26 @@ type NativeUI struct {
 	fontSmall   uintptr
 	fontButton  uintptr
 
-	mu          sync.Mutex
-	screen      screenKind
-	title       string
-	subtitle    string
-	body        string
-	detail      string
-	mode        string
-	step        int
-	totalSteps  int
-	progress    int
-	primary     string
-	secondary   string
-	pendingMode string
-	backupPath  string
-	logs        []string
-	showDetails bool
-	activeJob   *Job
-	zones       []clickZone
+	mu           sync.Mutex
+	screen       screenKind
+	title        string
+	subtitle     string
+	body         string
+	detail       string
+	mode         string
+	step         int
+	totalSteps   int
+	progress     int
+	primary      string
+	secondary    string
+	pendingMode  string
+	backupPath   string
+	logs         []string
+	showDetails  bool
+	scrollOffset int
+	activeJob    *Job
+	zones        []clickZone
+	boards       []detectedBoard
 
 	pending *uiUpdate
 }
@@ -317,6 +365,7 @@ type uiUpdate struct {
 	done       bool
 	mode       string
 	appendLog  []string
+	boards     []detectedBoard
 }
 
 var globalUI *NativeUI
@@ -328,11 +377,14 @@ func runGUI(app *App) {
 	ui.uiThreadID = uint32(threadID)
 	hInst, _, _ := procGetModuleHandleW.Call(0)
 	arrow, _, _ := procLoadCursorW.Call(0, cursorArrow)
+	appIcon := loadAppIcon(hInst)
 	className := utf16Ptr("OpenTurbineSetupToolModernWindow")
 	wc := wndClassEx{
 		cbSize:        uint32(unsafe.Sizeof(wndClassEx{})),
 		lpfnWndProc:   syscall.NewCallback(wndProc),
 		hInstance:     hInst,
+		hIcon:         appIcon,
+		hIconSm:       appIcon,
 		hCursor:       arrow,
 		hbrBackground: 0,
 		lpszClassName: className,
@@ -373,8 +425,23 @@ func wndProc(hwnd uintptr, msgID uint32, wParam, lParam uintptr) uintptr {
 	case wmPaint:
 		ui.paint()
 		return 0
+	case wmEraseBkgnd:
+		// The complete frame is copied from an off-screen buffer in wmPaint.
+		return 1
 	case wmSize:
 		ui.invalidate()
+		return 0
+	case wmGetMinMaxInfo:
+		mmi := (*minMaxInfo)(unsafe.Pointer(lParam))
+		// Safety and destructive-action screens carry essential text above the
+		// buttons. Do not allow resizing until that text is clipped away.
+		mmi.minTrackSize = point{x: 680, y: 680}
+		return 0
+	case wmMouseWheel:
+		if ui != nil {
+			delta := int(int16((wParam >> 16) & 0xffff))
+			ui.scroll(delta)
+		}
 		return 0
 	case wmLButtonDown:
 		x := int(int16(lParam & 0xffff))
@@ -400,12 +467,49 @@ func wndProc(hwnd uintptr, msgID uint32, wParam, lParam uintptr) uintptr {
 	return ret
 }
 
+func loadAppIcon(hInst uintptr) uintptr {
+	for _, id := range []uintptr{1, 2, 3, 4, 5, 101} {
+		icon, _, _ := procLoadImageW.Call(hInst, id, imageIcon, 0, 0, lrDefaultSize)
+		if icon != 0 {
+			return icon
+		}
+		icon, _, _ = procLoadIconW.Call(hInst, id)
+		if icon != 0 {
+			return icon
+		}
+	}
+	return 0
+}
+
 func (ui *NativeUI) createResources() {
-	ui.fontTitle = createFont(-26, 700)
-	ui.fontHeading = createFont(-23, 700)
-	ui.fontBody = createFont(-18, 400)
-	ui.fontSmall = createFont(-15, 400)
-	ui.fontButton = createFont(-18, 700)
+	ui.fontTitle = createFont(-24, 700)
+	ui.fontHeading = createFont(-20, 700)
+	ui.fontBody = createFont(-16, 400)
+	ui.fontSmall = createFont(-14, 400)
+	ui.fontButton = createFont(-16, 700)
+}
+
+func setProcessDPIAware() {
+	// Per-monitor DPI awareness prevents Windows from bitmap-scaling this custom
+	// drawn UI (which made fonts and minimum dimensions enormous at 150–200%).
+	if r, _, _ := procSetDPIContext.Call(^uintptr(3)); r == 0 {
+		procSetProcessDPIAware.Call()
+	}
+}
+
+func (ui *NativeUI) scroll(wheelDelta int) {
+	ui.mu.Lock()
+	if ui.screen == screenDriverHelp {
+		ui.scrollOffset -= wheelDelta / 120 * 48
+		if ui.scrollOffset < 0 {
+			ui.scrollOffset = 0
+		}
+		if ui.scrollOffset > 260 {
+			ui.scrollOffset = 260
+		}
+	}
+	ui.mu.Unlock()
+	ui.invalidate()
 }
 
 func (ui *NativeUI) showHome() {
@@ -434,7 +538,7 @@ func (ui *NativeUI) showPreparing() {
 	ui.title = "Preparing OpenTurbine Setup Tool"
 	ui.subtitle = "Stay connected to your normal internet Wi‑Fi."
 	ui.body = "Checking setup files. The tool will download anything missing before it opens."
-	ui.detail = "After this, you will only choose between setting up a new board or updating an existing board."
+	ui.detail = "After this, choose either a clean USB install (erases the board) or a Wi-Fi update (keeps the engine setup)."
 	ui.mode = ""
 	ui.step = 1
 	ui.totalSteps = 2
@@ -471,11 +575,13 @@ func (ui *NativeUI) prepareThenShowHome() {
 }
 
 func (ui *NativeUI) showSafety(mode string) {
-	subtitle := "For a blank board connected by USB."
-	body := "Before continuing:\n\nA blank ESP32 can briefly put pins in unexpected states while it is being erased, flashed, or restarted.\n\nWatch any connected outputs, especially relays, pumps, starters, igniters, servos, and valves. Disconnect anything that could move, heat, spark, or start fuel flow.\n\nAfter flashing, check Hardware, Config, Calibration, and Sequence before connecting engine outputs."
+	subtitle := "For a blank board or a clean reinstall, connected by USB."
+	body := "This is a CLEAN INSTALL. It erases the entire selected ESP32, including any existing OpenTurbine settings, calibration, logs, and Wi-Fi password. Use the Wi-Fi Update option instead when you want to keep an existing engine setup.\n\nIf this board still runs OpenTurbine and you may need its setup, cancel now and download the complete engine file from Tools before returning here. The installer cannot recover data after erase.\n\nDisconnect relays, pumps, starters, igniters, servos, valves, and anything else that could move, heat, spark, or start fuel flow. Pins can briefly change state while the board is erased, flashed, or restarted.\n\nAfter installation, treat the ECU as unconfigured. Check Hardware, Config, Calibration, and Sequence before reconnecting engine outputs."
+	primary := cleanSafetyButtonLabel
 	if mode == "update" {
-		subtitle = "For a board that already has OpenTurbine installed."
-		body = "Before continuing:\n\nStop the engine and make sure no actuator test is running.\n\nKeep power stable while the board software and dashboard files are updated. The tool will back up ecu_config.json before it changes anything.\n\nAfter updating, check Hardware, Config, Calibration, and Sequence before using fuel."
+		subtitle = "For a working OpenTurbine board; keeps its engine setup."
+		body = "This is an UPDATE, not a reset. It updates the firmware and dashboard over Wi-Fi. Existing hardware settings, engine settings, calibration, logs, profile name, and Wi-Fi password remain on the board. The tool also saves and validates a complete engine file before uploading anything.\n\nBefore continuing:\n\nStop the engine, make sure no actuator test is running, and physically make fuel, ignition, starter, and other dangerous outputs safe. Keep board power stable until the update finishes.\n\nAfter updating, review Hardware, Config, Calibration, and Sequence before using fuel."
+		primary = updateSafetyButtonLabel
 	}
 	ui.update(uiUpdate{
 		screen:     screenSafety,
@@ -483,7 +589,7 @@ func (ui *NativeUI) showSafety(mode string) {
 		subtitle:   subtitle,
 		body:       body,
 		mode:       mode,
-		primary:    "I have done this — continue",
+		primary:    primary,
 		secondary:  "Back",
 		appendLog:  nil,
 		progress:   0,
@@ -518,6 +624,13 @@ func (ui *NativeUI) click(x, y int) {
 	ui.mu.Unlock()
 	for _, z := range zones {
 		if pointInRect(x, y, z.r) {
+			if strings.HasPrefix(z.action, "selectBoard:") && job != nil {
+				select {
+				case job.actionCh <- z.action:
+				default:
+				}
+				return
+			}
 			switch z.action {
 			case "new":
 				ui.showSafety("new")
@@ -701,6 +814,9 @@ func (ui *NativeUI) applyPending() {
 		if len(p.appendLog) > 0 {
 			ui.logs = append(ui.logs, p.appendLog...)
 		}
+		if p.boards != nil {
+			ui.boards = append([]detectedBoard(nil), p.boards...)
+		}
 		if p.done {
 			ui.activeJob = nil
 		}
@@ -718,6 +834,9 @@ func (ui *NativeUI) applyPending() {
 			ui.showDetails = false
 			ui.activeJob = nil
 		}
+		if p.screen != screenDriverHelp {
+			ui.scrollOffset = 0
+		}
 	}
 	ui.mu.Unlock()
 	ui.invalidate()
@@ -731,18 +850,30 @@ func (ui *NativeUI) invalidate() {
 
 func (ui *NativeUI) paint() {
 	var ps paintStruct
-	hdc, _, _ := procBeginPaint.Call(ui.hwnd, uintptr(unsafe.Pointer(&ps)))
+	windowDC, _, _ := procBeginPaint.Call(ui.hwnd, uintptr(unsafe.Pointer(&ps)))
 	defer procEndPaint.Call(ui.hwnd, uintptr(unsafe.Pointer(&ps)))
 	var cr rect
 	procGetClientRect.Call(ui.hwnd, uintptr(unsafe.Pointer(&cr)))
 	w := int(cr.right - cr.left)
 	h := int(cr.bottom - cr.top)
-	if w < 760 {
-		w = 760
+	if w < 640 {
+		w = 640
 	}
-	if h < 560 {
-		h = 560
+	if h < 480 {
+		h = 480
 	}
+
+	// Paint into memory and copy one finished frame to the window. Direct GDI
+	// painting visibly flashed during mouse-wheel scrolling and live resize.
+	hdc, _, _ := procCreateCompatibleDC.Call(windowDC)
+	bitmap, _, _ := procCreateCompatibleBitmap.Call(windowDC, uintptr(w), uintptr(h))
+	oldBitmap, _, _ := procSelectObject.Call(hdc, bitmap)
+	defer func() {
+		procBitBlt.Call(windowDC, 0, 0, uintptr(w), uintptr(h), hdc, 0, 0, srcCopy)
+		procSelectObject.Call(hdc, oldBitmap)
+		procDeleteObject.Call(bitmap)
+		procDeleteDC.Call(hdc)
+	}()
 
 	ui.mu.Lock()
 	s := ui.screen
@@ -760,6 +891,8 @@ func (ui *NativeUI) paint() {
 	mode := ui.mode
 	logs := append([]string(nil), ui.logs...)
 	showDetails := ui.showDetails
+	scrollOffset := ui.scrollOffset
+	boards := append([]detectedBoard(nil), ui.boards...)
 	ui.zones = nil
 	ui.mu.Unlock()
 
@@ -780,7 +913,7 @@ func (ui *NativeUI) paint() {
 		ui.paintCardScreen(hdc, w, h, body, detail, step, total, progress, primary, "", false, true, logs, showDetails)
 	case screenDone:
 		if backupPath != "" && !strings.Contains(body, backupPath) {
-			body += "\n\nSettings backup:\n" + backupPath
+			body += "\n\nEngine file backup:\n" + backupPath
 		}
 		secondary := "Open log folder"
 		if backupPath != "" {
@@ -788,7 +921,9 @@ func (ui *NativeUI) paint() {
 		}
 		ui.paintCardScreen(hdc, w, h, body, detail, step, total, 100, "Back to start", secondary, false, true, logs, showDetails)
 	case screenDriverHelp:
-		ui.paintDriverHelp(hdc, w, h, body, detail, logs, showDetails)
+		ui.paintDriverHelp(hdc, w, h, body, detail, logs, showDetails, scrollOffset)
+	case screenBoardChoice:
+		ui.paintBoardChoice(hdc, w, h, boards)
 	case screenError:
 		errorSecondary := secondaryState
 		if errorSecondary == "" {
@@ -800,16 +935,16 @@ func (ui *NativeUI) paint() {
 	// Footer is intentionally simple.
 	text(hdc, "OpenTurbine Setup Tool "+appVersion, rect{34, int32(h - 36), int32(w - 34), int32(h - 12)}, ui.fontSmall, colTextSoft, dtLeft|dtSingleLine|dtNoPrefix)
 	if mode != "" && s != screenHome {
-		label := "New board setup"
+		label := "Clean USB install / reinstall"
 		if mode == "update" {
-			label = "Existing board update"
+			label = "Wi-Fi update — keeps setup"
 		}
 		text(hdc, label, rect{34, int32(h - 36), int32(w - 34), int32(h - 12)}, ui.fontSmall, colTextSoft, dtRight|dtSingleLine|dtNoPrefix)
 	}
 }
 
 func (ui *NativeUI) paintHome(hdc uintptr, w, h int) {
-	text(hdc, "Choose one option", rect{36, 118, int32(w - 36), 154}, ui.fontHeading, colText, dtLeft|dtSingleLine|dtNoPrefix)
+	text(hdc, "Choose one option", rect{36, 108, int32(w - 36), 144}, ui.fontHeading, colText, dtLeft|dtSingleLine|dtNoPrefix)
 	margin := 34
 	gap := 24
 	cardW := (w - margin*2 - gap) / 2
@@ -818,16 +953,23 @@ func (ui *NativeUI) paintHome(hdc uintptr, w, h int) {
 	}
 	x1 := margin
 	x2 := x1 + cardW + gap
-	y := 178
-	cardH := 268
+	y := 150
+	cardH := h - y - 142
+	if cardH > 268 {
+		cardH = 268
+	}
+	if cardH < 196 {
+		cardH = 196
+	}
 	r1 := rect{int32(x1), int32(y), int32(x1 + cardW), int32(y + cardH)}
 	r2 := rect{int32(x2), int32(y), int32(x2 + cardW), int32(y + cardH)}
-	ui.drawActionCard(hdc, r1, "Set up a new board", "For a blank ESP32 or ESP32-S3 board.\n\nThe tool will install OpenTurbine using USB.", "Use this for new boards", "new")
-	ui.drawActionCard(hdc, r2, "Update my OpenTurbine board", "For a board that already runs OpenTurbine.\n\nThe tool will save your settings, then update by Wi-Fi.", "Use this for existing boards", "update")
-	noteY := y + cardH + 34
+	ui.drawActionCard(hdc, r1, "Clean install / reinstall", "For a blank board or a fresh start on an older board. Uses USB and ERASES all existing settings, calibration, logs, and Wi-Fi details.", "Erase board and install", "new")
+	ui.drawActionCard(hdc, r2, "Update and keep my setup", "For a working OpenTurbine board. Uses Wi-Fi, validates a complete engine-file backup, and keeps the setup already stored on the board.", "Update without resetting", "update")
+	noteY := y + cardH + 16
 	note := "During update the tool will tell you exactly when to stay on normal internet Wi-Fi and when to connect to the board Wi-Fi. The board Wi-Fi name may be OpenTurbine or your own engine/project name."
-	drawPanel(hdc, rect{34, int32(noteY), int32(w - 34), int32(noteY + 128)}, colInfoBg, colInfoBorder, 18)
-	text(hdc, note, rect{56, int32(noteY + 22), int32(w - 56), int32(noteY + 112)}, ui.fontBody, colInfoText, dtLeft|dtWordBreak|dtNoPrefix)
+	noteBottom := h - 48
+	drawPanel(hdc, rect{34, int32(noteY), int32(w - 34), int32(noteBottom)}, colInfoBg, colInfoBorder, 18)
+	text(hdc, note, rect{56, int32(noteY + 14), int32(w - 56), int32(noteBottom - 10)}, ui.fontSmall, colInfoText, dtLeft|dtWordBreak|dtNoPrefix)
 }
 
 func (ui *NativeUI) drawActionCard(hdc uintptr, r rect, heading, body, button, action string) {
@@ -840,13 +982,17 @@ func (ui *NativeUI) drawActionCard(hdc uintptr, r rect, heading, body, button, a
 	ui.addZone(r, action)
 }
 
-func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, logs []string, showDetails bool) {
+func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, logs []string, showDetails bool, scrollOffset int) {
 	card := rect{34, 112, int32(w - 34), int32(h - 78)}
 	drawPanel(hdc, card, colPanel, colBorderSoft, 24)
 	top := int(card.top) + 28
-	text(hdc, body, rect{card.left + 28, int32(top), card.right - 28, card.bottom - 220}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
+	bodyArea := rect{card.left + 28, int32(top), card.right - 28, card.bottom - 226}
+	saved, _, _ := procSaveDC.Call(hdc)
+	procIntersectClipRect.Call(hdc, uintptr(bodyArea.left), uintptr(bodyArea.top), uintptr(bodyArea.right), uintptr(bodyArea.bottom))
+	text(hdc, body, rect{bodyArea.left, bodyArea.top - int32(scrollOffset), bodyArea.right, bodyArea.top + 520 - int32(scrollOffset)}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
+	procRestoreDC.Call(hdc, saved)
 	if showDetails {
-		dr := rect{card.left + 28, card.bottom - 206, card.right - 28, card.bottom - 92}
+		dr := rect{card.left + 28, card.bottom - 218, card.right - 28, card.bottom - 132}
 		drawPanel(hdc, dr, colPanelSoft, colBorder, 14)
 		text(hdc, "Additional information", rect{dr.left + 16, dr.top + 10, dr.right - 16, dr.top + 34}, ui.fontSmall, colText, dtLeft|dtSingleLine|dtNoPrefix)
 		logText := latestLogs(logs, 3)
@@ -858,7 +1004,7 @@ func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, 
 		}
 		text(hdc, logText, rect{dr.left + 16, dr.top + 40, dr.right - 16, dr.bottom - 10}, ui.fontSmall, colTextMuted, dtLeft|dtWordBreak|dtNoPrefix)
 	} else if detail != "" {
-		dr := rect{card.left + 28, card.bottom - 176, card.right - 28, card.bottom - 112}
+		dr := rect{card.left + 28, card.bottom - 194, card.right - 28, card.bottom - 132}
 		drawPanel(hdc, dr, colPanelSoft, colBorder, 14)
 		text(hdc, detail, rect{dr.left + 16, dr.top + 12, dr.right - 16, dr.bottom - 10}, ui.fontSmall, colTextMuted, dtLeft|dtWordBreak|dtNoPrefix)
 	}
@@ -875,17 +1021,41 @@ func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, 
 	cancel := rect{left, int32(by), left + 118, int32(by + 44)}
 	drawButton(hdc, cancel, "Cancel", ui.fontButton, false)
 	ui.addZone(cancel, "cancelUSB")
-	left += 134
-	cp := rect{left, int32(by), left + 188, int32(by + 44)}
+	// Driver choices get their own row so they cannot collide with navigation
+	// buttons in a narrow window or under Windows display scaling.
+	driverY := by - 58
+	cp := rect{card.left + 28, int32(driverY), card.left + 226, int32(driverY + 42)}
 	drawButton(hdc, cp, "Install CP210x", ui.fontButton, false)
 	ui.addZone(cp, "driverCP210x")
-	left += 204
-	ch := rect{left, int32(by), left + 178, int32(by + 44)}
+	ch := rect{card.left + 240, int32(driverY), card.left + 438, int32(driverY + 42)}
 	drawButton(hdc, ch, "Install CH340", ui.fontButton, false)
 	ui.addZone(ch, "driverCH340")
 	try := rect{card.right - 192, int32(by), card.right - 28, int32(by + 44)}
 	drawButton(hdc, try, "Try Again", ui.fontButton, true)
 	ui.addZone(try, "retryUSB")
+}
+
+func (ui *NativeUI) paintBoardChoice(hdc uintptr, w, h int, boards []detectedBoard) {
+	card := rect{34, 112, int32(w - 34), int32(h - 78)}
+	drawPanel(hdc, card, colPanel, colBorderSoft, 24)
+	text(hdc, "More than one supported board was found. Nothing will be erased until you choose.", rect{card.left + 28, card.top + 24, card.right - 28, card.top + 62}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
+	y := card.top + 78
+	for i, board := range boards {
+		if y+58 > card.bottom-74 {
+			break
+		}
+		r := rect{card.left + 28, y, card.right - 28, y + 52}
+		label := board.Port + "  —  " + board.Chip
+		if i == 0 {
+			label += "  (suggested)"
+		}
+		drawButton(hdc, r, label, ui.fontButton, i == 0)
+		ui.addZone(r, fmt.Sprintf("selectBoard:%d", i))
+		y += 64
+	}
+	cancel := rect{card.left + 28, card.bottom - 58, card.left + 150, card.bottom - 16}
+	drawButton(hdc, cancel, "Cancel", ui.fontButton, false)
+	ui.addZone(cancel, "cancelUSB")
 }
 
 func (ui *NativeUI) paintCardScreen(hdc uintptr, w, h int, body, detail string, step, total, progress int, primary, secondary string, busy bool, canDetails bool, logs []string, showDetails bool) {
@@ -906,8 +1076,11 @@ func (ui *NativeUI) paintCardScreen(hdc uintptr, w, h int, body, detail string, 
 		bodyBottom = card.bottom - 286
 	}
 	if busy {
-		drawSpinnerFallback(hdc, card.left+28, int32(top+4))
-		text(hdc, body, rect{card.left + 70, int32(top), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
+		drawStatusBadge(hdc, rect{card.left + 28, int32(top), card.left + 136, int32(top + 32)}, "Working", ui.fontSmall)
+		text(hdc, body, rect{card.left + 28, int32(top + 48), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
+	} else if primary != "" {
+		drawStatusBadge(hdc, rect{card.left + 28, int32(top), card.left + 176, int32(top + 32)}, "Waiting for you", ui.fontSmall)
+		text(hdc, body, rect{card.left + 28, int32(top + 48), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
 	} else {
 		text(hdc, body, rect{card.left + 28, int32(top), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
 	}
@@ -942,7 +1115,7 @@ func (ui *NativeUI) paintCardScreen(hdc uintptr, w, h int, body, detail string, 
 		leftX += 166
 	}
 	if secondary != "" {
-		sr := rect{leftX, int32(by), leftX + 220, int32(by + 44)}
+		sr := rect{leftX, int32(by), leftX + 150, int32(by + 44)}
 		drawButton(hdc, sr, secondary, ui.fontButton, false)
 		if secondary == "Back" {
 			ui.addZone(sr, "back")
@@ -956,14 +1129,18 @@ func (ui *NativeUI) paintCardScreen(hdc uintptr, w, h int, body, detail string, 
 			pr = rect{card.right - 230, int32(by), card.right - 28, int32(by + 44)}
 		}
 		drawButton(hdc, pr, primary, ui.fontButton, true)
-		action := "continue"
-		if primary == "I have done this — continue" {
-			action = "start"
-		}
-		if primary == "Back to start" {
-			action = "home"
-		}
-		ui.addZone(pr, action)
+		ui.addZone(pr, primaryButtonAction(primary))
+	}
+}
+
+func primaryButtonAction(label string) string {
+	switch label {
+	case cleanSafetyButtonLabel, updateSafetyButtonLabel:
+		return "start"
+	case "Back to start":
+		return "home"
+	default:
+		return "continue"
 	}
 }
 
@@ -1031,11 +1208,9 @@ func drawButton(hdc uintptr, r rect, label string, font uintptr, primary bool) {
 	text(hdc, label, r, font, textColor, dtCenter|dtVCenter|dtSingleLine|dtNoPrefix)
 }
 
-func drawSpinnerFallback(hdc uintptr, x, y int32) {
-	// Static progress mark; avoids animation complexity and still gives a modern cue.
-	drawPanel(hdc, rect{x, y, x + 28, y + 28}, colAccentDark, colAccent, 14)
-	line(hdc, int(x+8), int(y+14), int(x+14), int(y+20), colAccent2, 3)
-	line(hdc, int(x+14), int(y+20), int(x+22), int(y+8), colAccent2, 3)
+func drawStatusBadge(hdc uintptr, r rect, label string, font uintptr) {
+	drawPanel(hdc, r, colInfoBg, colInfoBorder, 14)
+	text(hdc, label, r, font, colInfoText, dtCenter|dtVCenter|dtSingleLine|dtNoPrefix)
 }
 
 func line(hdc uintptr, x1, y1, x2, y2 int, color uint32, width int) {
@@ -1120,6 +1295,18 @@ func (j *Job) set(step, total, progress int, title, body, detail string, wait bo
 	if wait {
 		screen = screenWait
 		primary = "Continue"
+		lowerTitle := strings.ToLower(title)
+		if strings.Contains(lowerTitle, "plug") {
+			primary = "Board connected, continue"
+		} else if strings.Contains(lowerTitle, "wi") || strings.Contains(lowerTitle, "connect") {
+			primary = "Wi-Fi connected, continue"
+		}
+		if primary != "Continue" {
+			body = strings.ReplaceAll(body, "click Continue", "click "+primary)
+			body = strings.ReplaceAll(body, "Click Continue", "Click "+primary)
+			body = strings.ReplaceAll(body, "Then click Continue", "Then click "+primary)
+			body = strings.ReplaceAll(body, "After connecting, click Continue", "After connecting, click "+primary)
+		}
 	}
 	j.ui().update(uiUpdate{screen: screen, title: title, subtitle: subtitleForMode(j.mode), body: body, detail: detail, step: step, totalSteps: total, progress: progress, primary: primary, mode: j.mode})
 }
@@ -1146,7 +1333,7 @@ func (j *Job) fail(err error) {
 	if j.backupPath != "" {
 		secondary = "Open backup folder"
 	}
-	j.ui().update(uiUpdate{screen: screenError, title: "Could not finish", subtitle: subtitleForMode(j.mode), body: body, detail: "A support log was saved in Documents\\OpenTurbine\\SetupTool or next to the settings backup if one was created.", step: 0, totalSteps: 0, progress: 0, mode: j.mode, secondary: secondary, done: true, backupPath: j.backupPath})
+	j.ui().update(uiUpdate{screen: screenError, title: "Could not finish", subtitle: subtitleForMode(j.mode), body: body, detail: "A support log was saved in Documents\\OpenTurbine\\SetupTool or next to the engine file backup if one was created.", step: 0, totalSteps: 0, progress: 0, mode: j.mode, secondary: secondary, done: true, backupPath: j.backupPath})
 }
 
 func (j *Job) success(title, body string) {
@@ -1158,8 +1345,9 @@ func (j *Job) success(title, body string) {
 func (j *Job) waitContinue() { <-j.continueCh }
 
 func (j *Job) showDriverHelp(pkg *Package, reason string) string {
-	body := "Board not found.\n\nTry this first:\n\n1. Use a USB data cable, not a charge-only cable.\n2. Plug the board directly into this computer.\n3. Hold BOOT on the board, then click Try Again.\n4. Close Arduino IDE, PlatformIO, Cura, serial monitors, or anything else that may use the COM port.\n\nIf it still does not work, install the USB driver for your board."
-	detail := reason + "\n\nDriver buttons use installers from the downloaded OpenTurbine package. CP210x covers Silicon Labs USB serial boards. CH340 covers WCH CH340, CH341, and CH343 USB serial boards."
+	recommendation := usbDriverRecommendation()
+	body := "Board not found.\n\nTry this first:\n\n1. Use a USB data cable, not a charge-only cable.\n2. Plug the board directly into this computer.\n3. Hold BOOT on the board, then click Try Again.\n4. Close Arduino IDE, PlatformIO, Cura, serial monitors, or anything else that may use the COM port.\n\n" + recommendation
+	detail := reason + "\n\nCP210x is for Silicon Labs USB bridges (usually VID 10C4). CH340 is for WCH CH340/CH341/CH343 bridges (usually VID 1A86). ESP32-S3 native USB (VID 303A) normally needs no separate driver."
 	j.addLog("Driver Help shown: " + reason)
 	j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Board not found", subtitle: subtitleForMode(j.mode), body: body, detail: detail, step: 0, totalSteps: 0, progress: 0, mode: j.mode, appendLog: []string{reason}})
 	for {
@@ -1170,15 +1358,25 @@ func (j *Job) showDriverHelp(pkg *Package, reason string) string {
 			if action == "ch340" {
 				name = "CH340/CH341/CH343"
 			}
-			if err := startDriverInstaller(pkg, action); err != nil {
-				msg := name + " driver installer was not found or could not be opened: " + err.Error()
+			if action == "cp210x" {
+				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Installing CP210x driver", subtitle: subtitleForMode(j.mode), body: body, detail: "Downloading the complete signed Silicon Labs Universal Windows Driver if needed, verifying it, then asking Windows to install silabser.inf.", mode: j.mode})
+			} else {
+				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Installing CH340 driver", subtitle: subtitleForMode(j.mode), body: body, detail: "Opening the WCH driver installer as administrator. Complete the installer window, then this tool will continue.", mode: j.mode})
+			}
+			if err := startDriverInstaller(j.app, pkg, action); err != nil {
+				msg := name + " driver installation failed: " + err.Error()
 				j.addLog(msg)
-				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installer not found", subtitle: subtitleForMode(j.mode), body: body, detail: msg + "\n\nYou can still use Try Again if the driver is already installed.", mode: j.mode, appendLog: []string{msg}})
+				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation failed", subtitle: subtitleForMode(j.mode), body: body, detail: msg + "\n\nIf Windows asked for administrator permission, approve it and try again. You can still use Try Again if the driver is already installed.", mode: j.mode, appendLog: []string{msg}})
 				continue
 			}
-			msg := name + " driver installer opened. Approve the Windows prompt if it appears. After installation, unplug and replug the board, then click Try Again."
+			msg := name + " driver installation finished. Unplug and replug the board, then click Try Again."
+			finishedBody := "Windows driver installation finished.\n\n1. Unplug the board.\n2. Plug it in again.\n3. Hold BOOT if needed.\n4. Click Try Again."
+			if action == "ch340" {
+				msg = name + " installer completed. Unplug and replug the board, then click Try Again."
+				finishedBody = "The WCH driver installer completed.\n\n1. Unplug the board.\n2. Plug it in again.\n3. Hold BOOT if needed.\n4. Click Try Again."
+			}
 			j.addLog(msg)
-			j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installer opened", subtitle: subtitleForMode(j.mode), body: "Driver installer opened.\n\nApprove the Windows prompt if it appears. When the installer is finished:\n\n1. Unplug the board.\n2. Plug it in again.\n3. Hold BOOT if needed.\n4. Click Try Again.", detail: msg, mode: j.mode, appendLog: []string{msg}})
+			j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation finished", subtitle: subtitleForMode(j.mode), body: finishedBody, detail: msg, mode: j.mode, appendLog: []string{msg}})
 		case "retry", "cancel":
 			return action
 		}
@@ -1193,17 +1391,17 @@ func (j *Job) cancelToHome(msg string) {
 
 func subtitleForMode(mode string) string {
 	if mode == "update" {
-		return "Existing board update"
+		return "Wi-Fi update — keeps setup"
 	}
 	if mode == "new" {
-		return "New board setup"
+		return "Clean USB install / reinstall"
 	}
 	return ""
 }
 
 func (j *Job) runNewBoard() {
-	total := 5
-	j.set(1, total, 5, "Preparing setup files", "Stay connected to your normal internet Wi‑Fi. The tool is preparing the recommended OpenTurbine setup files.", "For a clean new-board setup, the board will be erased and OpenTurbine will be installed from the recommended package.", false)
+	total := 6
+	j.set(1, total, 5, "Preparing setup files", "Stay connected to your normal internet Wi‑Fi. The tool is preparing the recommended OpenTurbine setup files.", "For a clean USB install or reinstall, the selected board will be erased and OpenTurbine will be installed from the recommended package.", false)
 	pkg, err := j.app.ensurePackage()
 	if err != nil {
 		j.fail(err)
@@ -1225,40 +1423,73 @@ func (j *Job) runNewBoard() {
 		if len(ports) == 0 {
 			action := j.showDriverHelp(pkg, "No serial COM port was found for the board.")
 			if action == "cancel" {
-				j.cancelToHome("New-board setup was cancelled.")
+				j.cancelToHome("Clean USB install was cancelled.")
 				return
 			}
 			continue
 		}
 
 		j.set(3, total, 35, "Detecting board", "The tool is looking for an ESP32 board over USB.", "This usually takes a few seconds. If it fails, hold BOOT and try again.", false)
+		var supported []detectedBoard
+		var unsupported []string
 		for _, p := range ports {
-			t, err := detectTargetWithEsptool(esptool, p)
-			if err == nil && t != "" {
-				target, port = t, p
+			board, err := detectBoardWithEsptool(esptool, p)
+			if err != nil {
+				continue
+			}
+			if board.Target == "" {
+				unsupported = append(unsupported, board.Port+" ("+board.Chip+")")
+				continue
+			}
+			supported = append(supported, board)
+		}
+		if len(unsupported) > 0 {
+			j.addLog("Ignored unsupported board(s): " + strings.Join(unsupported, ", "))
+		}
+		if len(supported) == 1 {
+			target, port = supported[0].Target, supported[0].Port
+			break
+		}
+		if len(supported) > 1 {
+			j.ui().update(uiUpdate{screen: screenBoardChoice, title: "Choose the board to flash", subtitle: subtitleForMode(j.mode), mode: j.mode, boards: supported})
+			action := <-j.actionCh
+			if action == "cancel" {
+				j.cancelToHome("Clean USB install was cancelled before a board was selected.")
+				return
+			}
+			var selected int
+			if _, err := fmt.Sscanf(action, "selectBoard:%d", &selected); err == nil && selected >= 0 && selected < len(supported) {
+				target, port = supported[selected].Target, supported[selected].Port
 				break
 			}
+			continue
 		}
-		if target != "" {
-			break
+		if len(unsupported) > 0 {
+			j.fail(fmt.Errorf("only unsupported ESP chips were found: %s. OpenTurbine currently supports classic ESP32 and ESP32-S3 only; no board was erased", strings.Join(unsupported, ", ")))
+			return
 		}
 		action := j.showDriverHelp(pkg, "A COM port was found, but the ESP32 bootloader did not answer. The port may be busy, the board may need BOOT held, or the wrong driver may be installed.")
 		if action == "cancel" {
-			j.cancelToHome("New-board setup was cancelled.")
+			j.cancelToHome("Clean USB install was cancelled.")
 			return
 		}
 	}
 	j.addLog("Detected board on " + port + ": " + friendlyTarget(target))
+	j.set(4, total, 48, "Confirm complete erase", "Found "+friendlyTarget(target)+" on "+port+".\n\nContinuing will ERASE THE ENTIRE BOARD, including any existing settings, calibration, logs, and Wi-Fi details, then install a fresh OpenTurbine copy. No backup is made by this clean-install path.", "This is the last confirmation before the selected board is erased. Cancel if you intended to update, keep its setup, or make a backup first.", true)
+	j.waitContinue()
 
 	version := packageVersion(pkg)
 	j.addLog("Using package " + version + " for " + friendlyTarget(target))
-	j.set(4, total, 55, "Installing OpenTurbine "+version, "Detected "+friendlyTarget(target)+" on "+port+".\n\nDo not unplug USB or power. The board will be erased and OpenTurbine "+version+" will be installed.", "Package target: "+target+". This is the correct path for blank or new boards.", false)
-	if err := flashUSB(esptool, port, target, pkg, j.addLog); err != nil {
+	j.set(5, total, 60, "Installing OpenTurbine "+version, "Detected "+friendlyTarget(target)+" on "+port+".\n\nDo not unplug USB or power. The board will be erased and OpenTurbine "+version+" will be installed.", "Package target: "+target+". This is the clean-install path for blank boards and intentional fresh reinstalls.", false)
+	if err := flashUSB(esptool, port, target, pkg, j.addLog, func(percent int) {
+		progress := 64 + percent*30/100
+		j.ui().update(uiUpdate{screen: screenRunning, title: "Flashing board — " + fmt.Sprintf("%d%%", percent), subtitle: subtitleForMode(j.mode), body: "Writing OpenTurbine to " + friendlyTarget(target) + " on " + port + ".\n\nDo not unplug USB or power.", detail: "Flash write progress reported by esptool.", step: 5, totalSteps: total, progress: progress, mode: j.mode})
+	}); err != nil {
 		j.fail(err)
 		return
 	}
 
-	j.success("OpenTurbine installed", "OpenTurbine was installed and verified successfully.\n\nThe board is restarting now. After restart, connect your computer or phone to the board Wi-Fi. The Wi-Fi name may be OpenTurbine, or it may be your own engine/project name. Windows may say 'No internet'; that is normal.\n\nThen open:\nhttp://192.168.4.1")
+	j.success("OpenTurbine installed", "OpenTurbine was installed and verified successfully.\n\nThe board is restarting with fresh defaults. Connect your computer or phone to the OpenTurbine Wi-Fi network; it has no password until you configure one. Windows may say 'No internet'; that is normal.\n\nThen open:\nhttp://192.168.4.1")
 }
 
 func (j *Job) runExistingUpdate() {
@@ -1284,18 +1515,18 @@ func (j *Job) runExistingUpdate() {
 		return
 	}
 
-	j.set(3, total, 36, "Saving settings", "Before updating, the tool is saving your OpenTurbine settings.\n\nThis is done every time so your engine setup does not vanish if something goes wrong.", "The backup may contain the board Wi‑Fi password. Keep it private.", false)
+	j.set(3, total, 36, "Saving complete engine file", "Before updating, the tool is saving and validating the board's hardware, settings, sequences, and calibration.\n\nThe update will not start unless this restorable file is complete.", "The engine file contains the board Wi‑Fi password. Keep it private.", false)
 	bpath, err := backupConfig()
 	if err != nil {
-		j.fail(errors.New("Settings backup failed. The update was not started. Reconnect to the board Wi‑Fi and try again."))
+		j.fail(errors.New("Engine file backup failed. The update was not started. Reconnect to the board Wi‑Fi and try again."))
 		return
 	}
 	j.backupPath = bpath
-	j.addLog("Settings backup saved: " + bpath)
+	j.addLog("Engine file backup saved: " + bpath)
 
 	target, err := chooseTargetForOTA(pkg)
 	if err != nil {
-		j.fail(errors.New("The tool could not choose the correct board update file automatically. Use a recommended update package with one board target, or update this board once over USB with a package that reports device_info."))
+		j.fail(errors.New("The tool could not identify this board safely, so no firmware was uploaded. Do not guess the target. If the ECU still opens in a browser, download its complete engine file from Tools first. A clean USB reinstall can recover a supported board, but it erases the board and the engine file must then be restored."))
 		return
 	}
 	if target != "" {
@@ -1345,10 +1576,90 @@ func (j *Job) runExistingUpdate() {
 		return
 	}
 
-	j.set(7, total, 94, "Final check", "The board may restart once more. Check the board Wi‑Fi again if Windows disconnects.", "The update is almost finished.", false)
-	time.Sleep(6 * time.Second)
-	_ = waitForECU(45 * time.Second)
-	j.success("Update complete", "OpenTurbine was updated successfully.\n\nYour settings backup was saved here:\n"+bpath+"\n\nOpen http://192.168.4.1 and check the setup before using fuel.")
+	j.set(7, total, 94, "Reconnect for final verification", "The dashboard files were accepted and the board is restarting.\n\nWindows may have switched back to another network. Connect to this OpenTurbine board's Wi-Fi again, wait a few seconds, then click Continue.", "The tool will verify the firmware version and all ten dashboard files; it will not report success merely because upload returned quickly.", true)
+	j.waitContinue()
+	if err := waitForECU(75 * time.Second); err != nil {
+		j.fail(errors.New("The files were uploaded, but the tool could not reconnect for final verification. Reconnect to the board Wi-Fi and run Update and keep my setup again; it is safe to repeat."))
+		return
+	}
+	if err := verifyUpdatedECU(version, assets); err != nil {
+		j.fail(fmt.Errorf("Final verification failed: %w", err))
+		return
+	}
+	j.success("Update complete", "OpenTurbine was updated successfully.\n\nYour complete engine file was saved here:\n"+bpath+"\n\nOpen http://192.168.4.1 and check the setup before using fuel.")
+}
+
+func verifyUpdatedECU(expectedVersion string, assetPaths []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", ecuBaseURL+"/api/device_info", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("could not read firmware identity: %w", err)
+	}
+	var info struct {
+		Project string `json:"project"`
+		Version string `json:"firmware_version"`
+	}
+	decodeErr := json.NewDecoder(resp.Body).Decode(&info)
+	resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || decodeErr != nil {
+		return fmt.Errorf("board did not return valid firmware identity")
+	}
+	if info.Project != "OpenTurbine" || info.Version != expectedVersion {
+		return fmt.Errorf("firmware version is %q, expected %q", info.Version, expectedVersion)
+	}
+
+	for _, localPath := range assetPaths {
+		name := filepath.Base(localPath)
+		urlPath := "/" + strings.TrimSuffix(name, ".gz")
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		req, _ := http.NewRequestWithContext(ctx, "GET", ecuBaseURL+urlPath+"?verify="+fmt.Sprint(time.Now().UnixNano()), nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			cancel()
+			return fmt.Errorf("could not read dashboard file %s: %w", name, err)
+		}
+		remote, readErr := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+		resp.Body.Close()
+		cancel()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 || readErr != nil {
+			return fmt.Errorf("dashboard file %s was not served correctly", name)
+		}
+		local, err := readGzipFile(localPath)
+		if err != nil {
+			return fmt.Errorf("could not verify packaged file %s: %w", name, err)
+		}
+		// Go normally decompresses Content-Encoding:gzip automatically. If a
+		// transport leaves raw gzip bytes, normalize those before comparing.
+		if len(remote) >= 2 && remote[0] == 0x1f && remote[1] == 0x8b {
+			remote, err = gunzipBytes(remote)
+			if err != nil {
+				return fmt.Errorf("board served corrupt gzip for %s", name)
+			}
+		}
+		if !bytes.Equal(remote, local) {
+			return fmt.Errorf("dashboard file %s does not match the update package", name)
+		}
+	}
+	return nil
+}
+
+func readGzipFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return gunzipBytes(data)
+}
+
+func gunzipBytes(data []byte) ([]byte, error) {
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	return io.ReadAll(io.LimitReader(zr, 2*1024*1024))
 }
 
 func (j *Job) writeLog(status, msg string) {
@@ -1376,8 +1687,8 @@ func (j *Job) writeLog(status, msg string) {
 func friendlyError(s string) string {
 	lower := strings.ToLower(s)
 	switch {
-	case strings.Contains(lower, "settings backup failed"):
-		return "Settings backup failed.\n\nThe update was not started. Reconnect to the board Wi‑Fi and try again."
+	case strings.Contains(lower, "engine file backup failed"):
+		return "Engine file backup failed.\n\nThe update was not started. Reconnect to the board Wi‑Fi and try again."
 	case strings.Contains(lower, "board was not found") || strings.Contains(lower, "could not reconnect"):
 		return "The board was not found.\n\nCheck that this computer is connected to the board Wi‑Fi. The Wi‑Fi name may be OpenTurbine or your own engine/project name. Windows may say 'No internet'; that is normal."
 	case strings.Contains(lower, "no usb board"):
@@ -1390,7 +1701,7 @@ func friendlyError(s string) string {
 		strings.Contains(lower, "no serial data received") ||
 		strings.Contains(lower, "serial data stream stopped") ||
 		strings.Contains(lower, "bootloader did not answer"):
-		return "The board did not enter USB boot mode.\n\nHold BOOT on the ESP32 board, click Back to start, and try the new-board setup again. Keep BOOT held until the tool starts writing, then release it.\n\nAlso check that no serial monitor or other app is using the COM port."
+		return "The board did not enter USB boot mode.\n\nHold BOOT on the ESP32 board, click Back to start, and try Clean install / reinstall again. Keep BOOT held until the tool starts writing, then release it.\n\nRemember: the clean-install path erases the selected board. Also check that no serial monitor or other app is using the COM port."
 	case strings.Contains(lower, "missing tools\\esptool.exe") ||
 		strings.Contains(lower, "needs esptool.exe") ||
 		strings.Contains(lower, "include tools\\esptool.exe"):
@@ -1429,18 +1740,25 @@ func (a *App) ensurePackage() (*Package, error) {
 }
 
 func (a *App) ensurePackageWithProgress(progress func(string, int)) (*Package, error) {
+	a.packageMu.Lock()
+	defer a.packageMu.Unlock()
+	if a.packageReady != nil {
+		return a.packageReady, nil
+	}
 	exe, _ := os.Executable()
 	base := "."
 	if exe != "" {
 		base = filepath.Dir(exe)
 	}
-	candidates := []string{
+	localCandidates := []string{
 		filepath.Join(base, "OpenTurbine_Recommended.zip"),
 		filepath.Join(base, "package", "OpenTurbine_Recommended.zip"),
+	}
+	cacheCandidates := []string{
 		filepath.Join(a.workDir, "packages", "OpenTurbine_Recommended.zip"),
 		filepath.Join(a.workDir, "OpenTurbine_Recommended.zip"),
 	}
-	for _, c := range candidates {
+	for _, c := range localCandidates {
 		if !fileExists(c) {
 			continue
 		}
@@ -1450,20 +1768,30 @@ func (a *App) ensurePackageWithProgress(progress func(string, int)) (*Package, e
 		pkg, err := loadPackageFromZip(c)
 		if err == nil {
 			if _, eerr := findEsptool(pkg); eerr == nil {
+				a.packageReady = pkg
 				return pkg, nil
-			} else if strings.HasPrefix(c, a.workDir) {
-				// Cached package is incomplete or obsolete. Delete it and try GitHub again.
-				_ = os.Remove(c)
-				continue
 			} else {
-				return nil, fmt.Errorf("the local OpenTurbine package is missing tools\\esptool.exe, needed for new-board USB setup: %w", eerr)
+				return nil, fmt.Errorf("the local OpenTurbine package is missing tools\\esptool.exe, needed for clean USB installation: %w", eerr)
 			}
 		}
-		if strings.HasPrefix(c, a.workDir) {
+		return nil, fmt.Errorf("the local OpenTurbine package could not be opened: %w", err)
+	}
+	var cached *Package
+	for _, c := range cacheCandidates {
+		if !fileExists(c) {
+			continue
+		}
+		pkg, err := loadPackageFromZip(c)
+		if err != nil {
 			_ = os.Remove(c)
 			continue
 		}
-		return nil, fmt.Errorf("the local OpenTurbine package could not be opened: %w", err)
+		if _, err := findEsptool(pkg); err != nil {
+			_ = os.Remove(c)
+			continue
+		}
+		cached = pkg
+		break
 	}
 	if fileExists(filepath.Join(base, "package", "manifest.json")) {
 		if progress != nil {
@@ -1474,8 +1802,9 @@ func (a *App) ensurePackageWithProgress(progress func(string, int)) (*Package, e
 			return nil, err
 		}
 		if _, eerr := findEsptool(pkg); eerr != nil {
-			return nil, fmt.Errorf("the local OpenTurbine package is missing tools\\esptool.exe, needed for new-board USB setup: %w", eerr)
+			return nil, fmt.Errorf("the local OpenTurbine package is missing tools\\esptool.exe, needed for clean USB installation: %w", eerr)
 		}
+		a.packageReady = pkg
 		return pkg, nil
 	}
 	url := strings.TrimSpace(a.config.PackageURL)
@@ -1500,12 +1829,19 @@ func (a *App) ensurePackageWithProgress(progress func(string, int)) (*Package, e
 			progress("Downloading OpenTurbine setup files...", 42)
 		}
 	}); err != nil {
+		if cached != nil {
+			if progress != nil {
+				progress("Could not check GitHub; using the previously downloaded package.", 80)
+			}
+			a.packageReady = cached
+			return cached, nil
+		}
 		return nil, fmt.Errorf("could not download OpenTurbine_Recommended.zip from GitHub Releases. Publish a release asset with that exact name, then try again. Details: %w", err)
 	}
 	if progress != nil {
 		progress("Checking downloaded OpenTurbine package checksum.", 78)
 	}
-	if err := verifyOptionalRemoteSHA256(url+".sha256", dst); err != nil {
+	if err := verifyRemoteSHA256(url+".sha256", dst); err != nil {
 		_ = os.Remove(dst)
 		return nil, err
 	}
@@ -1518,36 +1854,34 @@ func (a *App) ensurePackageWithProgress(progress func(string, int)) (*Package, e
 		return nil, fmt.Errorf("the downloaded OpenTurbine package could not be opened: %w", err)
 	}
 	if _, eerr := findEsptool(pkg); eerr != nil {
-		return nil, fmt.Errorf("the downloaded OpenTurbine package is missing tools\\esptool.exe, needed for new-board USB setup: %w", eerr)
+		return nil, fmt.Errorf("the downloaded OpenTurbine package is missing tools\\esptool.exe, needed for clean USB installation: %w", eerr)
 	}
 	if progress != nil {
 		progress("OpenTurbine setup files are ready.", 94)
 	}
+	a.packageReady = pkg
 	return pkg, nil
 }
 
-func verifyOptionalRemoteSHA256(shaURL, path string) error {
+func verifyRemoteSHA256(shaURL, path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", shaURL, nil)
 	if err != nil {
-		return nil
+		return err
 	}
 	req.Header.Set("User-Agent", "OpenTurbineSetupTool/"+appVersion)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil // optional file; HTTPS download still works without it
+		return fmt.Errorf("could not download package checksum: %w", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return nil
-	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil
+		return fmt.Errorf("package checksum download returned %s", resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
-		return nil
+		return err
 	}
 	re := regexp.MustCompile(`(?i)[a-f0-9]{64}`)
 	expected := re.FindString(string(body))
@@ -1598,6 +1932,8 @@ func downloadFileWithProgress(url, dst string, progress func(done, total int64))
 		_ = os.Remove(tmp)
 		return closeErr
 	}
+	// Windows does not replace an existing destination with os.Rename.
+	_ = os.Remove(dst)
 	return os.Rename(tmp, dst)
 }
 
@@ -1700,18 +2036,255 @@ func unzip(src, dst string) error {
 	return nil
 }
 
-func startDriverInstaller(pkg *Package, kind string) error {
+func startDriverInstaller(app *App, pkg *Package, kind string) error {
+	if strings.EqualFold(kind, "cp210x") {
+		return startCP210xDriverInstaller(app)
+	}
 	path, err := findDriverInstaller(pkg, kind)
 	if err != nil {
 		return err
 	}
-	verb := "runas"
-	// Some vendor installers carry their own elevation manifest. runas gives a clear UAC prompt when needed.
-	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr(verb))), uintptr(unsafe.Pointer(utf16Ptr(path))), 0, 0, 1)
-	if ret <= 32 {
-		return fmt.Errorf("Windows could not open %s", filepath.Base(path))
+	return startEXEDriverInstaller(app, path, kind)
+}
+
+func startCP210xDriverInstaller(app *App) error {
+	if app == nil {
+		return fmt.Errorf("setup tool data folder is unavailable")
 	}
-	return nil
+	if _, err := prepareCP210xDriver(app); err != nil {
+		return err
+	}
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return fmt.Errorf("could not find this setup tool executable")
+	}
+	resultPath := filepath.Join(app.workDir, "drivers", "cp210x-install-result.json")
+	_ = os.Remove(resultPath)
+	params := strings.Join([]string{
+		syscall.EscapeArg("--install-cp210x-driver"),
+		syscall.EscapeArg("--result"),
+		syscall.EscapeArg(resultPath),
+	}, " ")
+	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("runas"))), uintptr(unsafe.Pointer(utf16Ptr(exe))), uintptr(unsafe.Pointer(utf16Ptr(params))), uintptr(unsafe.Pointer(utf16Ptr(filepath.Dir(exe)))), 0)
+	if ret <= 32 {
+		return fmt.Errorf("Windows could not start the administrator driver installer")
+	}
+	result, err := waitForDriverInstallResult(resultPath, 3*time.Minute)
+	if err != nil {
+		return err
+	}
+	if result.ExitCode == 0 || result.ExitCode == 3010 {
+		return nil
+	}
+	msg := strings.TrimSpace(result.Error)
+	if msg == "" {
+		msg = strings.TrimSpace(result.Output)
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("pnputil exited with code %d", result.ExitCode)
+	}
+	return errors.New(msg)
+}
+
+func waitForDriverInstallResult(path string, timeout time.Duration) (driverInstallResult, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if err == nil && len(data) > 0 {
+			var result driverInstallResult
+			if err := json.Unmarshal(data, &result); err != nil {
+				return result, fmt.Errorf("could not read driver installer result: %w", err)
+			}
+			return result, nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return driverInstallResult{}, fmt.Errorf("driver installer did not report a result. The administrator prompt may have been cancelled or blocked by Windows")
+}
+
+func startEXEDriverInstaller(app *App, installerPath, kind string) error {
+	if app == nil {
+		return fmt.Errorf("setup tool data folder is unavailable")
+	}
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return fmt.Errorf("could not find this setup tool executable")
+	}
+	if !fileExists(installerPath) {
+		return fmt.Errorf("%s was not found", filepath.Base(installerPath))
+	}
+	resultPath := filepath.Join(app.workDir, "drivers", strings.ToLower(kind)+"-install-result.json")
+	_ = os.Remove(resultPath)
+	params := strings.Join([]string{
+		syscall.EscapeArg("--run-driver-installer"),
+		syscall.EscapeArg("--installer"),
+		syscall.EscapeArg(installerPath),
+		syscall.EscapeArg("--result"),
+		syscall.EscapeArg(resultPath),
+	}, " ")
+	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("runas"))), uintptr(unsafe.Pointer(utf16Ptr(exe))), uintptr(unsafe.Pointer(utf16Ptr(params))), uintptr(unsafe.Pointer(utf16Ptr(filepath.Dir(exe)))), 0)
+	if ret <= 32 {
+		return fmt.Errorf("Windows could not start %s as administrator", filepath.Base(installerPath))
+	}
+	result, err := waitForDriverInstallResult(resultPath, 10*time.Minute)
+	if err != nil {
+		return err
+	}
+	if result.ExitCode == 0 || result.ExitCode == 3010 {
+		return nil
+	}
+	msg := strings.TrimSpace(result.Error)
+	if msg == "" {
+		msg = strings.TrimSpace(result.Output)
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("%s exited with code %d", filepath.Base(installerPath), result.ExitCode)
+	}
+	return errors.New(msg)
+}
+
+func runDriverInstallerHelper(args []string) int {
+	installerPath, resultPath := "", ""
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--installer":
+			if i+1 < len(args) {
+				installerPath = args[i+1]
+				i++
+			}
+		case "--result":
+			if i+1 < len(args) {
+				resultPath = args[i+1]
+				i++
+			}
+		}
+	}
+	if installerPath == "" || resultPath == "" {
+		return 2
+	}
+	result := runDriverInstallerEXE(installerPath)
+	data, _ := json.MarshalIndent(result, "", "  ")
+	_ = os.MkdirAll(filepath.Dir(resultPath), 0755)
+	if err := os.WriteFile(resultPath, data, 0644); err != nil {
+		return 1
+	}
+	if result.ExitCode == 0 || result.ExitCode == 3010 {
+		return 0
+	}
+	return 1
+}
+
+func runDriverInstallerEXE(installerPath string) driverInstallResult {
+	if !fileExists(installerPath) {
+		return driverInstallResult{ExitCode: 1, Error: filepath.Base(installerPath) + " was not found"}
+	}
+	cmd := exec.Command(installerPath)
+	prepareHiddenCommand(cmd)
+	out, err := cmd.CombinedOutput()
+	result := driverInstallResult{Output: strings.TrimSpace(string(out))}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		result.ExitCode = exitErr.ExitCode()
+		result.Error = strings.TrimSpace(string(out))
+	} else if err != nil {
+		result.ExitCode = 1
+		result.Error = err.Error()
+	} else {
+		result.ExitCode = 0
+	}
+	if result.ExitCode == 3010 {
+		result.RebootRequired = true
+	}
+	return result
+}
+
+func runCP210xDriverInstallHelper(args []string) int {
+	resultPath := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--result" && i+1 < len(args) {
+			resultPath = args[i+1]
+			i++
+		}
+	}
+	if resultPath == "" {
+		return 2
+	}
+	result := installCP210xDriver(newApp())
+	data, _ := json.MarshalIndent(result, "", "  ")
+	_ = os.MkdirAll(filepath.Dir(resultPath), 0755)
+	if err := os.WriteFile(resultPath, data, 0644); err != nil {
+		return 1
+	}
+	if result.ExitCode == 0 || result.ExitCode == 3010 {
+		return 0
+	}
+	return 1
+}
+
+func installCP210xDriver(app *App) driverInstallResult {
+	root, err := prepareCP210xDriver(app)
+	if err != nil {
+		return driverInstallResult{ExitCode: 1, Error: err.Error()}
+	}
+	inf := filepath.Join(root, "silabser.inf")
+	if !fileExists(inf) {
+		return driverInstallResult{ExitCode: 1, Error: "the CP210x driver is missing silabser.inf"}
+	}
+	pnputil := filepath.Join(os.Getenv("SystemRoot"), "System32", "pnputil.exe")
+	if !fileExists(pnputil) {
+		pnputil = "pnputil.exe"
+	}
+	cmd := exec.Command(pnputil, "/add-driver", inf, "/install")
+	prepareHiddenCommand(cmd)
+	out, err := cmd.CombinedOutput()
+	result := driverInstallResult{Output: strings.TrimSpace(string(out))}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		result.ExitCode = exitErr.ExitCode()
+		result.Error = strings.TrimSpace(string(out))
+	} else if err != nil {
+		result.ExitCode = 1
+		result.Error = err.Error()
+	} else {
+		result.ExitCode = 0
+	}
+	if result.ExitCode == 3010 {
+		result.RebootRequired = true
+	}
+	return result
+}
+
+func prepareCP210xDriver(app *App) (string, error) {
+	if app == nil {
+		return "", fmt.Errorf("setup tool data folder is unavailable")
+	}
+	root := filepath.Join(app.workDir, "drivers", "cp210x-universal-11.5.0")
+	inf := filepath.Join(root, "silabser.inf")
+	cat := filepath.Join(root, "silabser.cat")
+	if fileExists(inf) && fileExists(cat) {
+		return root, nil
+	}
+	zipPath := filepath.Join(app.workDir, "drivers", "CP210x_Universal_Windows_Driver.zip")
+	if !fileExists(zipPath) || verifySHA256(zipPath, cp210xDriverSHA256) != nil {
+		if err := downloadFile(cp210xDriverURL, zipPath); err != nil {
+			return "", fmt.Errorf("could not download the official Silicon Labs CP210x driver: %w", err)
+		}
+	}
+	if err := verifySHA256(zipPath, cp210xDriverSHA256); err != nil {
+		_ = os.Remove(zipPath)
+		return "", fmt.Errorf("the Silicon Labs CP210x driver download failed its integrity check: %w", err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(root, 0755); err != nil {
+		return "", err
+	}
+	if err := unzip(zipPath, root); err != nil {
+		return "", fmt.Errorf("could not unpack the CP210x driver: %w", err)
+	}
+	if !fileExists(inf) || !fileExists(cat) {
+		return "", fmt.Errorf("the CP210x driver is missing silabser.inf or silabser.cat")
+	}
+	return root, nil
 }
 
 func findDriverInstaller(pkg *Package, kind string) (string, error) {
@@ -1730,6 +2303,18 @@ func findDriverInstaller(pkg *Package, kind string) (string, error) {
 	}
 	preferred := []string{}
 	if kind == "cp210x" {
+		hasINF := false
+		for _, root := range roots {
+			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+				if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".inf") {
+					hasINF = true
+				}
+				return nil
+			})
+		}
+		if !hasINF {
+			return "", fmt.Errorf("the CP210x package contains only the installer; its required INF/CAT/SYS driver files are missing")
+		}
 		preferred = []string{"CP210xVCPInstaller_x64.exe", "CP210xVCPInstaller_x86.exe", "CP210xVCPInstaller.exe"}
 	} else {
 		preferred = []string{"CH341SER.EXE", "CH340SER.EXE", "SETUP.EXE", "DRVSETUP64.exe"}
@@ -1792,7 +2377,9 @@ func findEsptool(pkg *Package) (string, error) {
 
 func findSerialPorts() []string {
 	var ports []string
-	out, err := exec.Command("reg", "query", `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`).CombinedOutput()
+	cmd := exec.Command("reg", "query", `HKLM\HARDWARE\DEVICEMAP\SERIALCOMM`)
+	prepareHiddenCommand(cmd)
+	out, err := cmd.CombinedOutput()
 	if err == nil {
 		re := regexp.MustCompile(`COM\d+`)
 		ports = append(ports, re.FindAllString(string(out), -1)...)
@@ -1809,35 +2396,134 @@ func findSerialPorts() []string {
 	return unique
 }
 
+func usbDriverRecommendation() string {
+	// PnPUtil's connected-device list avoids recommending a driver for an old,
+	// disconnected adapter that merely remains in the registry.
+	cmd := exec.Command("pnputil", "/enum-devices", "/connected")
+	prepareHiddenCommand(cmd)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		s := strings.ToUpper(string(out))
+		switch {
+		case strings.Contains(s, "VID_10C4"):
+			return "Windows sees a Silicon Labs CP210x USB bridge. Install the CP210x driver below, then unplug and reconnect the board."
+		case strings.Contains(s, "VID_1A86") || strings.Contains(s, "VID_1A2C"):
+			return "Windows sees a WCH USB bridge. Install the CH340/CH341/CH343 driver below, then unplug and reconnect the board."
+		case strings.Contains(s, "VID_303A"):
+			return "Windows sees Espressif native USB. It normally needs no separate driver; try BOOT, another data cable, and another USB port."
+		}
+	}
+	return "Check the USB bridge chip printed near the USB socket: choose CP210x for Silicon Labs CP2102/CP2104, or CH340 for WCH CH340/CH341/CH343. ESP32-S3 native USB normally needs no driver."
+}
+
 func prepareEsptoolCommand(cmd *exec.Cmd) {
 	cmd.Env = append(os.Environ(),
 		"PYTHONIOENCODING=utf-8",
 		"PYTHONUTF8=1",
 		"NO_COLOR=1",
 	)
+	prepareHiddenCommand(cmd)
+}
+
+func prepareHiddenCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: createNoWindow,
 	}
 }
 
-func detectTargetWithEsptool(esptool, port string) (string, error) {
+func detectBoardWithEsptool(esptool, port string) (detectedBoard, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, esptool, "--port", port, "chip_id")
 	prepareEsptoolCommand(cmd)
 	out, err := cmd.CombinedOutput()
-	s := strings.ToLower(string(out))
-	if strings.Contains(s, "esp32-s3") || strings.Contains(s, "esp32s3") {
-		return "esp32s3dev", nil
-	}
-	if strings.Contains(s, "esp32") {
-		return "esp32dev", nil
-	}
-	return "", err
+	return parseDetectedBoard(port, string(out), err)
 }
 
-func flashUSB(esptool, port, target string, pkg *Package, logf func(string)) error {
+func parseDetectedBoard(port, output string, commandErr error) (detectedBoard, error) {
+	s := strings.ToLower(output)
+	board := detectedBoard{Port: port}
+	// Check every unsupported family before the generic "esp32" match. The old
+	// detector classified ESP32-C3 as classic ESP32 and could erase it.
+	unsupported := []string{"esp32-c2", "esp32-c3", "esp32-c5", "esp32-c6", "esp32-h2", "esp32-p4", "esp32-s2"}
+	for _, chip := range unsupported {
+		if strings.Contains(s, chip) || strings.Contains(s, strings.ReplaceAll(chip, "-", "")) {
+			board.Chip = strings.ToUpper(chip)
+			return board, nil
+		}
+	}
+	if strings.Contains(s, "esp32-s3") || strings.Contains(s, "esp32s3") {
+		board.Target, board.Chip = "esp32s3dev", "ESP32-S3"
+		return board, nil
+	}
+	if strings.Contains(s, "esp32") {
+		board.Target, board.Chip = "esp32dev", "Classic ESP32"
+		return board, nil
+	}
+	if commandErr == nil {
+		commandErr = fmt.Errorf("esptool did not identify an ESP32 family")
+	}
+	return board, commandErr
+}
+
+type esptoolProgressWriter struct {
+	mu           sync.Mutex
+	output       bytes.Buffer
+	last         int
+	lastFilePct  float64
+	fileIndex    int
+	segmentSizes []int64
+	progress     func(int)
+}
+
+func (w *esptoolProgressWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, _ = w.output.Write(p)
+	// esptool v5 prints "[bar]  12.3% 123/456 bytes"; older versions used
+	// "(12 %)". Accept both and combine per-file progress into one overall
+	// percentage because write-flash resets its percentage for every image.
+	matches := regexp.MustCompile(`([0-9]{1,3}(?:\.[0-9]+)?)\s*%`).FindAllStringSubmatch(w.output.String(), -1)
+	if len(matches) > 0 {
+		var filePct float64
+		_, _ = fmt.Sscanf(matches[len(matches)-1][1], "%f", &filePct)
+		if filePct+1.0 < w.lastFilePct && w.fileIndex+1 < len(w.segmentSizes) {
+			w.fileIndex++
+		}
+		w.lastFilePct = filePct
+		percent := int(filePct)
+		if len(w.segmentSizes) > 0 {
+			var done, total int64
+			for i, size := range w.segmentSizes {
+				total += size
+				if i < w.fileIndex {
+					done += size
+				} else if i == w.fileIndex {
+					done += int64(float64(size) * filePct / 100.0)
+				}
+			}
+			if total > 0 {
+				percent = int(done * 100 / total)
+			}
+		}
+		if percent > w.last && percent <= 100 {
+			w.last = percent
+			if w.progress != nil {
+				w.progress(percent)
+			}
+		}
+	}
+	return len(p), nil
+}
+
+func (w *esptoolProgressWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.output.String()
+}
+
+func flashUSB(esptool, port, target string, pkg *Package, logf func(string), progress func(int)) error {
 	t, ok := pkg.Manifest.Targets[target]
 	if !ok {
 		return fmt.Errorf("setup package does not contain files for this board")
@@ -1846,7 +2532,37 @@ func flashUSB(esptool, port, target string, pkg *Package, logf func(string)) err
 		return fmt.Errorf("setup package does not contain USB install instructions")
 	}
 
-	logf("Erasing board for clean new-board setup")
+	args := []string{"--port", port, "--baud", "921600", "write-flash", "-z"}
+	segmentSizes := make([]int64, 0, len(t.USBFlash))
+	seenAddresses := map[string]bool{}
+	for _, e := range t.USBFlash {
+		address := strings.ToLower(strings.TrimSpace(e.Address))
+		if !regexp.MustCompile(`^0x[0-9a-f]+$`).MatchString(address) {
+			return fmt.Errorf("setup package contains invalid flash address %q; board was not erased", e.Address)
+		}
+		if seenAddresses[address] {
+			return fmt.Errorf("setup package contains duplicate flash address %s; board was not erased", address)
+		}
+		seenAddresses[address] = true
+		p, err := packageFile(pkg, target, e.File)
+		if err != nil {
+			return fmt.Errorf("%w; board was not erased", err)
+		}
+		if e.SHA256 != "" {
+			if err := verifySHA256(p, e.SHA256); err != nil {
+				return fmt.Errorf("%w; board was not erased", err)
+			}
+		}
+		if info, statErr := os.Stat(p); statErr == nil {
+			segmentSizes = append(segmentSizes, info.Size())
+		} else {
+			segmentSizes = append(segmentSizes, 1)
+		}
+		args = append(args, address, p)
+	}
+	logf("Package preflight passed; all flash files are present")
+
+	logf("Erasing board for clean USB install / reinstall")
 	eraseCtx, eraseCancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	eraseCmd := exec.CommandContext(eraseCtx, esptool, "--port", port, "erase_flash")
 	prepareEsptoolCommand(eraseCmd)
@@ -1855,28 +2571,20 @@ func flashUSB(esptool, port, target string, pkg *Package, logf func(string)) err
 	if eraseErr != nil {
 		return fmt.Errorf("USB erase failed. Hold BOOT on the board and try again. Details: %s", strings.TrimSpace(string(eraseOut)))
 	}
-
-	args := []string{"--port", port, "--baud", "921600", "write-flash", "-z"}
-	for _, e := range t.USBFlash {
-		p, err := packageFile(pkg, target, e.File)
-		if err != nil {
-			return err
-		}
-		if e.SHA256 != "" {
-			if err := verifySHA256(p, e.SHA256); err != nil {
-				return err
-			}
-		}
-		args = append(args, e.Address, p)
-	}
 	logf("Writing board software over USB")
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, esptool, args...)
 	prepareEsptoolCommand(cmd)
-	out, err := cmd.CombinedOutput()
+	w := &esptoolProgressWriter{progress: progress, segmentSizes: segmentSizes}
+	cmd.Stdout = w
+	cmd.Stderr = w
+	err := cmd.Run()
 	if err != nil {
-		return fmt.Errorf("USB install failed. Hold BOOT on the board and try again. Details: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("USB install failed. Hold BOOT on the board and try again. Details: %s", strings.TrimSpace(w.String()))
+	}
+	if progress != nil {
+		progress(100)
 	}
 	return nil
 }
@@ -1923,6 +2631,15 @@ func chooseTargetForOTA(pkg *Package) (string, error) {
 			return target, nil
 		}
 	}
+	// Older OpenTurbine builds predate /api/device_info but expose the build
+	// platform in /api/hardware. Use that read-only identity before suggesting
+	// an erasing USB reinstall.
+	target, err = detectTargetFromHardware()
+	if err == nil && target != "" {
+		if _, ok := pkg.Manifest.Targets[target]; ok {
+			return target, nil
+		}
+	}
 	if strings.TrimSpace(pkg.Manifest.FirmwareOTA) != "" {
 		return "", nil
 	}
@@ -1932,6 +2649,25 @@ func chooseTargetForOTA(pkg *Package) (string, error) {
 		}
 	}
 	return "", errors.New("target not known")
+}
+
+func targetFromIdentity(target, chip string) (string, error) {
+	t := strings.ToLower(strings.TrimSpace(target))
+	if t == "esp32dev" || t == "esp32s3dev" {
+		return t, nil
+	}
+	chip = strings.ToLower(strings.TrimSpace(chip))
+	if strings.Contains(chip, "s3") {
+		return "esp32s3dev", nil
+	}
+	if strings.Contains(chip, "esp32-c3") || strings.Contains(chip, "esp32-c6") ||
+		strings.Contains(chip, "esp32-s2") || strings.Contains(chip, "esp32-h2") {
+		return "", fmt.Errorf("unsupported ESP chip")
+	}
+	if strings.Contains(chip, "esp32") {
+		return "esp32dev", nil
+	}
+	return "", fmt.Errorf("unknown target")
 }
 
 func detectTargetFromDeviceInfo() (string, error) {
@@ -1953,18 +2689,35 @@ func detectTargetFromDeviceInfo() (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
 		return "", err
 	}
-	t := strings.ToLower(v.Target)
-	if t == "esp32dev" || t == "esp32s3dev" {
-		return t, nil
+	return targetFromIdentity(v.Target, v.Chip)
+}
+
+func detectTargetFromHardware() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", ecuBaseURL+"/api/hardware", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
 	}
-	chip := strings.ToLower(v.Chip)
-	if strings.Contains(chip, "s3") {
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("hardware identity returned %s", resp.Status)
+	}
+	var v struct {
+		Platform string `json:"platform"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return "", err
+	}
+	switch strings.ToLower(strings.TrimSpace(v.Platform)) {
+	case "esp32s3", "esp32-s3", "esp32s3dev":
 		return "esp32s3dev", nil
-	}
-	if strings.Contains(chip, "esp32") {
+	case "esp32", "esp32dev":
 		return "esp32dev", nil
+	default:
+		return "", fmt.Errorf("unknown hardware platform")
 	}
-	return "", fmt.Errorf("unknown target")
 }
 
 func firmwarePath(pkg *Package, target string) (string, error) {
@@ -2080,30 +2833,43 @@ func waitForECU(timeout time.Duration) error {
 }
 
 func checkSafeStatus() error {
+	mode, statusErr := fetchECUMode("/api/status")
+	if statusErr != nil || mode == "" {
+		// Compatibility path for releases older than /api/status.
+		mode, statusErr = fetchECUMode("/api/data")
+	}
+	if statusErr != nil || mode == "" {
+		return fmt.Errorf("The tool could not verify that the engine is stopped, so the update was not started. Open the Dashboard, confirm the ECU is in STANDBY or FAULT, then try again. Details: %v", statusErr)
+	}
+	if mode != "STANDBY" && mode != "FAULT" {
+		return fmt.Errorf("The board reports %s. Stop the engine and wait for STANDBY (or FAULT) before updating.", mode)
+	}
+	return nil
+}
+
+func fetchECUMode(path string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", ecuBaseURL+"/api/status", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", ecuBaseURL+path, nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil
+		return "", fmt.Errorf("%s returned %s", path, resp.Status)
 	}
-	var s struct {
-		Mode         string `json:"mode"`
-		Locked       bool   `json:"locked"`
-		ProfileMatch bool   `json:"profile_match"`
+	var payload struct {
+		Mode string `json:"mode"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
-		return nil
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", fmt.Errorf("%s returned invalid status data: %w", path, err)
 	}
-	mode := strings.ToUpper(strings.TrimSpace(s.Mode))
-	if mode != "STANDBY" && mode != "FAULT" {
-		return fmt.Errorf("The board is not in STANDBY. Stop the engine and wait until it is in STANDBY before updating.")
+	mode := strings.ToUpper(strings.TrimSpace(payload.Mode))
+	if mode == "" {
+		return "", fmt.Errorf("%s did not report engine mode", path)
 	}
-	return nil
+	return mode, nil
 }
 
 func backupConfig() (string, error) {
@@ -2118,6 +2884,35 @@ func backupConfig() (string, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("backup returned %s", resp.Status)
 	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024+1))
+	if err != nil {
+		return "", fmt.Errorf("could not read engine file backup: %w", err)
+	}
+	if len(data) > 2*1024*1024 {
+		return "", fmt.Errorf("engine file backup is unexpectedly large")
+	}
+	var engineFile struct {
+		Hardware json.RawMessage `json:"hardware"`
+		Settings json.RawMessage `json:"settings"`
+	}
+	if err := json.Unmarshal(data, &engineFile); err != nil {
+		return "", fmt.Errorf("board returned an invalid engine file: %w", err)
+	}
+	validSection := func(raw json.RawMessage) bool {
+		trimmed := strings.TrimSpace(string(raw))
+		return len(trimmed) >= 2 && strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")
+	}
+	if !validSection(engineFile.Hardware) || !validSection(engineFile.Settings) {
+		return "", fmt.Errorf("board backup is incomplete: hardware or settings section is missing")
+	}
+	var hardwareIdentity, settingsIdentity struct {
+		ProfileID string `json:"profile_id"`
+	}
+	if json.Unmarshal(engineFile.Hardware, &hardwareIdentity) != nil ||
+		json.Unmarshal(engineFile.Settings, &settingsIdentity) != nil ||
+		hardwareIdentity.ProfileID == "" || hardwareIdentity.ProfileID != settingsIdentity.ProfileID {
+		return "", fmt.Errorf("board backup has missing or mismatched engine profile IDs")
+	}
 	dir := filepath.Join(backupDir(), time.Now().Format("2006-01-02_15-04-05"))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
@@ -2127,7 +2922,7 @@ func backupConfig() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, copyErr := io.Copy(f, resp.Body)
+	_, copyErr := f.Write(data)
 	closeErr := f.Close()
 	if copyErr != nil {
 		return "", copyErr
@@ -2135,7 +2930,7 @@ func backupConfig() (string, error) {
 	if closeErr != nil {
 		return "", closeErr
 	}
-	note := "This settings backup may contain the OpenTurbine board Wi-Fi password. Keep it private.\r\n"
+	note := "This complete engine file contains the OpenTurbine board Wi-Fi password. Keep it private.\r\n"
 	_ = os.WriteFile(filepath.Join(dir, "README.txt"), []byte(note), 0644)
 	return p, nil
 }

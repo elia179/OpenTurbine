@@ -537,7 +537,7 @@ static void _sendGzipAsset(AsyncWebServerRequest* req, const char* path,
     req->send(resp);
 }
 
-static constexpr const char* SHARED_ASSET_CACHE = "no-cache";
+static constexpr const char* SHARED_ASSET_CACHE = "public, max-age=31536000, immutable";
 
 static void _finalizeJsonResponse(AsyncWebServerResponse* resp) {
     if (!resp) return;
@@ -673,6 +673,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["oil_demand"]            = (float)(int)(ed.oilTargetBar * 100) / 100.0f;
     doc["flame"]                 = ed.flameDetected;
     doc["flame_raw"]             = ed.flameSensorRaw;
+    doc["last_run_flame_avg"]    = (float)(int)(ed.lastRunFlameAvg * 10) / 10.0f;
+    doc["last_run_flame_samples"] = ed.lastRunFlameSamples;
     doc["torque_raw"]            = ed.torqueRaw;
     doc["p1"]                    = (float)(int)(std::max(0.0f, p1Bar) * 100) / 100.0f;
     doc["p2"]                    = (float)(int)(std::max(0.0f, p2Bar) * 100) / 100.0f;
@@ -712,7 +714,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["throttle_input_norm"] = (float)(int)(inputNorm * 1000) / 1000.0f;
     }
     doc["throttle_demand"]       = (float)(int)(ed.throttleDemand * 1000) / 1000.0f;
-    // Effective throttle = pilot demand + AB main fuel offset after min-spin
+    // Effective throttle = operator demand + AB main fuel offset after min-spin
     // deadband, matching what the ESC sees outside standby calibration/tools.
     float throttleEffective = constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f);
     if (ed.mode != SysMode::STANDBY) throttleEffective = Config::applyFuelPumpMinimum(throttleEffective);
@@ -814,6 +816,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["fault_description"]     = ed.faultDescription;
     // ── Extended sensor values (has_* flags are in the slow section) ───────
     doc["oil_temp"]              = (float)(int)(ed.oilTemp * 10) / 10.0f;
+    doc["oil_temp_raw"]          = ed.oilTempRaw;
     doc["oil_temp_healthy"]      = ed.oilTempHealthy;
     doc["max_oil_temp"]          = (float)(int)(ed.maxOilTemp * 10) / 10.0f;
     doc["batt_voltage"]          = (float)(int)(ed.battVoltage * 100) / 100.0f;
@@ -846,7 +849,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["oil_scavenge_on"]       = ed.oilScavengeOn;
     doc["governor_target_rpm"]   = (int)Config::governorTargetRpm;
     // Which governor axis is live (same selection as Hardware runControllers): prop-pitch
-    // mode holds N2 with pitch/load and leaves the throttle to the pilot; throttle-driven
+    // mode holds N2 with pitch/load and leaves the throttle to the operator; throttle-driven
     // mode winds fuel/throttle to hold N2. Lets the dashboard show the active mode.
     doc["governor_mode"]         = (HardwareConfig::hasPropPitch &&
                                     HardwareConfig::propPitchType != 2 &&
@@ -1089,9 +1092,10 @@ void WebServer::_setupRoutes() {
     _server.on("/redirect", HTTP_GET, redirectToPortal);
     _server.on("/canonical.html", HTTP_GET, redirectToPortal);
 
-    // Revalidate shared assets on every page load. During beta testing the web
-    // filesystem is reflashed often; stale JS/CSS with fresh HTML creates
-    // confusing half-loaded pages.
+    // Shared assets are versioned by the ?v= token in each HTML page. Let the
+    // browser reuse them while navigating; repeatedly streaming CSS/JS in
+    // parallel with large HTML pages can overrun the ESP AP/LittleFS path and
+    // produce truncated responses in Chrome.
     _server.on("/app.js", HTTP_GET, [](AsyncWebServerRequest* req) {
         _sendGzipAsset(req, "/app.js.gz", "application/javascript", SHARED_ASSET_CACHE);
     });
@@ -1119,7 +1123,9 @@ void WebServer::_setupRoutes() {
     });
     _server.on("/config.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
         if (redirectCaptiveToIp(req)) return;
-        _sendGzipAsset(req, "/config.html.gz", "text/html", "no-cache");
+        // Config is the page most affected by stale HTML paired with newer
+        // app.js/style.css after an update. Never reuse a stored copy.
+        _sendGzipAsset(req, "/config.html.gz", "text/html", "no-store");
     });
     _server.on("/sequence.html", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
         if (redirectCaptiveToIp(req)) return;
@@ -1311,9 +1317,20 @@ void WebServer::_setupRoutes() {
             JsonDocument current;
             Config::toJson(current);
             _mergeJsonObject(current.as<JsonObject>(), patch.as<JsonObjectConst>());
+            if (!Config::validateJson(current)) {
+                req->send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"settings validation failed; reload Config and review invalid values\"}");
+                return;
+            }
+            if (strcmp(current["profile_id"] | "", HardwareConfig::profileId) != 0) {
+                req->send(409, "application/json",
+                    "{\"ok\":false,\"error\":\"engine profile mismatch\"}");
+                return;
+            }
             bool ok = Config::fromJson(current);
             if (!ok) {
-                req->send(400, "application/json", "{\"ok\":false,\"error\":\"settings rejected\"}");
+                req->send(500, "application/json",
+                    "{\"ok\":false,\"error\":\"settings were valid but could not be written to storage\"}");
                 return;
             }
             bool applyQueued = CommandQueue::push({ OTCommand::APPLY_CONFIG });
@@ -1335,7 +1352,7 @@ void WebServer::_setupRoutes() {
         });
 
     // POST /api/theme?t=<key> — persist the web UI theme into ecu_config.json so it
-    // travels with the engine file. Cosmetic: not mode-gated, no APPLY_CONFIG, no flight log.
+    // travels with the engine file. Cosmetic: not mode-gated, no APPLY_CONFIG, no event log.
     _server.on("/api/theme", HTTP_POST, [](AsyncWebServerRequest* req) {
         if (!req->hasParam("t")) {
             req->send(400, "application/json", "{\"ok\":false,\"error\":\"missing t\"}");
@@ -1394,7 +1411,7 @@ void WebServer::_setupRoutes() {
         req->send(resp);
     });
 
-    // GET /api/log/raw — full flight log download as NDJSON (one JSON object per line).
+    // GET /api/log/raw — full event log download as NDJSON (one JSON object per line).
     // Uses AsyncFileResponse: reads LittleFS in 1460-byte TCP chunks without heap buffering.
     _server.on("/api/log/raw", HTTP_GET, [](AsyncWebServerRequest* req) {
         if (!_isStandbyLike(EngineData::instance().mode) || Config::logStandby) {
@@ -1410,7 +1427,7 @@ void WebServer::_setupRoutes() {
         req->onDisconnect([]() { FlightRecorder::endRawDownload(); });
         AsyncWebServerResponse* resp = req->beginResponse(
             LittleFS, FlightRecorder::PATH, "application/x-ndjson");
-        resp->addHeader("Content-Disposition", "attachment; filename=\"flight_log.ndjson\"");
+        resp->addHeader("Content-Disposition", "attachment; filename=\"event_log.ndjson\"");
         resp->addHeader("Cache-Control", "no-store");
         resp->addHeader("Connection", "close");
         req->send(resp);
@@ -1427,7 +1444,7 @@ void WebServer::_setupRoutes() {
         }
         const int DISPLAY_LIMIT = 400;
         AsyncResponseStream* resp = req->beginResponseStream("text/csv");
-        resp->addHeader("Content-Disposition", "attachment; filename=\"flight_log.csv\"");
+        resp->addHeader("Content-Disposition", "attachment; filename=\"event_log.csv\"");
         resp->print("t,ev,details\r\n");
         FlightRecorder::lockLog();
         File f = LittleFS.open(FlightRecorder::PATH, "r");
@@ -2104,7 +2121,11 @@ void WebServer::_setupRoutes() {
                             bool allowed = (strcmp(sensorKey, "oil_temp") == 0 &&
                                             (strcmp(fieldKey, "ntc_beta") == 0 ||
                                              strcmp(fieldKey, "ntc_r0") == 0 ||
-                                             strcmp(fieldKey, "ntc_r_fixed") == 0))
+                                             strcmp(fieldKey, "ntc_r_fixed") == 0 ||
+                                             strcmp(fieldKey, "use_raw_poly") == 0 ||
+                                             strcmp(fieldKey, "poly_a") == 0 || strcmp(fieldKey, "poly_b") == 0 ||
+                                             strcmp(fieldKey, "poly_c") == 0 || strcmp(fieldKey, "poly_d") == 0 ||
+                                             strcmp(fieldKey, "poly_x_min") == 0 || strcmp(fieldKey, "poly_x_max") == 0))
                                         || (strcmp(sensorKey, "batt_voltage") == 0 &&
                                             strcmp(fieldKey, "divider") == 0)
                                         || (strcmp(sensorKey, "torque") == 0 &&

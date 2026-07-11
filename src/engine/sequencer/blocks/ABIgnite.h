@@ -58,7 +58,7 @@ public:
         // Torch: temporarily boost main fuel via ed.abFuelOffset.
         // The offset is applied at the throttle actuator write in
         // Hardware::updateActuators(), NOT to throttleDemand itself.
-        // Writing to throttleDemand would be overwritten by the pilot
+        // Writing to throttleDemand would be overwritten by the operator
         // throttle input on the very same tick (runControllers runs after
         // the AB sequencer), making the spike completely ineffective on
         // physical-throttle setups.

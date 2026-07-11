@@ -161,8 +161,14 @@ function isDashboardPage() {
 function isConfigPage() {
   return location.pathname === '/config.html';
 }
+function isCalibrationPage() {
+  return location.pathname === '/calibration.html';
+}
 function usesGlobalTelemetry() {
   return isLiveTelemetryPage();
+}
+function pageStartsTelemetryAfterSetup() {
+  return isConfigPage() || isCalibrationPage();
 }
 function hasPageLocalTelemetry() {
   return location.pathname === '/hardware.html' ||
@@ -576,7 +582,7 @@ function applyData(d) {
   setDot('tot-health', d.tot_healthy, lbl('tot'));
   setDot('oil-health', d.oil_healthy, lbl('oil_press'));
   // Flame dot: green = flame confirmed; red = no flame while the engine is
-  // operating (in-flight flameout cue); neutral = no flame otherwise (normal
+  // operating (running flameout cue); neutral = no flame otherwise (normal
   // at standby). Title set manually below to bypass setDot's generic
   // "sensor fault (check wiring)" text — flame-off is not a wiring fault.
   // Exception: a railed ADC at standby (flame_healthy=false) IS a wiring
@@ -622,7 +628,7 @@ function applyData(d) {
     const dropped = Number(d.flight_dropped_events || 0);
     flightDropBanner.style.display = dropped > 0 ? '' : 'none';
     if (dropped > 0) {
-      flightDropBanner.textContent = 'Flight recorder dropped ' + dropped + ' event' + (dropped === 1 ? '' : 's') + '. Event log may be incomplete.';
+      flightDropBanner.textContent = 'Event recorder dropped ' + dropped + ' event' + (dropped === 1 ? '' : 's') + '. Event log may be incomplete.';
     }
   }
   const storageBanner = document.getElementById('config-storage-banner');
@@ -1564,7 +1570,15 @@ function startTelemetryBoot() {
       .catch(() => {});
   }
 }
-setTimeout(startTelemetryBoot, isDashboardPage() ? 0 : 800);
+window.startTelemetryBoot = startTelemetryBoot;
+function scheduleTelemetryBoot() {
+  if (pageStartsTelemetryAfterSetup()) return;
+  const delay = isDashboardPage() ? 0 : 400;
+  const boot = () => setTimeout(startTelemetryBoot, delay);
+  if (document.readyState === 'complete') boot();
+  else window.addEventListener('load', boot, { once: true });
+}
+scheduleTelemetryBoot();
 
 // Show banner if startup sequence is empty (checked once at page load)
 const _emptySeqBanner = document.getElementById('empty-seq-banner');

@@ -35,6 +35,9 @@ struct NTCCal {
     float r0     = 10000.0f;   // NTC resistance at reference temp (Ω)
     float t0C    = 25.0f;      // reference temperature (°C)
     float beta   = 3950.0f;    // B coefficient
+    bool useRawPoly = false;
+    float a=0, b=0, c=0, d=0;
+    float polyXMin=0, polyXMax=4095;
 };
 
 class NTCSensor : public AnalogBase {
@@ -48,6 +51,11 @@ public:
         float raw = _avg.avg();
         // Avoid divide-by-zero at rails
         if (raw <= 0.0f || raw >= 4095.0f) return -999.0f;
+
+        if (_cal.useRawPoly) {
+            raw = constrain(raw, _cal.polyXMin, _cal.polyXMax);
+            return ((_cal.a * raw + _cal.b) * raw + _cal.c) * raw + _cal.d;
+        }
 
         float r = _cal.rFixed * raw / (4095.0f - raw);
         if (r <= 0.0f) return -999.0f;
@@ -64,6 +72,10 @@ public:
 
 private:
     bool _calValid() const {
+        if (_cal.useRawPoly)
+            return isfinite(_cal.a) && isfinite(_cal.b) && isfinite(_cal.c) && isfinite(_cal.d) &&
+                   isfinite(_cal.polyXMin) && isfinite(_cal.polyXMax) &&
+                   _cal.polyXMin >= 0.0f && _cal.polyXMax <= 4095.0f && _cal.polyXMax > _cal.polyXMin;
         return _cal.rFixed > 0.0f && _cal.r0 > 0.0f &&
                _cal.beta > 0.0f && _cal.t0C > -273.15f;
     }

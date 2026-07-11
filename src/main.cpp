@@ -1350,7 +1350,7 @@ static void checkGeneralDI() {
                 // Inject the DI fault code into SafetyMonitor so that
                 // enterFaultShutdown() reads the correct string via lastFault().
                 // Without this, lastFault() returns null (or a stale code from a
-                // previous safety fault), corrupting the flight log and lastEvent.
+                // previous safety fault), corrupting the event log and lastEvent.
                 const char* diCode = hw.diCh[i].faultCode[0] ? hw.diCh[i].faultCode : "DI_FAULT";
                 g_safety.setExternalFault(diCode);
                 Serial.printf("[DI] ch%d fault role triggered: %s\n", i, diCode);
@@ -1744,6 +1744,8 @@ static void enterRunning() {
     // Spool would silently leave flameMonitorActive=false and flameout would
     // never be detected in RUNNING mode.
     ed.flameMonitorActive = true;
+    ed.lastRunFlameAvg = 0;
+    ed.lastRunFlameSamples = 0;
     _runStartMs        = millis();
     ed.runStartMs      = _runStartMs;   // mirror for the live hour meter in telemetry
     strncpy(ed.lastEvent, "Startup complete - engine self-sustained", sizeof(ed.lastEvent) - 1);
@@ -1929,7 +1931,7 @@ static void enterAbortStandby() {
     } else {
         snprintf(ed.faultDescription, sizeof(ed.faultDescription),
             "Startup aborted at sequence step: %s.\n"
-            "What to do: Check the Flight Log for details. "
+            "What to do: Check the Event Log for details. "
             "Verify all sensors and actuators are working correctly.",
             blockName);
     }
@@ -1967,7 +1969,7 @@ static void sequenceComplete() {
 // A block fault during startup runs the normal fault-shutdown path. A block
 // fault raised BY the shutdown sequence itself must not restart the sequence
 // from block 0 (a deterministic fault would loop forever, never reaching
-// STANDBY and flooding the flight log) — cut all outputs and land in STANDBY.
+// STANDBY and flooding the event log) — cut all outputs and land in STANDBY.
 static void sequenceFaulted() {
     auto& ed = EngineData::instance();
     if (ed.mode != SysMode::SHUTDOWN) {
@@ -2171,7 +2173,10 @@ static void handleCommand(const OTPacket& pkt) {
         case OTCommand::SET_OIL_PCT:
             // Manual oil override is allowed only in STANDBY.
             if (standbyLike) {
-                ed.oilPumpPct = (float)constrain(pkt.iParam, 0, 100);
+                // fParam gives calibration tools fractional-percent control;
+                // iParam remains as a fallback for older clients.
+                ed.oilPumpPct = constrain((pkt.fParam != 0.0f) ? pkt.fParam : (float)pkt.iParam,
+                                          0.0f, 100.0f);
                 _manualOilPct = ed.oilPumpPct;  // restored when standby oil feed disengages
             }
             break;
@@ -2182,7 +2187,8 @@ static void handleCommand(const OTPacket& pkt) {
             // starts to spin. Reuses the idle-test timer, so it auto-returns to 0 if
             // the UI stops refreshing it.
             if (HardwareConfig::hasThrottle && standbyLike && !anyToolTimerActive()) {
-                ed.throttleDemand = constrain(pkt.iParam, 0, 100) / 100.0f;
+                ed.throttleDemand = constrain((pkt.fParam != 0.0f) ? pkt.fParam : (float)pkt.iParam,
+                                               0.0f, 100.0f) / 100.0f;
                 _idleTestUntilMs  = millis() + Config::toolIdleTestMs;
             }
             break;
@@ -2719,6 +2725,17 @@ void loop() {
     uint32_t afterCommandsUs = micros();
 
     Hardware::updateSensors();
+    // One sample per second is enough for a useful last-run flame reference and
+    // avoids spending control-loop time continuously accumulating statistics.
+    static uint32_t lastFlameAverageMs = 0;
+    auto& flameEd = EngineData::instance();
+    if (flameEd.mode == SysMode::RUNNING && HardwareConfig::hasFlame &&
+        millis() - lastFlameAverageMs >= 1000) {
+        lastFlameAverageMs = millis();
+        const uint32_t n = flameEd.lastRunFlameSamples;
+        flameEd.lastRunFlameAvg = (flameEd.lastRunFlameAvg * n + flameEd.flameSensorRaw) / (n + 1);
+        flameEd.lastRunFlameSamples = n + 1;
+    }
     uint32_t afterSensorsUs = micros();
 
     // RC PWM input — updates rcIdle*/rcThrottle* and synthesises pot ADC values

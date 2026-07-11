@@ -44,6 +44,7 @@ struct EngineData {
     volatile float    tit             = 0;      // °C   turbine inlet temp (optional)
     volatile float    oilPressure     = 0;      // bar  engine oil
     volatile float    oilTemp         = 0;      // °C   engine oil temperature (optional)
+    volatile int      oilTempRaw      = 0;
     volatile float    fuelPressure    = 0;      // bar  fuel rail pressure (optional)
     volatile int      fuelPressRaw   = 0;      // raw ADC counts for calibration
     volatile float    p1              = 0;      // bar  inlet pressure (optional)
@@ -54,6 +55,8 @@ struct EngineData {
     volatile float    turboPower      = 0;      // W    shaft power = torque × n2AngularVel (turboshaft)
     volatile int      oilPressureRaw  = 0;      // raw ADC counts
     volatile int      flameSensorRaw  = 0;      // raw ADC counts
+    volatile float    lastRunFlameAvg = 0;      // sparse 1 Hz average from latest run
+    volatile uint32_t lastRunFlameSamples = 0;
     volatile int      torqueRaw       = 0;      // raw ADC counts (ADC torque sensor only)
     volatile int      throttleInputRaw = 0;     // ADC counts (ADC mode) or pulse width us (servo mode)
     volatile int      idleInputRaw     = 0;     // ADC counts (ADC mode) or pulse width us (servo mode)

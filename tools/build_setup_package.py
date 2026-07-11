@@ -7,7 +7,9 @@ Run after both firmware environments and their LittleFS images have been built:
     pio run -e esp32dev -t buildfs
     pio run -e esp32s3dev
     pio run -e esp32s3dev -t buildfs
-    python tools/build_setup_package.py --esptool C:\path\to\esptool.exe
+    python tools/build_setup_package.py --esptool C:\path\to\esptool.exe \
+        --cp210x-driver C:\path\to\extracted\CP210x_Windows_Drivers \
+        --ch340-driver C:\path\to\extracted\CH341SER
 
 The output ZIP is intentionally deterministic enough for release checks and is
 validated before it is written.
@@ -117,6 +119,18 @@ def partition_offset(csv_name: str, partition_name: str) -> str:
     raise RuntimeError(f"Could not find partition {partition_name!r} in {path}")
 
 
+def partition_size(csv_name: str, partition_name: str) -> int:
+    path = ROOT / csv_name
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) >= 5 and parts[0] == partition_name:
+            return int(parts[4], 0)
+    raise RuntimeError(f"Could not find partition {partition_name!r} in {path}")
+
+
 def copy_required(src: Path, dst: Path, missing: list[str]) -> None:
     if src.exists():
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -125,22 +139,29 @@ def copy_required(src: Path, dst: Path, missing: list[str]) -> None:
         missing.append(str(src.relative_to(ROOT) if src.is_relative_to(ROOT) else src))
 
 
-def maybe_copy_driver(src: str | None, dst: Path) -> None:
+def copy_driver_package(src: str | None, dst: Path, *, require_inf: bool) -> None:
     if not src:
         return
     path = Path(src).expanduser()
     if not path.exists():
-        raise RuntimeError(f"Driver installer not found: {path}")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(path, dst)
+        raise RuntimeError(f"Driver package not found: {path}")
+    source_dir = path if path.is_dir() else path.parent
+    # CP210xVCPInstaller is DPInst, not a self-contained installer. It needs
+    # the INF, CAT, and SYS files shipped beside it.
+    if require_inf and not any(source_dir.rglob("*.inf")):
+        raise RuntimeError(
+            f"CP210x driver package {source_dir} has no .inf file. Pass the extracted "
+            "Silicon Labs CP210x Windows driver folder, not a lone installer EXE."
+        )
+    shutil.copytree(source_dir, dst, dirs_exist_ok=True)
 
 
 def stage_package(stage: Path, esptool: Path, cp210x: str | None, ch340: str | None) -> dict:
     missing: list[str] = []
     (stage / "tools").mkdir(parents=True, exist_ok=True)
     copy_required(esptool, stage / "tools" / "esptool.exe", missing)
-    maybe_copy_driver(cp210x, stage / "drivers" / "cp210x" / "CP210xVCPInstaller_x64.exe")
-    maybe_copy_driver(ch340, stage / "drivers" / "ch340" / "CH341SER.EXE")
+    copy_driver_package(cp210x, stage / "drivers" / "cp210x", require_inf=True)
+    copy_driver_package(ch340, stage / "drivers" / "ch340", require_inf=False)
 
     boot_app0 = find_boot_app0()
     if boot_app0 is None:
@@ -168,12 +189,29 @@ def stage_package(stage: Path, esptool: Path, cp210x: str | None, ch340: str | N
             copy_required(ROOT / "data" / name, web_stage / name, missing)
 
         littlefs_address = partition_offset(meta["partition_csv"], "littlefs")
+        app_partition_bytes = partition_size(meta["partition_csv"], "app0")
+        firmware_path = env_build / "firmware.bin"
+        firmware_bytes = firmware_path.stat().st_size if firmware_path.exists() else 0
+        if firmware_bytes > app_partition_bytes:
+            raise RuntimeError(
+                f"{env} firmware is {firmware_bytes} bytes but app0 is only "
+                f"{app_partition_bytes} bytes"
+            )
+        firmware_used_pct = round(firmware_bytes * 100.0 / app_partition_bytes, 1)
+        if firmware_used_pct >= 90.0:
+            print(
+                f"warning: {env} firmware uses {firmware_used_pct:.1f}% of its app partition "
+                f"({app_partition_bytes - firmware_bytes} bytes free)",
+                file=sys.stderr,
+            )
         usb_flash = [{"address": meta["bootloader_address"], "file": "bootloader.bin"}]
         usb_flash.extend({"address": address, "file": filename} for address, filename in COMMON_FLASH)
         usb_flash.append({"address": littlefs_address, "file": "littlefs.bin"})
         manifest["targets"][env] = {
             "chip": meta["chip"],
             "firmware_ota": "firmware.bin",
+            "firmware_bytes": firmware_bytes,
+            "app_partition_bytes": app_partition_bytes,
             "web_assets": "web_assets",
             "usb_flash": usb_flash,
         }
@@ -207,8 +245,13 @@ def write_sha256(output: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--esptool", help="Path to the Windows esptool.exe to bundle.")
-    parser.add_argument("--cp210x-driver", help="Optional Silicon Labs CP210x driver installer.")
-    parser.add_argument("--ch340-driver", help="Optional WCH CH340 driver installer.")
+    parser.add_argument("--cp210x-driver", help="Extracted Silicon Labs CP210x driver folder (or a file inside it).")
+    parser.add_argument("--ch340-driver", help="Extracted WCH CH340 driver folder (or a file inside it).")
+    parser.add_argument(
+        "--allow-missing-drivers",
+        action="store_true",
+        help="Build without one or both driver packages (development only; do not use for releases).",
+    )
     parser.add_argument(
         "--output",
         default=str(ROOT / "dist" / "setup_tool" / "OpenTurbine_Recommended.zip"),
@@ -219,6 +262,13 @@ def main() -> int:
     esptool = find_esptool(args.esptool)
     if esptool is None:
         print("error: esptool.exe was not found; pass --esptool C:\\path\\to\\esptool.exe", file=sys.stderr)
+        return 2
+    if not args.allow_missing_drivers and (not args.cp210x_driver or not args.ch340_driver):
+        print(
+            "error: release packages require both --cp210x-driver and --ch340-driver; "
+            "use --allow-missing-drivers only for local development",
+            file=sys.stderr,
+        )
         return 2
 
     output = Path(args.output).resolve()

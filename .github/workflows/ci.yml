@@ -1,0 +1,62 @@
+name: Release checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify generated web assets
+        run: |
+          python3 tools/gzip_data.py
+          git diff --exit-code -- data
+      - name: Run every browser audit
+        run: npm run audit:ui
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: python -m pip install platformio==6.1.19
+      - run: python tools/gzip_data.py
+      - name: Build classic ESP32 firmware and filesystem
+        run: |
+          pio run -e esp32dev
+          pio run -e esp32dev -t buildfs
+      - name: Build ESP32-S3 firmware and filesystem
+        run: |
+          pio run -e esp32s3dev
+          pio run -e esp32s3dev -t buildfs
+
+  windows-installer:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: tools/setup_tool
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: tools/setup_tool/go.mod
+          cache-dependency-path: tools/setup_tool/go.mod
+      - run: gofmt -w main.go main_test.go
+      - name: Require committed Go formatting
+        working-directory: .
+        run: git diff --exit-code -- tools/setup_tool/main.go tools/setup_tool/main_test.go
+      - run: go test ./...
+      - run: go build -ldflags="-H windowsgui -s -w" -o OpenTurbineSetupTool.exe .

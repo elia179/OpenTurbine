@@ -1,402 +1,434 @@
 # OpenTurbine
 
-**Universal turbine engine ECU firmware for ESP32.**
+OpenTurbine is an open-source ESP32 turbine engine controller with a built-in web interface. It is intended for experimental turbojets, APUs, generators, turboshafts, turboprops, and other small turbine installations—not only aircraft.
 
-OpenTurbine is an open-source engine control unit for small jet turbines. It runs on a standard ESP32 (or ESP32-S3) development board and provides a complete control loop — startup sequencing, oil pump control, safety shutdowns, afterburner management, and a Wi-Fi web interface — with zero code changes between different engine builds. A compile-time profile provides safe factory defaults; the complete per-engine hardware and settings file is then tuned at runtime via the web UI.
+The project aims to support the variety found in hobby turbines instead of prescribing one engine layout. The normal interface keeps common setup simple and shows only controls relevant to the fitted hardware; Advanced views, configurable sequences, rules, sensor models, and actuator choices remain available for unusual installations. Suggestions are starting points to verify, not mandatory engine settings. OpenTurbine should require an action only when needed to prevent an immediate unsafe operation, destructive data loss, or an internally invalid configuration.
 
-## Start Here: Install OpenTurbine On A Board
+> **Experimental engine control software:** A turbine can cause fire, burns, overspeed failure, fuel spray, projectiles, hearing damage, and death. OpenTurbine does not know the safe limits of your engine. You must verify every limit, output direction, shutdown path, and sequence on a safe test stand before introducing fuel.
 
-Most users should start with the Windows setup tool:
+## Download and install
 
-1. Download [`OpenTurbineSetupTool.exe`](https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe).
-2. Double-click it.
-3. Choose **Set up a new board** for a blank ESP32/ESP32-S3, or **Update my OpenTurbine board** for an existing install.
-4. Follow the on-screen steps, then connect to the board Wi-Fi and open `http://192.168.4.1`.
+### Windows—the easy path
 
-The setup tool installs the firmware and web dashboard files for you. See
-[`docs/BETA_USER_GUIDE.md`](docs/BETA_USER_GUIDE.md) for the practical first
-setup walkthrough, and [`docs/SETUP_TOOL.md`](docs/SETUP_TOOL.md) for release
-packaging details.
+**[Download OpenTurbine Setup Tool](https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe)**
 
-Developers can still build and flash manually with PlatformIO; see
-[Quick start](#quick-start).
+1. Connect an ESP32 or supported ESP32-S3 board by USB.
+2. Open `OpenTurbineSetupTool.exe`.
+3. Choose **Clean install / reinstall**. This USB path erases the selected board and is correct for a blank board or an intentional fresh installation on an older board. If the older board still works, first download its complete engine file from Tools; the clean-install path cannot recover erased settings.
+4. Select the detected board and follow the instructions.
+5. After installation, join the Wi-Fi network shown by the tool and open `http://192.168.4.1`.
 
----
+For normal upgrades, choose **Update and keep my setup**. That Wi-Fi path backs up the engine settings and updates firmware and web pages without resetting the existing setup.
 
-## Features
+If the download link says **Not Found**, the first public release has not been published yet. Do not download an installer offered by an unrelated third party. Releases belong at [github.com/elia179/OpenTurbine/releases](https://github.com/elia179/OpenTurbine/releases).
 
-### Engine control
-- **Block-based startup/shutdown sequencer** — each stage (oil prime, glow preheat, starter spin, pre-ignition, fuel open, flame confirm, temp confirm, spool, safety hold, cooldown…) is an independent, swappable, runtime-configurable block
-- **Closed-loop oil pressure control** — P-controller with throttle-mapped target (idle → full throttle interpolation), open-loop failsafe on sensor fault, configurable deadband
-- **Dynamic idle hold** — optional RPM-feedback feature with asymmetric ramp, PI integral term, selectable N1 or N2 source
-- **Throttle slew limiting** — configurable up/down ramp rates with safety pullback near RPM/selected-EGT limits
-- **Fuel-pump minimum spin** — calibrated single source for the main fuel lower bound; startup idle input, spool, dynamic idle, and running throttle mapping use it. Outside standby calibration/tools, nonzero commands below it are forced to 0. 0 = uncalibrated / no deadband
-- **Power turbine governor** — closed-loop N2 RPM hold, auto-selecting throttle-driven mode (turboshaft/APU/generator) or prop-pitch mode (turboprop) from the fitted hardware
-- **Afterburner state machine** — full AB ignition/shutdown sequencer (ABCheckReady → ABIgnite → ABFlameConfirm → ABStabilize) with torch mode, fuel offset, pump-follows-throttle demand, independent igniter
-- **Automation rules engine** — up to 8 user-defined threshold rules (sensor op value → actuator demand) evaluated every loop tick
-- **Glow plug support** — current-sensor-based saturation detection with dwell/rest state machine
-- **Bleed valve control** — compressor bleed valve commands for surge prevention
+### If Windows blocks the installer
 
-### Safety monitor
-- Overspeed, overtemp (TOT and TIT), low oil pressure, oil-near-zero
-- EGT rate-of-rise — triggers before temperature limit is reached
-- Hot start detection — aborts startup if the selected EGT source is still too high
-- Flameout detection with configurable hold time; automatic relight is available when N1 windmill feedback is fitted
-- Optional compressor surge detection via N1 RPM variance analysis
-- Fuel pressure low (in RUNNING only)
-- Battery / bus undervoltage
-- General-purpose digital input fault and e-stop channels
-- Each check independently enabled/disabled in hardware config; all disabled in bench mode
+The current installer may be unsigned, so Microsoft Edge, Chrome, or SmartScreen may warn about a new or uncommon application.
 
-### Sensors (HAL)
-- **PCNTRpmSensor** — ESP32 hardware PCNT pulse counter; tracks RPM jump, saturation, zero-stuck, and zero-glitch faults
-- **MAX6675TempSensor** — SPI thermocouple with ring-buffer averaging and open-circuit detection
-- **MAX31855TempSensor** — direct SPI bit-bang, no library; K-type, fault detection
-- **MAX31856TempSensor** — direct SPI bit-bang; all thermocouple types (B E J K N R S T), 0.0078 °C resolution
-- **DS18B20TempSensor** — 1-Wire async digital thermometer (non-blocking, placement-new, 9–12 bit)
-- **NTCSensor** — NTC thermistor via Steinhart-Hart B-parameter equation, configurable divider
-- **AnalogPolySensor** — cubic polynomial (oil pressure), linear, and threshold (flame detection) variants
-- **RCInput** — interrupt-driven RC PWM decoder for idle and throttle inputs (same GPIO as ADC, no pin change)
+Only continue when the file came from the official `elia179/OpenTurbine` release page. In SmartScreen choose **More info → Run anyway**. If a browser blocks the download, open its Downloads panel and choose to keep the file. A release may also include a `.sha256` file for checksum verification.
 
-### Actuators (HAL)
-- **ServoActuator** — 50 Hz servo PWM 1000–2000 µs (throttle ESC, starter ESC, prop pitch)
-- **LEDCActuator** — high-frequency ESP32 LEDC PWM (oil pump, fuel pump 2, AB pump), invertible
-- **RelayActuator** — digital relay/MOSFET driver, active-high or active-low
+The setup tool can install the USB serial driver needed by common CP210x and CH340 boards. Reconnect the board after driver installation.
 
-### Connectivity
-- **Wi-Fi captive portal** — connecting to the ECU AP serves the dashboard for common captive-portal probes; direct `192.168.4.1` or `ot.local` remains the reliable path on Windows/Chrome
-- **mDNS** — accessible as `http://ot.local` on any mDNS-capable client
-- **MAVLink v1 TX** — HEARTBEAT, NAMED_VALUE_FLOAT telemetry, STATUSTEXT fault alerts over UART
-- **Cluster serial** — OpenTurbine Cluster (OTC) binary protocol with schema discovery, CRC-framed telemetry, status/events, and optional wired RX commands
-- **OTA updates** — browser-based firmware upload plus separate web UI asset upload, so firmware and dashboard pages can both be updated without erasing the engine file or logs
+### Linux, macOS, or manual PlatformIO installation
 
-OTC wire-format details are documented in [`docs/OTC_CLUSTER_PROTOCOL.md`](docs/OTC_CLUSTER_PROTOCOL.md).
-
-### Data logging
-- **FlightRecorder** — persistent event log (BOOT, START_ATTEMPT, block transitions, RUNNING_ENTRY, FAULT, ABORT, RELIGHT_ATTEMPT, SNAP sensor snapshots); events queue in RAM on the ECU core and are written to flash from Core 0, so logging never stalls the control loop
-- **SessionLogger** — per-run CSV stream with configurable channel mask at configurable interval; deferred Core 0 write path; automatic oldest-session eviction when flash is low
-
-### Developer / diagnostic
-- **Sequence validator** — at boot, cross-checks each block against fitted hardware; flags errors (block START) and warnings, displayed in web UI
-- **Dev mode / bench mode** — explicit operator-gated diagnostics for bench testing. Dev Mode unlocks advanced diagnostics and can allow Config edits while running; Bench Mode bypasses normal sequence waits and safety checks for dry testing. Never use Bench Mode with fuel.
-- **Buzzer patterns** — passive piezo tones for mode transitions and fault
-- **Status LED** — mode-driven blink pattern (1–4 blinks + rapid fault flash). Classic ESP32 defaults to the onboard GPIO LED as plain on/off, but can also drive an external NeoPixel/RGB status LED. ESP32-S3/YD boards default to the onboard GPIO48 NeoPixel.
-- **ECU loop diagnostics** — Tools shows main-loop rate, period, execution average, execution max, and loop counter. Session CSV can include loop timing when explicitly enabled.
-- **Peak value tracking** — session maxima for N1, N2, TOT, TIT, oil temp, fuel pressure, battery
-- **Run counter and engine-time accumulator** — persisted across power cycles
-
----
-
-## Hardware requirements
-
-> **Out of the box**, a freshly flashed board is a deliberately minimal template —
-> throttle + idle inputs, throttle/fuel-pump ESC, oil pump, one igniter, START/STOP
-> buttons, and a timed startup (external air/leaf-blower start). No sensors and no
-> automated safety are enabled by default. The tables below are what to **add on the
-> Hardware page** for a real, protected engine — start with an EGT probe.
-
-### Minimum for a real running engine
-
-| Component | Notes |
-|---|---|
-| ESP32 or ESP32-S3 dev board | Classic ESP32: 4 MB flash minimum. Shipped `esp32s3dev` target: ESP32-S3 DevKitC-1 N16R8 with 16 MB flash and 8 MB PSRAM. |
-| Hardware STOP / fuel-cut path | A physical stop switch or equivalent external cut-off is mandatory for real engine testing. The ECU stop input defaults to GPIO 15 active-low. |
-| EGT sensor (TOT or TIT) | MAX6675, MAX31855, MAX31856, or DS18B20 |
-| Main fuel pump / throttle output | Servo ESC, LEDC PWM, or on/off output as supported by the Hardware page |
-| Oil pump output | Servo ESC, LEDC PWM, or on/off output |
-| Igniter or external light-off system | Relay, MOSFET, direct inductive coil drive, glow plug, or another verified ignition method |
-| Safe startup sequence | The factory sequence is timer based: oil pump on, timed delay, fuel to idle, ignition window, then running. Review it before live fuel. |
-
-> All pin numbers, sensor types, and feature enables are set at runtime via the **Hardware** web page — no recompile needed after initial flash.
-
-### Strongly recommended feedback
-
-| Component | Why it matters |
-|---|---|
-| N1 RPM sensor | Optional. Enables overspeed, surge detection, dynamic idle, relight windmill checks, starter/spool verification, and RPM run logs |
-| Oil pressure sensor | Enables closed-loop oil pressure, low-oil shutdown, and oil-prime confirmation |
-| Flame sensor or reliable selected-EGT rise confirmation | Lets startup verify combustion instead of relying only on timed delays |
-| Fuel pressure sensor | Enables low fuel-pressure shutdown in RUNNING |
-| Battery / bus voltage sensor | Detects undervoltage before actuator outputs become unreliable |
-
-### Optional — all enabled at runtime
-
-| Component | Role |
-|---|---|
-| N2 RPM sensor | Power turbine / compressor 2 shaft speed |
-| TOT / TIT sensors | Turbine outlet and inlet temperature monitoring |
-| Oil pressure sensor | Analog ADC |
-| Oil temperature sensor | DS18B20, NTC, or analog |
-| Flame sensor | Analog threshold (photodiode / UV) |
-| Fuel pressure sensor | Analog ADC |
-| Fuel flow sensor | Frequency-based or analog |
-| Battery / bus voltage sensor | Analog ADC voltage divider |
-| P1 / P2 pressure sensors | Inlet and exhaust pressure |
-| Fuel pump 2 | Independent auxiliary fuel pump; servo ESC, LEDC PWM, or on/off output |
-| Oil scavenge pump | Additional drain pump |
-| Glow plug | With optional current sensor |
-| Bleed valve | Compressor bleed solenoid or servo |
-| Afterburner solenoid, pump, igniter | Full AB support |
-| Propeller pitch servo | Turboprop N2 governor |
-| Cooling fan | Relay or LEDC |
-| Air-starter solenoid | Pneumatic starter valve |
-| DI channels (×4) | Configurable roles: fault, estop, ab_arm, ab_fire, inhibit_start, limp_mode |
-| Start switch | Hardware start button |
-| Buzzer | Passive piezo for mode/fault tones |
-| Status LED | Classic ESP32: onboard GPIO LED by default, or any free output GPIO / external NeoPixel. ESP32-S3/YD board: GPIO48 NeoPixel by default with blink-pattern or state-color mode, or select plain GPIO on/off for an external LED |
-| MAVLink UART | Any UART TX pin |
-| Cluster serial | OTC external display/device protocol; TX telemetry plus optional RX commands. Fit the port in Hardware and control runtime streaming in Config > Cluster |
-| RC PWM inputs | Servo signal for throttle and/or idle |
-
-> **ADC note:** Analog sensors must be on ADC1 pins (GPIO 32–39 on classic ESP32; GPIO 1–10 on ESP32-S3). ADC2 is unavailable while Wi-Fi is active.
-
----
-
-## Quick start
-
-### 1. Prerequisites
-
-- [PlatformIO](https://platformio.org/) (VS Code extension or CLI)
-- ESP32 or ESP32-S3 dev board with USB cable
-
-### 2. Clone the repository
+The graphical setup tool is currently Windows-only. Developers and users comfortable with PlatformIO can install manually:
 
 ```bash
-git clone https://github.com/EliasLaaj/OpenTurbine.git
+git clone https://github.com/elia179/OpenTurbine.git
 cd OpenTurbine
-```
+python tools/gzip_data.py
 
-### 3. Set the factory profile
-
-If you are building from source, open `hardware_profile.h` and set the factory
-profile ID and any default pins you want the ECU to create on first boot. Most
-beta users should treat this as the starting default only: normal setup is done
-from the Hardware page and saved into `ecu_config.json`.
-
-```cpp
-#define OT_PROFILE_ID   "OpenTurbine"   // default ID used when creating a new engine file
-#define OT_PROFILE_DESC "My turbine, rev 1"
-
-// Pin defaults (all overridable at runtime via Hardware web page)
-#define OT_STOP_PIN    15    // MANDATORY
-#define OT_START_PIN   13
-```
-
-For **ESP32-S3** use the `esp32s3dev` environment. The PlatformIO environment defines the target explicitly, and the profile selects the correct ADC pin range.
-
-### 4. Flash the filesystem and firmware
-
-Build firmware, upload it, then upload the gzip-compressed web UI filesystem:
-
-```bash
+# Classic ESP32:
 pio run -e esp32dev -t upload
 pio run -e esp32dev -t uploadfs
-```
 
-For ESP32-S3, replace `esp32dev` with `esp32s3dev`.
-
-If the board is already in boot mode (IO0 low), the `--before=no_reset` flag in `platformio.ini` skips the automatic reset handshake.
-
-### 5. Connect and configure
-
-1. Power on the ESP32
-2. Connect to the Wi-Fi AP — **SSID = the engine file's `hardware.profile_id`** (`OT_PROFILE_ID` is used for a newly created file)
-3. Open **`http://192.168.4.1`** or **`http://ot.local`** in a browser
-4. Go to **Hardware** first: choose the engine preset, fitted sensors/actuators, GPIO pins, Wi-Fi power, and optional features
-5. Save Hardware and let the ECU reboot so pins are initialized correctly
-6. Go to **Config** and set temperature limits, oil targets, telemetry, timing, and any RPM/relight settings only if those sensors are fitted
-7. Go to **Calibration** and follow the guided wizards for every fitted input
-8. Go to **Sequence** to review and customise startup, shutdown, afterburner, and control-rule behavior
-9. Download `ecu_config.json` from Tools as a backup before live testing
-
-> **Engine file identity:** `ecu_config.json` is the complete engine file. Its `hardware.profile_id` and `settings.profile_id` must match each other; a crossed file blocks engine operations. `OT_PROFILE_ID` supplies the default when a new file is created.
-
----
-
-## Web interface
-
-### Dashboard
-Live values for fitted sensors such as TOT, TIT, RPM, oil pressure, battery voltage, mode, and sensor health. Start (with confirmation dialog) and Stop buttons. Color-coded gauge bars showing proximity to safety limits. Sparkline trends. Startup sequence progress bar. Fault description card with plain-language "what to do" guidance. Peak values, run count, and hour meter. Dashboard and calibration update near 3 Hz while connected.
-
-### Calibration
-Pre-flight checklist. Guided step-by-step wizards:
-- **Throttle** — live bar, capture ADC min/max at stick endpoints
-- **Oil pressure** — multi-point capture with known reference pressures, polynomial or linear fit
-- **Flame sensor** — automated noise-floor capture
-
-### Config
-All settings grouped by section. **Normal / Advanced toggle** hides advanced parameters for new users. Config is normally locked during STARTUP, RUNNING, and SHUTDOWN. If Dev Mode was enabled in STANDBY, Config can be edited while running for controlled bench tuning; Hardware changes, pin changes, full engine-file restore, OTA, and other reboot-required actions still require STANDBY. Full `ecu_config.json` backup and restore lives on Tools so hardware and settings stay together.
-
-### Hardware
-Runtime hardware topology editor — GPIO pin assignments, sensor types, actuator types, safety enables, DI channel roles, AB configuration, MAVLink / cluster serial settings — **without recompiling**. Requires reboot to apply. Engine must be in STANDBY to save.
-
-### Sequence
-Runtime sequence editor — define startup, shutdown, AB ignition, and AB shutdown block order by name without recompiling. Sequence validator results shown inline (errors block START; warnings are advisory). Changes take effect at the next START without a reboot.
-
-### Log
-Per-run summary cards with peak N1, peak TOT/TIT, duration, and outcome. Expandable event detail with sensor snapshots. Session Data tab with CSV preview and channel selection. Download as JSON or CSV.
-
-### Tools
-Diagnostic actuator tests (STANDBY only, all auto-expire):
-- Fuel prime, fuel solenoid test, oil prime, oil scavenge test
-- Igniter test (×2), glow plug test, starter test, starter enable test
-- Idle throttle test, fuel pump 2 test, AB solenoid test, AB pump test
-- Cooling fan test, airstarter test, bleed valve test, prop pitch test
-- Extra cooldown (manual timed standby cooldown using the Sequencer CooldownSpin actuator settings)
-- Full engine-file backup/restore, factory reset, firmware OTA, and web UI asset upload
-- ECU loop diagnostics: loop rate, period, execution average/max, loop counter, and optional session-log columns
-- Dev Mode toggle, Bench Mode, and safety-bypass diagnostics for dry testing
-
----
-
-## Configuration reference
-
-All parameters live in `ecu_config.json` on LittleFS, editable via the web Config page.
-
-| Section | What it controls |
-|---|---|
-| `engine` | RPM limit, min RPM, TOT limit, EGT cooldown target, soft warning/pullback margin |
-| `oil` | Startup / running pressure targets, throttle-mapped min/max, P-gain, deadband, failsafe duty |
-| `oil_advanced` | Oil-near-zero fault threshold, overcurrent threshold |
-| `sequence.startup` | Per-block timeouts (oil prime, pre-ignition, flame confirm, spool, safety hold…) |
-| `sequence.shutdown` | RPM drop timeout, cooldown timeout, cooldown mode, cooldown pressure target |
-| `throttle` | Slew ramp rates (up/down), idle-input max %, expo curve, limp mode cap, fuel-pump minimum-spin %, pullback thresholds |
-| `dynamic_idle` | Target RPM, ramp rates, deadband, P/I gains, N1 vs N2 source |
-| `governor` | N2 target RPM, throttle gain (throttle-driven mode) and pitch gain/slew/range (prop-pitch mode), deadband |
-| `safety` | Check interval, selected EGT source, TIT limit, flameout source/hold time, EGT rise-rate limit |
-| `relight` | Enable/disable auto-relight, minimum N1 RPM, relight timeout |
-| `afterburner` | Ignition limits, torch settings, flame-confirm mode, pump command source, fuel offset |
-| `rules` | Up to 8 automation rules (sensor, op, threshold, actuator, on_value, off_value) |
-| `standby_oil` | Windmill protection - selected N1/N2/either shaft threshold plus oil pump duty in STANDBY |
-| `starter_assist` | Duty % and disengage RPM for post-spool starter support |
-| `rpm_health` | Jump fault threshold, zero-stuck tick count |
-| `tools` | Diagnostic test durations (fuel prime, oil prime, igniter, starter…) |
-| `telemetry` | WebSocket push rate, flight recorder snapshot interval, standby logging |
-| `cluster` | Runtime cluster output enable and warning thresholds; physical pins live in Hardware |
-| `rc_input` | RC PWM pulse failsafe timeout; endpoints are calibrated on the Calibration page |
-| `misc` | Cooldown skip hold time, igniter-on-start, manual relight settings |
-| `session_log` | Channel mask (N1, N2, TOT, TIT, oil, P1, P2, throttle, mode, optional ECU loop timing…), log interval ms |
-| `calibration` | Throttle ADC range, flame threshold, oil polynomial coefficients, voltage divider scale |
-
----
-
-## Architecture
-
-```
-hardware_profile.h              ← factory defaults (pins, profile ID)
-    │
-    ▼
-src/
-├── main.cpp                    ← setup() / loop(), mode state machine, command handler
-├── Hardware.h                  ← sensor/actuator globals, applyConfig(), runControllers()
-│
-├── hal/
-│   ├── sensors/                ← ISensor: PCNT RPM, ADC (poly/linear/threshold),
-│   │                               MAX6675, MAX31855, MAX31856, DS18B20, NTC, RC PWM, Mock
-│   └── actuators/              ← IActuator: Servo PWM, LEDC PWM, Relay, Mock
-│
-├── engine/
-│   ├── EngineData.h            ← central volatile data bus (singleton, Core 0 read-safe)
-│   ├── SafetyMonitor.h         ← fault detection → enterFaultShutdown()
-│   ├── controllers/
-│   │   ├── OilPressureLoop.h   ← P-controller, throttle-mapped target, failsafe
-│   │   ├── ThrottleSlew.h      ← ramp limiter, safety pullback
-│   │   ├── DynamicIdle.h       ← PI idle RPM hold
-│   │   └── PowerTurbineGovernor.h ← N2 closed-loop pitch controller (turboprop)
-│   └── sequencer/
-│       ├── SequenceEngine.h    ← IBlock state machine, bench mode, callbacks
-│       └── blocks/             ← OilPrime, GlowPreheat, StarterSpin, PreIgnSpark,
-│                                   FuelOpen, FuelPulse, FlameConfirm, TempConfirm,
-│                                   TimedDelay, FuelPumpIdle, ModifiedIdle, Spool,
-│                                   SafetyHold, ImmediateCut, RPMDrop, CooldownSpin,
-│                                   FinalStop, BleedOpen/Close, FuelPumpRamp,
-│                                   FuelPump2Set, GovernorHold, WaitForInput,
-│                                   WaitTOTCool, ThrottleSet, PreHeat,
-│                                   ABCheckReady, ABIgnite, ABFlameConfirm, ABStabilize,
-│                                   + simple ActuatorBlocks (IgniterOn/Off, OilPumpOn/Off…)
-│
-├── system/
-│   ├── Config.h/.cpp           ← JSON load/save, profile ID check, PATCH merge, locking
-│   ├── HardwareConfig.h/.cpp   ← runtime hardware topology, read-modify-write save
-│   ├── FlightRecorder.h/.cpp   ← persistent ring-buffer event log (Core 0 eviction)
-│   ├── SessionLogger.h/.cpp    ← per-run CSV stream (Core 0 write path via queue)
-│   ├── RulesEngine.h           ← threshold → actuator automation rules
-│   ├── MAVLinkOutput.h         ← MAVLink v1 TX (hand-crafted CRC-16/MCRF4XX)
-│   ├── ClusterSerial.h/.cpp    ← OTC external display/device protocol
-│   ├── CommandQueue.h/.cpp     ← FreeRTOS queue, Core 0 → Core 1 commands
-│   ├── Watchdog.h              ← ESP32 TWDT, 5 s timeout
-│   └── web/                    ← ESPAsyncWebServer, WebSocket push, REST API
-│
-└── platform/esp32/
-    ├── PlatformInit.h          ← Serial, LittleFS, NVS boot counter, ADC attenuation
-    └── StatusLED.h             ← mode-driven blink pattern state machine
-```
-
-**Threading model:**
-- **Core 1** (Arduino loop): sensors → RC input → safety → sequencer → controllers → limp cap → tool timers → relight → AB trigger → starter assist → standby oil → DI polling → buzzer → rules engine → actuators → flight recorder → session logger → cluster → MAVLink → LED → peaks
-- **Core 0** (FreeRTOS task): Wi-Fi + AsyncWebServer + WebSocket telemetry push + LittleFS writes (session log drain, flight recorder eviction, config flush)
-
-`EngineData` fields are `volatile` — individual 32-bit reads on Xtensa ESP32 are atomic; Core 0 reads are safe without a mutex. Commands travel Core 0 → Core 1 only via `CommandQueue`.
-
----
-
-## Build environments
-
-| Environment | Target | Notes |
-|---|---|---|
-| `esp32dev` | Classic ESP32 (240 MHz, 4 MB) | ADC1: GPIO 32–39 |
-| `esp32s3dev` | ESP32-S3 DevKitC-1 N16R8 target (240 MHz, 16 MB flash, 8 MB PSRAM) | ADC1: GPIO 1–10; GPIO 19/20 reserved for USB; YD onboard RGB status LED uses GPIO48 NeoPixel by default |
-
-```bash
-pio run -e esp32dev   -t upload      # firmware
-pio run -e esp32dev   -t uploadfs    # LittleFS web assets
+# Or the supported ESP32-S3 N16R8 target:
 pio run -e esp32s3dev -t upload
 pio run -e esp32s3dev -t uploadfs
 ```
 
-For user-friendly Windows installs and Wi-Fi updates, see
-[`docs/SETUP_TOOL.md`](docs/SETUP_TOOL.md). It documents the setup-tool release
-assets and the `tools/build_setup_package.py` helper that creates
-`OpenTurbine_Recommended.zip`.
+Use only the environment matching the board. The filesystem upload is required because it contains the web interface. Specify `--upload-port` when automatic port detection chooses incorrectly. A partition-table change requires both firmware and filesystem installation over USB.
 
-Fresh beta installs and partition-table changes require serial firmware upload
-plus `uploadfs`. OTA firmware alone does not replace the partition table.
-The current storage layout uses a `data/littlefs` partition named `littlefs`.
-The `esp32s3dev` environment is intentionally for N16R8 modules; create a
-separate environment and partition table before flashing smaller S3 boards.
+## What you need
 
----
+### To install and explore without running an engine
 
-## Build flags
+- Windows computer for the setup tool
+- ESP32 development board with at least 4 MB flash, or the supported ESP32-S3 DevKitC-1 N16R8 target
+- Data-capable USB cable
+- A phone or computer with Wi-Fi and a browser
 
-| Flag | Effect |
+You can explore the web interface and configure hardware without connecting fuel, ignition, pumps, or a turbine.
+
+### Before a fueled turbine test
+
+The exact equipment depends on the engine. At minimum, a real installation needs:
+
+- An ECU board and a stable power supply sized for every connected load
+- A controllable main fuel output: pump/ESC, metering actuator, or equivalent
+- A positive fuel shutoff method appropriate to the installation
+- An ignition system
+- A safe starting method: starter motor, air starter, or external air source
+- Lubrication hardware required by the engine, including oil and scavenge pumps where applicable
+- A physical emergency fuel/power stop independent of the browser
+- Proper wiring protection, fusing, grounding, connectors, and flyback suppression
+- A restrained outdoor test stand, exclusion zone, hearing/eye protection, and suitable fire suppression
+
+OpenTurbine can execute a purely timed sequence without sensors, but that is **not a recommendation for a fueled test**. For a responsible first run, fit feedback that can detect the failures relevant to your engine. Usually this means:
+
+- Shaft RPM for overspeed protection
+- TOT/EGT or TIT for over-temperature and hot-start protection
+- Oil pressure when the engine uses a pressure-fed lubrication system
+- A combustion indication such as flame sensing, RPM behavior, or EGT behavior
+
+Sensor type and location matter. A safe value at one station may be unsafe or meaningless at another. Use the engine manufacturer’s information, sensor datasheets, mechanical gauges, and controlled bench data.
+
+## Electrical and wiring basics
+
+OpenTurbine assigns pins from the Hardware page, so there is no single universal wiring diagram. The Hardware page’s pin list and conflict checker are authoritative for the selected ESP32 target. The rules below explain how the common connections work.
+
+### Before connecting anything
+
+1. Disconnect fuel, ignition energy, starter power, pumps, and other high-current supplies.
+2. Power the ESP32 from a clean regulated supply within the board manufacturer’s limits.
+3. Confirm every external signal voltage with a meter before connecting it to a GPIO.
+4. Join logic grounds unless an interface is intentionally isolated.
+5. Keep sensor wiring away from igniter, starter, pump, and motor wiring.
+6. Fuse load supplies and use wire/connectors rated for starting and stall current.
+
+ESP32 GPIO is **3.3 V logic and is not 5 V tolerant**. A sensor advertised as “0.5–4.5 V” cannot connect directly to an ADC input; use a correctly calculated divider or signal conditioner that keeps the ECU pin at or below 3.3 V under every fault and supply condition.
+
+### ESP32 pin rules
+
+| Target | Analog inputs | Important restrictions |
+|---|---|---|
+| Classic ESP32 | Use ADC1 GPIO 32–39 while Wi-Fi is active | GPIO 34–39 are input-only. GPIO 6–11 are normally connected to internal flash. Avoid boot-strapping pins unless the external circuit cannot disturb boot. ADC2 is not reliable while Wi-Fi is active. |
+| Supported ESP32-S3 N16R8 | Use ADC1 GPIO 1–10 | GPIO 19/20 are native USB D−/D+. GPIO 22–25 are not implemented. GPIO 26–32 are normally flash/PSRAM connections. Verify the exact module before using any pin outside the Hardware page choices. |
+
+Never copy a classic ESP32 pin number into an S3 installation without reselecting the target and pins in Hardware.
+
+### Power and high-current outputs
+
+An ESP32 pin is a logic signal, not a pump, starter, solenoid, relay-coil, glow-plug, or igniter power source.
+
+```text
+ESP32 output -> suitable gate/driver/ESC input -> actuator
+ESP32 GND    -> driver/ESC signal ground
+Load supply  -> fuse -> driver/ESC -> actuator
+```
+
+- Use a logic-level MOSFET driver, protected automotive driver, relay module with a valid 3.3 V input, or appropriate ESC.
+- Fit flyback suppression across DC relay/solenoid coils unless the chosen driver already contains it.
+- Keep motor and ignition current out of the ESP32 ground path. Use a deliberate grounding layout and adequate conductors.
+- Verify active-high/active-low behavior with the load power disconnected first.
+- Direct ignition-coil drive requires a proper current-limited switching stage. Never connect an ignition coil directly to the ESP32.
+
+### Servo or ESC output
+
+```text
+ESP32 configured servo/ESC output -> signal
+ESP32/ECU ground                  -> signal ground
+Separate suitable supply         -> servo/ESC/load power
+```
+
+Do not assume the ESC’s BEC is suitable for the ECU or that two power sources can be paralleled. Verify pulse endpoints and direction with fuel disconnected.
+
+### Analog pressure, flame, torque, flow, or voltage sensor
+
+For a typical three-wire analog sensor:
+
+```text
+Sensor supply -> correct regulated sensor voltage
+Sensor ground -> ECU sensor ground
+Sensor output -> ADC1 pin through required divider/filter/protection
+```
+
+- Confirm whether the sensor output rises or falls with the measured value.
+- Confirm its output range at the ECU pin, not only at the sensor connector.
+- A 5 V-powered 0.5–4.5 V pressure transducer normally needs scaling before the ESP32.
+- Capture zero with the real plumbing depressurized, then calibrate against a trusted gauge/reference.
+- Battery/bus measurement always needs a divider and suitable over-voltage protection.
+
+### Potentiometer throttle or idle input
+
+```text
+Potentiometer end 1 -> 3.3 V
+Potentiometer end 2 -> GND
+Potentiometer wiper -> configured ADC1 pin
+```
+
+A value around 10 kΩ is commonly practical, but verify noise and current for the actual installation. Calibrate both endpoints after wiring. For an RC/servo-PWM input, use the configured digital input type instead of wiring it as analog; ensure the pulse signal is 3.3 V compatible.
+
+### N1/N2 RPM sensor
+
+OpenTurbine expects a clean pulse signal and the correct pulses-per-revolution value.
+
+```text
+Hall/conditioner output -> configured RPM input
+Sensor ground           -> ECU ground
+Sensor supply           -> voltage required by sensor
+```
+
+- The GPIO must never receive more than 3.3 V.
+- An open-collector/open-drain sensor needs a pull-up to 3.3 V.
+- A magnetic pickup normally needs a dedicated zero-crossing/comparator conditioner; do not connect an unbounded pickup waveform directly.
+- Set pulses per revolution from the actual target geometry and verify displayed RPM with an independent tachometer before enabling overspeed protection.
+
+### TOT/EGT or TIT thermocouple
+
+Thermocouples connect to a supported converter module, not directly to the ESP32. Hardware supports MAX6675, MAX31855, and MAX31856 configurations.
+
+```text
+Thermocouple -> converter module
+Converter CLK/MISO/(MOSI) -> configured ESP32 SPI pins
+Converter CS              -> its configured chip-select pin
+Converter GND             -> ECU ground
+Converter supply          -> module-compatible supply
+```
+
+- Several SPI temperature modules may share CLK, MISO, and MOSI, but each requires its own CS.
+- MAX31856 requires MOSI because the ECU configures and verifies the chip.
+- Match thermocouple type, polarity, connector metals, and extension wire.
+- Mount the probe at the temperature station whose limit you are configuring.
+
+### NTC or other analog temperature sensor
+
+The built-in NTC datasheet mode assumes:
+
+```text
+3.3 V -> fixed pull-up resistor -> ADC pin -> NTC -> GND
+```
+
+Enter the real pull-up resistance, NTC R₀, and beta value. For another analog circuit or sensor curve, use four well-spaced known-temperature points on Calibration instead.
+
+### DS18B20 temperature sensor
+
+Connect VCC to the sensor’s supported supply, GND to ECU ground, and DATA to the configured pin. A typical three-wire installation uses about a 4.7 kΩ pull-up from DATA to 3.3 V. Avoid parasite-power wiring for a noisy engine installation.
+
+### Current sensor
+
+Route the measured conductor through or across the current sensor as its manufacturer specifies. Connect the sensor’s conditioned output to an ADC1 pin and keep it within 0–3.3 V. Calibrate using zero plus a trusted current measurement, or enter datasheet zero voltage and mV/A sensitivity measured at the ECU pin.
+
+### Start, stop, arm, and other digital inputs
+
+Wire switches according to the configured active level. A common active-low arrangement is:
+
+```text
+Configured input -> switch -> GND
+```
+
+with a pull-up keeping the released input high. For long/noisy wiring, use suitable filtering, shielding, transient protection, and a fail-safe circuit. The physical STOP must be tested independently and should remove fuel or actuator power even if the ESP32 or software is unavailable.
+
+## First setup
+
+The web interface is organized in the order a new installation should normally follow:
+
+1. **Hardware** — enable only what is physically fitted, select signal types, and assign pins.
+2. **Config → Setup** — enter verified engine limits, oil targets, and essential behavior.
+3. **Calibration** — calibrate inputs and find minimum reliable pump outputs.
+4. **Sequence** — review startup and shutdown blocks and their conditions.
+5. **Tools** — test one output at a time with fuel and ignition made safe.
+6. **Dashboard** — perform dry sequences before any fueled attempt.
+
+Settings that cannot apply to the fitted hardware are hidden in Setup. Advanced view keeps deeper tuning available and ghosts temporarily inactive settings.
+
+## Complete first-time procedure
+
+This is the literal path from an unopened board to a dry-tested ECU.
+
+1. **Install the firmware.** Download the official setup tool, connect the board with a data-capable USB cable, and choose **Clean install / reinstall**. This erases the selected board, so use it only for a blank board or an intentional fresh installation. The tool detects the ESP32 target; if several connected boards are listed, choose the intended board and confirm the detected target. Wait for both firmware and web files to finish.
+2. **Power only the ECU.** Keep every actuator/load power supply disconnected. Leave fuel and ignition energy physically isolated.
+3. **Join the ECU Wi-Fi.** A fresh default installation advertises `OpenTurbine` with no password. Join it and open `http://192.168.4.1`. If you later change the profile id, the Wi-Fi name changes with it.
+4. **Acknowledge the safety notice and choose a theme.** Confirm that the Dashboard loads and remains connected.
+5. **Set identity and Wi-Fi security.** In Hardware, set a recognizable profile id and an 8–63 character AP password if the ECU should not remain open. Save, let it reboot, then reconnect using the new network name/password.
+6. **Configure one device at a time.** In Hardware, select the correct target, enable only fitted devices, choose electrical types, assign pins, and resolve every warning. Save and reboot.
+7. **Verify the saved hardware.** Reopen Hardware after reboot and compare every pin/type with the wiring before applying actuator power.
+8. **Check live inputs.** Power sensors only. Open Dashboard/Calibration and confirm plausible raw/live response. Do not enable a safety based on an uncalibrated sensor.
+9. **Enter verified essential settings.** Use Config → Setup. Do not use example suggestions as authority.
+10. **Calibrate inputs and pump minimums.** Follow the visible Calibration wizards with fuel/ignition made safe.
+11. **Review sequences.** Confirm startup and shutdown order, timing, sensor gates, and abort behavior.
+12. **Test outputs at logic level.** With load power still isolated, confirm output polarity using a meter or test indicator.
+13. **Connect and test loads individually.** Use Tools in STANDBY. Begin with short duration and conservative proportional output. Keep fuel and ignition separated until each path is proven.
+14. **Test every stop path.** Verify web STOP, physical STOP, loss-of-signal behavior, and fuel shutoff. Do not continue if any stop path is ambiguous.
+15. **Run complete dry sequences.** Fuel disconnected, ignition disabled where appropriate, and turbine restrained. Confirm mode/block progress and output order.
+16. **Back up the engine file.** Download it from Tools and store it securely.
+17. **Perform the pre-start review below.** Only then plan a controlled fueled test.
+
+### 1. Hardware
+
+Open **Hardware** and describe the actual installation. Do not enable a sensor or actuator merely because it appears in the list.
+
+- Confirm the correct ESP32 target.
+- Assign each GPIO once; resolve every conflict reported by the page.
+- Select the real electrical output type: relay, PWM, servo/ESC, or other offered mode.
+- Configure sensor chips and inputs exactly as wired.
+- Enable safety functions only after their required sensors are fitted and calibrated.
+- Save Hardware and allow the ECU to reboot.
+
+After reboot, return to Hardware and verify that every saved device and pin is still correct.
+
+### 2. Essential configuration
+
+Open **Config → Setup**. Example suggestions are editable examples only; they are not safe values for your turbine.
+
+Review at least:
+
+- Maximum and minimum running shaft RPM
+- Selected engine-temperature source and hard temperature limit
+- Temperature warning/pullback margin
+- Oil prime target, minimum pressure before ignition, running target, and low-oil shutdown threshold
+- Throttle opening and closing rate
+- Flameout source and delay
+- Hot-start threshold
+- Every fitted optional safety threshold
+
+`0` can mean disabled, automatic, or unlimited depending on the field. Read the description beside that specific control.
+
+### 3. Calibration
+
+Calibrate only while the engine is in STANDBY/FAULT and the installation is made safe.
+
+- **Fuel pump minimum:** run the slow sweep, stop when the pump first turns, fine-adjust, and verify several reliable restarts before saving.
+- **Oil pressure:** capture the correct ambient zero reference, then use physical gauge points, automatic fitting, an explicit straight/curved fit, or sensor sensitivity in mV/bar.
+- **Oil pump minimum:** sweep upward slowly and stop when the pump or pressure response begins.
+- **Throttle and idle inputs:** hold each endpoint during the one-second capture. The ECU adds a small endpoint margin.
+- **Flame sensor:** capture the no-flame noise floor with the igniter operating. Keep the threshold close enough to detect weak light-off flame. The last-run average is reference information, not an automatic threshold.
+- **Temperature:** use NTC datasheet values or four well-spaced known temperature points.
+- **Current sensors:** use captured zero/reference current or datasheet zero voltage and mV/A sensitivity at the ECU ADC pin.
+
+Never calibrate pressure or flow using an unverified web reading as its own reference.
+
+### 4. Startup and shutdown sequence
+
+Open **Sequence** and read every block in order. A block being available does not mean it belongs in your engine.
+
+Confirm that:
+
+- Oil flow/pressure is established before ignition when required.
+- The starter or air source reaches the required ignition speed.
+- Ignition is active before fuel is introduced.
+- Fuel begins at a deliberately conservative value.
+- Light-off is confirmed by a fitted, calibrated source or an explicitly accepted timed method.
+- The engine reaches self-sustaining speed without losing lubrication.
+- STOP closes fuel immediately.
+- Shutdown keeps oil/scavenge/cooling outputs active for as long as the engine requires.
+
+Use dry runs with fuel physically disconnected before a fueled test.
+
+### 5. Bench-test outputs
+
+Open **Tools** in STANDBY. The page shows only tests whose hardware is fitted. Use **Test settings** or the gear button on a test card to edit duration and proportional output.
+
+Test outputs individually:
+
+1. Fuel shutoff direction with no fuel pressure
+2. Oil and scavenge pumps
+3. Starter enable and starter direction
+4. Igniter with fuel absent and vapors cleared
+5. Throttle/fuel actuator direction and travel
+6. Cooling fans, bleed valves, auxiliary pumps, and other accessories
+
+The browser is not the emergency stop. Verify the independent physical stop before continuing.
+
+## Pre-start review
+
+Before every first fueled run or major configuration change:
+
+- Back up the full engine file from Tools.
+- Confirm Hardware has no pin or dependency errors.
+- Confirm every safety-critical sensor is healthy and calibrated.
+- Compare Config limits against authoritative engine and sensor information.
+- Run the startup sequence dry.
+- Confirm STOP cuts every fuel path from web, physical input, and any external controller.
+- Confirm loss of browser/Wi-Fi cannot leave a manual test running indefinitely.
+- Inspect fuel and oil plumbing for correct routing, restraint, leaks, and heat protection.
+- Clear the exclusion zone and prepare fire suppression.
+
+For a first light, use conservative fuel, short attempts, immediate abort criteria, and a second person where possible.
+
+## Updating, backup, and recovery
+
+### Back up
+
+In **Tools**, download the full engine file before an update. It contains hardware, settings, sequences, calibration, and the ECU Wi-Fi AP password. Treat it as sensitive.
+
+### Update
+
+Use **OpenTurbine Setup Tool → Update and keep my setup** for normal Wi-Fi updates. It backs up the engine settings and does not perform a factory reset. Use **Clean install / reinstall** for a blank board, corrupted installation, intentional clean start, or partition-table change; that USB path erases everything on the selected board.
+
+Do not interrupt power during firmware or web-asset installation.
+
+### Recovery
+
+- If the ECU Wi-Fi appears but pages fail, reinstall/update the web assets.
+- If the board does not appear over USB, try a data cable, another USB port, the correct serial driver, and the board’s BOOT/RESET procedure.
+- If a configuration error puts the ECU in FAULT, the web interface remains available for repair.
+- If a restored engine file is rejected, verify that it is a complete matching OpenTurbine `ecu_config.json`, not only one section.
+- Factory reset erases hardware, settings, calibration, and logs. Back up first.
+
+## Troubleshooting index
+
+Use Ctrl+F for the symptom or keyword.
+
+| Symptom | Checks |
 |---|---|
-| `OT_DEV_MODE` | Boots with runtime Dev Mode already enabled. This exposes bench-mode and safety-bypass diagnostics without requiring the UI toggle first. **Never include in a production build.** |
+| Download says Not Found | No GitHub release with the required asset exists yet. Use only the official Releases page. |
+| Windows blocked installer / SmartScreen | Verify the official URL, then use Downloads → Keep or SmartScreen → More info → Run anyway. |
+| No COM port / board not detected | Data cable, direct USB port, CP210x/CH340 driver, reconnect, close serial monitors. |
+| Upload cannot connect / bootloader timeout | Hold BOOT, tap EN/RESET, start upload, release BOOT when connection begins. |
+| OpenTurbine Wi-Fi missing | Confirm successful firmware boot and power; reinstall over USB; check serial output if developing. |
+| Wi-Fi connects but page does not open | Browse directly to `http://192.168.4.1`; disable mobile-data/VPN captive routing temporarily; reinstall web assets if necessary. |
+| Page reports disconnected | Stay on the ECU Wi-Fi, reload once, check ECU power/noise, and verify another client is not overwhelming the AP. |
+| Hardware save rejected | Return to STANDBY/FAULT; resolve missing pins, conflicts, unsupported types, and dependent safety/controller settings. |
+| Config field hidden | Use Setup only for applicable essentials; use Advanced for deeper applicable fields; confirm prerequisite hardware is fitted. |
+| Calibration command rejected | ECU must be STANDBY/FAULT, required hardware must be fitted, and no other actuator test may be active. |
+| Sensor reads zero/full-scale/fault | Verify supply, common ground, signal voltage, selected pin/type, ADC1 use, divider, polarity, and calibration. |
+| RPM is wrong | Verify pulse conditioning, 3.3 V level, pulses per revolution, target geometry, and independent tachometer reading. |
+| Temperature is wrong | Verify converter chip, thermocouple type/polarity/location, shared SPI wiring, unique CS, and cold-junction/module supply. |
+| Pump/servo moves backward | Remove fuel/load, correct active level or servo/PWM endpoints/direction, then repeat Tools testing. |
+| Engine enters FAULT at boot | Read the visible fault/config warning; Hardware, Config, Calibration, Tools, and restore remain available for repair. |
+| Full engine restore rejected | Use the complete matching `ecu_config.json`; do not cross hardware/settings sections from different profiles. |
+| Wi-Fi password forgotten | Recover over USB and restore/reset configuration. Factory reset removes all settings and calibration. |
 
----
+## External display or custom controller
 
-## Safety
+OpenTurbine provides the **OpenTurbine Cluster (OTC)** serial protocol for embedded displays and companion devices.
 
-> OpenTurbine is provided as-is for experimental and educational use. Jet turbines are high-energy machines capable of causing serious injury or death. The software STOP command and web UI are **supplementary controls only** — a **hardware STOP switch** wired directly to `stopPin` is mandatory and must be capable of cutting engine power independently of the microcontroller. Always follow local regulations and safety guidelines when operating turbine engines.
+- [Start building a cluster or companion device](examples/cluster/README.md)
+- [Single-file Arduino/ESP32 client](examples/OTCClusterClient.h)
+- [Complete OTC wire protocol](docs/OTC_CLUSTER_PROTOCOL.md)
 
----
+OTC supports TX-only telemetry or optional two-way commands/subscriptions. Normal ECU safety and mode gates still apply to commands received over OTC.
 
-## Changelog
+## Support and reporting problems
 
-See [CHANGELOG.md](CHANGELOG.md).
+Use the repository’s [Issues page](https://github.com/elia179/OpenTurbine/issues) for reproducible problems. Include:
 
----
+- Firmware version and ESP32 target
+- What hardware is actually fitted
+- The exact operating mode and sequence block
+- Expected and observed behavior
+- Relevant Event Log or Session Data
+- A sanitized engine file when safe to share—remove the Wi-Fi password first
+
+Do not publish secrets, personal network information, or an unreviewed engine file.
+
+## Developers and beta testers
+
+Most users can stop reading here. Source layout, manual builds, release packaging, validation tools, internal plans, and beta reporting are indexed in [Developer and beta documentation](docs/README.md).
+
+Quick developer build:
+
+```bash
+git clone https://github.com/elia179/OpenTurbine.git
+cd OpenTurbine
+pio run -e esp32dev
+pio run -e esp32s3dev
+```
+
+Web sources live in `data_src/`; deterministic compressed assets are generated into `data/` with `python tools/gzip_data.py`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
-
----
-
-## Contributing
-
-Pull requests welcome. Keep PRs focused — one feature or fix per PR.
-- New sensor driver → implement `ISensor` in `hal/sensors/`
-- New actuator driver → implement `IActuator` in `hal/actuators/`
-- New sequence block → implement `IBlock` in `engine/sequencer/blocks/`, register in `_blockRegistry[]` in `main.cpp`
-- New config parameter → add to `Config.h`, `_fromDoc()`, `_toDoc()`, and the web Config page
+OpenTurbine is released under the [MIT License](LICENSE).

@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260706a">
+<link rel="stylesheet" href="/style.css?v=20260711f">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<script src="/theme.js?v=20260706a"></script>
+<script src="/theme.js?v=20260711f"></script>
 </head>
 <body data-page="dashboard">
 <nav>
@@ -42,12 +42,13 @@
       <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Dismiss">×</button>
     </div>
     <ol class="gs-steps">
-      <li><a href="/hardware.html">Set up hardware</a></li>
-      <li><a href="/calibration.html">Calibrate sensors</a></li>
-      <li><a href="/config.html">Review safety limits</a></li>
-      <li><a href="/tools.html">Run a dry test</a></li>
-      <li><span class="gs-step-text">Start engine</span></li>
+      <li><a href="/hardware.html">Describe fitted hardware and assign pins</a></li>
+      <li><a href="/config.html">Enter and verify engine safety limits</a></li>
+      <li><a href="/calibration.html">Calibrate fitted sensors and actuators</a></li>
+      <li><a href="/sequence.html">Review startup and shutdown sequences</a></li>
+      <li><a href="/tools.html">Test outputs safely, then run a dry sequence</a></li>
     </ol>
+    <div class="gs-step-text" style="margin-top:.55rem">Keep fuel and ignition physically disconnected until every step is verified.</div>
   </div>
 
   <div id="dev-banner" class="dev-banner" style="display:none">
@@ -68,7 +69,7 @@
     Session log dropped rows. CSV for this run is incomplete.
   </div>
   <div id="flight-log-drop-banner" style="display:none;background:color-mix(in srgb, var(--yellow) 7%, transparent);border:1px solid color-mix(in srgb, var(--yellow) 40%, transparent);border-radius:7px;padding:.55rem 1rem;margin-bottom:.6rem;font-size:.82rem;color:var(--yellow);text-align:center">
-    Flight recorder dropped events. Event log may be incomplete.
+    Event recorder dropped events. Event log may be incomplete.
   </div>
   <div id="config-storage-banner" style="display:none;background:color-mix(in srgb, var(--red) 10%, transparent);border:1px solid color-mix(in srgb, var(--red) 55%, transparent);border-radius:7px;padding:.65rem 1rem;margin-bottom:.7rem;font-size:.82rem;color:var(--red);line-height:1.5">
     <strong>Storage fault - engine operations locked.</strong>
@@ -679,6 +680,6 @@ function dismissCaptiveBanner() {
 })();
 </script>
 
-<script src="/app.js?v=20260706a"></script>
+<script src="/app.js?v=20260711f"></script>
 </body>
 </html>

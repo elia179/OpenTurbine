@@ -378,7 +378,8 @@ bool present(JsonVariantConst v) { return !v.isNull(); }
 
 bool validNumber(JsonVariantConst v, float minValue, float maxValue) {
     if (!present(v)) return true;
-    if (!v.is<float>() && !v.is<double>() && !v.is<int>() && !v.is<long>() && !v.is<unsigned long>()) return false;
+    if (!v.is<float>() && !v.is<double>() && !v.is<int>() && !v.is<long>() &&
+        !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
     float value = v.as<float>();
     return isfinite(value) && value >= minValue && value <= maxValue;
 }
@@ -885,7 +886,7 @@ void Config::autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
     // sensor is present) but its threshold is 0 (= disabled), fill a sane
     // default so a ticked safety can't sit silently off. This runs only on the
     // enable EVENT, so deliberately setting a threshold to 0 later still
-    // disables the safety. Each fill is recorded in the flight log.
+    // disables the safety. Each fill is recorded in the event log.
     auto fill = [](bool was, bool now, float& thr, float def, const char* field) {
         if (!was && now && thr <= 0.0f) {
             FlightRecorder::logConfigChange(field, 0.0f, def);
@@ -1130,13 +1131,13 @@ void Config::addRunSeconds(uint32_t seconds) {
 
 void Config::incStartAttemptCount() {
     portENTER_CRITICAL(&s_statsMux);
-    startAttemptCount++;
+    startAttemptCount = startAttemptCount + 1u;
     portEXIT_CRITICAL(&s_statsMux);
 }
 
 void Config::incRunCount() {
     portENTER_CRITICAL(&s_statsMux);
-    runCount++;
+    runCount = runCount + 1u;
     portEXIT_CRITICAL(&s_statsMux);
 }
 

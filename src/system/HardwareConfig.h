@@ -100,6 +100,9 @@ public:
     static float ntcBeta;           // NTC B coefficient (default 3950)
     static float ntcR0;             // NTC resistance at reference temp in Ω (default 10000)
     static float ntcRFixed;         // pull-up resistor in Ω (default 10000)
+    static bool  oilTempUseRawPoly;
+    static float oilTempPolyA, oilTempPolyB, oilTempPolyC, oilTempPolyD;
+    static float oilTempPolyXMin, oilTempPolyXMax;
 
     // battery / bus voltage monitor — analog divider
     static int   battVoltPin;       // ADC pin

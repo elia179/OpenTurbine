@@ -560,7 +560,9 @@ namespace Hardware {
         if (hw.hasFlame)  g_sensorFlame.setThreshold(Config::flameThreshold);
         if (hw.hasAbFlame && hw.abFlamePin >= 0) g_sensorAbFlame.setThreshold(hw.abFlameThreshold);
         if (hw.hasOilTemp && hw.oilTempPin >= 0 && strcmp(hw.oilTempChip, "ntc") == 0) {
-            g_sensorOilTempNtc.setCal({ hw.ntcRFixed, hw.ntcR0, 25.0f, hw.ntcBeta });
+            g_sensorOilTempNtc.setCal({ hw.ntcRFixed, hw.ntcR0, 25.0f, hw.ntcBeta,
+                hw.oilTempUseRawPoly, hw.oilTempPolyA, hw.oilTempPolyB, hw.oilTempPolyC, hw.oilTempPolyD,
+                hw.oilTempPolyXMin, hw.oilTempPolyXMax });
         }
         if (hw.hasBattVoltage && hw.battVoltPin >= 0) {
             g_sensorBattVolt.setCal({ 0.0f, 4095.0f, 0.0f, hw.battVoltDivider * 3.3f });
@@ -693,7 +695,9 @@ namespace Hardware {
             } else {
                 // NTC analog — Steinhart-Hart B-parameter equation.
                 g_sensorOilTempNtc.begin(hw.oilTempPin);
-                g_sensorOilTempNtc.setCal({ hw.ntcRFixed, hw.ntcR0, 25.0f, hw.ntcBeta });
+                g_sensorOilTempNtc.setCal({ hw.ntcRFixed, hw.ntcR0, 25.0f, hw.ntcBeta,
+                    hw.oilTempUseRawPoly, hw.oilTempPolyA, hw.oilTempPolyB, hw.oilTempPolyC, hw.oilTempPolyD,
+                    hw.oilTempPolyXMin, hw.oilTempPolyXMax });
                 g_pSensorOilTemp = &g_sensorOilTempNtc;
             }
         }
@@ -866,6 +870,7 @@ namespace Hardware {
         if (hw.hasOilTemp && g_pSensorOilTemp) {
             g_pSensorOilTemp->update();
             ed.oilTemp        = g_pSensorOilTemp->getValue();
+            ed.oilTempRaw     = (strcmp(hw.oilTempChip, "ntc") == 0) ? g_sensorOilTempNtc.rawCounts() : 0;
             ed.oilTempHealthy = g_pSensorOilTemp->isHealthy();
             if (ed.oilTempHealthy && ed.oilTemp > ed.maxOilTemp) ed.maxOilTemp = ed.oilTemp;
         }
@@ -1408,16 +1413,16 @@ namespace Hardware {
         auto  mode = ed.mode;
         if (mode != SysMode::RUNNING && mode != SysMode::STARTUP) return;
 
-        // ── Pilot throttle input → demand mapping ──────────────
+        // ── Operator throttle input → demand mapping ───────────
         // When a physical throttle input is configured (ADC pot or RC stick),
         // map it directly to throttleDemand in RUNNING mode.  DynamicIdle then
         // applies a floor on top, and ThrottleSlew rate-limits the result.
         // A throttle-primary governor (turboshaft/APU with no prop-pitch authority)
         // OWNS throttleDemand: it holds N2 by accumulating throttle over many ticks.
-        // Re-mapping the pilot input onto throttleDemand every tick would wipe that
+        // Re-mapping the operator input onto throttleDemand every tick would wipe that
         // accumulation, so skip the input mapping while such a governor is active
         // (this is the "governor overrides this demand" contract). A pitch-primary
-        // governor instead leaves the throttle to the pilot and holds N2 with pitch,
+        // governor instead leaves the throttle to the operator and holds N2 with pitch,
         // so the input mapping still applies there. DynamicIdle (ticked after the
         // governor) still enforces the running idle floor either way.
         const bool governorOwnsThrottle = hw.hasGovernor && hw.hasN2Rpm &&

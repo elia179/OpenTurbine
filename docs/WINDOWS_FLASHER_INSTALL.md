@@ -1,0 +1,44 @@
+# Windows installer troubleshooting
+
+Normal download and installation instructions now live in the repository root [`README.md`](../README.md). This page is retained as a focused troubleshooting reference and should not be treated as a second installation guide.
+
+## Official download
+
+[`OpenTurbineSetupTool.exe`](https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe)
+
+Only bypass browser or SmartScreen warnings for a file downloaded from the official `elia179/OpenTurbine` release.
+
+## Browser warning
+
+Open the browser’s Downloads panel, inspect the source URL, and choose to keep the file. If the stable link returns Not Found, no public installer release exists yet.
+
+## Windows SmartScreen
+
+1. Open the downloaded file.
+2. Choose **More info**.
+3. Confirm the application is `OpenTurbineSetupTool.exe` from the official release.
+4. Choose **Run anyway**.
+
+The warning occurs because the current executable may not yet have a trusted code-signing reputation. The long-term solution is a signed release, not asking users to disable Windows security globally.
+
+## Verify a checksum
+
+When the release includes `OpenTurbineSetupTool.exe.sha256`, place it beside the executable and run:
+
+```powershell
+Get-FileHash .\OpenTurbineSetupTool.exe -Algorithm SHA256
+Get-Content .\OpenTurbineSetupTool.exe.sha256
+```
+
+The hexadecimal hashes must match.
+
+## Board is not detected
+
+- Use a USB cable known to carry data.
+- Try another direct USB port without a hub.
+- Install the CP210x or CH340 driver offered by the setup tool when it matches the USB serial chip on the board.
+- Disconnect and reconnect the board after driver installation.
+- Close serial monitors and other applications using the COM port.
+- For boards requiring bootloader mode, hold **BOOT**, tap **EN/RESET**, begin installation, and release BOOT when connection starts.
+
+Return to the root README after the installer detects the board.

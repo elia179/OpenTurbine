@@ -12,7 +12,7 @@
 //  *** Prefer ADC pot input for new builds until this is validated.
 //  *** RC PWM is susceptible to glitches from RF interference; ensure
 //  *** rcFailsafeMs is set conservatively and test failsafe behaviour
-//  *** on the bench before flying.
+//  *** on the bench before operating the engine.
 //
 //  Enabled by HardwareConfig::idleInputRcPwm / throttleInputRcPwm.
 //  The GPIO pin is the same as the ADC version - only the signal

@@ -603,7 +603,7 @@ private:
         if (!desc) {
             snprintf(_fallbackDesc, sizeof(_fallbackDesc),
                 "Safety fault: %s. Engine has been shut down as a precaution.\n"
-                "Check the flight log for sensor readings at the time of the fault "
+                "Check the event log for sensor readings at the time of the fault "
                 "and review relevant calibration and limit settings before restarting.",
                 code);
             desc = _fallbackDesc;

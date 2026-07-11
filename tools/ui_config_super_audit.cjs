@@ -380,7 +380,9 @@ async function sectionVisible(page, title) {
       ab_trigger: { input_pin: -1 }
     });
     await gotoConfig(page);
-    assert.equal(await shown(page, '#ab-cfg-section'), true);
+    assert.equal(await shown(page, '#ab-cfg-section'), false, 'Setup hides an afterburner feature with no usable hardware path');
+    await page.locator('#btn-view-expert').click();
+    assert.equal(await shown(page, '#ab-cfg-section'), true, 'Advanced keeps unavailable afterburner settings visible as reference');
     assert.equal(await disabled(page, '#cf-ab_mn'), true);
     assert.equal(await disabled(page, '#cf-ab_mx'), true);
     assert.equal(await disabled(page, '#cf-ab_tt'), true);
@@ -397,7 +399,7 @@ async function sectionVisible(page, title) {
     assert.equal(await optionDisabled(page, '#cf-ab_fm', '0'), true);
     assert.equal(await optionDisabled(page, '#cf-ab_fm', '1'), true);
     assert.equal(await optionDisabled(page, '#cf-ab_pcm', '2'), true);
-    results.push('afterburner config stays visible but all missing hardware paths are locked');
+    results.push('Setup hides unusable afterburner config while Advanced ghosts and locks every missing hardware path');
 
     await reset(page);
     await patchHardware(page, {

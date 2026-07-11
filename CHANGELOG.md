@@ -8,6 +8,26 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ---
 
+## [Unreleased]
+
+### Added
+- Guided calibration for fuel-pump and oil-pump minimum output, pressure-sensor model fitting, one-second throttle/idle endpoint capture, known-point oil-temperature curves, and current-sensor known-point/datasheet modes.
+- A hardware-aware Setup view, advanced manual controls, hover help, a first-run workflow, responsive mobile layout fixes, and configurable bench-test durations in Tools.
+- A consolidated user manual with installation, wiring, first setup, calibration, operation, recovery, troubleshooting, and cluster-integration guidance.
+- A practical OpenTurbine Cluster example and implementation guide.
+
+### Changed
+- Configuration suggestions are explicitly unverified starting points; unavailable hardware-dependent controls are hidden in Setup and retained as explained, disabled controls in Advanced.
+- The Windows installer now distinguishes **Clean install / reinstall** (USB, complete erase) from **Update and keep my setup** (Wi-Fi, automatic settings backup, no reset).
+- Raw firmware and web-asset uploads remain available in Tools but are grouped under a collapsed advanced section; the setup tool is the normal update path.
+- User-facing aircraft/flight-specific wording was replaced with turbine-neutral operator, event-log, and engine-operation terminology.
+
+### Fixed
+- Known-point oil-temperature curves now reject duplicate ADC captures, allow individual point removal, persist their calibrated ADC range, and clamp conversion to that range instead of extrapolating beyond measured data.
+- Factory reset now describes every erased data class and requires an explicit typed confirmation.
+- Calibration saves and hardware patches preserve sibling configuration fields and report acceptance accurately.
+- Multiple narrow-screen overflow, inactive-hardware dependency, single-shaft, and first-run navigation inconsistencies found by the release audits.
+
 ## [1.7.0] — 2026-07-09
 
 Opt-in advanced control modes (default **Simple** = current behaviour — nothing changes until

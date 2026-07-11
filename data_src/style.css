@@ -906,6 +906,7 @@ textarea.field-changed {
   margin-bottom: 0.6rem;
 }
 .hw-item-card:last-child { margin-bottom: 0; }
+.hw-hide-unselected { display: none !important; }
 
 .hw-sub {
   font-size: 0.59rem;
@@ -1039,6 +1040,21 @@ select option.pin-inonly { color: #5ba3e0; }
 .run-outcome.running { background: color-mix(in srgb, var(--blue) 8%, transparent);  color: var(--blue);   border: 1px solid var(--blue); }
 
 .run-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; flex: 1; }
+
+/* Narrow phones: later component rules override the earlier generic mobile
+   block, so keep these final responsive guards beside the components. */
+@media (max-width: 600px) {
+  .grid-2, .grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .grid-2 > *, .grid-3 > * { min-width: 0; max-width: 100%; }
+  .tab-strip { overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .tab-strip::-webkit-scrollbar { display: none; }
+  .tab-btn { flex: 0 0 auto; padding-left: .75rem; padding-right: .75rem; }
+  .run-header { align-items: flex-start; gap: .5rem; padding: .7rem; }
+  .run-outcome { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+  #tools-status-row { flex-wrap: wrap; }
+  #tools-page-head { align-items: flex-start !important; }
+  #btn-test-settings { flex: 0 0 auto; max-width: 55%; }
+}
 .run-stat  { display: flex; flex-direction: column; gap: 0.05rem; }
 .run-stat-label { font-size: 0.6rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
 .run-stat-val   { font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }

@@ -23,8 +23,6 @@ xtensa_esp32.so
 
 # Node dependencies for the tools/ui_*.cjs browser audit scripts
 node_modules/
-package.json
-package-lock.json
 
 # Python bytecode (tools/ and the dev/bench harness)
 __pycache__/

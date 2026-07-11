@@ -8,7 +8,8 @@ simple embedded displays that need the fitted hardware schema, live values,
 status messages, warnings, and optional wired button commands.
 
 A simple Arduino-style receiver is provided in
-`examples/OTCClusterClient.h`. It parses frames, validates CRC, learns the
+[`examples/OTCClusterClient.h`](../examples/OTCClusterClient.h). A practical wiring and implementation guide is available at
+[`examples/cluster/README.md`](../examples/cluster/README.md). The client parses frames, validates CRC, learns the
 schema, and exposes live values as ordinary variables.
 
 ## Link

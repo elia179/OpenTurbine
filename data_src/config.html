@@ -4,7 +4,11 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Config</title>
-<link rel="stylesheet" href="/style.css?v=20260706a">
+<link rel="stylesheet" href="/style.css?v=20260711f">
+<style>
+:root{--bg:#101012;--surface:#17171a;--surface-2:#1d1d20;--surface-3:#262629;--border:#313135;--border-light:#42424a;--text:#f5f5f7;--text-2:#cecdd4;--dim:#a0a0a8;--green:#33cf7a;--red:#ff4d5f;--yellow:#ffcf4d;--blue:#5ab8ca;--accent:#ee7620;--font-ui:system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'SF Mono','Menlo','Consolas',monospace}
+*,*::before,*::after{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.5}nav{height:48px;display:flex;align-items:center;padding:0 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}nav a{height:48px;line-height:48px;padding:0 .9rem;color:var(--dim);text-decoration:none;text-transform:uppercase;letter-spacing:.06em;font-size:.75rem;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}nav a.active{color:var(--text);border-bottom-color:var(--accent)}.conn-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:auto}.conn-dot.connected{background:var(--green);box-shadow:0 0 6px var(--green)}.conn-dot.disconnected{background:var(--red)}.conn-label{font-size:.63rem;color:var(--dim);margin-left:.4rem;text-transform:uppercase;letter-spacing:.05em}main{padding:1.5rem;max-width:920px;margin:0 auto}button{font-family:var(--font-ui);font-size:.78rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;min-height:44px;padding:.42rem 1.1rem;border-radius:6px;border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer}button:hover{color:var(--text);background:var(--surface-2)}button:disabled{opacity:.3;cursor:default}button.primary{background:var(--accent);border-color:var(--accent);color:#2b1405}.view-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-2)}.view-toggle button{border:0;border-radius:0;background:transparent}.view-toggle button.active{background:var(--accent);color:#2b1405}select,input{font-family:var(--font-mono);font-size:.82rem;padding:.32rem .55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}input[type=checkbox]{width:auto;accent-color:var(--accent)}.cfg-section{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:1rem 1.2rem;margin-bottom:.85rem}.cfg-title{font-size:.68rem;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.7rem}.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.75rem}.cfg-field{display:flex;flex-direction:column;gap:.22rem;min-width:0}.cfg-label{font-size:.65rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-weight:700}.cfg-desc{font-size:.72rem;color:var(--dim);line-height:1.45}.cfg-field input,.cfg-field select{width:100%;max-width:100%}.cfg-field input:focus,.cfg-field select:focus{outline:none;border-color:var(--accent)}.cfg-field input:disabled,.cfg-field select:disabled{opacity:.45}.error-banner{border-radius:9px;padding:.7rem 1rem;margin-bottom:.85rem;font-size:.82rem;background:color-mix(in srgb,var(--red) 8%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}.save-bar{position:sticky;bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:1rem;display:flex;align-items:center;gap:.75rem;margin-top:1rem}.save-bar a{color:var(--dim)}.save-msg{font-size:.78rem;color:var(--dim)}.live-val{font-size:.72rem;color:var(--accent);margin-left:.5rem}.field-changed{border-color:var(--yellow)!important;box-shadow:0 0 0 1px var(--yellow)}.save-recap-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:999}.save-recap-card{width:min(720px,92vw);max-height:82vh;background:var(--surface);border:1px solid var(--border-light);border-radius:9px;overflow:hidden}.save-recap-header,.save-recap-footer{display:flex;align-items:center;gap:.7rem;padding:.85rem 1rem;border-bottom:1px solid var(--border)}.save-recap-footer{border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end}.save-recap-body{padding:1rem;overflow:auto;max-height:55vh}.save-recap-subtitle{padding:.75rem 1rem;color:var(--dim);font-size:.78rem;border-bottom:1px solid var(--border)}@media(max-width:700px){main{padding:1rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{position:static;flex-wrap:wrap}nav{overflow-x:auto}.conn-dot{margin-left:.75rem}}
+</style>
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
@@ -30,20 +34,20 @@
         style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
     </div>
     <div class="view-toggle" style="margin-left:auto">
-      <button id="btn-view-basic"  class="active" onclick="setView('basic')" title="Normal view shows the common setup values plus critical limits and hardware-dependent controls. Rare diagnostics and deep tuning stay hidden.">Normal</button>
+      <button id="btn-view-basic"  class="active" onclick="setView('basic')" title="Setup shows essential settings that apply to fitted hardware. Deep tuning and inactive features stay hidden.">Setup</button>
       <button id="btn-view-expert" onclick="setView('expert')" title="Advanced view shows every configurable parameter, including rare diagnostics, controller gains, protocol details, and deep tuning values.">Advanced</button>
     </div>
     <button id="btn-dev-mode" onclick="toggleDevMode()" style="font-size:.75rem;padding:.2rem .75rem"
     title="Dev Mode allows Config edits while the engine is running and unlocks bench diagnostics. Hardware and reboot-required changes still require STANDBY.">Dev Mode</button>
   </div>
-  <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem" id="view-hint">Normal view shows common setup, hardware-dependent controls, and critical limits. Advanced shows rare tuning, diagnostics, and controller internals.</p>
+  <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem" id="view-hint">Setup shows essential settings that apply to fitted hardware. Advanced shows deep tuning and explains hardware-dependent items.</p>
   <div id="lock-warn" class="error-banner" style="display:none">Warning: engine is running - config is locked. Stop the engine to edit (live editing requires Dev Mode enabled beforehand, from Tools while in STANDBY).</div>
 
   <!-- ── Engine Type Presets ──────────────────────────────────── -->
   <div id="preset-bar" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-    <span style="font-size:.75rem;color:var(--dim);font-weight:600;white-space:nowrap">Quick Preset:</span>
+    <span style="font-size:.75rem;color:var(--dim);font-weight:600;white-space:nowrap">Example suggestions:</span>
     <select id="preset-sel" onchange="applyPreset(this.value)" style="font-size:.78rem;padding:.2rem .5rem;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;max-width:240px">
-      <option value="">— Select engine type —</option>
+      <option value="">— Choose an example to review —</option>
       <optgroup label="RC Jet">
         <option value="kj66">Small RC Jet ~60N (KJ-66 / T-62 style, ~120k RPM)</option>
         <option value="med_jet">Medium RC Jet ~200N (AM, Wren 75+, ~90k RPM)</option>
@@ -54,10 +58,10 @@
         <option value="turboshaft">Turboshaft / Power Turbine (N2 governor)</option>
       </optgroup>
       <optgroup label="Turbocharger Turbine">
-        <option value="turbocharger">Basic Turbocharger Gas Turbine ★ (recommended starting point)</option>
+        <option value="turbocharger">Example turbocharger-based gas turbine</option>
       </optgroup>
     </select>
-    <span style="font-size:.72rem;color:var(--dim)" id="preset-note">Presets set limits &amp; timing only — hardware pins are not changed.</span>
+    <span style="font-size:.72rem;color:var(--yellow)" id="preset-note">Examples only. Verify every proposed value against your engine documentation and test data before saving.</span>
   </div>
 
   <div id="cfg-form"><p style="color:var(--dim);font-size:.85rem">Loading config…</p></div>
@@ -85,7 +89,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260706a"></script>
+<script src="/app.js?v=20260711f"></script>
 <script>
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
@@ -116,7 +120,7 @@ const SCHEMA = [
     { key:'th_ru', path:['throttle','ramp_up_ms'],   label:'Throttle Open Speed (ms)',   desc:'Time to sweep throttle from 0 to 100% (milliseconds). Lower = faster response. Typical: 500-2000 ms.',   step:50,  min:0, basic:true },
     { key:'th_rd', path:['throttle','ramp_down_ms'], label:'Throttle Close Speed (ms)', desc:'Time to sweep throttle from 100% to 0 (milliseconds). Lower = faster closure. Typical: 500-2000 ms.',    step:50,  min:0, basic:true },
     { key:'th_mx', path:['throttle','idle_max_pct'], label:'Idle Max %',     desc:'Throttle/fuel output when the idle input is at its maximum. The low end comes from Calibration -> Fuel Pump Minimum Spin.', step:1, min:0, max:100, basic:true },
-    { key:'th_ex', path:['throttle','expo'],         label:'Throttle Expo',  desc:'Exponential response curve for the throttle stick (0 = linear, 0.3 = mild, 0.7 = strong). Reduces stick sensitivity near idle making low-power flying easier. Has no effect without a physical throttle input connected.', step:0.05, min:0, max:0.95, basic:true },
+    { key:'th_ex', path:['throttle','expo'],         label:'Throttle Expo',  desc:'Exponential response curve for the throttle input (0 = linear, 0.3 = mild, 0.7 = strong). Reduces sensitivity near idle for easier low-power control. Has no effect without a physical throttle input connected.', step:0.05, min:0, max:0.95, basic:true },
     { key:'pb_n1e', path:['throttle','pullback_n1'], label:'N1 Soft Pullback', type:'checkbox', desc:'Reduce throttle as N1 approaches its soft/hard pullback range.', basic:true },
     { key:'pb_n1s', path:['throttle','pullback_n1_soft_rpm'], label:'N1 Pullback Start', unit:'RPM', desc:'N1 RPM where throttle pullback begins.', step:500, min:0, max:500000 },
     { key:'pb_n1h', path:['throttle','pullback_n1_hard_rpm'], label:'N1 Pullback Full', unit:'RPM', desc:'N1 RPM where soft pullback reaches full authority. Hard safety still remains separate.', step:500, min:0, max:500000 },
@@ -206,10 +210,10 @@ const SCHEMA = [
     { key:'tl_abq',path:['tools','ab_pump_test_pct'],  label:'AB Pump Test %',     desc:'Afterburner pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
   ]},
   { title: 'Telemetry', fields: [
-    { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic flight-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox', basic:true },
+    { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic event-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox', basic:true },
     { key:'tm_ws', path:['telemetry','ws_interval_ms'],       label:'Background Live Interval ms', desc:'Reserved: the built-in web pages currently use fixed refresh rates (Dashboard/Calibration 333 ms, others slower). This interval only affects external API pollers that honour it.', step:100, min:333, max:60000 },
     { key:'tm_lh', path:['telemetry','control_loop_hz'],      label:'ECU Loop Target Hz', desc:'Main control-loop target frequency. Default 400 Hz. Lower values reduce CPU use; higher values improve control granularity but increase load. Recommended beta range: 200-500 Hz. Takes effect after a reboot.', step:50, min:50, max:1000 },
-    { key:'tm_sn', path:['telemetry','snapshot_interval_ms'], label:'Snapshot Interval ms',  desc:'FlightRecorder RUNNING_SNAP rate (ms). Lower = more history entries. Default 10000 ms (10 s).',          step:500, min:500 },
+    { key:'tm_sn', path:['telemetry','snapshot_interval_ms'], label:'Snapshot Interval ms',  desc:'Event-log RUNNING_SNAP interval (ms). Lower values create more history entries and more flash writes. Default 10000 ms (10 s).', step:500, min:500 },
     { key:'tm_sl', path:['session_log','interval_ms'],        label:'Session Log Rate (ms)', desc:'How often a row is written to the per-run CSV log. Default 1000 ms (1 Hz). Use 500–100 ms only for high-speed transient capture. Lower values increase LittleFS wear and CPU/storage load.', step:100, min:100, basic:true },
     { key:'sl_n1', path:['session_log','n1'],       label:'Log N1 RPM',      type:'checkbox', desc:'Include N1 RPM column in session CSV.', basic:true },
     { key:'sl_n2', path:['session_log','n2'],        label:'Log N2 RPM',      type:'checkbox', desc:'Include N2 RPM column in session CSV.' },
@@ -303,7 +307,7 @@ const SCHEMA = [
     { key:'gv_bd', path:['governor','band_rpm'],     label:'Deadband (RPM)',      desc:'Governor makes no correction while N2 is within ±this many RPM of target. Prevents hunting. Typical: 200–500 RPM.',                                                          step:50,    min:0 },
     { key:'gv_kp', path:['governor','kp'],            label:'Throttle-Mode Gain (Kp)', desc:'THROTTLE-DRIVEN mode: how aggressively the governor moves fuel/throttle per RPM error (throttle fraction per RPM error). Too high = oscillation / surging. Too low = sluggish. Typical: 0.0005–0.002. Start low and increase. Only one governor mode runs at a time (see the mode note above).',               step:0.0001, min:0, max:0.01 },
     { key:'gv_pk', path:['governor','pitch_kp'],      label:'Pitch-Mode Gain (Kp)',    desc:'PROP-PITCH mode: prop pitch adjustment per RPM error. Only takes effect when a proportional Prop Pitch actuator is enabled in Hardware. Set > 0 to select prop-pitch mode; set to 0 to force throttle-driven mode. Typical: 0.0003–0.001.', step:0.0001, min:0, max:0.01 },
-    { key:'gv_pr', path:['governor','pitch_ramp_sec'], label:'Pitch Ramp (s)',          desc:'Maximum pitch servo travel time: full stroke (idle→max) in this many seconds. Prevents abrupt pitch changes from destabilising the airframe. 0 = unlimited (instant). Typical: 1–5 s.', step:0.5, min:0 },
+    { key:'gv_pr', path:['governor','pitch_ramp_sec'], label:'Pitch Ramp (s)',          desc:'Maximum pitch servo travel time: full stroke (idle→max) in this many seconds. Prevents abrupt pitch changes from destabilising the driven system. 0 = unlimited (instant). Typical: 1–5 s.', step:0.5, min:0 },
   ]},
   { title: 'Glow Plug Preheat', id: 'glow-cfg-section', fields: [
     { key:'gl_ms', path:['glow_plug','preheat_ms'],      label:'Preheat Duration (ms)', desc:'Time to ramp the glow plug from 0 to maximum duty before ignition. Longer = more heat soak. Typical: 8,000–15,000 ms.',                  step:500, min:0, basic:true },
@@ -416,6 +420,13 @@ function setPath(obj, path, val) {
 
 // ── Render form ───────────────────────────────────────────────
 let _currentView = 'basic';
+const SETUP_KEYS=new Set([
+  'rpm_limit','min_rpm','eg_src','tot_limit','tot_safe_margin','tot_cooldown_target',
+  'oil_sp','oil_am','oil_rm','oil_mm','th_ru','th_rd','th_mx','th_ex',
+  'pb_n1e','pb_n2e','pb_egte','pb_min','rl_mode','lm_mt','di_tr','di_mode',
+  'sf_fo','sf_fs','sf_hs','rl_en','so_src','so_rl','so_fp','so_fb',
+  'sf_tit','sf_ot','sf_fp','sf_bv','gv_tr','gl_ms','cl_en'
+]);
 
 function setView(v) {
   _currentView = v;
@@ -426,7 +437,7 @@ function setView(v) {
     hint.style.display = '';
     hint.textContent = v === 'expert'
       ? 'Advanced view is showing every saved field, including rare diagnostics, protocol values, and deep controller tuning.'
-      : 'Normal view shows common setup, hardware-dependent controls, and critical limits. Advanced shows rare tuning, diagnostics, and controller internals.';
+      : 'Setup shows essential settings that apply to fitted hardware. Advanced shows deep tuning and hardware-dependent details.';
   }
   applyView();
 }
@@ -434,7 +445,14 @@ function setView(v) {
 function applyView() {
   const expertOnly = document.querySelectorAll('.cfg-field[data-expert]');
   expertOnly.forEach(el => {
-    if (el.dataset.forceHidden === '1') { el.style.display = 'none'; return; }
+    if (el.dataset.hardHidden === '1') { el.style.display='none'; return; }
+    if (el.dataset.forceHidden === '1') {
+      el.style.display = _currentView === 'expert' ? '' : 'none';
+      el.style.opacity = _currentView === 'expert' ? '.42' : '';
+      el.style.filter = _currentView === 'expert' ? 'grayscale(.7)' : '';
+      return;
+    }
+    el.style.opacity=''; el.style.filter='';
     el.style.display = _currentView === 'expert' ? '' : 'none';
   });
   // Also hide sections that have no visible fields in basic mode
@@ -442,17 +460,32 @@ function applyView() {
     if (sec.dataset.forceHidden === '1') { sec.style.display = 'none'; return; }
     sec.style.display = _currentView === 'expert' ? '' : 'none';
   });
+  // Bench-test timing/output belongs beside the actuator buttons on Tools.
+  ['tools-primary-section','tools-accessory-section','tools-ab-section'].forEach(id => {
+    const sec=document.getElementById(id); if(sec) sec.style.display='none';
+  });
 }
 
 function setCfgFieldVisibleByElement(wrap, show) {
   if (!wrap) return;
+  if (wrap.dataset.hardHidden === '1' && !show) { wrap.style.display='none'; return; }
   wrap.dataset.forceHidden = show ? '0' : '1';
-  wrap.style.display = show ? '' : 'none';
+  wrap.title = show ? '' : 'Inactive or not applicable with the current hardware/feature selection. Shown only as a reference in Advanced view.';
+  const control=wrap.querySelector('input,select');
+  if(control) control.disabled = !show || isLocked;
+  wrap.style.display = show ? '' : (_currentView==='expert'?'':'none');
+  wrap.style.opacity = show ? '' : (_currentView==='expert'?'.42':'');
 }
 
 function setCfgFieldVisible(key, show) {
   const el = document.getElementById('cf-' + key);
   setCfgFieldVisibleByElement(el?.closest('.cfg-field'), show);
+}
+function setCfgFieldHardHidden(key, hidden) {
+  const wrap=document.getElementById('cf-'+key)?.closest('.cfg-field');
+  if(!wrap)return;
+  wrap.dataset.hardHidden=hidden?'1':'0';
+  if(hidden) wrap.style.display='none';
 }
 
 // Advanced-only tuning fields appear only when their mode select = Advanced
@@ -560,8 +593,9 @@ function setConfigPressUnit(value) {
 
 function renderForm() {
   document.getElementById('cfg-form').innerHTML = SCHEMA.map(sec => {
-    // A section is "basic" if at least one field in it has basic:true
-    const hasBasicField = sec.fields.some(f => f.basic);
+    // Setup is deliberately small; historical basic:true remains metadata for
+    // compatibility, while SETUP_KEYS controls the beginner-facing surface.
+    const hasBasicField = sec.fields.some(f => SETUP_KEYS.has(f.key));
     const expertAttr = (!hasBasicField && !sec.basic) ? ' data-expert-section' : '';
     const noteHtml = sec.sectionNote
       ? `<div style="font-size:.72rem;color:var(--dim);background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:5px;padding:.35rem .65rem;margin:.25rem 0 .5rem;line-height:1.5">${sec.sectionNote}</div>`
@@ -595,7 +629,7 @@ function renderForm() {
             : `<input type="number" id="cf-${f.key}" value="${val !== undefined ? val : ''}"
               step="${step}"${min}${max}${isLocked ? ' disabled' : ''}>`;
           const wid = f.wrapId ? ` id="${f.wrapId}"` : '';
-          const expertAttr2 = !f.basic ? ' data-expert' : '';
+          const expertAttr2 = !SETUP_KEYS.has(f.key) ? ' data-expert' : '';
           return `<div class="cfg-field"${wid}${expertAttr2}>
             <div class="cfg-label">${f.label}${unitSuffix}</div>
             <div class="cfg-desc">${f.desc}</div>
@@ -1062,7 +1096,7 @@ function applyPreset(key) {
   if (!key) return;
   const preset = PRESETS[key];
   if (!preset) { sel.value = ''; return; }
-  if (!confirm('Apply "' + preset.desc + '" preset?\n\nThis will overwrite: RPM limits, EGT limits, oil pressure targets, idle RPM, glow plug timing, and startup sequence timing.\nHardware pins are not changed.\n\nYou can still adjust individual values after applying.')) {
+  if (!confirm('Load "' + preset.desc + '" as editable example suggestions?\n\nThese values are NOT verified for your turbine. They only change the form and do not reach the ECU unless you review and explicitly save them.\n\nAffected examples include RPM and temperature limits, oil targets, idle RPM, glow timing, and startup timing.')) {
     sel.value = ''; return;
   }
   // Deep-merge into cfg
@@ -1085,9 +1119,9 @@ function applyPreset(key) {
   _refreshChangedBorders();   // highlight fields that differ from last-saved state
   document.querySelector('.save-bar').classList.add('is-dirty');
   const saveMsg = document.getElementById('save-msg');
-  if (saveMsg) { saveMsg.textContent = '⚠ Preset applied — unsaved'; saveMsg.style.color = 'var(--yellow)'; }
+  if (saveMsg) { saveMsg.textContent = '⚠ Example suggestions loaded — unverified and unsaved'; saveMsg.style.color = 'var(--yellow)'; }
   const note = document.getElementById('preset-note');
-  if (note) { note.textContent = '✓ "' + preset.desc + '" preset applied — review values then Save.'; note.style.color = 'var(--green)'; }
+  if (note) { note.textContent = '⚠ "' + preset.desc + '" examples loaded. Verify every changed value before saving.'; note.style.color = 'var(--yellow)'; }
   sel.value = '';
 }
 
@@ -1269,6 +1303,7 @@ function applyAbIgnitionParamVisibility() {
   const useTorch  = utEl ? utEl.checked : false;
   const flameMode = fmEl ? parseInt(fmEl.value) : 2;
   function showF(key, show) {
+    setCfgFieldHardHidden(key, !show);
     setCfgFieldVisible(key, show);
   }
   showF('ab_tpct', useTorch);
@@ -1280,6 +1315,7 @@ function applyAbIgnitionParamVisibility() {
 }
 
 function _cfgShowField(key, show) {
+  setCfgFieldHardHidden(key, !show);
   setCfgFieldVisible(key, show);
 }
 
@@ -1486,7 +1522,8 @@ function applyHwConditions() {
     const label = oilMpEl.closest('.cfg-field')?.querySelector('.cfg-label');
     if (label) label.textContent = 'Controller Minimum Duty %';
   }
-  if (oilMmEl) setCfgFieldVisibleByElement(oilMmEl.closest('.cfg-field'), true);
+  // Oil Target remains unavailable without pressure feedback; Advanced may
+  // display it ghosted as reference, but it must never become editable.
 
   // Show/hide a no-sensor note inside the Oil System section
   let oilNote = document.getElementById('hw-oil-no-sensor-note');
@@ -1639,7 +1676,9 @@ function applyHwConditions() {
       : 'Prop-pitch governor fields require a proportional prop-pitch actuator in Hardware.'));
 
   // ── N2 / two-shaft fields ────────────────────────────────────────────────
+  setCfgFieldHardHidden('di_n2', !hasN2);
   showField('di_n2', hasN2);
+  setCfgFieldHardHidden('cl_n2', !hasN2); // impossible on single-shaft topology; do not ghost
   if (!hasN2) showField('cl_n2', false); // applyClusterVisibility guards show, we guard N2
   const clusterSec = Array.from(document.querySelectorAll('.cfg-section'))
     .find(sec => sec.querySelector('.cfg-title')?.textContent?.trim() === 'Cluster');
@@ -1804,9 +1843,10 @@ async function fetchJsonWithRetry(url, attempts = 3) {
 }
 
 (async () => {
-  const c = await fetchJsonWithRetry('/api/config');
-  const hw = await fetchJsonWithRetry('/api/hardware');
-  return [c, hw];
+  return Promise.all([
+    fetchJsonWithRetry('/api/config'),
+    fetchJsonWithRetry('/api/hardware')
+  ]);
 })()
   .then(([c, hw]) => {
     cfg   = c;
@@ -1816,6 +1856,7 @@ async function fetchJsonWithRetry(url, attempts = 3) {
     _applyAllVisibility();
     hookValidation();
     runValidation();
+    if (typeof startTelemetryBoot === 'function') startTelemetryBoot();
     // Deep links from other pages (e.g. /config.html#cf-tm_sl on the Log
     // page): fields are JS-generated after load, so native anchor scrolling
     // misses them — scroll manually once the form exists.

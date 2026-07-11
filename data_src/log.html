@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Log</title>
-<link rel="stylesheet" href="/style.css?v=20260706a">
+<link rel="stylesheet" href="/style.css?v=20260711f">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
@@ -21,7 +21,7 @@
 </nav>
 <main>
   <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.9rem;flex-wrap:wrap">
-    <h2 style="font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin:0">Flight Log</h2>
+    <h2 style="font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin:0">Event Log</h2>
     <span id="log-count" style="font-size:.72rem;color:var(--dim);margin-left:.3rem"></span>
     <div style="display:flex;gap:.4rem;margin-left:auto;flex-wrap:wrap">
       <button onclick="loadLog()">Refresh</button>
@@ -32,8 +32,8 @@
   </div>
   <div style="font-size:.74rem;color:var(--dim);padding:.55rem .75rem;border:1px solid var(--border);border-radius:6px;background:var(--surface);margin-bottom:.8rem;line-height:1.55">
     <strong style="color:var(--text)">How logging works:</strong>
-    Flight Log records events and compact periodic snapshots for diagnosis. Session Data records selected values in a detailed CSV only for an engine run. Standby snapshots are disabled by default so an idle ECU does not fill the flight log with uneventful readings.
-    Viewing, downloading, and clearing the Flight Log require STANDBY (or FAULT) with Standby Snapshot Logging turned off — the ECU refuses flash-heavy reads that would contend with active logging.
+    Event Log records events and compact periodic snapshots for diagnosis. Session Data records selected values in a detailed CSV only for an engine run. Standby snapshots are disabled by default so an idle ECU does not fill the event log with uneventful readings.
+    Viewing, downloading, and clearing the Event Log require STANDBY (or FAULT) with Standby Snapshot Logging turned off — the ECU refuses flash-heavy reads that would contend with active logging.
   </div>
 
   <div class="tab-strip">
@@ -111,7 +111,7 @@
           <label class="slog-chk"><input type="checkbox" data-bit="loop">ECU loop timing</label>
         </div>
         <div style="margin-top:.65rem;font-size:.7rem;color:var(--dim)">Changes take effect on the next engine start.</div>
-        <label class="slog-chk" style="display:block;margin-top:.6rem" title="When off, Flight Log does not add periodic sensor snapshots while the ECU is in standby.">
+        <label class="slog-chk" style="display:block;margin-top:.6rem" title="When off, Event Log does not add periodic sensor snapshots while the ECU is in standby.">
           <input type="checkbox" id="log-standby"> Log periodic snapshots while in standby
         </label>
         <button id="session-save-btn" onclick="saveSessionCfg()" style="margin-top:.55rem" title="Save which sensor channels are recorded in each run's session CSV (applied to the next run).">Save Selection</button>
@@ -190,7 +190,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260706a"></script>
+<script src="/app.js?v=20260711f"></script>
 <script>
 // ── Tab switching ─────────────────────────────────────────────
 function showTab(tab) {
@@ -470,7 +470,7 @@ function loadLog() {
 
 function downloadLog(fmt) {
   const url  = fmt === 'csv' ? '/api/log/csv' : '/api/log/raw';
-  const name = fmt === 'csv' ? 'flight_log.csv' : 'flight_log.ndjson';
+  const name = fmt === 'csv' ? 'event_log.csv' : 'event_log.ndjson';
   fetch(url).then(async r => {
     if (!r.ok) throw new Error(await r.text() || ('HTTP ' + r.status));
     return r.blob();
@@ -494,9 +494,9 @@ function askClear(target) {
   const body    = document.getElementById('clear-confirm-body');
   const btn     = document.getElementById('clear-confirm-btn');
   if (target === 'flightlog') {
-    title.textContent = 'Clear flight log?';
+    title.textContent = 'Clear event log?';
     body.textContent  = 'This will permanently delete all recorded events. This cannot be undone.';
-    btn.textContent   = 'Yes, clear flight log';
+    btn.textContent   = 'Yes, clear event log';
   } else {
     title.textContent = 'Delete all session logs?';
     body.textContent  = 'This will permanently delete every session CSV file. This cannot be undone.';
@@ -673,7 +673,7 @@ function _applySessionSettingsLock() {
     sbLabel.style.cursor = _sessionSettingsLocked ? 'not-allowed' : '';
     sbLabel.title = _sessionSettingsLocked
       ? 'Standby snapshot logging is locked while the engine is not in STANDBY.'
-      : 'When off, Flight Log does not add periodic sensor snapshots while the ECU is in standby.';
+      : 'When off, Event Log does not add periodic sensor snapshots while the ECU is in standby.';
   }
   const saveBtn = document.getElementById('session-save-btn');
   if (saveBtn) saveBtn.disabled = _sessionSettingsLocked;
