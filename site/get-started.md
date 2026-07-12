@@ -18,7 +18,7 @@ You need a Windows computer, a data-capable USB cable, and either a Classic ESP3
 4. For a new board select **Clean install / reinstall**. It erases the selected board.
 5. For a working controller select **Update and keep my setup**. Back up the engine file first; this Wi-Fi path preserves setup intentionally.
 
-If Windows warns about the unsigned v0.5.23 tool, confirm it came from the official OpenTurbine release before choosing Windows’ “More info” and “Run anyway” path. Do not disable Windows protection globally.
+If Windows warns about the unsigned tool, confirm it came from the official OpenTurbine release before choosing Windows’ “More info” and “Run anyway” path. Do not disable Windows protection globally.
 
 ## Connect to the dashboard
 

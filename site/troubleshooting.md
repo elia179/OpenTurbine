@@ -6,7 +6,7 @@ lede: Find the symptom first; do not treat a setup or wiring question as a softw
 
 ## Setup Tool is blocked or will not start
 
-Verify the download is the official [v0.5.23 release](https://github.com/elia179/OpenTurbine/releases/tag/setup-tool-v0.5.23). Its current EXE is unsigned, so SmartScreen may warn. Do not disable Windows protection globally.
+Verify the download is from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page. The current EXE is unsigned, so SmartScreen may warn. Do not disable Windows protection globally.
 
 ## Board is not detected or flashing fails
 

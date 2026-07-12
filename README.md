@@ -36,7 +36,7 @@ The normal Windows installation does not require Git, PlatformIO, or source-code
 3. Choose **Clean install / reinstall** for a blank board, or **Update and keep my setup** for a working controller.
 4. Follow the Setup Tool, then join the board Wi-Fi and open the address it shows (normally `http://192.168.4.1`).
 
-The stable release asset was verified for [Setup Tool v0.5.23](https://github.com/elia179/OpenTurbine/releases/tag/setup-tool-v0.5.23). It is currently unsigned; only continue through Windows warnings after confirming it came from this official release.
+The latest Setup Tool release is currently unsigned; only continue through Windows warnings after confirming it came from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page.
 
 ## Supported targets
 

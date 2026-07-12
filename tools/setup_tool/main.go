@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	appVersion              = "0.5.23"
+	appVersion              = "0.5.24"
 	requiredPackageSchema   = 2
 	appTitle                = "OpenTurbine Setup Tool"
 	ecuBaseURL              = "http://192.168.4.1"
@@ -2029,6 +2029,9 @@ func loadPackageFromDir(root string) (*Package, error) {
 	}
 	if m.PackageSchema != requiredPackageSchema {
 		return nil, fmt.Errorf("This setup package is not compatible with this Setup Tool.\nDownload the EXE and OpenTurbine_Recommended.zip from the same release.")
+	}
+	if strings.TrimSpace(m.SetupToolVersion) != appVersion {
+		return nil, fmt.Errorf("This setup package is for Setup Tool %q, but this copy is %q. Download the EXE and OpenTurbine_Recommended.zip from the same release.", m.SetupToolVersion, appVersion)
 	}
 	return &Package{Root: root, Manifest: m}, nil
 }

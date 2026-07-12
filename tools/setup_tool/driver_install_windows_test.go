@@ -220,6 +220,14 @@ func TestLoadPackageRejectsSchemaMismatch(t *testing.T) {
 	}
 }
 
+func TestLoadPackageRejectsSetupToolVersionMismatch(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "manifest.json"), `{"project":"OpenTurbine","version":"1.0","package_schema":2,"setup_tool_version":"0.5.23"}`)
+	if _, err := loadPackageFromDir(root); err == nil || !strings.Contains(err.Error(), "same release") {
+		t.Fatalf("expected setup-tool version mismatch, got %v", err)
+	}
+}
+
 func completeDriverRoot(t *testing.T, root string) string {
 	t.Helper()
 	writeTestFile(t, filepath.Join(root, "driver.inf"), "inf")

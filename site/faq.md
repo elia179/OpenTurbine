@@ -18,7 +18,7 @@ Clean install/reinstall erases the selected board. Update and keep my setup is t
 
 ## Why does Windows warn about the Setup Tool?
 
-The current v0.5.23 release is unsigned. Download only from the official release and verify its checksum when needed.
+The current Setup Tool release is unsigned. Download only from the official release and verify its checksum when needed.
 
 ## Is OpenTurbine certified or inherently safe?
 
