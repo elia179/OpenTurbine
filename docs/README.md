@@ -1,6 +1,6 @@
 # Developer and beta documentation
 
-The repository root [`README.md`](../README.md) is the authoritative user installation and operating guide. User-facing setup instructions should be corrected there first instead of creating another competing guide.
+The repository root [`README.md`](../README.md) is a concise user gateway. The detailed current user procedure is [`USER_GUIDE.md`](USER_GUIDE.md); public summaries live in the Pages site under `site/`.
 
 This directory contains material for people developing, validating, packaging, or integrating OpenTurbine.
 
@@ -13,6 +13,20 @@ This directory contains material for people developing, validating, packaging, o
 - Require user action only for immediate safety, destructive operations, or configuration integrity. Prefer warnings and clear consequences when informed choice is possible.
 - Keep the classic ESP32 target viable; its application partition has little remaining headroom, so firmware-size impact is a release concern.
 
+## Public-content source of truth
+
+| Fact | Source of truth |
+| --- | --- |
+| Setup Tool asset name | release workflow and `docs/SETUP_TOOL.md` |
+| supported firmware targets | `platformio.ini` |
+| default board IP | firmware and `site/_data/project.yml` |
+| public project status | `site/_data/project.yml` |
+| compatibility wording | `site/_data/compatibility.yml` |
+| normal install procedure | `docs/USER_GUIDE.md` and `site/get-started.md` |
+| update/recovery procedure | `docs/USER_GUIDE.md` and `site/troubleshooting.md` |
+| developer build procedure | this file and `docs/SETUP_TOOL.md` |
+| safety requirements | `docs/USER_GUIDE.md` and `site/safety.md` |
+
 ## Integrations
 
 - [`OTC_CLUSTER_PROTOCOL.md`](OTC_CLUSTER_PROTOCOL.md) — complete OpenTurbine Cluster wire protocol
@@ -22,12 +36,12 @@ This directory contains material for people developing, validating, packaging, o
 ## Release engineering
 
 - [`SETUP_TOOL.md`](SETUP_TOOL.md) — building and packaging the Windows setup tool and release assets
-- [`WINDOWS_FLASHER_INSTALL.md`](WINDOWS_FLASHER_INSTALL.md) — legacy focused SmartScreen/download troubleshooting; normal installation now lives in the root README
+- [`WINDOWS_FLASHER_INSTALL.md`](WINDOWS_FLASHER_INSTALL.md) — legacy focused SmartScreen/download troubleshooting; normal installation lives in [`USER_GUIDE.md`](USER_GUIDE.md)
 - [`../CHANGELOG.md`](../CHANGELOG.md) — version history
 
 ## Beta and internal work
 
-- [`BETA_USER_GUIDE.md`](BETA_USER_GUIDE.md) — beta reporting and extended historical notes; the root README is authoritative for current setup
+- [`BETA_USER_GUIDE.md`](BETA_USER_GUIDE.md) — beta reporting and extended historical notes; [`USER_GUIDE.md`](USER_GUIDE.md) is authoritative for current setup
 - [`internal/BETA_READINESS_PLAN.md`](internal/BETA_READINESS_PLAN.md) — internal validation plan
 - [`../dev/`](../dev/) — design specification, code map, bench harness, campaigns, and validation records
 - [`../tools/`](../tools/) — UI audits, asset generation, setup packaging, and build helpers

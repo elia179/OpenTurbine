@@ -9,8 +9,9 @@ factory reset. Users download only:
 OpenTurbineSetupTool.exe
 ```
 
-The authoritative user installation and operating guide is the repository root
-[`README.md`](../README.md). Focused browser and SmartScreen troubleshooting is
+The repository root [`README.md`](../README.md) is a short gateway; the detailed
+user installation and operating guide is [`USER_GUIDE.md`](USER_GUIDE.md).
+Focused browser and SmartScreen troubleshooting is
 in [`WINDOWS_FLASHER_INSTALL.md`](WINDOWS_FLASHER_INSTALL.md). The rest of this
 file is for setup-tool developers and release packagers.
 

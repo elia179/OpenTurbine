@@ -1,0 +1,24 @@
+name: Feature request
+description: Describe a turbine-builder problem to solve.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use_case
+    attributes: {label: Turbine use case}
+    validations: {required: true}
+  - type: textarea
+    id: problem
+    attributes: {label: Problem to solve}
+    validations: {required: true}
+  - type: textarea
+    id: behavior
+    attributes: {label: Desired user behavior}
+    validations: {required: true}
+  - type: textarea
+    id: workaround
+    attributes: {label: Existing workaround}
+  - type: textarea
+    id: safety
+    attributes: {label: Safety implications}
+    validations: {required: true}

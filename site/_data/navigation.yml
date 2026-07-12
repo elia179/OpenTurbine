@@ -1,0 +1,15 @@
+- label: Download
+  url: https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe
+  primary: true
+- label: Get Started
+  url: /get-started/
+- label: Hardware
+  url: /hardware/
+- label: User Guide
+  url: /user-guide/
+- label: Troubleshooting
+  url: /troubleshooting/
+- label: Safety
+  url: /safety/
+- label: GitHub
+  url: https://github.com/elia179/OpenTurbine

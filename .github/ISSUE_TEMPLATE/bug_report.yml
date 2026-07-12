@@ -1,0 +1,45 @@
+name: Software bug report
+description: Report reproducible firmware, browser, or setup-tool behavior.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: input
+    id: firmware
+    attributes: {label: Firmware version}
+    validations: {required: true}
+  - type: input
+    id: target
+    attributes: {label: Board target}
+    validations: {required: true}
+  - type: textarea
+    id: reproduction
+    attributes: {label: Steps to reproduce}
+    validations: {required: true}
+  - type: textarea
+    id: expected
+    attributes: {label: Expected result}
+    validations: {required: true}
+  - type: textarea
+    id: actual
+    attributes: {label: Actual result}
+    validations: {required: true}
+  - type: input
+    id: engine_state
+    attributes: {label: Engine state when observed, placeholder: "STANDBY, STARTING, RUNNING, FAULT..."}
+    validations: {required: true}
+  - type: textarea
+    id: logs
+    attributes: {label: Relevant sanitized logs or screenshots}
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Safety impact
+      options: [None known, Potentially safety relevant, Immediate safety concern]
+    validations: {required: true}
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed passwords, Wi-Fi names, and other secrets from logs and attachments.
+          required: true

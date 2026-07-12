@@ -49,4 +49,4 @@ The hexadecimal hashes must match.
 - Close serial monitors and other applications using the COM port.
 - For boards requiring bootloader mode, hold **BOOT**, tap **EN/RESET**, begin installation, and release BOOT when connection starts.
 
-Return to the root README after the installer detects the board.
+Return to the detailed [`USER_GUIDE.md`](USER_GUIDE.md) after the installer detects the board.
