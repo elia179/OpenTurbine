@@ -91,7 +91,7 @@
   /* ── widget styles (kept here so style.css stays palette-only) ── */
   var css =
     '.ot-appx-label{font-size:.66rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);font-weight:600;margin-bottom:9px}' +
-    '.ot-appx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:9px}' +
+    '.ot-appx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}' +
     '.ot-tile{padding:0;border:1px solid var(--border-light);border-radius:9px;overflow:hidden;cursor:pointer;text-align:left;display:flex;flex-direction:column;transition:transform .08s}' +
     '.ot-tile:hover{transform:translateY(-2px)}' +
     '.ot-tile.active{box-shadow:0 0 0 2px var(--accent);border-color:var(--accent)}' +
