@@ -162,7 +162,7 @@ struct EngineData {
         char reason[192];
         bool isError;   // true = blocks START, false = warning only
     };
-    static constexpr int MAX_SEQ_ISSUES = 10;
+    static constexpr int MAX_SEQ_ISSUES = 9;
     SeqIssue         seqIssues[MAX_SEQ_ISSUES] = {};
     uint8_t          seqIssueCount  = 0;
     bool             seqHasErrors   = false;

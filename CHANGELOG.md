@@ -17,6 +17,7 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - A practical OpenTurbine Cluster example and implementation guide.
 - A bounded hardware channel registry with installed input/output inventory, stable channel IDs, editable registry cards on the Hardware page, and compatibility migration from legacy singleton hardware fields.
 - Stable channel references for control rules, sequence side actions, and custom sequence blocks, while retaining legacy numeric fields for older configuration files.
+- Fixed-capacity oil-loop definitions that bind pressure input channels to oil-pump output channels and feed the existing oil-pressure controller compatibility path.
 
 ### Changed
 - Configuration suggestions are explicitly unverified starting points; unavailable hardware-dependent controls are hidden in Setup and retained as explained, disabled controls in Advanced.
@@ -24,6 +25,7 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Raw firmware and web-asset uploads remain available in Tools but are grouped under a collapsed advanced section; the setup tool is the normal update path.
 - User-facing aircraft/flight-specific wording was replaced with turbine-neutral operator, event-log, and engine-operation terminology.
 - Controller and safety enables are now rejected by Hardware save/import validation and START preflight when their required inventory is missing.
+- The first enabled oil-loop definition now supplies the oil controller's selected pressure/pump channels plus min/max demand and deadband; duplicate enabled pump ownership is rejected.
 
 ### Fixed
 - Known-point oil-temperature curves now reject duplicate ADC captures, allow individual point removal, persist their calibrated ADC range, and clamp conversion to that range instead of extrapolating beyond measured data.

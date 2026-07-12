@@ -343,6 +343,20 @@ public:
     static bool hasThrottleSlew;
     static bool hasDynamicIdle;
 
+    static constexpr int MAX_OIL_LOOPS = 2;
+    struct OilLoopDef {
+        bool  enabled = false;
+        char  id[16] = {};
+        uint8_t pressureInputIndex = 255;
+        uint8_t pumpOutputIndex = 255;
+        uint16_t targetCentiBar = 250;
+        uint16_t deadbandCentiBar = 20;
+        uint8_t minDemandPct = 18;
+        uint8_t maxDemandPct = 100;
+    };
+    static OilLoopDef oilLoops[MAX_OIL_LOOPS];
+    static uint8_t oilLoopCount;
+
     // ── Safety enables ────────────────────────────────────────
     static bool safetyOverspeed;
     static bool safetyOvertemp;

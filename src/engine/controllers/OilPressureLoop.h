@@ -20,6 +20,7 @@ public:
     // Config parameters — populated from Config before begin()
     float adjustScale      = 1.80f;
     float minPct           = 18.0f;
+    float maxPct           = 100.0f;
     int   failsafeDelayMs  = 1500;
     float failsafePct      = 60.0f;
     float deadband         = 0.2f;  // bar: no output change when |error| < deadband
@@ -51,7 +52,7 @@ public:
             } else if ((now - _failsafeTimer) > (unsigned long)failsafeDelayMs) {
                 // Switch to fixed open-loop
                 ed.oilFailsafeActive = true;
-                ed.oilPumpPct      = failsafePct;
+                ed.oilPumpPct      = constrain(failsafePct, minPct, maxPct);
             }
             return;
         }
@@ -72,7 +73,7 @@ public:
         // recovery from saturation is immediate once error reverses sign.
         if (fabsf(error) > deadband) {
             float adj  = error * adjustScale * (dt * kNominalHz);
-            _outputPct = constrain(_outputPct + adj, minPct, 100.0f);
+                _outputPct = constrain(_outputPct + adj, minPct, maxPct);
         }
         ed.oilPumpPct = _outputPct;
     }
@@ -81,7 +82,7 @@ public:
         // Seed from current demand so the loop continues smoothly at the
         // STARTUP→RUNNING transition — avoids a one-frame duty-zero blip.
         auto& ed = EngineData::instance();
-        _outputPct     = constrain(ed.oilPumpPct, minPct, 100.0f);
+        _outputPct     = constrain(ed.oilPumpPct, minPct, maxPct);
         _failsafeArmed = false;
         _lastMs        = millis();
         ed.oilFailsafeActive = false;

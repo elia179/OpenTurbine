@@ -442,6 +442,48 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
     return true;
 }
 
+bool validateOilLoops(JsonVariantConst loops, const ChannelRegistry* registry) {
+    if (loops.isNull()) return true;
+    if (!loops.is<JsonArrayConst>() || !registry) return false;
+    if (loops.size() > HardwareConfig::MAX_OIL_LOOPS) return false;
+    auto inRange = [](JsonObjectConst o, const char* key, float lo, float hi) {
+        JsonVariantConst v = o[key];
+        if (v.isNull()) return true;
+        if (!v.is<float>() && !v.is<double>() && !v.is<int>() &&
+            !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
+        float f = v.as<float>();
+        return f >= lo && f <= hi;
+    };
+    char usedIds[HardwareConfig::MAX_OIL_LOOPS][20] = {};
+    char usedPumps[HardwareConfig::MAX_OIL_LOOPS][20] = {};
+    uint8_t idCount = 0, pumpCount = 0;
+    for (JsonObjectConst loop : loops.as<JsonArrayConst>()) {
+        const char* id = loop["id"] | "";
+        const char* pressure = loop["pressure_input"] | "";
+        const char* pump = loop["pump_output"] | "";
+        if (!ChannelRegistry::validId(id) || strlen(id) >= sizeof(HardwareConfig::oilLoops[0].id) ||
+            !ChannelRegistry::validId(pressure) ||
+            !ChannelRegistry::validId(pump)) return false;
+        for (uint8_t i = 0; i < idCount; i++) if (!strcmp(usedIds[i], id)) return false;
+        strlcpy(usedIds[idCount++], id, sizeof(usedIds[0]));
+        const auto* pressureCh = registry->find(pressure, ChannelRegistry::Input);
+        const auto* pumpCh = registry->find(pump, ChannelRegistry::Output);
+        if (!pressureCh || !pumpCh ||
+            strcmp(pressureCh->role, "pressure") != 0 ||
+            strcmp(pumpCh->role, "oil_pump") != 0) return false;
+        if (!inRange(loop, "target_bar", 0.0f, 20.0f) ||
+            !inRange(loop, "deadband_bar", 0.0f, 5.0f) ||
+            !inRange(loop, "min_demand", 0.0f, 1.0f) ||
+            !inRange(loop, "max_demand", 0.0f, 1.0f)) return false;
+        if ((loop["max_demand"] | 1.0f) < (loop["min_demand"] | 0.0f)) return false;
+        if (loop["enabled"] | false) {
+            for (uint8_t i = 0; i < pumpCount; i++) if (!strcmp(usedPumps[i], pump)) return false;
+            strlcpy(usedPumps[pumpCount++], pump, sizeof(usedPumps[0]));
+        }
+    }
+    return true;
+}
+
 int customSensorId(const char* key) {
     if (!key) return -1;
     if (strcmp(key, "oil_temp") == 0) return 0;
@@ -1734,6 +1776,8 @@ int   HardwareConfig::clusterIntervalMs= OT_CLUSTER_INTERVAL_MS;
 bool  HardwareConfig::hasOilLoop       = DEFAULT_HAS_OIL_LOOP;
 bool  HardwareConfig::hasThrottleSlew  = DEFAULT_HAS_THROTTLE_SLEW;
 bool  HardwareConfig::hasDynamicIdle   = DEFAULT_HAS_DYNAMIC_IDLE;
+HardwareConfig::OilLoopDef HardwareConfig::oilLoops[HardwareConfig::MAX_OIL_LOOPS] = {};
+uint8_t HardwareConfig::oilLoopCount = 0;
 
 // Safety enables
 bool  HardwareConfig::safetyOverspeed  = DEFAULT_SAFETY_OVERSPEED;
@@ -2175,6 +2219,8 @@ void HardwareConfig::applyDefaults() {
     hasOilLoop      = DEFAULT_HAS_OIL_LOOP;
     hasThrottleSlew = DEFAULT_HAS_THROTTLE_SLEW;
     hasDynamicIdle  = DEFAULT_HAS_DYNAMIC_IDLE;
+    oilLoopCount = 0;
+    for (int i = 0; i < MAX_OIL_LOOPS; i++) oilLoops[i] = OilLoopDef{};
     // hardware_profile.h compile guards enforce the other controller
     // dependencies; dynamic idle's RPM requirement is only checked here.
     if (hasDynamicIdle && !hasN1Rpm && !hasN2Rpm) hasDynamicIdle = false;
@@ -2284,6 +2330,7 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
         if (!registry.fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
         registryForValidation = &registry;
     }
+    if (!validateOilLoops(doc["oil_loops"], registryForValidation)) return false;
     if (!validateHardwareDependencies(doc, registryForValidation)) return false;
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
@@ -2559,6 +2606,21 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     contrl["throttle_slew"] = hasThrottleSlew;
     contrl["dynamic_idle"]  = hasDynamicIdle;
     contrl["governor"]      = hasGovernor;
+    auto loops = doc["oil_loops"].to<JsonArray>();
+    for (uint8_t i = 0; i < oilLoopCount; i++) {
+        const auto& l = oilLoops[i];
+        auto o = loops.add<JsonObject>();
+        o["id"] = l.id;
+        o["enabled"] = l.enabled;
+        o["pressure_input"] = l.pressureInputIndex < channelRegistry.inputCount
+            ? channelRegistry.inputs[l.pressureInputIndex].id : "";
+        o["pump_output"] = l.pumpOutputIndex < channelRegistry.outputCount
+            ? channelRegistry.outputs[l.pumpOutputIndex].id : "";
+        o["target_bar"] = l.targetCentiBar / 100.0f;
+        o["deadband_bar"] = l.deadbandCentiBar / 100.0f;
+        o["min_demand"] = l.minDemandPct / 100.0f;
+        o["max_demand"] = l.maxDemandPct / 100.0f;
+    }
 
     auto saf = doc["safety"].to<JsonObject>();
     saf["overspeed"]  = safetyOverspeed;
@@ -3151,6 +3213,44 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     if (!contrl["throttle_slew"].isNull()) hasThrottleSlew = contrl["throttle_slew"].as<bool>();
     if (!contrl["dynamic_idle"].isNull())  hasDynamicIdle  = contrl["dynamic_idle"].as<bool>();
     if (!contrl["governor"].isNull())      hasGovernor     = contrl["governor"].as<bool>();
+    oilLoopCount = 0;
+    for (int i = 0; i < MAX_OIL_LOOPS; i++) oilLoops[i] = OilLoopDef{};
+    if (doc["oil_loops"].is<JsonArrayConst>()) {
+        auto outType = [](ChannelRegistry::Driver d) {
+            return d == ChannelRegistry::Servo ? 0 : d == ChannelRegistry::Pwm ? 1 : 2;
+        };
+        auto inputIndex = [](const char* id) -> uint8_t {
+            for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; i++)
+                if (!strcmp(HardwareConfig::channelRegistry.inputs[i].id, id)) return i;
+            return 255;
+        };
+        auto outputIndex = [](const char* id) -> uint8_t {
+            for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; i++)
+                if (!strcmp(HardwareConfig::channelRegistry.outputs[i].id, id)) return i;
+            return 255;
+        };
+        bool anyEnabledLoop = false;
+        for (JsonObjectConst src : doc["oil_loops"].as<JsonArrayConst>()) {
+            if (oilLoopCount >= MAX_OIL_LOOPS) break;
+            OilLoopDef& l = oilLoops[oilLoopCount++];
+            strlcpy(l.id, src["id"] | "", sizeof(l.id));
+            l.pressureInputIndex = inputIndex(src["pressure_input"] | "");
+            l.pumpOutputIndex = outputIndex(src["pump_output"] | "");
+            l.enabled = src["enabled"] | false;
+            l.targetCentiBar = (uint16_t)constrain((int)((src["target_bar"] | 2.5f) * 100.0f), 0, 2000);
+            l.deadbandCentiBar = (uint16_t)constrain((int)((src["deadband_bar"] | 0.2f) * 100.0f), 0, 500);
+            l.minDemandPct = (uint8_t)constrain((int)((src["min_demand"] | 0.18f) * 100.0f), 0, 100);
+            l.maxDemandPct = (uint8_t)constrain((int)((src["max_demand"] | 1.0f) * 100.0f), l.minDemandPct, 100);
+            if (l.enabled && !anyEnabledLoop) {
+                const auto* pressure = l.pressureInputIndex < channelRegistry.inputCount ? &channelRegistry.inputs[l.pressureInputIndex] : nullptr;
+                const auto* pump = l.pumpOutputIndex < channelRegistry.outputCount ? &channelRegistry.outputs[l.pumpOutputIndex] : nullptr;
+                if (pressure && pressure->pin >= 0) { hasOilPress = true; oilPressPin = pressure->pin; }
+                if (pump && pump->pin >= 0) { hasOilPump = true; oilPumpPin = pump->pin; oilPumpType = outType(pump->driver); }
+                anyEnabledLoop = true;
+            }
+        }
+        if (anyEnabledLoop) hasOilLoop = true;
+    }
     if (hasOilLoop && (!hasOilPress || !hasOilPump)) {
         Serial.println("[HWCfg] Oil pressure loop disabled: requires oil pressure sensor and oil pump");
         hasOilLoop = false;
@@ -3523,5 +3623,24 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (hasCoolFan) addOutput("cooling_fan_main", "cooling_fan", coolFanPin, coolFanType);
         if (hasBleedValve) addOutput("bleed_valve_main", "valve", bleedValvePin, bleedValveType);
         if (hasOilScavengePump) addOutput("oil_scavenge_main", "scavenge_pump", oilScavPumpPin, oilScavPumpType);
+    }
+    if (oilLoopCount == 0 && hasOilLoop && hasOilPress && hasOilPump) {
+        const ChannelRegistry::Channel* pressure = channelRegistry.find("oil_pressure_main", ChannelRegistry::Input);
+        const ChannelRegistry::Channel* pump = channelRegistry.find("oil_pump_main", ChannelRegistry::Output);
+        if (!pressure) for (uint8_t i = 0; i < channelRegistry.inputCount; i++)
+            if (!strcmp(channelRegistry.inputs[i].role, "pressure")) { pressure = &channelRegistry.inputs[i]; break; }
+        if (!pump) for (uint8_t i = 0; i < channelRegistry.outputCount; i++)
+            if (!strcmp(channelRegistry.outputs[i].role, "oil_pump")) { pump = &channelRegistry.outputs[i]; break; }
+        if (pressure && pump) {
+            OilLoopDef& l = oilLoops[oilLoopCount++];
+            l.enabled = true;
+            strlcpy(l.id, "main_oil_loop", sizeof(l.id));
+            l.pressureInputIndex = (uint8_t)(pressure - channelRegistry.inputs);
+            l.pumpOutputIndex = (uint8_t)(pump - channelRegistry.outputs);
+            l.targetCentiBar = (uint16_t)constrain((int)(Config::oilStartupPressure * 100.0f), 0, 2000);
+            l.deadbandCentiBar = (uint16_t)constrain((int)(Config::oilPressureDeadband * 100.0f), 0, 500);
+            l.minDemandPct = (uint8_t)constrain((int)Config::oilMinPct, 0, 100);
+            l.maxDemandPct = 100;
+        }
     }
 }

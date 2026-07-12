@@ -505,9 +505,16 @@ namespace Hardware {
         if (hw.hasOilLoop) {
             g_ctrlOilLoop.adjustScale     = Config::oilAdjustScale;
             g_ctrlOilLoop.minPct          = Config::oilMinPct;
+            g_ctrlOilLoop.maxPct          = 100.0f;
             g_ctrlOilLoop.failsafeDelayMs = Config::oilFailsafeDelayMs;
             g_ctrlOilLoop.failsafePct     = Config::oilFailsafePct;
             g_ctrlOilLoop.deadband        = Config::oilPressureDeadband;
+            if (HardwareConfig::oilLoopCount > 0) {
+                const auto& loop = HardwareConfig::oilLoops[0];
+                g_ctrlOilLoop.minPct   = constrain((float)loop.minDemandPct, 0.0f, 100.0f);
+                g_ctrlOilLoop.maxPct   = constrain((float)loop.maxDemandPct, g_ctrlOilLoop.minPct, 100.0f);
+                g_ctrlOilLoop.deadband = loop.deadbandCentiBar / 100.0f;
+            }
         }
         if (hw.hasThrottleSlew) {
             g_ctrlThrottleSlew.rampUpMs     = Config::throttleRampUpMs;
