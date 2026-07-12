@@ -1,6 +1,6 @@
 ---
 layout: document
-title: OpenTurbine troubleshooting: USB, flashing and Wi-Fi
+title: "OpenTurbine troubleshooting: USB, flashing and Wi-Fi"
 description: Diagnose OpenTurbine USB-driver, board-detection, flashing, Wi-Fi, dashboard, and update problems for supported ESP32 turbine ECU boards.
 lede: Find the symptom first; do not treat a setup or wiring question as a software bug.
 ---

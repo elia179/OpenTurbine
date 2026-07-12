@@ -86,7 +86,13 @@ def front_matter(path: Path) -> dict[str, str]:
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
     if not match:
         return {}
-    return {key: value.strip().strip('"') for key, value in re.findall(r"^(title|description):\s*(.+)$", match.group(1), re.MULTILINE)}
+    metadata: dict[str, str] = {}
+    for key, value in re.findall(r"^(title|description):\s*(.+)$", match.group(1), re.MULTILINE):
+        value = value.strip()
+        if ": " in value and not value.startswith(('"', "'")):
+            raise ValueError(f"{path.relative_to(ROOT)} has an unquoted colon in {key} front matter")
+        metadata[key] = value.strip('"')
+    return metadata
 
 
 def check_local_links(path: Path, errors: list[str]) -> None:
@@ -213,7 +219,11 @@ def main() -> int:
             fail(errors, f"missing required site page: {name}")
             continue
         if name != "404.html":
-            metadata = front_matter(path)
+            try:
+                metadata = front_matter(path)
+            except ValueError as exc:
+                fail(errors, str(exc))
+                metadata = {}
             if not metadata.get("title") or not metadata.get("description"):
                 fail(errors, f"public page needs title and description front matter: {name}")
     config = (SITE / "_config.yml").read_text(encoding="utf-8")
