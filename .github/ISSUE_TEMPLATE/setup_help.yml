@@ -1,0 +1,41 @@
+name: Setup help
+description: Get help installing or connecting to OpenTurbine.
+title: "[Setup]: "
+labels: [setup-help]
+body:
+  - type: input
+    id: tool_version
+    attributes: {label: Setup Tool version, placeholder: "e.g. v0.5.23"}
+    validations: {required: true}
+  - type: input
+    id: windows
+    attributes: {label: Windows version/build}
+    validations: {required: true}
+  - type: input
+    id: board
+    attributes: {label: Board model and USB bridge, description: "Include CP210x/WCH bridge if known."}
+    validations: {required: true}
+  - type: textarea
+    id: error
+    attributes: {label: Exact displayed error and what you expected}
+    validations: {required: true}
+  - type: dropdown
+    id: device_manager
+    attributes:
+      label: Does Device Manager show the board?
+      options: [Yes, No, Not sure]
+    validations: {required: true}
+  - type: textarea
+    id: attempts
+    attributes: {label: Cables and ports tried}
+    validations: {required: true}
+  - type: textarea
+    id: diagnostics
+    attributes: {label: Sanitized diagnostic log, description: "Attach or paste a log from %LOCALAPPDATA%\\OpenTurbine\\SetupTool\\logs. Remove secrets first."}
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed passwords, Wi-Fi names, and other secrets from logs and attachments.
+          required: true

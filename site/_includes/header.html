@@ -1,0 +1,11 @@
+<header class="site-header">
+  <div class="shell nav-wrap">
+    <a class="brand" href="{{ '/' | relative_url }}" aria-label="OpenTurbine home"><span aria-hidden="true">◉</span> OpenTurbine</a>
+    <button class="menu-button" aria-expanded="false" aria-controls="site-nav">Menu</button>
+    <nav id="site-nav" aria-label="Main navigation">
+      {% for item in site.data.navigation %}
+        <a{% if item.primary %} class="button small"{% endif %} href="{% if item.url contains '://' %}{{ item.url }}{% else %}{{ item.url | relative_url }}{% endif %}">{{ item.label }}{% if item.url contains '://' and item.label == 'GitHub' %}<span class="sr-only"> (external)</span>{% endif %}</a>
+      {% endfor %}
+    </nav>
+  </div>
+</header>

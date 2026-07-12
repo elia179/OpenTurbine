@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Hardware and wiring discussion
+    url: https://github.com/elia179/OpenTurbine/discussions
+    about: Ask non-bug questions about boards, drivers, wiring, and integrations.
+  - name: Setup and installation help
+    url: https://github.com/elia179/OpenTurbine/issues/new?template=setup_help.yml
+    about: Get help with Windows, USB, flashing, Wi-Fi, and first setup.
