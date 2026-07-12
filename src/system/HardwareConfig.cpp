@@ -3247,4 +3247,30 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     sanitizeServoRange(fuelPump2MinUs, fuelPump2MaxUs);
     sanitizeServoRange(bleedValveMinUs, bleedValveMaxUs);
     sanitizeServoRange(propPitchMinUs, propPitchMaxUs);
+
+    // Deterministic compatibility migration.  The old singleton fields remain
+    // live adapters for this release, but all generated IDs are stable so
+    // callers can begin persisting references without relying on labels.
+    if (channelRegistry.inputCount == 0 && channelRegistry.outputCount == 0) {
+        auto addInput = [](const char* id, const char* role, int pin, ChannelRegistry::Driver driver) {
+            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::INPUT;
+            c.driver = driver; c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
+            HardwareConfig::channelRegistry.add(c);
+        };
+        auto addOutput = [](const char* id, const char* role, int pin, int legacyType) {
+            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::OUTPUT;
+            c.driver = legacyType == 0 ? ChannelRegistry::SERVO : legacyType == 1 ? ChannelRegistry::PWM : ChannelRegistry::RELAY;
+            c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
+            HardwareConfig::channelRegistry.add(c);
+        };
+        if (hasN1Rpm) addInput("n1_main", "speed", n1RpmPin, ChannelRegistry::PULSE);
+        if (hasN2Rpm) addInput("n2_main", "speed", n2RpmPin, ChannelRegistry::PULSE);
+        if (hasOilPress) addInput("oil_pressure_main", "pressure", oilPressPin, ChannelRegistry::ANALOG);
+        if (hasThrottle) addOutput("main_fuel", "fuel", throttlePin, throttleType);
+        if (hasStarter) addOutput("starter_main", "starter", starterPin, starterType);
+        if (hasOilPump) addOutput("oil_pump_main", "oil_pump", oilPumpPin, oilPumpType);
+        if (hasCoolFan) addOutput("cooling_fan_main", "cooling_fan", coolFanPin, coolFanType);
+        if (hasBleedValve) addOutput("bleed_valve_main", "valve", bleedValvePin, bleedValveType);
+        if (hasOilScavengePump) addOutput("oil_scavenge_main", "scavenge_pump", oilScavPumpPin, oilScavPumpType);
+    }
 }
