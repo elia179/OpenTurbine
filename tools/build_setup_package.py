@@ -63,6 +63,8 @@ COMMON_FLASH = [
     ("0xe000", "boot_app0.bin"),
     ("0x10000", "firmware.bin"),
 ]
+PACKAGE_SCHEMA = 2
+SETUP_TOOL_VERSION = "0.5.23"
 
 
 def read_version() -> str:
@@ -139,26 +141,30 @@ def copy_required(src: Path, dst: Path, missing: list[str]) -> None:
         missing.append(str(src.relative_to(ROOT) if src.is_relative_to(ROOT) else src))
 
 
-def copy_driver_package(src: str | None, dst: Path, *, require_inf: bool, allow_exe: bool = False) -> None:
+def copy_driver_package(src: str | None, dst: Path, *, label: str) -> None:
     if not src:
         return
     path = Path(src).expanduser()
     if not path.exists():
         raise RuntimeError(f"Driver package not found: {path}")
     source_dir = path if path.is_dir() else path.parent
-    # CP210xVCPInstaller is DPInst, not a self-contained installer. It needs
-    # the INF, CAT, and SYS files shipped beside it.
     has_inf = any(source_dir.rglob("*.inf"))
-    has_exe = any(source_dir.rglob("*.exe"))
-    if require_inf and not has_inf:
+    has_cat = any(source_dir.rglob("*.cat"))
+    has_sys = any(source_dir.rglob("*.sys"))
+    if not has_inf:
         raise RuntimeError(
-            f"CP210x driver package {source_dir} has no .inf file. Pass the extracted "
-            "Silicon Labs CP210x Windows driver folder, not a lone installer EXE."
+            f"{label} driver package {source_dir} has no .inf file. Pass the complete "
+            "extracted signed INF/CAT/SYS driver folder, not an installer EXE."
         )
-    if not require_inf and not has_inf and not (allow_exe and has_exe):
+    if not has_cat:
         raise RuntimeError(
-            f"WCH driver package {source_dir} has no .inf file or installer EXE. Pass the "
-            "extracted CH341/CH343 driver folder, not an empty wrapper directory."
+            f"{label} driver package {source_dir} has no .cat signature file. Pass the "
+            "complete unmodified vendor driver package."
+        )
+    if not has_sys:
+        raise RuntimeError(
+            f"{label} driver package {source_dir} has no .sys driver payload. Pass the "
+            "complete unmodified vendor driver package."
         )
     shutil.copytree(source_dir, dst, dirs_exist_ok=True)
 
@@ -167,8 +173,8 @@ def stage_package(stage: Path, esptool: Path, cp210x: str | None, ch340: str | N
     missing: list[str] = []
     (stage / "tools").mkdir(parents=True, exist_ok=True)
     copy_required(esptool, stage / "tools" / "esptool.exe", missing)
-    copy_driver_package(cp210x, stage / "drivers" / "cp210x", require_inf=True)
-    copy_driver_package(ch340, stage / "drivers" / "ch340", require_inf=False, allow_exe=True)
+    copy_driver_package(cp210x, stage / "drivers" / "cp210x", label="CP210x")
+    copy_driver_package(ch340, stage / "drivers" / "wch", label="WCH")
 
     boot_app0 = find_boot_app0()
     if boot_app0 is None:
@@ -178,6 +184,8 @@ def stage_package(stage: Path, esptool: Path, cp210x: str | None, ch340: str | N
         "project": "OpenTurbine",
         "version": read_version(),
         "recommended": True,
+        "package_schema": PACKAGE_SCHEMA,
+        "setup_tool_version": SETUP_TOOL_VERSION,
         "targets": {},
     }
 

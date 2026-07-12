@@ -14,11 +14,11 @@ The authoritative user installation and operating guide is the repository root
 in [`WINDOWS_FLASHER_INSTALL.md`](WINDOWS_FLASHER_INSTALL.md). The rest of this
 file is for setup-tool developers and release packagers.
 
-The CP210x button downloads Silicon Labs' complete CP210x Universal Windows
-Driver v11.5.0 directly from the official Silicon Labs URL, verifies a pinned
-SHA-256, and installs its signed INF/CAT package through Windows `pnputil`.
-Driver installation therefore works even if an older firmware package contains
-only the legacy DPInst EXE, while the OpenTurbine EXE remains fully open source.
+The setup tool installs USB-serial drivers only from complete, unmodified,
+vendor-signed INF/CAT/SYS packages bundled in `OpenTurbine_Recommended.zip`.
+It does not launch vendor wrapper installers. A small helper process is elevated
+through UAC, installs the matching package with Windows `pnputil`, runs a device
+rescan, writes diagnostics, and reports the matching COM port back to the GUI.
 
 On launch, the app looks for a local `OpenTurbine_Recommended.zip` next to the
 EXE first. If it is not there, it downloads this release asset:
@@ -64,14 +64,10 @@ python tools/build_setup_package.py ^
 ```
 
 Pass the extracted vendor folder, not a copied installer EXE. In particular,
-`CP210xVCPInstaller_x64.exe` is DPInst and cannot install anything unless its
-`.inf`, `.cat`, and driver files remain beside it:
-
-For WCH bridges, the setup tool accepts either the vendor installer EXE or
-signed driver folders containing `.inf`, `.cat`, and `.sys` files. A package can
-include both CH340/CH341 and CH343/CH910x driver folders under
-`drivers/ch340/`; the setup tool installs matching devices with Windows
-`pnputil`.
+the setup tool rejects EXE-only driver folders and any driver folder missing an
+`.inf`, `.cat`, or `.sys` payload. WCH CH340/CH341 and CH343/CH910x payloads
+belong under `drivers/wch/`; Silicon Labs CP210x payloads belong under
+`drivers/cp210x/`.
 
 For local packaging tests only, `--allow-missing-drivers` bypasses the release
 requirement. Never publish a package built with that flag.
@@ -140,12 +136,12 @@ WINDOWS_SIGNING_CERT_PASSWORD PFX password
 ```
 
 The CI job intentionally skips signing when those secrets are absent, so pull
-requests and local forks can still build. The Windows job uploads
-`OpenTurbineSetupTool` as a workflow artifact containing the EXE and checksum;
-attach those files to the GitHub release after confirming the EXE is signed. If
-your production certificate uses a cloud HSM, Azure Trusted Signing, or a USB
-token that cannot be exported as a PFX, run that provider's signing step before
-the checksum step and keep the same publish rule: sign first, hash second.
+requests and local forks can still build unsigned test artifacts. Public release
+workflows must require signing, verify the Authenticode signature, and generate
+the SHA-256 only after signing. If your production certificate uses a cloud HSM,
+Azure Trusted Signing, or a USB token that cannot be exported as a PFX, run that
+provider's signing step before the checksum step and keep the same publish rule:
+sign first, hash second.
 
 References:
 
@@ -158,16 +154,12 @@ The ZIP must contain:
 ```text
 manifest.json
 tools/esptool.exe
-drivers/cp210x/CP210xVCPInstaller_x64.exe
 drivers/cp210x/*.inf
 drivers/cp210x/*.cat
-drivers/cp210x/*.(driver payload files)
-drivers/ch340/**/CH341SER.INF
-drivers/ch340/**/CH341SER.CAT
-drivers/ch340/**/CH341*.SYS
-drivers/ch340/**/CH343SER.INF
-drivers/ch340/**/CH343SER.CAT
-drivers/ch340/**/CH343*.SYS
+drivers/cp210x/**/*.sys
+drivers/wch/**/*.inf
+drivers/wch/**/*.cat
+drivers/wch/**/*.sys
 esp32dev/bootloader.bin
 esp32dev/partitions.bin
 esp32dev/boot_app0.bin
@@ -182,9 +174,9 @@ esp32s3dev/littlefs.bin
 esp32s3dev/web_assets/*.gz
 ```
 
-Do not publish a CP210x installer without its adjacent driver payload. The setup
-tool rejects that incomplete package instead of opening an installer that cannot
-install a driver.
+The generated `manifest.json` must include `package_schema: 2` and
+`setup_tool_version`, which prevents an EXE/ZIP layout mismatch. Do not publish
+a package built with `--allow-missing-drivers`.
 
 Recommended driver sources:
 
@@ -197,6 +189,19 @@ Before publishing a release, place a real `OpenTurbine_Recommended.zip` next to
 `OpenTurbineSetupTool.exe` and double-click the EXE. The app will use the local
 package first.
 
+Driver installation diagnostics are written under:
+
+```text
+%LOCALAPPDATA%\OpenTurbine\SetupTool\logs
+```
+
+Each attempt writes a `.json` result and a `.txt` log with the setup tool
+version, driver kind, INF paths, driver file hashes, pnputil arguments/output,
+scan result, reboot-required flag, and matching COM port result. For a remote
+test PC, `tools/setup_tool/collect_driver_diagnostics.ps1` can be run manually
+to create a read-only diagnostics ZIP from PnPUtil, the serial-port registry,
+and the tail of `%WINDIR%\INF\setupapi.dev.log`.
+
 Use a blank or sacrificial board for the first USB install test. For Wi-Fi
 updates, the tool backs up `ecu_config.json` into:
 
@@ -205,3 +210,6 @@ Documents\OpenTurbine\Backups
 ```
 
 Treat backups as private because they can contain the board Wi-Fi password.
+
+The clean-PC USB driver hardware test checklist is
+[`WINDOWS_USB_DRIVER_ACCEPTANCE.md`](WINDOWS_USB_DRIVER_ACCEPTANCE.md).

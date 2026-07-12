@@ -28,7 +28,7 @@ The current installer may be unsigned or may not yet have Microsoft download rep
 
 Only continue when the file came from the official `elia179/OpenTurbine` release page. In SmartScreen choose **More info → Run anyway**. If a browser blocks the download, open its Downloads panel and choose to keep the file. Do not disable Windows security globally for OpenTurbine. A release may also include a `.sha256` file for checksum verification.
 
-The setup tool can install the USB serial driver needed by common CP210x and CH340 boards. Reconnect the board after driver installation.
+The setup tool can install the USB serial driver needed by common CP210x and WCH CH340/CH341/CH343 boards. It detects the connected USB bridge hardware ID and offers only the matching driver. After driver installation it rescans Windows and continues automatically when the matching COM port appears; reconnect or restart only if the tool explicitly asks.
 
 ### Linux, macOS, or manual PlatformIO installation
 
@@ -362,7 +362,7 @@ Do not interrupt power during firmware or web-asset installation.
 ### Recovery
 
 - If the ECU Wi-Fi appears but pages fail, reinstall/update the web assets.
-- If the board does not appear over USB, try a data cable, another USB port, the correct serial driver, and the board’s BOOT/RESET procedure.
+- If the board does not appear over USB, try a data cable, another USB port, the driver button offered by the setup tool, and the board’s BOOT/RESET procedure.
 - If a configuration error puts the ECU in FAULT, the web interface remains available for repair.
 - If a restored engine file is rejected, verify that it is a complete matching OpenTurbine `ecu_config.json`, not only one section.
 - Factory reset erases hardware, settings, calibration, and logs. Back up first.
@@ -375,7 +375,7 @@ Use Ctrl+F for the symptom or keyword.
 |---|---|
 | Download says Not Found | No GitHub release with the required asset exists yet. Use only the official Releases page. |
 | Windows blocked installer / SmartScreen | Verify the official URL, then use Downloads → Keep or SmartScreen → More info → Run anyway. |
-| No COM port / board not detected | Data cable, direct USB port, CP210x/CH340 driver, reconnect, close serial monitors. |
+| No COM port / board not detected | Data cable, direct USB port, setup-tool-selected CP210x/WCH driver, reconnect only when prompted, close serial monitors. |
 | Upload cannot connect / bootloader timeout | Hold BOOT, tap EN/RESET, start upload, release BOOT when connection begins. |
 | OpenTurbine Wi-Fi missing | Confirm successful firmware boot and power; reinstall over USB; check serial output if developing. |
 | Wi-Fi connects but page does not open | Browse directly to `http://192.168.4.1`; disable mobile-data/VPN captive routing temporarily; reinstall web assets if necessary. |

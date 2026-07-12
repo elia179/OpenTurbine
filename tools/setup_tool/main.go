@@ -29,12 +29,11 @@ import (
 )
 
 const (
-	appVersion              = "0.5.22"
+	appVersion              = "0.5.23"
+	requiredPackageSchema   = 2
 	appTitle                = "OpenTurbine Setup Tool"
 	ecuBaseURL              = "http://192.168.4.1"
 	defaultPackageURL       = "https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbine_Recommended.zip"
-	cp210xDriverURL         = "https://www.silabs.com/documents/public/software/CP210x_Universal_Windows_Driver.zip"
-	cp210xDriverSHA256      = "7cba499e944f0cd6c6de4a3c80a4646e9b0307d6704bcfa155a11f05774345e8"
 	cleanSafetyButtonLabel  = "I understand — continue to erase"
 	updateSafetyButtonLabel = "My engine is safe — continue update"
 )
@@ -76,12 +75,14 @@ type AppConfig struct {
 }
 
 type Manifest struct {
-	Project     string                    `json:"project"`
-	Version     string                    `json:"version"`
-	Recommended bool                      `json:"recommended"`
-	Targets     map[string]ManifestTarget `json:"targets"`
-	FirmwareOTA string                    `json:"firmware_ota"`
-	WebAssets   string                    `json:"web_assets"`
+	Project          string                    `json:"project"`
+	Version          string                    `json:"version"`
+	Recommended      bool                      `json:"recommended"`
+	PackageSchema    int                       `json:"package_schema"`
+	SetupToolVersion string                    `json:"setup_tool_version"`
+	Targets          map[string]ManifestTarget `json:"targets"`
+	FirmwareOTA      string                    `json:"firmware_ota"`
+	WebAssets        string                    `json:"web_assets"`
 }
 
 type ManifestTarget struct {
@@ -103,10 +104,24 @@ type Package struct {
 }
 
 type driverInstallResult struct {
-	ExitCode       int    `json:"exit_code"`
-	Output         string `json:"output"`
-	Error          string `json:"error,omitempty"`
-	RebootRequired bool   `json:"reboot_required,omitempty"`
+	Kind             driverKind `json:"kind"`
+	DriverRoot       string     `json:"driver_root"`
+	INFPaths         []string   `json:"inf_paths"`
+	DeviceInstanceID string     `json:"device_instance_id,omitempty"`
+	HardwareIDs      []string   `json:"hardware_ids,omitempty"`
+	ExitCode         int        `json:"exit_code"`
+	Output           string     `json:"output"`
+	Error            string     `json:"error,omitempty"`
+	RebootRequired   bool       `json:"reboot_required,omitempty"`
+	COMPort          string     `json:"com_port,omitempty"`
+	LogPath          string     `json:"log_path,omitempty"`
+	ScanExitCode     int        `json:"scan_exit_code,omitempty"`
+	ScanOutput       string     `json:"scan_output,omitempty"`
+}
+
+type driverChoice struct {
+	Kind  driverKind
+	Label string
 }
 
 type detectedBoard struct {
@@ -131,12 +146,6 @@ type Job struct {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "--install-cp210x-driver" {
-		os.Exit(runCP210xDriverInstallHelper(os.Args[2:]))
-	}
-	if len(os.Args) > 1 && os.Args[1] == "--run-driver-installer" {
-		os.Exit(runDriverInstallerHelper(os.Args[2:]))
-	}
 	if len(os.Args) > 1 && os.Args[1] == "--install-inf-driver" {
 		os.Exit(runINFDriverInstallHelper(os.Args[2:]))
 	}
@@ -329,46 +338,48 @@ type NativeUI struct {
 	fontSmall   uintptr
 	fontButton  uintptr
 
-	mu           sync.Mutex
-	screen       screenKind
-	title        string
-	subtitle     string
-	body         string
-	detail       string
-	mode         string
-	step         int
-	totalSteps   int
-	progress     int
-	primary      string
-	secondary    string
-	pendingMode  string
-	backupPath   string
-	logs         []string
-	showDetails  bool
-	scrollOffset int
-	activeJob    *Job
-	zones        []clickZone
-	boards       []detectedBoard
+	mu            sync.Mutex
+	screen        screenKind
+	title         string
+	subtitle      string
+	body          string
+	detail        string
+	mode          string
+	step          int
+	totalSteps    int
+	progress      int
+	primary       string
+	secondary     string
+	pendingMode   string
+	backupPath    string
+	logs          []string
+	showDetails   bool
+	scrollOffset  int
+	activeJob     *Job
+	zones         []clickZone
+	boards        []detectedBoard
+	driverChoices []driverChoice
 
 	pending *uiUpdate
 }
 
 type uiUpdate struct {
-	screen     screenKind
-	title      string
-	subtitle   string
-	body       string
-	detail     string
-	step       int
-	totalSteps int
-	progress   int
-	primary    string
-	secondary  string
-	backupPath string
-	done       bool
-	mode       string
-	appendLog  []string
-	boards     []detectedBoard
+	screen        screenKind
+	title         string
+	subtitle      string
+	body          string
+	detail        string
+	step          int
+	totalSteps    int
+	progress      int
+	primary       string
+	secondary     string
+	backupPath    string
+	done          bool
+	mode          string
+	appendLog     []string
+	boards        []detectedBoard
+	driverChoices []driverChoice
 }
 
 var globalUI *NativeUI
@@ -663,10 +674,10 @@ func (ui *NativeUI) click(x, y int) {
 					default:
 					}
 				}
-			case "driverCH340":
+			case "driverWCH":
 				if job != nil {
 					select {
-					case job.actionCh <- "ch340":
+					case job.actionCh <- "wch":
 					default:
 					}
 				}
@@ -820,6 +831,9 @@ func (ui *NativeUI) applyPending() {
 		if p.boards != nil {
 			ui.boards = append([]detectedBoard(nil), p.boards...)
 		}
+		if p.screen == screenDriverHelp || p.driverChoices != nil {
+			ui.driverChoices = append([]driverChoice(nil), p.driverChoices...)
+		}
 		if p.done {
 			ui.activeJob = nil
 		}
@@ -836,6 +850,7 @@ func (ui *NativeUI) applyPending() {
 			ui.backupPath = ""
 			ui.showDetails = false
 			ui.activeJob = nil
+			ui.driverChoices = nil
 		}
 		if p.screen != screenDriverHelp {
 			ui.scrollOffset = 0
@@ -896,6 +911,7 @@ func (ui *NativeUI) paint() {
 	showDetails := ui.showDetails
 	scrollOffset := ui.scrollOffset
 	boards := append([]detectedBoard(nil), ui.boards...)
+	driverChoices := append([]driverChoice(nil), ui.driverChoices...)
 	ui.zones = nil
 	ui.mu.Unlock()
 
@@ -924,7 +940,7 @@ func (ui *NativeUI) paint() {
 		}
 		ui.paintCardScreen(hdc, w, h, body, detail, step, total, 100, "Back to start", secondary, false, true, logs, showDetails)
 	case screenDriverHelp:
-		ui.paintDriverHelp(hdc, w, h, body, detail, logs, showDetails, scrollOffset)
+		ui.paintDriverHelp(hdc, w, h, body, detail, logs, showDetails, scrollOffset, driverChoices)
 	case screenBoardChoice:
 		ui.paintBoardChoice(hdc, w, h, boards)
 	case screenError:
@@ -985,7 +1001,7 @@ func (ui *NativeUI) drawActionCard(hdc uintptr, r rect, heading, body, button, a
 	ui.addZone(r, action)
 }
 
-func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, logs []string, showDetails bool, scrollOffset int) {
+func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, logs []string, showDetails bool, scrollOffset int, choices []driverChoice) {
 	card := rect{34, 112, int32(w - 34), int32(h - 78)}
 	drawPanel(hdc, card, colPanel, colBorderSoft, 24)
 	top := int(card.top) + 28
@@ -1027,12 +1043,24 @@ func (ui *NativeUI) paintDriverHelp(hdc uintptr, w, h int, body, detail string, 
 	// Driver choices get their own row so they cannot collide with navigation
 	// buttons in a narrow window or under Windows display scaling.
 	driverY := by - 58
-	cp := rect{card.left + 28, int32(driverY), card.left + 226, int32(driverY + 42)}
-	drawButton(hdc, cp, "Install CP210x", ui.fontButton, false)
-	ui.addZone(cp, "driverCP210x")
-	ch := rect{card.left + 240, int32(driverY), card.left + 438, int32(driverY + 42)}
-	drawButton(hdc, ch, "Install CH340", ui.fontButton, false)
-	ui.addZone(ch, "driverCH340")
+	x := card.left + 28
+	for _, choice := range choices {
+		if choice.Kind != driverCP210x && choice.Kind != driverWCH {
+			continue
+		}
+		label := choice.Label
+		if label == "" {
+			label = "Install " + string(choice.Kind)
+		}
+		r := rect{x, int32(driverY), x + 198, int32(driverY + 42)}
+		drawButton(hdc, r, label, ui.fontButton, false)
+		if choice.Kind == driverCP210x {
+			ui.addZone(r, "driverCP210x")
+		} else {
+			ui.addZone(r, "driverWCH")
+		}
+		x += 214
+	}
 	try := rect{card.right - 192, int32(by), card.right - 28, int32(by + 44)}
 	drawButton(hdc, try, "Try Again", ui.fontButton, true)
 	ui.addZone(try, "retryUSB")
@@ -1348,38 +1376,44 @@ func (j *Job) success(title, body string) {
 func (j *Job) waitContinue() { <-j.continueCh }
 
 func (j *Job) showDriverHelp(pkg *Package, reason string) string {
-	recommendation := usbDriverRecommendation()
-	body := "Board not found.\n\nTry this first:\n\n1. Use a USB data cable, not a charge-only cable.\n2. Plug the board directly into this computer.\n3. Hold BOOT on the board, then click Try Again.\n4. Close Arduino IDE, PlatformIO, Cura, serial monitors, or anything else that may use the COM port.\n\n" + recommendation
-	detail := reason + "\n\nCP210x is for Silicon Labs USB bridges (usually VID 10C4). CH340 is for WCH CH340/CH341/CH343 bridges (usually VID 1A86). ESP32-S3 native USB (VID 303A) normally needs no separate driver."
+	recommendation := detectUSBDriverRecommendation()
+	if strings.Contains(strings.ToLower(reason), "com port was found") {
+		recommendation = bootloaderNoAnswerDriverRecommendation()
+	}
+	body := "Board not found.\n\nTry this first:\n\n1. Use a USB data cable, not a charge-only cable.\n2. Plug the board directly into this computer.\n3. Hold BOOT on the board, then click Try Again.\n4. Close Arduino IDE, PlatformIO, Cura, serial monitors, or anything else that may use the COM port.\n\n" + recommendation.Message
+	detail := reason + "\n\n" + recommendation.Detail
 	j.addLog("Driver Help shown: " + reason)
-	j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Board not found", subtitle: subtitleForMode(j.mode), body: body, detail: detail, step: 0, totalSteps: 0, progress: 0, mode: j.mode, appendLog: []string{reason}})
+	j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Board not found", subtitle: subtitleForMode(j.mode), body: body, detail: detail, step: 0, totalSteps: 0, progress: 0, mode: j.mode, appendLog: []string{reason}, driverChoices: recommendation.Choices})
 	for {
 		action := <-j.actionCh
 		switch action {
-		case "cp210x", "ch340":
-			name := "CP210x"
-			if action == "ch340" {
-				name = "CH340/CH341/CH343"
-			}
-			if action == "cp210x" {
-				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Installing CP210x driver", subtitle: subtitleForMode(j.mode), body: body, detail: "Downloading the complete signed Silicon Labs Universal Windows Driver if needed, verifying it, then asking Windows to install silabser.inf.", mode: j.mode})
-			} else {
-				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Installing CH340 driver", subtitle: subtitleForMode(j.mode), body: body, detail: "Opening the WCH driver installer as administrator. Complete the installer window, then this tool will continue.", mode: j.mode})
-			}
-			if err := startDriverInstaller(j.app, pkg, action); err != nil {
+		case "cp210x", "wch", "ch340":
+			kind := normalizeDriverKind(action)
+			name := driverKindLabel(kind)
+			j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Installing " + name + " driver", subtitle: subtitleForMode(j.mode), body: body, detail: "Windows will ask for administrator permission for a small helper process. The helper installs the signed INF driver package with pnputil, scans for devices, and writes a full diagnostic log.", mode: j.mode, driverChoices: recommendation.Choices})
+			result, err := startDriverInstaller(j.app, pkg, kind, recommendation.Device)
+			if err != nil {
 				msg := name + " driver installation failed: " + err.Error()
 				j.addLog(msg)
-				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation failed", subtitle: subtitleForMode(j.mode), body: body, detail: msg + "\n\nIf Windows asked for administrator permission, approve it and try again. You can still use Try Again if the driver is already installed.", mode: j.mode, appendLog: []string{msg}})
+				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation failed", subtitle: subtitleForMode(j.mode), body: body, detail: msg + "\n\nDiagnostic log:\n" + result.LogPath + "\n\nUse Show details or Copy log for the full pnputil output.", mode: j.mode, appendLog: []string{msg, resultSummary(result)}, driverChoices: recommendation.Choices})
 				continue
 			}
-			msg := name + " driver installation finished. Unplug and replug the board, then click Try Again."
-			finishedBody := "Windows driver installation finished.\n\n1. Unplug the board.\n2. Plug it in again.\n3. Hold BOOT if needed.\n4. Click Try Again."
-			if action == "ch340" {
-				msg = name + " installer completed. Unplug and replug the board, then click Try Again."
-				finishedBody = "The WCH driver installer completed.\n\n1. Unplug the board.\n2. Plug it in again.\n3. Hold BOOT if needed.\n4. Click Try Again."
+			if result.RebootRequired {
+				msg := name + " driver installed. Windows reported that a restart is required before the USB port can be used."
+				j.addLog(msg)
+				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Restart Windows required", subtitle: subtitleForMode(j.mode), body: "Driver installed. Windows must be restarted before the USB port can be used.\n\nSave your work, restart Windows, reconnect the board, and run OpenTurbine Setup Tool again.", detail: "Diagnostic log:\n" + result.LogPath, mode: j.mode, appendLog: []string{msg, resultSummary(result)}, driverChoices: nil})
+				continue
 			}
+			if result.COMPort != "" {
+				msg := name + " driver installed and Windows reported " + result.COMPort + ". Continuing board detection."
+				j.addLog(msg)
+				j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation finished", subtitle: subtitleForMode(j.mode), body: "Windows driver installation finished and the matching USB serial port appeared as " + result.COMPort + ".\n\nContinuing automatically.", detail: "Diagnostic log:\n" + result.LogPath, mode: j.mode, appendLog: []string{msg, resultSummary(result)}, driverChoices: nil})
+				return "retry"
+			}
+			msg := name + " driver installation finished, but the matching COM port did not appear yet."
+			finishedBody := "Windows driver installation finished, but the matching USB serial port did not appear yet.\n\n1. Unplug the board.\n2. Plug it in again.\n3. Hold BOOT if needed.\n4. Click Try Again."
 			j.addLog(msg)
-			j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation finished", subtitle: subtitleForMode(j.mode), body: finishedBody, detail: msg, mode: j.mode, appendLog: []string{msg}})
+			j.ui().update(uiUpdate{screen: screenDriverHelp, title: "Driver installation finished", subtitle: subtitleForMode(j.mode), body: finishedBody, detail: msg + "\n\nDiagnostic log:\n" + result.LogPath, mode: j.mode, appendLog: []string{msg, resultSummary(result)}, driverChoices: recommendation.Choices})
 		case "retry", "cancel":
 			return action
 		}
@@ -1993,6 +2027,9 @@ func loadPackageFromDir(root string) (*Package, error) {
 	if strings.TrimSpace(m.Project) != "" && !strings.EqualFold(strings.TrimSpace(m.Project), "OpenTurbine") {
 		return nil, fmt.Errorf("this setup package is not for OpenTurbine")
 	}
+	if m.PackageSchema != requiredPackageSchema {
+		return nil, fmt.Errorf("This setup package is not compatible with this Setup Tool.\nDownload the EXE and OpenTurbine_Recommended.zip from the same release.")
+	}
 	return &Package{Root: root, Manifest: m}, nil
 }
 
@@ -2039,102 +2076,43 @@ func unzip(src, dst string) error {
 	return nil
 }
 
-func startDriverInstaller(app *App, pkg *Package, kind string) error {
-	if strings.EqualFold(kind, "cp210x") {
-		return startCP210xDriverInstaller(app, pkg)
+func startDriverInstaller(app *App, pkg *Package, kind driverKind, device usbBridgeDevice) (driverInstallResult, error) {
+	kind = normalizeDriverKind(string(kind))
+	if kind != driverCP210x && kind != driverWCH {
+		return driverInstallResult{Kind: kind, Error: "unknown driver type"}, fmt.Errorf("unknown driver type")
 	}
-	path, err := findDriverInstaller(pkg, kind)
-	if err == nil {
-		return startEXEDriverInstaller(app, path, kind)
-	}
-	root, infErr := findDriverINFRoot(pkg, kind)
-	if infErr != nil {
-		return err
-	}
-	return startINFDriverInstaller(app, root, kind)
-}
-
-func startCP210xDriverInstaller(app *App, pkg *Package) error {
-	if app == nil {
-		return fmt.Errorf("setup tool data folder is unavailable")
-	}
-	if err := prepareBundledCP210xDriver(app, pkg); err != nil {
-		return err
-	}
-	if _, err := prepareCP210xDriver(app); err != nil {
-		return err
-	}
-	exe, err := os.Executable()
-	if err != nil || exe == "" {
-		return fmt.Errorf("could not find this setup tool executable")
-	}
-	resultPath := filepath.Join(app.workDir, "drivers", "cp210x-install-result.json")
-	_ = os.Remove(resultPath)
-	params := strings.Join([]string{
-		syscall.EscapeArg("--install-cp210x-driver"),
-		syscall.EscapeArg("--result"),
-		syscall.EscapeArg(resultPath),
-	}, " ")
-	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("runas"))), uintptr(unsafe.Pointer(utf16Ptr(exe))), uintptr(unsafe.Pointer(utf16Ptr(params))), uintptr(unsafe.Pointer(utf16Ptr(filepath.Dir(exe)))), 0)
-	if ret <= 32 {
-		return fmt.Errorf("Windows could not start the administrator driver installer")
-	}
-	result, err := waitForDriverInstallResult(resultPath, 3*time.Minute)
+	root, err := findDriverINFRoot(pkg, kind)
 	if err != nil {
-		return err
+		return driverInstallResult{Kind: kind, Error: err.Error()}, err
 	}
-	if result.ExitCode == 0 || result.ExitCode == 3010 {
-		return nil
-	}
-	msg := strings.TrimSpace(result.Error)
-	if msg == "" {
-		msg = strings.TrimSpace(result.Output)
-	}
-	if msg == "" {
-		msg = fmt.Sprintf("pnputil exited with code %d", result.ExitCode)
-	}
-	return errors.New(msg)
+	return startINFDriverInstaller(app, root, kind, device)
 }
 
-func startINFDriverInstaller(app *App, driverRoot, kind string) error {
+func startINFDriverInstaller(app *App, driverRoot string, kind driverKind, device usbBridgeDevice) (driverInstallResult, error) {
+	result := driverInstallResult{Kind: kind, DriverRoot: driverRoot, DeviceInstanceID: device.InstanceID, HardwareIDs: device.HardwareIDs}
 	if app == nil {
-		return fmt.Errorf("setup tool data folder is unavailable")
+		result.Error = "setup tool data folder is unavailable"
+		return result, fmt.Errorf(result.Error)
 	}
 	exe, err := os.Executable()
 	if err != nil || exe == "" {
-		return fmt.Errorf("could not find this setup tool executable")
+		result.Error = "could not find this setup tool executable"
+		return result, fmt.Errorf(result.Error)
 	}
 	if !dirExists(driverRoot) {
-		return fmt.Errorf("%s driver folder was not found", kind)
+		result.Error = fmt.Sprintf("%s driver folder was not found", kind)
+		return result, fmt.Errorf(result.Error)
 	}
-	resultPath := filepath.Join(app.workDir, "drivers", strings.ToLower(kind)+"-inf-install-result.json")
-	_ = os.Remove(resultPath)
-	params := strings.Join([]string{
-		syscall.EscapeArg("--install-inf-driver"),
-		syscall.EscapeArg("--driver-root"),
-		syscall.EscapeArg(driverRoot),
-		syscall.EscapeArg("--result"),
-		syscall.EscapeArg(resultPath),
-	}, " ")
-	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("runas"))), uintptr(unsafe.Pointer(utf16Ptr(exe))), uintptr(unsafe.Pointer(utf16Ptr(params))), uintptr(unsafe.Pointer(utf16Ptr(filepath.Dir(exe)))), 0)
-	if ret <= 32 {
-		return fmt.Errorf("Windows could not start the administrator driver installer")
-	}
-	result, err := waitForDriverInstallResult(resultPath, 3*time.Minute)
+	req, err := buildDriverInstallRequest(app, kind, driverRoot, device)
 	if err != nil {
-		return err
+		result.Error = err.Error()
+		return result, err
 	}
-	if result.ExitCode == 0 || result.ExitCode == 3010 {
-		return nil
+	result, err = runElevatedINFDriverHelper(exe, req)
+	if err != nil {
+		return result, err
 	}
-	msg := strings.TrimSpace(result.Error)
-	if msg == "" {
-		msg = strings.TrimSpace(result.Output)
-	}
-	if msg == "" {
-		msg = fmt.Sprintf("pnputil exited with code %d", result.ExitCode)
-	}
-	return errors.New(msg)
+	return result, driverInstallError(result)
 }
 
 func waitForDriverInstallResult(path string, timeout time.Duration) (driverInstallResult, error) {
@@ -2153,104 +2131,56 @@ func waitForDriverInstallResult(path string, timeout time.Duration) (driverInsta
 	return driverInstallResult{}, fmt.Errorf("driver installer did not report a result. The administrator prompt may have been cancelled or blocked by Windows")
 }
 
-func startEXEDriverInstaller(app *App, installerPath, kind string) error {
-	if app == nil {
-		return fmt.Errorf("setup tool data folder is unavailable")
-	}
-	exe, err := os.Executable()
-	if err != nil || exe == "" {
-		return fmt.Errorf("could not find this setup tool executable")
-	}
-	if !fileExists(installerPath) {
-		return fmt.Errorf("%s was not found", filepath.Base(installerPath))
-	}
-	resultPath := filepath.Join(app.workDir, "drivers", strings.ToLower(kind)+"-install-result.json")
-	_ = os.Remove(resultPath)
-	params := strings.Join([]string{
-		syscall.EscapeArg("--run-driver-installer"),
-		syscall.EscapeArg("--installer"),
-		syscall.EscapeArg(installerPath),
-		syscall.EscapeArg("--result"),
-		syscall.EscapeArg(resultPath),
-	}, " ")
-	ret, _, _ := procShellExecuteW.Call(0, uintptr(unsafe.Pointer(utf16Ptr("runas"))), uintptr(unsafe.Pointer(utf16Ptr(exe))), uintptr(unsafe.Pointer(utf16Ptr(params))), uintptr(unsafe.Pointer(utf16Ptr(filepath.Dir(exe)))), 0)
-	if ret <= 32 {
-		return fmt.Errorf("Windows could not start %s as administrator", filepath.Base(installerPath))
-	}
-	result, err := waitForDriverInstallResult(resultPath, 10*time.Minute)
-	if err != nil {
-		return err
-	}
-	if result.ExitCode == 0 || result.ExitCode == 3010 {
-		return nil
-	}
-	msg := strings.TrimSpace(result.Error)
-	if msg == "" {
-		msg = strings.TrimSpace(result.Output)
-	}
-	if msg == "" {
-		msg = fmt.Sprintf("%s exited with code %d", filepath.Base(installerPath), result.ExitCode)
-	}
-	return errors.New(msg)
-}
-
-func runDriverInstallerHelper(args []string) int {
-	installerPath, resultPath := "", ""
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--installer":
-			if i+1 < len(args) {
-				installerPath = args[i+1]
-				i++
-			}
-		case "--result":
-			if i+1 < len(args) {
-				resultPath = args[i+1]
-				i++
-			}
-		}
-	}
-	if installerPath == "" || resultPath == "" {
-		return 2
-	}
-	result := runDriverInstallerEXE(installerPath)
-	data, _ := json.MarshalIndent(result, "", "  ")
-	_ = os.MkdirAll(filepath.Dir(resultPath), 0755)
-	if err := os.WriteFile(resultPath, data, 0644); err != nil {
-		return 1
-	}
-	if result.ExitCode == 0 || result.ExitCode == 3010 {
-		return 0
-	}
-	return 1
-}
-
 func runINFDriverInstallHelper(args []string) int {
-	driverRoot, resultPath := "", ""
+	req := driverInstallRequest{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--driver-kind":
+			if i+1 < len(args) {
+				req.Kind = normalizeDriverKind(args[i+1])
+				i++
+			}
 		case "--driver-root":
 			if i+1 < len(args) {
-				driverRoot = args[i+1]
+				req.DriverRoot = args[i+1]
+				i++
+			}
+		case "--device-instance-id":
+			if i+1 < len(args) {
+				req.DeviceInstanceID = args[i+1]
+				i++
+			}
+		case "--hardware-id":
+			if i+1 < len(args) {
+				req.HardwareIDs = append(req.HardwareIDs, args[i+1])
 				i++
 			}
 		case "--result":
 			if i+1 < len(args) {
-				resultPath = args[i+1]
+				req.ResultPath = args[i+1]
+				i++
+			}
+		case "--log":
+			if i+1 < len(args) {
+				req.LogPath = args[i+1]
 				i++
 			}
 		}
 	}
-	if driverRoot == "" || resultPath == "" {
+	if req.DriverRoot == "" || req.ResultPath == "" || req.Kind == "" {
 		return 2
 	}
-	result := installINFDriverPackage(driverRoot)
+	result := installINFDriverPackage(req)
 	data, _ := json.MarshalIndent(result, "", "  ")
-	_ = os.MkdirAll(filepath.Dir(resultPath), 0755)
-	if err := os.WriteFile(resultPath, data, 0644); err != nil {
+	_ = os.MkdirAll(filepath.Dir(req.ResultPath), 0755)
+	if err := os.WriteFile(req.ResultPath, data, 0644); err != nil {
 		return 1
 	}
-	if result.ExitCode == 0 || result.ExitCode == 3010 {
+	if req.LogPath != "" {
+		_ = os.MkdirAll(filepath.Dir(req.LogPath), 0755)
+		_ = os.WriteFile(req.LogPath, []byte(formatDriverDiagnosticText(result)), 0644)
+	}
+	if driverInstallError(result) == nil {
 		return 0
 	}
 	return 1
@@ -2279,325 +2209,137 @@ func runDriverInstallerEXE(installerPath string) driverInstallResult {
 	return result
 }
 
-func installINFDriverPackage(driverRoot string) driverInstallResult {
-	if !dirExists(driverRoot) {
-		return driverInstallResult{ExitCode: 1, Error: "driver folder was not found"}
+func installINFDriverPackage(req driverInstallRequest) driverInstallResult {
+	result := driverInstallResult{
+		Kind:             req.Kind,
+		DriverRoot:       req.DriverRoot,
+		DeviceInstanceID: req.DeviceInstanceID,
+		HardwareIDs:      append([]string(nil), req.HardwareIDs...),
+		LogPath:          req.LogPath,
 	}
-	infs := driverINFs(driverRoot)
-	if len(infs) == 0 {
-		return driverInstallResult{ExitCode: 1, Error: "driver folder does not contain an INF file"}
-	}
-	pnputil := filepath.Join(os.Getenv("SystemRoot"), "System32", "pnputil.exe")
-	if !fileExists(pnputil) {
-		pnputil = "pnputil.exe"
-	}
-	var combined strings.Builder
-	result := driverInstallResult{}
-	for _, inf := range infs {
-		cmd := exec.Command(pnputil, "/add-driver", inf, "/install")
-		prepareHiddenCommand(cmd)
-		out, err := cmd.CombinedOutput()
-		if combined.Len() > 0 {
-			combined.WriteString("\n\n")
-		}
-		combined.WriteString(strings.TrimSpace(string(out)))
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			result.ExitCode = exitErr.ExitCode()
-			result.Error = strings.TrimSpace(string(out))
-			break
-		} else if err != nil {
-			result.ExitCode = 1
-			result.Error = err.Error()
-			break
-		}
-	}
-	result.Output = strings.TrimSpace(combined.String())
-	if result.ExitCode == 3010 {
-		result.RebootRequired = true
-	}
-	return result
-}
-
-func runCP210xDriverInstallHelper(args []string) int {
-	resultPath := ""
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--result" && i+1 < len(args) {
-			resultPath = args[i+1]
-			i++
-		}
-	}
-	if resultPath == "" {
-		return 2
-	}
-	result := installCP210xDriver(newApp())
-	data, _ := json.MarshalIndent(result, "", "  ")
-	_ = os.MkdirAll(filepath.Dir(resultPath), 0755)
-	if err := os.WriteFile(resultPath, data, 0644); err != nil {
-		return 1
-	}
-	if result.ExitCode == 0 || result.ExitCode == 3010 {
-		return 0
-	}
-	return 1
-}
-
-func installCP210xDriver(app *App) driverInstallResult {
-	root, err := prepareCP210xDriver(app)
-	if err != nil {
-		return driverInstallResult{ExitCode: 1, Error: err.Error()}
-	}
-	inf := filepath.Join(root, "silabser.inf")
-	if !fileExists(inf) {
-		return driverInstallResult{ExitCode: 1, Error: "the CP210x driver is missing silabser.inf"}
-	}
-	pnputil := filepath.Join(os.Getenv("SystemRoot"), "System32", "pnputil.exe")
-	if !fileExists(pnputil) {
-		pnputil = "pnputil.exe"
-	}
-	cmd := exec.Command(pnputil, "/add-driver", inf, "/install")
-	prepareHiddenCommand(cmd)
-	out, err := cmd.CombinedOutput()
-	result := driverInstallResult{Output: strings.TrimSpace(string(out))}
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		result.ExitCode = exitErr.ExitCode()
-		result.Error = strings.TrimSpace(string(out))
-	} else if err != nil {
+	if !dirExists(req.DriverRoot) {
 		result.ExitCode = 1
-		result.Error = err.Error()
-	} else {
-		result.ExitCode = 0
+		result.Error = "driver folder was not found"
+		return result
+	}
+	infs := driverINFs(req.DriverRoot)
+	result.INFPaths = infs
+	if len(infs) == 0 {
+		result.ExitCode = 1
+		result.Error = "driver folder does not contain an INF file"
+		return result
+	}
+	pnputil := filepath.Join(os.Getenv("SystemRoot"), "System32", "pnputil.exe")
+	if !fileExists(pnputil) {
+		pnputil = "pnputil.exe"
+	}
+	install := runDriverCommand(pnputil, "/add-driver", filepath.Join(req.DriverRoot, "*.inf"), "/subdirs", "/install")
+	result.ExitCode = install.ExitCode
+	result.Output = install.Output
+	if install.Err != "" {
+		result.Error = install.Err
 	}
 	if result.ExitCode == 3010 {
 		result.RebootRequired = true
 	}
-	return result
-}
-
-func prepareBundledCP210xDriver(app *App, pkg *Package) error {
-	if app == nil || pkg == nil {
-		return nil
-	}
-	src := findCP210xINFRoot(pkg)
-	if src == "" {
-		return nil
-	}
-	dst := filepath.Join(app.workDir, "drivers", "cp210x-universal-11.5.0")
-	if samePath(src, dst) {
-		return nil
-	}
-	if err := os.RemoveAll(dst); err != nil {
-		return err
-	}
-	if err := copyDir(src, dst); err != nil {
-		return fmt.Errorf("could not prepare bundled CP210x driver: %w", err)
-	}
-	return nil
-}
-
-func prepareCP210xDriver(app *App) (string, error) {
-	if app == nil {
-		return "", fmt.Errorf("setup tool data folder is unavailable")
-	}
-	root := filepath.Join(app.workDir, "drivers", "cp210x-universal-11.5.0")
-	inf := filepath.Join(root, "silabser.inf")
-	cat := filepath.Join(root, "silabser.cat")
-	if fileExists(inf) && fileExists(cat) {
-		return root, nil
-	}
-	zipPath := filepath.Join(app.workDir, "drivers", "CP210x_Universal_Windows_Driver.zip")
-	if !fileExists(zipPath) || verifySHA256(zipPath, cp210xDriverSHA256) != nil {
-		if err := downloadFile(cp210xDriverURL, zipPath); err != nil {
-			return "", fmt.Errorf("could not download the official Silicon Labs CP210x driver: %w", err)
+	if result.ExitCode != 0 && result.ExitCode != 3010 {
+		if result.Error == "" {
+			result.Error = meaningfulTail(result.Output)
 		}
+		return result
 	}
-	if err := verifySHA256(zipPath, cp210xDriverSHA256); err != nil {
-		_ = os.Remove(zipPath)
-		return "", fmt.Errorf("the Silicon Labs CP210x driver download failed its integrity check: %w", err)
+	scan := runDriverCommand(pnputil, "/scan-devices")
+	result.ScanExitCode = scan.ExitCode
+	result.ScanOutput = scan.Output
+	if scan.ExitCode == 3010 {
+		result.RebootRequired = true
 	}
-	if err := os.RemoveAll(root); err != nil {
-		return "", err
+	if scan.ExitCode != 0 && scan.ExitCode != 3010 && result.Error == "" {
+		result.Error = strings.TrimSpace(scan.Err)
+		if result.Error == "" {
+			result.Error = meaningfulTail(scan.Output)
+		}
+		return result
 	}
-	if err := os.MkdirAll(root, 0755); err != nil {
-		return "", err
+	if req.DeviceInstanceID != "" && !result.RebootRequired {
+		if port := waitForDeviceCOMPort(req.DeviceInstanceID, driverCOMWaitTimeout); port != "" {
+			result.COMPort = port
+		} else {
+			result.Error = "driver installed, but the matching COM port did not appear after scan-devices"
+		}
+	} else if req.DeviceInstanceID == "" && !result.RebootRequired {
+		result.Error = "driver installed, but the setup tool could not identify the exact USB device to verify the matching COM port"
 	}
-	if err := unzip(zipPath, root); err != nil {
-		return "", fmt.Errorf("could not unpack the CP210x driver: %w", err)
-	}
-	if !fileExists(inf) || !fileExists(cat) {
-		return "", fmt.Errorf("the CP210x driver is missing silabser.inf or silabser.cat")
-	}
-	return root, nil
+	return result
 }
 
 func driverPackageRoots(pkg *Package, kind string) []string {
 	if pkg == nil {
 		return nil
 	}
-	switch strings.ToLower(kind) {
+	switch normalizeDriverKind(kind) {
 	case "cp210x":
-		return []string{filepath.Join(pkg.Root, "drivers", "cp210x"), filepath.Join(pkg.Root, "drivers", "CP210x")}
-	case "ch340":
-		return []string{filepath.Join(pkg.Root, "drivers", "ch340"), filepath.Join(pkg.Root, "drivers", "CH340"), filepath.Join(pkg.Root, "drivers", "ch341")}
+		return []string{filepath.Join(pkg.Root, "drivers", "cp210x")}
+	case "wch":
+		return []string{filepath.Join(pkg.Root, "drivers", "wch")}
 	default:
 		return nil
 	}
 }
 
-func findDriverInstaller(pkg *Package, kind string) (string, error) {
+func findDriverINFRoot(pkg *Package, kind driverKind) (string, error) {
 	if pkg == nil {
 		return "", fmt.Errorf("setup package is not loaded")
 	}
-	kind = strings.ToLower(kind)
-	roots := driverPackageRoots(pkg, kind)
-	if len(roots) == 0 {
-		return "", fmt.Errorf("unknown driver type")
-	}
-	preferred := []string{}
-	if kind == "cp210x" {
-		hasINF := false
-		for _, root := range roots {
-			_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-				if err == nil && !d.IsDir() && strings.EqualFold(filepath.Ext(path), ".inf") {
-					hasINF = true
-				}
-				return nil
-			})
-		}
-		if !hasINF {
-			return "", fmt.Errorf("the CP210x package contains only the installer; its required INF/CAT/SYS driver files are missing")
-		}
-		preferred = []string{"CP210xVCPInstaller_x64.exe", "CP210xVCPInstaller_x86.exe", "CP210xVCPInstaller.exe"}
-	} else {
-		preferred = []string{"CH341SER.EXE", "CH340SER.EXE", "SETUP.EXE", "DRVSETUP64.exe"}
-	}
-	for _, root := range roots {
-		for _, name := range preferred {
-			p := filepath.Join(root, name)
-			if fileExists(p) {
-				return p, nil
-			}
-		}
-	}
-	for _, root := range roots {
-		if !dirExists(root) {
-			continue
-		}
-		var found string
-		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || found != "" {
-				return nil
-			}
-			if strings.EqualFold(filepath.Ext(path), ".exe") {
-				found = path
-			}
-			return nil
-		})
-		if found != "" {
-			return found, nil
-		}
-	}
-	if kind == "cp210x" {
-		return "", fmt.Errorf("expected drivers\\cp210x\\CP210xVCPInstaller_x64.exe inside OpenTurbine_Recommended.zip")
-	}
-	return "", fmt.Errorf("expected drivers\\ch340\\CH341SER.EXE inside OpenTurbine_Recommended.zip")
-}
-
-func findDriverINFRoot(pkg *Package, kind string) (string, error) {
-	if pkg == nil {
-		return "", fmt.Errorf("setup package is not loaded")
-	}
-	for _, root := range driverPackageRoots(pkg, kind) {
-		if driverRootHasINF(root) {
+	for _, root := range driverPackageRoots(pkg, string(kind)) {
+		if err := validateDriverINFRoot(root); err == nil {
 			return root, nil
+		} else if dirExists(root) {
+			return "", err
 		}
 	}
 	return "", fmt.Errorf("expected a signed INF driver package inside OpenTurbine_Recommended.zip")
 }
 
-func findCP210xINFRoot(pkg *Package) string {
-	for _, root := range driverPackageRoots(pkg, "cp210x") {
-		if fileExists(filepath.Join(root, "silabser.inf")) && fileExists(filepath.Join(root, "silabser.cat")) {
-			return root
-		}
-		var found string
-		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-			if err != nil || d.IsDir() || found != "" {
-				return nil
-			}
-			if strings.EqualFold(filepath.Base(path), "silabser.inf") && fileExists(filepath.Join(filepath.Dir(path), "silabser.cat")) {
-				found = filepath.Dir(path)
-			}
-			return nil
-		})
-		if found != "" {
-			return found
-		}
+func validateDriverINFRoot(root string) error {
+	if !dirExists(root) {
+		return fmt.Errorf("driver folder was not found: %s", root)
 	}
-	return ""
-}
-
-func driverRootHasINF(root string) bool {
-	return len(driverINFs(root)) > 0
+	if len(driverINFs(root)) == 0 {
+		return fmt.Errorf("driver folder does not contain an INF file: %s", root)
+	}
+	if len(driverFilesWithExt(root, ".cat")) == 0 {
+		return fmt.Errorf("driver folder does not contain a CAT signature file: %s", root)
+	}
+	if len(driverFilesWithExt(root, ".sys")) == 0 {
+		return fmt.Errorf("driver folder does not contain a SYS driver payload: %s", root)
+	}
+	if len(driverFilesWithExt(root, ".exe")) > 0 && len(driverINFs(root)) == 0 {
+		return fmt.Errorf("driver folder contains only installer executables; pass the extracted signed INF/CAT/SYS package")
+	}
+	return nil
 }
 
 func driverINFs(root string) []string {
+	return driverFilesWithExt(root, ".inf")
+}
+
+func driverFilesWithExt(root, ext string) []string {
 	if !dirExists(root) {
 		return nil
 	}
-	var infs []string
+	var files []string
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
-		if strings.EqualFold(filepath.Ext(path), ".inf") {
-			infs = append(infs, path)
+		if strings.EqualFold(filepath.Ext(path), ext) {
+			files = append(files, path)
 		}
 		return nil
 	})
-	return infs
-}
-
-func samePath(a, b string) bool {
-	aa, errA := filepath.Abs(a)
-	bb, errB := filepath.Abs(b)
-	if errA != nil || errB != nil {
-		return false
-	}
-	return strings.EqualFold(filepath.Clean(aa), filepath.Clean(bb))
-}
-
-func copyDir(src, dst string) error {
-	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(target, 0755)
-		}
-		in, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return err
-		}
-		out, err := os.Create(target)
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(out, in)
-		closeErr := out.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		return closeErr
-	})
+	sort.Strings(files)
+	return files
 }
 
 func findEsptool(pkg *Package) (string, error) {

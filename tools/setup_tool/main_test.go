@@ -88,11 +88,15 @@ func TestTargetFromIdentity(t *testing.T) {
 
 func TestFindDriverINFRootAcceptsNestedWCHPackages(t *testing.T) {
 	root := t.TempDir()
-	writeTestFile(t, filepath.Join(root, "drivers", "ch340", "ch341ser", "CH341SER.INF"), "inf")
-	writeTestFile(t, filepath.Join(root, "drivers", "ch340", "ch343ser", "CH343SER.INF"), "inf")
+	writeTestFile(t, filepath.Join(root, "drivers", "wch", "ch341ser", "CH341SER.INF"), "inf")
+	writeTestFile(t, filepath.Join(root, "drivers", "wch", "ch341ser", "CH341SER.CAT"), "cat")
+	writeTestFile(t, filepath.Join(root, "drivers", "wch", "ch341ser", "CH341S64.SYS"), "sys")
+	writeTestFile(t, filepath.Join(root, "drivers", "wch", "ch343ser", "CH343SER.INF"), "inf")
+	writeTestFile(t, filepath.Join(root, "drivers", "wch", "ch343ser", "CH343SER.CAT"), "cat")
+	writeTestFile(t, filepath.Join(root, "drivers", "wch", "ch343ser", "CH343S64.SYS"), "sys")
 
-	got, err := findDriverINFRoot(&Package{Root: root}, "ch340")
-	want := filepath.Join(root, "drivers", "ch340")
+	got, err := findDriverINFRoot(&Package{Root: root}, driverWCH)
+	want := filepath.Join(root, "drivers", "wch")
 	if err != nil || got != want {
 		t.Fatalf("got %q err=%v, want %q", got, err, want)
 	}
@@ -100,31 +104,14 @@ func TestFindDriverINFRootAcceptsNestedWCHPackages(t *testing.T) {
 
 func TestFindCP210xINFRootFindsNestedUniversalDriver(t *testing.T) {
 	root := t.TempDir()
-	driverRoot := filepath.Join(root, "drivers", "cp210x", "Universal")
+	driverRoot := filepath.Join(root, "drivers", "cp210x")
 	writeTestFile(t, filepath.Join(driverRoot, "silabser.inf"), "inf")
 	writeTestFile(t, filepath.Join(driverRoot, "silabser.cat"), "cat")
+	writeTestFile(t, filepath.Join(driverRoot, "x64", "silabser.sys"), "sys")
 
-	got := findCP210xINFRoot(&Package{Root: root})
-	if got != driverRoot {
-		t.Fatalf("got %q, want %q", got, driverRoot)
-	}
-}
-
-func TestPrepareBundledCP210xDriverCopiesToWorkDir(t *testing.T) {
-	pkgRoot := t.TempDir()
-	workDir := filepath.Join(t.TempDir(), "work")
-	srcRoot := filepath.Join(pkgRoot, "drivers", "cp210x")
-	writeTestFile(t, filepath.Join(srcRoot, "silabser.inf"), "inf")
-	writeTestFile(t, filepath.Join(srcRoot, "silabser.cat"), "cat")
-	writeTestFile(t, filepath.Join(srcRoot, "x64", "silabser.sys"), "sys")
-
-	if err := prepareBundledCP210xDriver(&App{workDir: workDir}, &Package{Root: pkgRoot}); err != nil {
-		t.Fatalf("prepareBundledCP210xDriver failed: %v", err)
-	}
-
-	dstRoot := filepath.Join(workDir, "drivers", "cp210x-universal-11.5.0")
-	if !fileExists(filepath.Join(dstRoot, "silabser.inf")) || !fileExists(filepath.Join(dstRoot, "x64", "silabser.sys")) {
-		t.Fatalf("bundled CP210x driver was not copied to %s", dstRoot)
+	got, err := findDriverINFRoot(&Package{Root: root}, driverCP210x)
+	if err != nil || got != driverRoot {
+		t.Fatalf("got %q err=%v, want %q", got, err, driverRoot)
 	}
 }
 

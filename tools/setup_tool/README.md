@@ -6,10 +6,10 @@ The home screen separates **Clean install / reinstall** (USB, erases the entire
 selected board) from **Update and keep my setup** (Wi-Fi, backs up and retains
 the existing engine setup). Do not weaken this distinction in release builds.
 
-The CP210x button downloads the complete signed Silicon Labs CP210x Universal
-Windows Driver v11.5.0 from Silicon Labs, verifies its pinned SHA-256, and asks
-Windows `pnputil` to install the signed INF/CAT package. The EXE does not embed
-or redistribute proprietary driver binaries.
+Driver installation is INF-only. The recommended ZIP must bundle complete,
+unmodified, vendor-signed CP210x and WCH INF/CAT/SYS driver packages. The GUI
+detects the connected USB bridge hardware ID, elevates only a small helper, runs
+`pnputil`, scans for devices, and writes a diagnostic log.
 
 Build from this directory:
 
@@ -39,11 +39,10 @@ python tools/build_setup_package.py `
 ```
 
 Release packages require both complete driver packages. Keep each full extracted
-vendor folder; a copied installer alone is not sufficient. The setup tool can
-also download the pinned Silicon Labs CP210x Universal driver directly and
-install its signed INF/CAT package with `pnputil`. CH340/CH341/CH343 fallback
-installation uses either the WCH installer or signed INF/CAT/SYS folders bundled
-in the recommended ZIP.
+vendor folder; a copied installer EXE is rejected. CP210x payloads are packaged
+under `drivers/cp210x/`; WCH CH340/CH341/CH343 payloads are packaged under
+`drivers/wch/`. The generated manifest includes `package_schema: 2` so the EXE
+and ZIP must come from the same release family.
 
 For local packaging validation only, `--allow-missing-drivers` may be used. Do
 not publish that development package as the recommended release.
