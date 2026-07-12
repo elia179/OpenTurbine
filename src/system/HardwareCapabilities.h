@@ -53,15 +53,34 @@ public:
     }
     static void toJson(JsonObject root, const char* feature) {
         bool ok = available(feature); root["feature"] = feature; root["available"] = ok;
+        root["oil_loop_count"] = HardwareConfig::oilLoopCount;
+        root["max_oil_loops"] = HardwareConfig::MAX_OIL_LOOPS;
         JsonArray missing = root["missing"].to<JsonArray>();
         if (ok) return;
-        if (!strcmp(feature, "oil_loop")) { if (!hasInputRole("pressure")) missing.add("oil_pressure_input"); if (!hasOutputRole("oil_pump")) missing.add("oil_pump_output"); }
-        else if (!strcmp(feature, "n1_safety")) missing.add("primary_n1");
-        else if (!strcmp(feature, "n2_governor")) { if (!hasInputBindingOrRole("primary_n2", "speed")) missing.add("primary_n2"); if (!hasOutputRole("fuel") && !hasOutputRole("prop_pitch")) missing.add("governor_output"); }
-        else if (!strcmp(feature, "egt_safety")) missing.add("primary_egt");
-        else if (!strcmp(feature, "dynamic_idle")) { if (!hasInputRole("speed")) missing.add("rpm_input"); if (!hasOutputRole("fuel")) missing.add("throttle_output"); }
+        if (!strcmp(feature, "oil_loop")) {
+            if (!hasPressureInput()) addMissing(missing, "oil_pressure_input", "Add an oil-pressure input");
+            if (!hasOilPumpOutput()) addMissing(missing, "oil_pump_output", "Add an oil-pump output");
+        }
+        else if (!strcmp(feature, "n1_safety")) addMissing(missing, "primary_n1", "Bind or add an N1 speed input");
+        else if (!strcmp(feature, "n2_governor")) {
+            if (!hasInputBindingOrRole("primary_n2", "speed")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
+            if (!hasOutputRole("fuel") && !hasOutputRole("prop_pitch") && !HardwareConfig::hasThrottle && !HardwareConfig::hasPropPitch)
+                addMissing(missing, "governor_output", "Add a fuel or prop-pitch output");
+        }
+        else if (!strcmp(feature, "egt_safety")) addMissing(missing, "primary_egt", "Bind or add a temperature input");
+        else if (!strcmp(feature, "dynamic_idle")) {
+            if (!hasInputRole("speed") && !HardwareConfig::hasN1Rpm && !HardwareConfig::hasN2Rpm) addMissing(missing, "rpm_input", "Add an RPM input");
+            if (!hasOutputRole("fuel") && !HardwareConfig::hasThrottle) addMissing(missing, "throttle_output", "Add a main fuel output");
+        }
     }
 private:
+    static void addMissing(JsonArray missing, const char* capability, const char* message) {
+        JsonObject item = missing.add<JsonObject>();
+        item["capability"] = capability;
+        item["message"] = message;
+    }
+    static bool hasPressureInput() { return hasInputRole("pressure") || HardwareConfig::hasOilPress; }
+    static bool hasOilPumpOutput() { return hasOutputRole("oil_pump") || HardwareConfig::hasOilPump; }
     static bool hasRole(ChannelRegistry::Direction direction, const char* role) {
         const ChannelRegistry& r = HardwareConfig::channelRegistry;
         const ChannelRegistry::Channel* list = direction == ChannelRegistry::Input ? r.inputs : r.outputs;
