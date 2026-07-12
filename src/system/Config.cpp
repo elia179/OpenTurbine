@@ -32,6 +32,16 @@ int8_t ruleSourceHandle(const char* id) {
     if (!strcmp(id, "n1_main")) return RulesEngine::N1_RPM;
     if (!strcmp(id, "n2_main")) return RulesEngine::N2_RPM;
     if (!strcmp(id, "oil_pressure_main")) return RulesEngine::OIL_PRESS;
+    if (!strcmp(id, "primary_n1")) return RulesEngine::N1_RPM;
+    if (!strcmp(id, "primary_n2")) return RulesEngine::N2_RPM;
+    if (!strcmp(id, "primary_egt")) return RulesEngine::TOT;
+    if (!strcmp(id, "operator_throttle")) return RulesEngine::THROTTLE_INPUT;
+    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Input)) {
+        if (!strcmp(c->role, "speed")) return RulesEngine::N1_RPM;
+        if (!strcmp(c->role, "pressure")) return RulesEngine::OIL_PRESS;
+        if (!strcmp(c->role, "temperature")) return RulesEngine::TOT;
+        if (!strcmp(c->role, "operator")) return RulesEngine::THROTTLE_INPUT;
+    }
     return -1;
 }
 int8_t ruleTargetHandle(const char* id) {
@@ -41,6 +51,17 @@ int8_t ruleTargetHandle(const char* id) {
     if (!strcmp(id, "cooling_fan_main")) return RulesEngine::COOL_FAN;
     if (!strcmp(id, "bleed_valve_main")) return RulesEngine::BLEED_VALVE;
     if (!strcmp(id, "oil_scavenge_main")) return RulesEngine::OIL_SCAVENGE;
+    if (!strcmp(id, "main_fuel_output")) return RulesEngine::THROTTLE;
+    if (!strcmp(id, "main_starter")) return RulesEngine::STARTER;
+    if (!strcmp(id, "main_fuel_shutoff")) return RulesEngine::FUEL_SOL;
+    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Output)) {
+        if (!strcmp(c->role, "fuel")) return RulesEngine::THROTTLE;
+        if (!strcmp(c->role, "starter")) return RulesEngine::STARTER;
+        if (!strcmp(c->role, "oil_pump")) return RulesEngine::OIL_PUMP;
+        if (!strcmp(c->role, "cooling_fan")) return RulesEngine::COOL_FAN;
+        if (!strcmp(c->role, "valve")) return RulesEngine::BLEED_VALVE;
+        if (!strcmp(c->role, "scavenge_pump")) return RulesEngine::OIL_SCAVENGE;
+    }
     return -1;
 }
 }

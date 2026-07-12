@@ -27,10 +27,11 @@ as an output bound to `primary_n1`.
 Control rules, sequence side actions, and custom sequence blocks now serialize
 stable `source` / `target` IDs and resolve them once at load to compact runtime
 handles. Legacy numeric fields remain readable for old files. Generic channel
-runtime I/O is still behind the compatibility adapter layer: the current stable
-ID mapping resolves the built-in singleton hardware paths, while fully generic
-input reads and output writes need the physical-driver dispatch layer to become
-the next authority.
+runtime I/O is still behind the compatibility adapter layer: stable IDs,
+standard binding keys such as `primary_n1` / `main_fuel_output`, and registry
+channel roles resolve onto the built-in singleton hardware paths where a safe
+compatibility mapping exists. Fully generic input reads and output writes still
+need the physical-driver dispatch layer to become the next authority.
 
 Legacy files without a registry retain their existing singleton hardware
 configuration during compatibility loading; the migration writer emits the new

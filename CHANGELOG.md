@@ -26,6 +26,7 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - User-facing aircraft/flight-specific wording was replaced with turbine-neutral operator, event-log, and engine-operation terminology.
 - Controller and safety enables are now rejected by Hardware save/import validation and START preflight when their required inventory is missing.
 - The first enabled oil-loop definition now supplies the oil controller's selected pressure/pump channels plus min/max demand and deadband; duplicate enabled pump ownership is rejected.
+- Rule and sequence ID resolution now accepts standard binding keys and registry channel IDs where they map to existing runtime inputs/outputs.
 
 ### Fixed
 - Known-point oil-temperature curves now reject duplicate ADC captures, allow individual point removal, persist their calibrated ADC range, and clamp conversion to that range instead of extrapolating beyond measured data.

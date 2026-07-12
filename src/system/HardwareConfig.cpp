@@ -609,6 +609,16 @@ int8_t sequenceSourceHandle(const char* id) {
         if (strcmp(id, sequenceSourceId(i)) == 0 || strcmp(id, customSensorKey(i)) == 0)
             return (int8_t)i;
     }
+    if (strcmp(id, "primary_n1") == 0) return 2;
+    if (strcmp(id, "primary_n2") == 0) return 6;
+    if (strcmp(id, "primary_egt") == 0) return 1;
+    if (strcmp(id, "operator_throttle") == 0) return 17;
+    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Input)) {
+        if (strcmp(c->role, "speed") == 0) return 2;
+        if (strcmp(c->role, "pressure") == 0) return 3;
+        if (strcmp(c->role, "temperature") == 0) return 1;
+        if (strcmp(c->role, "operator") == 0) return 17;
+    }
     return -1;
 }
 
@@ -641,6 +651,17 @@ int8_t sequenceTargetHandle(const char* id) {
     for (uint8_t i = 0; i <= 17; ++i) {
         if (strcmp(id, sequenceTargetId(i)) == 0 || strcmp(id, customActuatorKey(i)) == 0)
             return (int8_t)i;
+    }
+    if (strcmp(id, "main_fuel_output") == 0) return 4;
+    if (strcmp(id, "main_starter") == 0) return 5;
+    if (strcmp(id, "main_fuel_shutoff") == 0) return 8;
+    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Output)) {
+        if (strcmp(c->role, "fuel") == 0) return 4;
+        if (strcmp(c->role, "starter") == 0) return 5;
+        if (strcmp(c->role, "oil_pump") == 0) return 7;
+        if (strcmp(c->role, "cooling_fan") == 0) return 0;
+        if (strcmp(c->role, "valve") == 0) return 1;
+        if (strcmp(c->role, "scavenge_pump") == 0) return 3;
     }
     return -1;
 }
