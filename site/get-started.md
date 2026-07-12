@@ -8,7 +8,7 @@ lede: Install a new supported board from Windows without cloning the source code
 
 ## Before you begin
 
-You need a Windows computer, a data-capable USB cable, and either a Classic ESP32 with at least 4 MB flash or an ESP32-S3 DevKitC-1 N16R8 target. Keep fuel, ignition energy, starter power, and load power physically isolated during installation.
+You need a Windows computer, a data-capable USB cable, and either a Classic ESP32 with at least 4 MB flash or an ESP32-S3 DevKitC-1 N16R8 target. ESP32-C3 and other unlisted families are not supported by the normal setup path. Keep fuel, ignition energy, starter power, and load power physically isolated during installation.
 
 ## Download and connect
 
@@ -18,7 +18,11 @@ You need a Windows computer, a data-capable USB cable, and either a Classic ESP3
 4. For a new board select **Clean install / reinstall**. It erases the selected board.
 5. For a working controller select **Update and keep my setup**. Back up the engine file first; this Wi-Fi path preserves setup intentionally.
 
-If Windows warns about the unsigned tool, confirm it came from the official OpenTurbine release before choosing Windows’ “More info” and “Run anyway” path. Do not disable Windows protection globally.
+For normal Windows setup, download `OpenTurbineSetupTool.exe`. Do not use GitHub’s **Download ZIP** source-code button. If Windows warns about the tool, confirm it came from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page before choosing Windows’ “More info” and “Run anyway” path. Do not disable Windows protection globally.
+
+## USB driver help
+
+If Windows sees a CP210x or WCH bridge but has not created a COM port, the Setup Tool offers the matching driver. If the detected bridge already owns a COM port but the ESP32 does not answer, hold BOOT, tap EN/RESET, close other serial programs, and try again.
 
 ## Connect to the dashboard
 
