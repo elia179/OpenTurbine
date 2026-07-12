@@ -1382,6 +1382,25 @@ bool validatePlatformPins(const JsonDocument& doc) {
     for (JsonVariantConst ch : doc["di_channels"].as<JsonArrayConst>())
         if (!addPin(jsonPin(ch, "pin"))) return false;
 
+    ChannelRegistry registry;
+    if (!doc["channel_registry"].isNull()) {
+        if (!registry.fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
+        for (uint8_t i = 0; i < registry.inputCount; i++) {
+            const auto& ch = registry.inputs[i];
+            if (ch.pin < 0) continue;
+            if (ch.driver == ChannelRegistry::Analog) {
+                if (!adcGpioAllowed(ch.pin)) return false;
+            } else if (!gpioAllowed(ch.pin)) {
+                return false;
+            }
+        }
+        for (uint8_t i = 0; i < registry.outputCount; i++) {
+            const auto& ch = registry.outputs[i];
+            if (ch.pin >= 0 && (!outputGpioAllowed(ch.pin) ||
+                ch.pin == stopPin || ch.pin == startPin)) return false;
+        }
+    }
+
     return true;
 }
 }
@@ -3060,6 +3079,72 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     mavlinkTxPin    = mvl["tx_pin"]      | mavlinkTxPin;
     mavlinkBaud     = mvl["baud"]        | mavlinkBaud;
     mavlinkIntervalMs = mvl["interval_ms"] | mavlinkIntervalMs;
+
+    if (channelRegistry.inputCount || channelRegistry.outputCount) {
+        auto bound = [](const char* key, ChannelRegistry::Direction dir) -> const ChannelRegistry::Channel* {
+            for (uint8_t i = 0; i < HardwareConfig::channelRegistry.bindingCount; i++)
+                if (strcmp(HardwareConfig::channelRegistry.bindings[i].key, key) == 0)
+                    return HardwareConfig::channelRegistry.find(HardwareConfig::channelRegistry.bindings[i].channelId, dir);
+            return nullptr;
+        };
+        auto byIdOrRole = [](ChannelRegistry::Direction dir, const char* id, const char* role) -> const ChannelRegistry::Channel* {
+            if (id) {
+                const auto* c = HardwareConfig::channelRegistry.find(id, dir);
+                if (c) return c;
+            }
+            const ChannelRegistry::Channel* list = dir == ChannelRegistry::Input
+                ? HardwareConfig::channelRegistry.inputs
+                : HardwareConfig::channelRegistry.outputs;
+            uint8_t count = dir == ChannelRegistry::Input
+                ? HardwareConfig::channelRegistry.inputCount
+                : HardwareConfig::channelRegistry.outputCount;
+            for (uint8_t i = 0; i < count; i++)
+                if (role && strcmp(list[i].role, role) == 0) return &list[i];
+            return nullptr;
+        };
+        auto outputType = [](ChannelRegistry::Driver d) {
+            return d == ChannelRegistry::Servo ? 0 : d == ChannelRegistry::Pwm ? 1 : 2;
+        };
+        auto applyPulse = [](const ChannelRegistry::Channel* c, bool& has, int& pin) {
+            if (c && c->pin >= 0 && c->driver == ChannelRegistry::Pulse) { has = true; pin = c->pin; }
+        };
+        auto applyAnalog = [](const ChannelRegistry::Channel* c, bool& has, int& pin) {
+            if (c && c->pin >= 0 && c->driver == ChannelRegistry::Analog) { has = true; pin = c->pin; }
+        };
+        auto applyInput = [](const ChannelRegistry::Channel* c, bool& has, int& pin, bool& rcPwm) {
+            if (!c || c->pin < 0) return;
+            if (c->driver == ChannelRegistry::RcPwm || c->driver == ChannelRegistry::Analog) {
+                has = true; pin = c->pin; rcPwm = c->driver == ChannelRegistry::RcPwm;
+            }
+        };
+        auto applyOutput = [&](const ChannelRegistry::Channel* c, bool& has, int& pin, int& type) {
+            if (!c || c->pin < 0) return;
+            has = true; pin = c->pin; type = outputType(c->driver);
+        };
+
+        applyPulse(bound("primary_n1", ChannelRegistry::Input), hasN1Rpm, n1RpmPin);
+        applyPulse(bound("primary_n2", ChannelRegistry::Input), hasN2Rpm, n2RpmPin);
+        if (hasN2Rpm) hasTwoShaft = true;
+        applyAnalog(byIdOrRole(ChannelRegistry::Input, "oil_pressure_main", "pressure"), hasOilPress, oilPressPin);
+        applyInput(bound("operator_throttle", ChannelRegistry::Input), hasThrottleInput, throttleInputPin, throttleInputRcPwm);
+        const auto* mainFuel = bound("main_fuel_output", ChannelRegistry::Output);
+        if (!mainFuel) mainFuel = byIdOrRole(ChannelRegistry::Output, "main_fuel", "fuel");
+        applyOutput(mainFuel, hasThrottle, throttlePin, throttleType);
+        const auto* starter = bound("main_starter", ChannelRegistry::Output);
+        if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter_main", "starter");
+        applyOutput(starter, hasStarter, starterPin, starterType);
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump_main", "oil_pump"),
+                    hasOilPump, oilPumpPin, oilPumpType);
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "cooling_fan_main", "cooling_fan"),
+                    hasCoolFan, coolFanPin, coolFanType);
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_scavenge_main", "scavenge_pump"),
+                    hasOilScavengePump, oilScavPumpPin, oilScavPumpType);
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve_main", "valve"),
+                    hasBleedValve, bleedValvePin, bleedValveType);
+        if (const auto* c = bound("main_fuel_shutoff", ChannelRegistry::Output)) {
+            if (c->pin >= 0) { hasFuelSol = true; fuelSolPin = c->pin; }
+        }
+    }
 
     auto contrl = doc["controllers"];
     if (!contrl["oil_loop"].isNull())      hasOilLoop      = contrl["oil_loop"].as<bool>();
