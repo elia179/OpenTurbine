@@ -1,6 +1,7 @@
 ---
 layout: document
-title: Get started
+title: Install OpenTurbine on ESP32 from Windows
+description: Install the OpenTurbine ESP32 turbine ECU on a supported board from Windows with the guided Setup Tool, USB driver help, flashing, and Wi-Fi connection steps.
 lede: Install a new supported board from Windows without cloning the source code.
 ---
 

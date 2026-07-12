@@ -1,6 +1,7 @@
 ---
 layout: document
 title: About OpenTurbine
+description: Learn what OpenTurbine provides for supported ESP32 turbine-controller projects, including open-source firmware, browser setup, documentation, and Windows installation.
 lede: Open-source control software for experimental small-turbine projects.
 ---
 

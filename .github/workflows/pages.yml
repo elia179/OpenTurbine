@@ -34,7 +34,7 @@ jobs:
           source: ./site
           destination: ./_site
           future: true
-      - name: Verify generated routes
+      - name: Validate generated metadata, sitemap, links, anchors, images, and JSON-LD
         run: python3 tools/validate_public_content.py --built _site
       - uses: actions/upload-pages-artifact@v4
         with:

@@ -1,21 +1,19 @@
 <h1 align="center">OpenTurbine</h1>
 
-<p align="center">
-  Open-source turbine ECU software for supported ESP32 boards, with guided Windows setup and a browser-based dashboard.
-</p>
+<p align="center">Open-source ESP32 turbine ECU with guided Windows setup and a browser-based dashboard.</p>
 
 <p align="center">
   <a href="https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe"><strong>Download for Windows</strong></a>
-  · <a href="https://elia179.github.io/OpenTurbine/get-started/">Get started</a>
-  · <a href="https://elia179.github.io/OpenTurbine/hardware/">Hardware guide</a>
-  · <a href="docs/README.md">Developer documentation</a>
+  &middot; <a href="https://elia179.github.io/OpenTurbine/get-started/">Get Started</a>
+  &middot; <a href="https://elia179.github.io/OpenTurbine/hardware/">Hardware guide</a>
+  &middot; <a href="docs/README.md">Developer documentation</a>
 </p>
 
 ![OpenTurbine dashboard](site/assets/images/hero-dashboard.png)
 
 ## What is OpenTurbine?
 
-OpenTurbine is experimental open-source turbine engine controller software for turbojets, APUs, generators, turboshafts, turboprops, and other small turbine systems. It runs on a supported ESP32 board and provides configurable startup and shutdown sequences, fuel and oil control, monitoring, fault handling, calibration, logging, and a browser-based interface.
+OpenTurbine is experimental open-source turbine engine controller software for turbojets, APUs, generators, turboshafts, turboprops, and other small turbine systems. It runs on supported ESP32 boards and provides configurable startup and shutdown sequences, fuel and oil control, monitoring, fault handling, calibration, logging, and a browser-based interface.
 
 The normal Windows installation does not require Git, PlatformIO, or source-code compilation.
 
@@ -34,7 +32,7 @@ The normal Windows installation does not require Git, PlatformIO, or source-code
 3. Choose **Clean install / reinstall** for a blank board, or **Update and keep my setup** for a working controller.
 4. Follow the Setup Tool, then join the board Wi-Fi and open the address it shows (normally `http://192.168.4.1`).
 
-The latest Setup Tool release is currently unsigned; only continue through Windows warnings after confirming it came from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page.
+If Windows warns about the Setup Tool, confirm the file came from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page, read the current release notes, and verify the published checksum before continuing.
 
 ## Supported targets
 

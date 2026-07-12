@@ -1,6 +1,7 @@
 ---
 layout: document
-title: Developers and integrators
+title: OpenTurbine developer documentation and source build
+description: Build OpenTurbine from source, validate firmware and web changes, package the Windows Setup Tool, or integrate the OpenTurbine Cluster protocol.
 lede: Build source, validate changes, package releases, or integrate the OpenTurbine Cluster protocol.
 ---
 

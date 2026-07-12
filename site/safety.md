@@ -1,6 +1,7 @@
 ---
 layout: document
-title: Safety
+title: OpenTurbine experimental safety requirements
+description: Experimental turbine ECU safety requirements for OpenTurbine: independent shutdown, power protection, dry testing, controlled setup, and physical test-stand precautions.
 lede: OpenTurbine is experimental, not certified, and cannot determine the safe limits of your turbine.
 ---
 
