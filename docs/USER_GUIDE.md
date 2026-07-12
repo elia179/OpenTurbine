@@ -259,9 +259,11 @@ This is the literal path from an unopened board to a dry-tested ECU.
 
 Open **Hardware** and describe the actual installation. Do not enable a sensor or actuator merely because it appears in the list.
 
+- Use **Installed Channel Inventory** for channels that rules, sequences, and controller bindings need to reference by ID. The stable ID is the machine key; keep it short, unique, and unchanged after other features reference it. The display name is safe to edit.
 - Confirm the correct ESP32 target.
 - Assign each GPIO once; resolve every conflict reported by the page.
 - Select the real electrical output type: relay, PWM, servo/ESC, or other offered mode.
+- For output inventory channels, set boot-safe and fault-safe demand deliberately. Relay outputs still switch at the driver boundary, while PWM and servo/ESC outputs preserve proportional demand.
 - Configure sensor chips and inputs exactly as wired.
 - Enable safety functions only after their required sensors are fitted and calibrated.
 - Save Hardware and allow the ECU to reboot.
