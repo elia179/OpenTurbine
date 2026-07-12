@@ -1974,6 +1974,14 @@ void WebServer::_setupRoutes() {
     // Buffered send with fixed Content-Length (see GET /api/config): the
     // larger hardware JSON is exactly what streaming truncated on the
     // Sequence/Hardware pages.
+    _server.on("/api/hardware/capability", HTTP_GET, [](AsyncWebServerRequest* req) {
+        const char* feature = req->hasParam("feature") ? req->getParam("feature")->value().c_str() : "";
+        JsonDocument doc; HardwareCapabilities::toJson(doc.to<JsonObject>(), feature);
+        serializeJson(doc, g_webTxBuf, sizeof(g_webTxBuf));
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
+        _finalizeJsonResponse(resp); req->send(resp);
+    });
+
     _server.on("/api/hardware", HTTP_GET, [](AsyncWebServerRequest* req) {
         JsonDocument doc;
         HardwareConfig::toJson(doc, true);
