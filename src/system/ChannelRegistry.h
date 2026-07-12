@@ -61,7 +61,7 @@ public:
         for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver)) return false;
         for (uint8_t i=0; i<outputCount; ++i) if (!validId(outputs[i].id) || !driverMatches(Output, outputs[i].driver) || !demandsValid(outputs[i])) return false;
         for (uint8_t i=0; i<inputCount; ++i) for (uint8_t j=0; j<outputCount; ++j) if (inputs[i].pin >= 0 && inputs[i].pin == outputs[j].pin) return false;
-        for (uint8_t i=0; i<bindingCount; ++i) if (!validId(bindings[i].key) || !find(bindings[i].channelId, Input) && !find(bindings[i].channelId, Output)) return false;
+        for (uint8_t i=0; i<bindingCount; ++i) if (!bindingValid(bindings[i])) return false;
         return true;
     }
     void toJson(JsonObject root) const {
@@ -78,6 +78,23 @@ public:
 private:
     static bool driverMatches(Direction d, Driver v) { return d == Input ? v <= RcPwm : v >= Relay; }
     static bool demandsValid(const Channel& c) { return c.safeDemand >= 0 && c.safeDemand <= 1 && c.faultDemand >= 0 && c.faultDemand <= 1 && c.maxValue >= c.minValue; }
+    bool bindingValid(const Binding& b) const {
+        if (!validId(b.key)) return false;
+        Direction expected = Input;
+        bool known = false;
+        if (!strcmp(b.key, "primary_n1") || !strcmp(b.key, "primary_n2") ||
+            !strcmp(b.key, "primary_egt") || !strcmp(b.key, "operator_throttle")) {
+            expected = Input;
+            known = true;
+        } else if (!strcmp(b.key, "main_fuel_output") ||
+                   !strcmp(b.key, "main_fuel_shutoff") ||
+                   !strcmp(b.key, "main_starter")) {
+            expected = Output;
+            known = true;
+        }
+        if (known) return find(b.channelId, expected) != nullptr;
+        return find(b.channelId, Input) || find(b.channelId, Output);
+    }
     static void write(JsonArray a, const Channel* list, uint8_t n) { for(uint8_t i=0;i<n;i++) { const Channel& c=list[i]; JsonObject o=a.add<JsonObject>(); o["id"]=c.id;o["name"]=c.name;o["role"]=c.role;o["driver"]=(uint8_t)c.driver;o["pin"]=c.pin;o["min"]=c.minValue;o["max"]=c.maxValue;o["safe_demand"]=c.safeDemand;o["fault_demand"]=c.faultDemand; } }
     bool read(JsonVariantConst v, Direction d) { for(JsonObjectConst o:v.as<JsonArrayConst>()) { Channel c; c.direction=d;c.installed=true;strlcpy(c.id,o["id"]|"",sizeof(c.id));strlcpy(c.name,o["name"]|c.id,sizeof(c.name));strlcpy(c.role,o["role"]|"generic",sizeof(c.role));c.driver=(Driver)(o["driver"]|0);c.pin=o["pin"]|-1;c.minValue=o["min"]|0.0f;c.maxValue=o["max"]|1.0f;c.safeDemand=o["safe_demand"]|0.0f;c.faultDemand=o["fault_demand"]|0.0f;if(!add(c))return false;} return true; }
 };
