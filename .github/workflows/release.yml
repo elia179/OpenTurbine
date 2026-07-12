@@ -24,15 +24,6 @@ jobs:
         with:
           go-version-file: tools/setup_tool/go.mod
           cache-dependency-path: tools/setup_tool/go.mod
-      - name: Require signing configuration
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERT_BASE64)) {
-            throw "Public release builds require WINDOWS_SIGNING_CERT_BASE64."
-          }
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERT_PASSWORD)) {
-            throw "Public release builds require WINDOWS_SIGNING_CERT_PASSWORD."
-          }
       - name: Format Go files
         shell: pwsh
         run: |
@@ -46,6 +37,7 @@ jobs:
         run: go run github.com/akavel/rsrc@v0.10.2 -ico OpenTurbineSetupTool.ico -manifest OpenTurbineSetupTool.manifest -o rsrc_windows_amd64.syso
       - run: go build -ldflags="-H windowsgui -s -w" -o OpenTurbineSetupTool.exe .
       - name: Sign setup tool
+        if: env.WINDOWS_SIGNING_CERT_BASE64 != ''
         shell: pwsh
         run: |
           $certPath = Join-Path $env:RUNNER_TEMP "OpenTurbineCodeSigning.pfx"
@@ -59,6 +51,7 @@ jobs:
             Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
           }
       - name: Verify signature
+        if: env.WINDOWS_SIGNING_CERT_BASE64 != ''
         shell: pwsh
         run: |
           $sig = Get-AuthenticodeSignature .\OpenTurbineSetupTool.exe
@@ -66,6 +59,10 @@ jobs:
           if ($sig.Status -ne "Valid") {
             throw "Authenticode signature is not valid: $($sig.Status) $($sig.StatusMessage)"
           }
+      - name: Record unsigned release build
+        if: env.WINDOWS_SIGNING_CERT_BASE64 == ''
+        shell: pwsh
+        run: Write-Host "No signing certificate is configured; this release build is unsigned."
       - name: Write setup tool SHA-256
         shell: pwsh
         run: |
