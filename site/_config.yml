@@ -5,6 +5,13 @@ baseurl: /OpenTurbine
 repository: elia179/OpenTurbine
 markdown: kramdown
 permalink: pretty
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+image: /assets/images/social-preview.png
+twitter:
+  card: summary_large_image
+google_site_verification:
 exclude:
   - Gemfile
   - Gemfile.lock

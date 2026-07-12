@@ -1,6 +1,7 @@
 ---
 layout: document
-title: FAQ
+title: OpenTurbine FAQ: boards, installation and updates
+description: Answers about supported ESP32 boards, Windows installation, USB drivers, updates, backups, wiring, logs, and experimental-use limits for OpenTurbine.
 lede: Quick answers for the normal Windows installation path.
 ---
 

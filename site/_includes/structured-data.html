@@ -1,0 +1,16 @@
+{% if page.url == '/' %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "OpenTurbine",
+  "description": "Open-source ESP32 turbine ECU with guided Windows setup and a browser-based dashboard.",
+  "url": "{{ site.url }}{{ site.baseurl }}/",
+  "codeRepository": "https://github.com/elia179/OpenTurbine",
+  "downloadUrl": "{{ site.data.project.windows_download_url }}",
+  "softwareHelp": "{{ site.url }}{{ site.baseurl }}/troubleshooting/",
+  "license": "https://github.com/elia179/OpenTurbine/blob/main/LICENSE",
+  "operatingSystem": "Windows, ESP32"
+}
+</script>
+{% endif %}

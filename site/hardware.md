@@ -1,25 +1,81 @@
 ---
 layout: document
-title: Hardware and wiring guide
+title: OpenTurbine hardware and wiring guide
+description: Hardware and wiring guidance for an ESP32 turbine ECU, including sensors, driver electronics, grounding, power protection, and independent emergency shutdown.
 lede: Build a safe interface around the ESP32; a GPIO pin is a logic signal, never load power.
 ---
 
 {% include safety-note.html %}
 
-## Supported controller targets
+This guide covers the physical interface for an OpenTurbine ESP32 turbine ECU. It is not a universal turbine wiring diagram. Keep fuel, ignition, starter, and other load power disconnected while checking the installation.
 
-Use a Classic ESP32 with at least 4 MB flash, or the supported ESP32-S3 DevKitC-1 N16R8 target. ESP32-C3 and other unlisted families are not supported by the normal Windows installer. Select the exact target in Hardware before assigning pins.
+## Supported ESP32 targets
 
-## Power, logic, and grounding
+Use a Classic ESP32 with at least 4 MB flash, or the supported ESP32-S3 DevKitC-1 N16R8 target. ESP32-C3 and other unlisted families are not supported by the normal Windows setup path. Select the exact target in Hardware before assigning pins, and never copy a classic-ESP32 pin assignment to an S3 without rechecking it.
 
-ESP32 GPIO is 3.3 V logic and is not 5 V tolerant. Use a clean regulated ECU supply, fuse load supplies, keep high-current wiring away from sensors, and use a deliberate common-ground or isolation plan. On classic ESP32, use ADC1 GPIO 32–39 while Wi-Fi is active; GPIO 34–39 are input-only and ADC2 is unreliable with Wi-Fi.
+## Power supply
 
-## Drivers and signal conditioning
+Power the controller from a clean regulated supply within the board manufacturer's limits. Fuse the ECU supply and each load supply appropriately. Keep starter, pump, motor, and ignition current away from sensor wiring and the ESP32 ground return. Use connectors, wire sizes, strain relief, and enclosure protection appropriate for vibration, heat, and current.
 
-An ESP32 pin does not power a pump, valve, starter, relay coil, glow plug, or igniter. Put suitable driver electronics, a protected MOSFET/relay/ESC input, and required flyback suppression between the GPIO and every load. Thermocouples require supported converter modules. RPM sensors require clean, conditioned 3.3 V-compatible pulses; do not connect an unbounded magnetic pickup directly to a GPIO.
+## 3.3 V GPIO limits
 
-## Emergency stop and dry wiring
+ESP32 GPIO is 3.3 V logic and is not 5 V tolerant. Measure every external signal at the ECU pin under normal and fault conditions. A 5 V sensor, relay module, magnetic pickup, or actuator must use a divider, level shifter, isolator, or suitable driver/conditioner before it reaches a GPIO.
 
-Install a physical fuel/power stop that removes fuel or load power independently of the ESP32, browser, and Wi-Fi. With fuel and ignition isolated, select only fitted hardware, assign each GPIO once, save and reboot, verify inputs, then test output polarity at logic level before powering loads.
+## ADC restrictions
 
-<p><a class="button" href="https://github.com/elia179/OpenTurbine/blob/main/docs/USER_GUIDE.md#electrical-and-wiring-basics">Open the complete electrical and wiring reference</a></p>
+On a Classic ESP32, use ADC1 GPIO 32-39 while Wi-Fi is active. GPIO 34-39 are input-only, and ADC2 is unreliable with Wi-Fi. On the supported ESP32-S3 target, use the input choices provided by the Hardware page; native USB and flash/PSRAM pins are not general-purpose replacements. Resolve the Hardware page's conflict warnings rather than forcing a pin choice.
+
+## Driver electronics
+
+An ESP32 output does not power a pump, valve, starter, relay coil, glow plug, or igniter. Use a suitable logic-level MOSFET driver, protected automotive driver, relay module with a valid 3.3 V input, ESC input, or dedicated ignition stage between the GPIO and the load. Test active-high/active-low behavior with the load supply disconnected first.
+
+## Flyback protection
+
+DC relay and solenoid coils need suitable flyback suppression unless the selected driver already includes it. Use the protection method specified for the driver and load; a generic diode is not appropriate for every switching speed or shutdown requirement. Keep suppression physically near the inductive load or driver as its documentation requires.
+
+## Grounding
+
+Join logic grounds only where an interface is not intentionally isolated. Use a deliberate return path so starter, pump, and ignition current cannot lift the sensor reference. Keep thermocouple, RPM, analog-sensor, and communication wiring separated from high-current and high-voltage wiring. Shield and filter long/noisy sensor runs as the sensor and interface documentation requires.
+
+## RPM sensors
+
+N1/N2 inputs require a clean, conditioned 3.3 V-compatible pulse signal and the correct pulses-per-revolution value. Open-collector sensors normally need a pull-up to 3.3 V. Magnetic pickups need a dedicated conditioner or comparator; do not connect an unbounded pickup waveform directly to a GPIO. Verify displayed RPM with an independent tachometer before enabling overspeed protection.
+
+## Thermocouple interfaces
+
+TOT/EGT and TIT thermocouples connect through supported converter modules, not directly to the ESP32. Select the actual converter type and connect its SPI lines and chip-select as required. Several SPI modules may share the bus but need individual chip-select pins. Verify thermocouple type, polarity, connector metals, cold-junction behavior, and probe location before using a temperature limit.
+
+## Pressure sensors
+
+Most pressure transducers need a regulated supply, a common sensor ground, and a conditioned output that remains within the ADC range. A typical 0.5-4.5 V automotive sensor cannot connect directly to a 3.3 V ADC. Use correctly calculated scaling and protection, then calibrate at zero and against a trusted gauge with the real plumbing depressurized.
+
+## Pump control
+
+Drive fuel, oil, or scavenge pumps through a rated driver or ESC, with a separately fused load supply. Confirm the command direction and minimum reliable output without fuel pressure. Do not treat a GPIO, breadboard trace, or undersized relay as a pump power path. Test physical fuel shutoff independently from any software command.
+
+## Starter control
+
+Use a rated starter contactor, motor controller, or air-start valve driver for the starting system. Keep high starting current out of the ECU supply and ground reference. Test direction, interlocks, and timeout behavior with the engine made safe. The controller must not be the only means to stop starter energy.
+
+## Ignition control
+
+Use the ignition system's specified driver and isolation method. Never connect an ignition coil directly to an ESP32 output. Keep high-voltage ignition wiring away from sensor and communication wires, verify that vapors are cleared before a test, and retain an independent means to remove ignition and fuel energy.
+
+## Independent emergency stop
+
+Install a physical, independent emergency stop that removes fuel or relevant load power even if the ESP32, browser, Wi-Fi, or firmware is unavailable. Test it from a safe position before every fueled attempt. A dashboard STOP button is useful but is not an independent emergency stop.
+
+## Dry wiring checklist
+
+Before applying load power, confirm:
+
+- the selected ESP32 target and every GPIO assignment match the actual board;
+- all external inputs are conditioned to safe 3.3 V logic or ADC ranges;
+- each pump, valve, starter, relay, and igniter has a rated driver and fuse;
+- flyback and transient protection are fitted where required;
+- sensor grounds, load returns, and high-current paths are deliberately routed;
+- no pin conflict or hardware dependency warning remains;
+- output polarity is verified at logic level; and
+- the physical emergency stop removes energy independently.
+
+For the setup order and calibration workflow, continue to the [OpenTurbine user guide]({{ '/user-guide/' | relative_url }}).
