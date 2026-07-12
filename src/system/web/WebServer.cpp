@@ -345,6 +345,9 @@ static const char* _startPreflightRejectReason() {
     if (_startInhibitActive()) {
         return "Start inhibit digital input is active";
     }
+    if (const char* feature = HardwareCapabilities::enabledFeatureRejectReason()) {
+        return feature;
+    }
     if (ed.extraCooldownActive) {
         return "Extra Cooldown is running. Stop it on the Tools page or wait for it to finish.";
     }

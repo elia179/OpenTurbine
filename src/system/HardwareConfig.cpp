@@ -360,6 +360,88 @@ bool enabled(JsonVariantConst object) {
     return !object["enabled"].isNull() && object["enabled"].as<bool>();
 }
 
+bool registryHasRole(const ChannelRegistry* registry, ChannelRegistry::Direction direction, const char* role) {
+    if (!registry) return false;
+    const ChannelRegistry::Channel* channels = direction == ChannelRegistry::Input
+        ? registry->inputs
+        : registry->outputs;
+    const uint8_t count = direction == ChannelRegistry::Input
+        ? registry->inputCount
+        : registry->outputCount;
+    for (uint8_t i = 0; i < count; ++i) {
+        if (channels[i].installed && strcmp(channels[i].role, role) == 0) return true;
+    }
+    return false;
+}
+
+bool registryHasBinding(const ChannelRegistry* registry, const char* key, ChannelRegistry::Direction direction) {
+    if (!registry) return false;
+    for (uint8_t i = 0; i < registry->bindingCount; ++i) {
+        if (strcmp(registry->bindings[i].key, key) == 0 &&
+            registry->find(registry->bindings[i].channelId, direction)) return true;
+    }
+    return false;
+}
+
+bool docSensorEnabled(const JsonDocument& doc, const char* key) {
+    return enabled(doc["sensors"][key]);
+}
+
+bool docActuatorEnabled(const JsonDocument& doc, const char* key) {
+    return enabled(doc["actuators"][key]);
+}
+
+bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry* registry) {
+    const bool hasN1 = docSensorEnabled(doc, "n1_rpm") ||
+                       registryHasBinding(registry, "primary_n1", ChannelRegistry::Input) ||
+                       registryHasRole(registry, ChannelRegistry::Input, "speed");
+    const bool hasN2 = (doc["has_two_shaft"] | false) &&
+                       (docSensorEnabled(doc, "n2_rpm") ||
+                        registryHasBinding(registry, "primary_n2", ChannelRegistry::Input) ||
+                        registryHasRole(registry, ChannelRegistry::Input, "speed"));
+    const bool hasEgt = docSensorEnabled(doc, "tot") || docSensorEnabled(doc, "tit") ||
+                        registryHasBinding(registry, "primary_egt", ChannelRegistry::Input) ||
+                        registryHasRole(registry, ChannelRegistry::Input, "temperature");
+    const bool hasOilPress = docSensorEnabled(doc, "oil_press") ||
+                             registryHasRole(registry, ChannelRegistry::Input, "pressure");
+    const bool hasThrottle = docActuatorEnabled(doc, "throttle") ||
+                             registryHasRole(registry, ChannelRegistry::Output, "fuel");
+    const bool hasOilPump = docActuatorEnabled(doc, "oil_pump") ||
+                            registryHasRole(registry, ChannelRegistry::Output, "oil_pump");
+    const int propPitchType = doc["actuators"]["prop_pitch"]["type"] | 0;
+    const bool hasProportionalPropPitch =
+        registryHasRole(registry, ChannelRegistry::Output, "prop_pitch") ||
+        (docActuatorEnabled(doc, "prop_pitch") && propPitchType != 2);
+
+    JsonVariantConst controllers = doc["controllers"];
+    if ((controllers["oil_loop"] | false) && (!hasOilPress || !hasOilPump)) return false;
+    if ((controllers["throttle_slew"] | false) && !hasThrottle) return false;
+    if ((controllers["dynamic_idle"] | false) && (!hasThrottle || (!hasN1 && !hasN2))) return false;
+    if ((controllers["governor"] | false) && (!hasN2 || (!hasThrottle && !hasProportionalPropPitch))) return false;
+    if ((doc["actuators"]["starter"]["assist_enabled"] | false) &&
+        (!docActuatorEnabled(doc, "starter") || !hasN1)) return false;
+
+    JsonVariantConst safety = doc["safety"];
+    if ((safety["overspeed"] | false) && !hasN1) return false;
+    if ((safety["surge"] | false) && !hasN1) return false;
+    if ((safety["overtemp"] | false) && !hasEgt) return false;
+    if ((safety["hot_start"] | false) && !hasEgt) return false;
+    if (((safety["low_oil"] | false) || (safety["oil_zero"] | false)) && !hasOilPress) return false;
+    if ((safety["tit_overtemp"] | false) &&
+        !docSensorEnabled(doc, "tit") &&
+        !registryHasRole(registry, ChannelRegistry::Input, "temperature")) return false;
+    if ((safety["oil_temp_high"] | false) &&
+        !docSensorEnabled(doc, "oil_temp") &&
+        !registryHasRole(registry, ChannelRegistry::Input, "oil_temperature")) return false;
+    if ((safety["fuel_press_low"] | false) &&
+        !docSensorEnabled(doc, "fuel_press") &&
+        !registryHasRole(registry, ChannelRegistry::Input, "fuel_pressure")) return false;
+    if ((safety["batt_low"] | false) &&
+        !docSensorEnabled(doc, "batt_voltage") &&
+        !registryHasRole(registry, ChannelRegistry::Input, "voltage")) return false;
+    return true;
+}
+
 int customSensorId(const char* key) {
     if (!key) return -1;
     if (strcmp(key, "oil_temp") == 0) return 0;
@@ -2096,10 +2178,13 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     }
     if (!validateDisplayLabels(doc["labels"])) return false;
     if (!validateCustomBlockStrings(doc["custom_blocks"])) return false;
+    ChannelRegistry* registryForValidation = nullptr;
+    ChannelRegistry registry;
     if (!doc["channel_registry"].isNull()) {
-        ChannelRegistry registry;
         if (!registry.fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
+        registryForValidation = &registry;
     }
+    if (!validateHardwareDependencies(doc, registryForValidation)) return false;
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
     if (n1["enabled"].as<bool>()) {

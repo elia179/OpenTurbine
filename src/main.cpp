@@ -2090,6 +2090,16 @@ static void handleCommand(const OTPacket& pkt) {
                     Serial.println("[OT] START blocked: invalid channel registry");
                     break;
                 }
+                if (const char* featureReject = HardwareCapabilities::enabledFeatureRejectReason()) {
+                    strncpy(ed.lastEvent, "START blocked: missing hardware dependency", sizeof(ed.lastEvent) - 1);
+                    snprintf(ed.faultDescription, sizeof(ed.faultDescription),
+                             "Cannot start: %s. Fix the Hardware page inventory or disable that feature.",
+                             featureReject);
+                    ed.lastEvent[sizeof(ed.lastEvent) - 1] = '\0';
+                    ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
+                    Serial.printf("[OT] START blocked: %s\n", featureReject);
+                    break;
+                }
                 // Block structural sequence errors in every mode. Bench mode can
                 // bypass missing hardware for dry testing, but it must not hide
                 // imported/unknown block names that buildSequences() skipped.
