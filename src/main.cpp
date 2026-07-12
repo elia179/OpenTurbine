@@ -3,6 +3,7 @@
 #include "platform/esp32/PlatformInit.h"
 #include "system/Config.h"
 #include "system/HardwareConfig.h"
+#include "system/HardwareCapabilities.h"
 #include "system/ClusterSerial.h"
 #include "system/FlightRecorder.h"
 #include "system/SessionLogger.h"
@@ -2074,7 +2075,20 @@ static void handleCommand(const OTPacket& pkt) {
                             break;
                         }
                     }
-                    if (inhibited) break;
+                if (inhibited) break;
+                }
+                // Never allow a START to proceed with an invalid imported
+                // registry. POST validation rejects this too, but this guard
+                // protects restored/corrupt files and stale in-memory state.
+                if (!HardwareConfig::channelRegistry.validate()) {
+                    strncpy(ed.lastEvent, "START blocked: invalid channel registry", sizeof(ed.lastEvent) - 1);
+                    strncpy(ed.faultDescription,
+                            "Cannot start: hardware channel inventory has invalid IDs, pins, bindings, or safe demands. Fix it on the Hardware page.",
+                            sizeof(ed.faultDescription) - 1);
+                    ed.lastEvent[sizeof(ed.lastEvent) - 1] = '\0';
+                    ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
+                    Serial.println("[OT] START blocked: invalid channel registry");
+                    break;
                 }
                 // Block structural sequence errors in every mode. Bench mode can
                 // bypass missing hardware for dry testing, but it must not hide
