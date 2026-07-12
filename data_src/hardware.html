@@ -3518,7 +3518,7 @@ function renderRegistryInventory() {
 }
 function addRegistryChannel(direction) {
   const id = (prompt('Stable ID (letters, numbers, _ or -):') || '').trim();
-  if (!/^[A-Za-z0-9_-]{1,23}$/.test(id)) return alert('A unique stable ID is required.');
+  if (!/^[A-Za-z0-9_-]{1,15}$/.test(id)) return alert('A unique stable ID is required.');
   const r = registryRoot(); if ([...r.inputs,...r.outputs].some(c => c.id === id)) return alert('That channel ID already exists.');
   const role = (prompt('Semantic role:', 'generic') || 'generic').trim(); const pin = Number(prompt('GPIO pin:', ''));
   if (!Number.isInteger(pin) || pin < 0) return alert('A valid GPIO pin is required.');

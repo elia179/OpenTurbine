@@ -3,8 +3,8 @@
 Configuration version 4 introduces the bounded `channel_registry` section.
 It contains separate input and output inventories, each keyed by a stable,
 machine-safe ID. Labels are presentation-only and must never be persisted as
-references. The ESP32 registry has fixed capacities of 16 inputs, 16 outputs,
-and 16 bindings.
+references. The classic ESP32 registry has fixed capacities of 6 inputs, 6
+outputs, and 5 bindings; these bounds protect the existing static-RAM budget.
 
 Output demand is normalized to `0.0..1.0`. Relay drivers quantize at `0.5` at
 the physical boundary; PWM and servo drivers preserve intermediate values.

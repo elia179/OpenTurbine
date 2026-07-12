@@ -3253,19 +3253,19 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     // callers can begin persisting references without relying on labels.
     if (channelRegistry.inputCount == 0 && channelRegistry.outputCount == 0) {
         auto addInput = [](const char* id, const char* role, int pin, ChannelRegistry::Driver driver) {
-            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::INPUT;
+            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::Input;
             c.driver = driver; c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
             HardwareConfig::channelRegistry.add(c);
         };
         auto addOutput = [](const char* id, const char* role, int pin, int legacyType) {
-            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::OUTPUT;
-            c.driver = legacyType == 0 ? ChannelRegistry::SERVO : legacyType == 1 ? ChannelRegistry::PWM : ChannelRegistry::RELAY;
+            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::Output;
+            c.driver = legacyType == 0 ? ChannelRegistry::Servo : legacyType == 1 ? ChannelRegistry::Pwm : ChannelRegistry::Relay;
             c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
             HardwareConfig::channelRegistry.add(c);
         };
-        if (hasN1Rpm) addInput("n1_main", "speed", n1RpmPin, ChannelRegistry::PULSE);
-        if (hasN2Rpm) addInput("n2_main", "speed", n2RpmPin, ChannelRegistry::PULSE);
-        if (hasOilPress) addInput("oil_pressure_main", "pressure", oilPressPin, ChannelRegistry::ANALOG);
+        if (hasN1Rpm) addInput("n1_main", "speed", n1RpmPin, ChannelRegistry::Pulse);
+        if (hasN2Rpm) addInput("n2_main", "speed", n2RpmPin, ChannelRegistry::Pulse);
+        if (hasOilPress) addInput("oil_pressure_main", "pressure", oilPressPin, ChannelRegistry::Analog);
         if (hasThrottle) addOutput("main_fuel", "fuel", throttlePin, throttleType);
         if (hasStarter) addOutput("starter_main", "starter", starterPin, starterType);
         if (hasOilPump) addOutput("oil_pump_main", "oil_pump", oilPumpPin, oilPumpType);

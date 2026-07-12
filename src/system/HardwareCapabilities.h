@@ -5,8 +5,8 @@
 // response rather than maintaining independent `hasX` matrices.
 class HardwareCapabilities {
 public:
-    static bool hasInputRole(const char* role) { return hasRole(ChannelRegistry::INPUT, role); }
-    static bool hasOutputRole(const char* role) { return hasRole(ChannelRegistry::OUTPUT, role); }
+    static bool hasInputRole(const char* role) { return hasRole(ChannelRegistry::Input, role); }
+    static bool hasOutputRole(const char* role) { return hasRole(ChannelRegistry::Output, role); }
     static bool available(const char* feature) {
         if (!strcmp(feature, "oil_loop")) return hasInputRole("pressure") && hasOutputRole("oil_pump");
         if (!strcmp(feature, "n1_safety")) return hasBindingOrRole("primary_n1", "speed");
@@ -26,14 +26,14 @@ public:
 private:
     static bool hasRole(ChannelRegistry::Direction direction, const char* role) {
         const ChannelRegistry& r = HardwareConfig::channelRegistry;
-        const ChannelRegistry::Channel* list = direction == ChannelRegistry::INPUT ? r.inputs : r.outputs;
-        uint8_t n = direction == ChannelRegistry::INPUT ? r.inputCount : r.outputCount;
+        const ChannelRegistry::Channel* list = direction == ChannelRegistry::Input ? r.inputs : r.outputs;
+        uint8_t n = direction == ChannelRegistry::Input ? r.inputCount : r.outputCount;
         for (uint8_t i=0;i<n;i++) if (list[i].installed && !strcmp(list[i].role, role)) return true;
         return false;
     }
     static bool hasBindingOrRole(const char* key, const char* role) {
         const ChannelRegistry& r = HardwareConfig::channelRegistry;
-        for (uint8_t i=0;i<r.bindingCount;i++) if (!strcmp(r.bindings[i].key,key) && (r.find(r.bindings[i].channelId, ChannelRegistry::INPUT) || r.find(r.bindings[i].channelId, ChannelRegistry::OUTPUT))) return true;
+        for (uint8_t i=0;i<r.bindingCount;i++) if (!strcmp(r.bindings[i].key,key) && (r.find(r.bindings[i].channelId, ChannelRegistry::Input) || r.find(r.bindings[i].channelId, ChannelRegistry::Output))) return true;
         return hasInputRole(role);
     }
 };
