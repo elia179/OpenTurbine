@@ -385,6 +385,10 @@ public:
         float   hysteresis; // analog deadband in sensor units; 0 = exact threshold
         uint8_t modeMask;   // SysMode bitmask: STARTUP=2, RUNNING=4
         char    name[24];   // display name (UI only)
+        // Persisted references. The numeric fields above are compact handles
+        // resolved once while loading; control ticks never compare IDs.
+        char    sourceId[24] = {};
+        char    targetId[24] = {};
     };
     static constexpr int MAX_RULES = 8;
     static Rule rules[MAX_RULES];

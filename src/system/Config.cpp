@@ -8,6 +8,43 @@
 #include "RulesEngine.h"     // after Arduino.h — needs constrain()
 #include "FlightRecorder.h"
 
+namespace {
+const char* ruleSourceId(uint8_t sensor) {
+    switch (sensor) {
+        case RulesEngine::N1_RPM: return "n1_main";
+        case RulesEngine::N2_RPM: return "n2_main";
+        case RulesEngine::OIL_PRESS: return "oil_pressure_main";
+        default: return "";
+    }
+}
+const char* ruleTargetId(uint8_t actuator) {
+    switch (actuator) {
+        case RulesEngine::THROTTLE: return "main_fuel";
+        case RulesEngine::STARTER: return "starter_main";
+        case RulesEngine::OIL_PUMP: return "oil_pump_main";
+        case RulesEngine::COOL_FAN: return "cooling_fan_main";
+        case RulesEngine::BLEED_VALVE: return "bleed_valve_main";
+        case RulesEngine::OIL_SCAVENGE: return "oil_scavenge_main";
+        default: return "";
+    }
+}
+int8_t ruleSourceHandle(const char* id) {
+    if (!strcmp(id, "n1_main")) return RulesEngine::N1_RPM;
+    if (!strcmp(id, "n2_main")) return RulesEngine::N2_RPM;
+    if (!strcmp(id, "oil_pressure_main")) return RulesEngine::OIL_PRESS;
+    return -1;
+}
+int8_t ruleTargetHandle(const char* id) {
+    if (!strcmp(id, "main_fuel")) return RulesEngine::THROTTLE;
+    if (!strcmp(id, "starter_main")) return RulesEngine::STARTER;
+    if (!strcmp(id, "oil_pump_main")) return RulesEngine::OIL_PUMP;
+    if (!strcmp(id, "cooling_fan_main")) return RulesEngine::COOL_FAN;
+    if (!strcmp(id, "bleed_valve_main")) return RulesEngine::BLEED_VALVE;
+    if (!strcmp(id, "oil_scavenge_main")) return RulesEngine::OIL_SCAVENGE;
+    return -1;
+}
+}
+
 // hardware_profile.h controller option → Config default (file wins once saved)
 #ifdef OT_DYNAMIC_IDLE_USE_N2
 static constexpr bool kIdleUseN2Default = true;
@@ -1751,6 +1788,14 @@ void Config::_fromDoc(const JsonDocument& doc) {
             const char* n = jr["name"] | "";
             strncpy(r.name, n, sizeof(r.name) - 1);
             r.name[sizeof(r.name) - 1] = '\0';
+            const char* source = jr["source"] | "";
+            const char* target = jr["target"] | "";
+            if (!source[0]) source = ruleSourceId(r.sensor);
+            if (!target[0]) target = ruleTargetId(r.actuator);
+            strlcpy(r.sourceId, source, sizeof(r.sourceId));
+            strlcpy(r.targetId, target, sizeof(r.targetId));
+            if (r.sourceId[0]) { int8_t h = ruleSourceHandle(r.sourceId); if (h < 0) r.enabled = false; else r.sensor = (uint8_t)h; }
+            if (r.targetId[0]) { int8_t h = ruleTargetHandle(r.targetId); if (h < 0) r.enabled = false; else r.actuator = (uint8_t)h; }
         }
     }
 
@@ -2343,6 +2388,8 @@ void Config::_toDoc(JsonDocument& doc) {
             jr["hysteresis"]= r.hysteresis;
             jr["mode_mask"] = r.modeMask;
             jr["name"]      = r.name;
+            jr["source"]    = r.sourceId[0] ? r.sourceId : ruleSourceId(r.sensor);
+            jr["target"]    = r.targetId[0] ? r.targetId : ruleTargetId(r.actuator);
         }
     }
 }
