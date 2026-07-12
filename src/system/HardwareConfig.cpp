@@ -1937,6 +1937,13 @@ void HardwareConfig::load() {
         Serial.println("[HWCfg] Hardware GPIO validation failed - START inhibited");
         return;
     }
+    if (!workDoc["channel_registry"].isNull() &&
+        (workDoc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) {
+        inhibitStartForHardwareConfigFailure(
+            "Cannot start: hardware channel registry was written by newer firmware.");
+        Serial.println("[HWCfg] Future channel registry version - START inhibited");
+        return;
+    }
     _fromDoc(workDoc);
     Serial.printf("[HWCfg] Loaded OK - profile: %s\n", profileId);
 }
@@ -2327,6 +2334,7 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     ChannelRegistry* registryForValidation = nullptr;
     ChannelRegistry registry;
     if (!doc["channel_registry"].isNull()) {
+        if ((doc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) return false;
         if (!registry.fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
         registryForValidation = &registry;
     }
