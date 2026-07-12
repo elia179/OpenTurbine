@@ -1,5 +1,6 @@
 #pragma once
 #include <ArduinoJson.h>
+#include "ChannelRegistry.h"
 
 // ============================================================
 //  HardwareConfig — manages the hardware section of ecu_config.json
@@ -19,6 +20,8 @@
 
 class HardwareConfig {
 public:
+    static constexpr uint8_t CHANNEL_REGISTRY_VERSION = 1;
+    static ChannelRegistry channelRegistry;
     static constexpr const char* PATH        = "/ecu_config.json";
     static constexpr const char* SECTION     = "hardware";
 

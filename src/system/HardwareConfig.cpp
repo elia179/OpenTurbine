@@ -1227,6 +1227,7 @@ bool validatePlatformPins(const JsonDocument& doc) {
 // Default values mirror hardware_profile.h so that a missing
 // an ecu_config.json without a hardware section produces identical behaviour to the current build.
 
+ChannelRegistry HardwareConfig::channelRegistry = {};
 char  HardwareConfig::profileId[64]    = {};
 char  HardwareConfig::profileDesc[64]  = {};
 char  HardwareConfig::wifiPassword[64] = {};   // empty = open network; WPA2 allows 8-63 chars
@@ -2095,6 +2096,10 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     }
     if (!validateDisplayLabels(doc["labels"])) return false;
     if (!validateCustomBlockStrings(doc["custom_blocks"])) return false;
+    if (!doc["channel_registry"].isNull()) {
+        ChannelRegistry registry;
+        if (!registry.fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
+    }
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
     if (n1["enabled"].as<bool>()) {
@@ -2467,10 +2472,21 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
         // would flag (a raw 0xFF here used to brick the next boot).
         ch["active_modes"] = (uint8_t)(diCh[i].activeModes & 0x1F);
     }
+    auto registry = doc["channel_registry"].to<JsonObject>();
+    registry["version"] = CHANNEL_REGISTRY_VERSION;
+    channelRegistry.toJson(registry);
 }
 
 // ── _fromDoc ─────────────────────────────────────────────────
 void HardwareConfig::_fromDoc(const JsonDocument& doc) {
+    // Legacy configurations have no registry.  Their singleton fields remain
+    // the boot-time compatibility source until the registry migration is
+    // complete; an empty inventory is deliberately not interpreted as an
+    // instruction to remove legacy hardware.
+    if (!doc["channel_registry"].isNull())
+        channelRegistry.fromJson(doc["channel_registry"].as<JsonObjectConst>());
+    else
+        channelRegistry.clear();
     const char* id   = doc["profile_id"]    | profileId;
     const char* desc = doc["profile_desc"]  | profileDesc;
     const char* pwd  = doc["wifi_password"] | (const char*)wifiPassword;
