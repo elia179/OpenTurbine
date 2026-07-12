@@ -87,14 +87,19 @@ struct EngineData {
     volatile float    starterDemand   = 0;      // 0.0–1.0
     volatile float    abPumpDemand    = 0;      // 0.0–1.0  afterburner pump
     volatile float    propPitchDemand = 0;      // 0.0–1.0  propeller pitch servo (turboprop)
+    // Semantic roles never quantise a command.  Relay drivers do that at their
+    // physical boundary; PWM and servo drivers retain the complete demand.
+    volatile float    coolFanDemand  = 0;      // 0.0–1.0
+    volatile float    oilScavengeDemand = 0;   // 0.0–1.0
+    volatile float    bleedValveDemand = 0;    // 0.0–1.0
     volatile bool     fuelSolOpen     = false;
     volatile bool     igniterOn       = false;
     volatile bool     igniter2On      = false;
     volatile bool     starterEnabled  = false;
-    volatile bool     coolFanOn       = false;  // cooling fan on/off
+    volatile bool     coolFanOn       = false;  // compatibility/telemetry, derived from demand
     volatile bool     airstarterOpen  = false;  // airstarter solenoid open
-    volatile bool     oilScavengeOn   = false;  // separate scavenge pump on/off
-    volatile bool     bleedValveOpen  = false;  // compressor bleed valve (surge prevention)
+    volatile bool     oilScavengeOn   = false;  // compatibility/telemetry, derived from demand
+    volatile bool     bleedValveOpen  = false;  // compatibility/telemetry, derived from demand
 
     // ── Safety / diagnostics ───────────────────────────────────
     volatile bool     surgeDetected   = false;  // compressor surge detected (N1 oscillation)

@@ -254,10 +254,10 @@ private:
 
     static void _applyActuator(uint8_t act, float dem, EngineData& ed, const char* ruleName) {
         switch (act) {
-            case COOL_FAN:    ed.coolFanOn      = (dem >= 0.5f); break;
-            case BLEED_VALVE: ed.bleedValveOpen = (dem >= 0.5f); break;
+            case COOL_FAN:    ed.coolFanDemand = dem; ed.coolFanOn = dem >= 0.5f; break;
+            case BLEED_VALVE: ed.bleedValveDemand = dem; ed.bleedValveOpen = dem >= 0.5f; break;
             case FUEL_PUMP2:  ed.fuelPump2Demand = constrain(dem, 0.0f, 1.0f); break;
-            case OIL_SCAVENGE:ed.oilScavengeOn  = (dem >= 0.5f); break;
+            case OIL_SCAVENGE:ed.oilScavengeDemand = dem; ed.oilScavengeOn = dem >= 0.5f; break;
             case THROTTLE:    ed.throttleDemand = constrain(dem, 0.0f, 1.0f); break;
             case STARTER:     ed.starterDemand  = constrain(dem, 0.0f, 1.0f); break;
             case STARTER_ENABLE: ed.starterEnabled = (dem >= 0.5f); break;

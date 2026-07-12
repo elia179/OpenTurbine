@@ -44,7 +44,7 @@ public:
             // Without hasOilPress: stays fixed at oilCoolPct for the whole cooldown.
             ed.oilPumpPct = oilCoolPct;
         }
-        if (HardwareConfig::hasOilScavengePump && useScavengePump) ed.oilScavengeOn = true;
+        if (HardwareConfig::hasOilScavengePump && useScavengePump) { ed.oilScavengeDemand = 1.0f; ed.oilScavengeOn = true; }
         ed.clusterCode = 11;    // ClCode::CooldownRunning
     }
 
@@ -89,7 +89,7 @@ public:
         ed.starterDemand  = 0;
         ed.starterEnabled = false;
         ed.oilPumpPct   = 0;
-        ed.oilScavengeOn  = false;
+        ed.oilScavengeDemand = 0.0f; ed.oilScavengeOn  = false;
     }
 
 private:

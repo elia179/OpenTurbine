@@ -1106,10 +1106,10 @@ static void checkToolTimers() {
     if (deadlineExpired(now, _ign2TestUntilMs))    { ed.igniter2On     = false; _ign2TestUntilMs  = 0; }
     if (deadlineExpired(now, _startTestUntilMs))   { ed.starterDemand = 0; ed.starterEnabled = false; _startTestUntilMs = 0; }
     if (deadlineExpired(now, _idleTestUntilMs))    { ed.throttleDemand = 0;    _idleTestUntilMs  = 0; }
-    if (deadlineExpired(now, _oilScavTestUntilMs))    { ed.oilScavengeOn  = false; _oilScavTestUntilMs    = 0; }
-    if (deadlineExpired(now, _coolFanTestUntilMs))    { ed.coolFanOn       = false; _coolFanTestUntilMs    = 0; }
+    if (deadlineExpired(now, _oilScavTestUntilMs))    { ed.oilScavengeDemand = 0.0f; ed.oilScavengeOn  = false; _oilScavTestUntilMs    = 0; }
+    if (deadlineExpired(now, _coolFanTestUntilMs))    { ed.coolFanDemand = 0.0f; ed.coolFanOn       = false; _coolFanTestUntilMs    = 0; }
     if (deadlineExpired(now, _airstarterTestUntilMs)) { ed.airstarterOpen  = false; _airstarterTestUntilMs = 0; }
-    if (deadlineExpired(now, _bleedValveTestUntilMs)) { ed.bleedValveOpen  = false; _bleedValveTestUntilMs = 0; }
+    if (deadlineExpired(now, _bleedValveTestUntilMs)) { ed.bleedValveDemand = 0.0f; ed.bleedValveOpen  = false; _bleedValveTestUntilMs = 0; }
     if (deadlineExpired(now, _glowTestUntilMs))       { ed.glowPlugDemand  = 0.0f;  _glowTestUntilMs       = 0; }
     if (deadlineExpired(now, _fuelPump2TestUntilMs))  { ed.fuelPump2Demand = 0.0f;  _fuelPump2TestUntilMs  = 0; }
     if (deadlineExpired(now, _abSolTestUntilMs))      { ed.abSolOpen       = false; _abSolTestUntilMs      = 0; }
@@ -1132,6 +1132,7 @@ static void checkExtraCooldown() {
         ed.starterDemand       = 0;
         ed.starterEnabled      = false;
         ed.oilPumpPct          = 0;
+        ed.oilScavengeDemand   = 0.0f;
         ed.oilScavengeOn       = false;
         ed.extraCooldownUntilMs  = 0;
         return;
@@ -1142,6 +1143,7 @@ static void checkExtraCooldown() {
         ed.starterDemand       = 0;
         ed.starterEnabled      = false;
         ed.oilPumpPct          = 0;
+        ed.oilScavengeDemand   = 0.0f;
         ed.oilScavengeOn       = false;
         ed.extraCooldownUntilMs  = 0;
         Serial.println("[OT] Extra cooldown complete (timeout)");
@@ -2261,6 +2263,7 @@ static void handleCommand(const OTPacket& pkt) {
                     ed.starterEnabled         = ecUseStarter;
                     ed.starterDemand          = ecUseStarter ? (Config::cooldownStarterPct / 100.0f) : 0.0f;
                     ed.oilPumpPct             = ecUseOil ? Config::cooldownOilPct : 0.0f;
+                    ed.oilScavengeDemand      = ecUseScavenge ? 1.0f : 0.0f;
                     ed.oilScavengeOn          = ecUseScavenge;
                     ed.extraCooldownUntilMs     = millis() + durationMs;
                     Serial.printf("[OT] Extra cooldown started (%lu s)\n",
@@ -2272,6 +2275,7 @@ static void handleCommand(const OTPacket& pkt) {
                     ed.starterDemand       = 0;
                     ed.starterEnabled      = false;
                     ed.oilPumpPct          = 0;
+                    ed.oilScavengeDemand   = 0.0f;
                     ed.oilScavengeOn       = false;
                     ed.extraCooldownUntilMs  = 0;
                     Serial.println("[OT] Extra cooldown cancelled");
@@ -2349,14 +2353,14 @@ static void handleCommand(const OTPacket& pkt) {
         // ── Actuator tests (STANDBY only, auto-expire via checkToolTimers) ────
         case OTCommand::OIL_SCAV_TEST:
             if (HardwareConfig::hasOilScavengePump && standbyLike && !anyToolTimerActive()) {
-                ed.oilScavengeOn    = true;
+                ed.oilScavengeDemand = 1.0f; ed.oilScavengeOn = true;
                 _oilScavTestUntilMs = millis() + Config::toolOilScavTestMs;
             }
             break;
 
         case OTCommand::COOL_FAN_TEST:
             if (HardwareConfig::hasCoolFan && standbyLike && !anyToolTimerActive()) {
-                ed.coolFanOn         = true;
+                ed.coolFanDemand = 1.0f; ed.coolFanOn = true;
                 _coolFanTestUntilMs  = millis() + Config::toolCoolFanTestMs;
             }
             break;
@@ -2370,7 +2374,7 @@ static void handleCommand(const OTPacket& pkt) {
 
         case OTCommand::BLEED_VALVE_TEST:
             if (HardwareConfig::hasBleedValve && standbyLike && !anyToolTimerActive()) {
-                ed.bleedValveOpen       = true;
+                ed.bleedValveDemand = 1.0f; ed.bleedValveOpen = true;
                 _bleedValveTestUntilMs  = millis() + Config::toolBleedValveTestMs;
             }
             break;

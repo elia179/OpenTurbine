@@ -1201,9 +1201,9 @@ namespace Hardware {
         if (hw.hasAbPump      && g_actAbPump)      g_actAbPump->set(ed.abPumpDemand);
         if (hw.hasAbSol)         g_actAbSol.set(ed.abSolOpen ? 1.0f : 0.0f);
         if (hw.hasAirstarterSol) g_actAirstarterSol.set(ed.airstarterOpen ? 1.0f : 0.0f);
-        if (hw.hasCoolFan && g_pActCoolFan)  g_pActCoolFan->set(ed.coolFanOn ? 1.0f : 0.0f);
+        if (hw.hasCoolFan && g_pActCoolFan)  g_pActCoolFan->set(constrain(ed.coolFanDemand, 0.0f, 1.0f));
         if (hw.hasOilScavengePump && g_actOilScavPump)
-            g_actOilScavPump->set(ed.oilScavengeOn ? 1.0f : 0.0f);
+            g_actOilScavPump->set(constrain(ed.oilScavengeDemand, 0.0f, 1.0f));
         if (hw.hasOilPump && g_actOilPump) {
             float demand = (hw.oilPumpType == 2)
                          ? (ed.oilPumpPct > 0.0f ? 1.0f : 0.0f)
@@ -1300,7 +1300,7 @@ namespace Hardware {
         if (hw.hasFuelPump2 && g_actFuelPump2)
             g_actFuelPump2->set(ed.fuelPump2Demand);
         if (hw.hasBleedValve && g_actBleedValve)
-            g_actBleedValve->set(ed.bleedValveOpen ? 1.0f : 0.0f);
+            g_actBleedValve->set(constrain(ed.bleedValveDemand, 0.0f, 1.0f));
         if (hw.hasPropPitch && g_actPropPitch)
             g_actPropPitch->set(ed.propPitchDemand);
         if (hw.hasGlowPlug) {
@@ -1367,20 +1367,20 @@ namespace Hardware {
         _ed.starterEnabled  = false;
         _ed.oilPumpPct      = 0;
         _ed.oilTargetBar    = 0;   // clear the loop target too (matches enterStandby/ImmediateCut/FinalStop)
-        _ed.oilScavengeOn   = false;
+        _ed.oilScavengeDemand = 0.0f; _ed.oilScavengeOn = false;
         _ed.abSolOpen       = false;
         _ed.abPumpDemand    = 0;
         _ed.fuelPump2Demand  = 0;
         _ed.propPitchDemand  = 0;
         _ed.abFuelOffset     = 0.0f;
-        _ed.bleedValveOpen   = false;
+        _ed.bleedValveDemand = 0.0f; _ed.bleedValveOpen = false;
         _ed.glowPlugDemand   = 0;
         _ed.wetGlowFuelDemand = 0;
         _ed.surgeDetected    = false;
         _ed.igniter2On      = false;
         _ed.abMode          = ABMode::Off;
         _ed.airstarterOpen  = false;
-        _ed.coolFanOn       = false;
+        _ed.coolFanDemand = 0.0f; _ed.coolFanOn = false;
     }
 
     // ── Status LED init / tick ────────────────────────────────

@@ -34,7 +34,7 @@
 class BleedOpen : public IBlock {
 public:
     const char* name() override { return "BleedOpen"; }
-    void onEnter() override { EngineData::instance().bleedValveOpen = true; }
+    void onEnter() override { auto& ed = EngineData::instance(); ed.bleedValveDemand = 1.0f; ed.bleedValveOpen = true; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -42,7 +42,7 @@ public:
 class BleedClose : public IBlock {
 public:
     const char* name() override { return "BleedClose"; }
-    void onEnter() override { EngineData::instance().bleedValveOpen = false; }
+    void onEnter() override { auto& ed = EngineData::instance(); ed.bleedValveDemand = 0.0f; ed.bleedValveOpen = false; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };

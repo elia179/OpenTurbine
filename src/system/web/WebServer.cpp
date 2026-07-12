@@ -842,11 +842,14 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["oil_pump_current_amps"] = (float)(int)(ed.oilPumpCurrentAmps  * 10) / 10.0f;
     doc["oil_pump_overcurrent"]  = ed.oilPumpOvercurrent;
     doc["bleed_valve_open"]      = ed.bleedValveOpen;
+    doc["bleed_valve_demand"]    = (float)(int)(ed.bleedValveDemand * 1000) / 1000.0f;
     doc["prop_pitch_demand"]     = (float)(int)(ed.propPitchDemand * 1000) / 1000.0f;
     doc["fuel_pump2_demand"]     = (float)(int)(ed.fuelPump2Demand * 1000) / 1000.0f;
     doc["cool_fan_on"]           = ed.coolFanOn;
+    doc["cool_fan_demand"]       = (float)(int)(ed.coolFanDemand * 1000) / 1000.0f;
     doc["airstarter_open"]       = ed.airstarterOpen;
     doc["oil_scavenge_on"]       = ed.oilScavengeOn;
+    doc["oil_scavenge_demand"]   = (float)(int)(ed.oilScavengeDemand * 1000) / 1000.0f;
     doc["governor_target_rpm"]   = (int)Config::governorTargetRpm;
     // Which governor axis is live (same selection as Hardware runControllers): prop-pitch
     // mode holds N2 with pitch/load and leaves the throttle to the operator; throttle-driven
