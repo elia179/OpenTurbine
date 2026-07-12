@@ -45,8 +45,8 @@
   <div class="hw-section" id="registry-inventory">
     <div class="hw-title">Installed Channel Inventory</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Only installed registry channels are shown here. IDs are stable configuration keys; names may be changed without breaking rules or sequences.</div>
-    <div style="display:flex;gap:.5rem;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('input')">+ Add input</button><button type="button" onclick="addRegistryChannel('output')">+ Add output</button></div>
-    <div id="registry-inputs"></div><div id="registry-outputs"></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('input')">+ Add input</button><button type="button" onclick="addRegistryChannel('output')">+ Add output</button><button type="button" onclick="addRegistryBinding()">+ Add binding</button></div>
+    <div id="registry-inputs"></div><div id="registry-outputs"></div><div id="registry-bindings"></div>
   </div>
 
   <div class="hw-section">
@@ -3542,7 +3542,7 @@ function renderRegistryInventory() {
         <div style="display:flex;justify-content:flex-end;margin-top:.5rem"><button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button></div>
       </div>`).join('') : '<div class="hw-desc">No installed '+direction+' channels.</div>');
   };
-  render('input', 'registry-inputs'); render('output', 'registry-outputs');
+  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings();
 }
 function updateRegistryChannel(direction, index, key, value) {
   const r = registryRoot();
@@ -3556,6 +3556,52 @@ function updateRegistryChannel(direction, index, key, value) {
   if (key === 'min' || key === 'max') value = Number.isFinite(Number(value)) ? Number(value) : 0;
   c[key] = value;
   dirty(); updateSaveButton();
+}
+function registryChannelOptions(selected) {
+  const r = registryRoot();
+  const inputs = r.inputs.map(c => ['input', c]);
+  const outputs = r.outputs.map(c => ['output', c]);
+  return inputs.concat(outputs).map(([dir, c]) =>
+    `<option value="${escapeHtmlText(c.id)}"${c.id===selected?' selected':''}>${escapeHtmlText(c.id)} (${dir}, ${escapeHtmlText(c.role || 'generic')})</option>`
+  ).join('');
+}
+function renderRegistryBindings() {
+  const r = registryRoot();
+  const el = document.getElementById('registry-bindings');
+  if (!el) return;
+  const keys = ['primary_n1','primary_n2','primary_egt','main_fuel_output','main_fuel_shutoff','main_starter','operator_throttle'];
+  el.innerHTML = '<div class="hw-label" style="margin:.65rem 0 .35rem">Bindings</div>' +
+    (r.bindings.length ? r.bindings.map((b, i) => `<div class="hw-item-card" style="margin:.3rem 0">
+      <div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">Binding key</span><input list="registry-binding-keys" maxlength="19" value="${escapeHtmlText(b.key || '')}" oninput="updateRegistryBinding(${i},'key',this.value)"></div>
+        <div class="hw-field"><span class="hw-label">Channel</span><select onchange="updateRegistryBinding(${i},'channel',this.value)">${registryChannelOptions(b.channel || '')}</select></div>
+        <div style="display:flex;align-items:end;justify-content:flex-end"><button type="button" onclick="removeRegistryBinding(${i})">Remove</button></div>
+      </div>
+    </div>`).join('') : '<div class="hw-desc">No controller bindings configured.</div>') +
+    `<datalist id="registry-binding-keys">${keys.map(k => `<option value="${k}"></option>`).join('')}</datalist>`;
+}
+function updateRegistryBinding(index, key, value) {
+  const r = registryRoot();
+  if (!r.bindings[index]) return;
+  if (key === 'key' && !/^[A-Za-z0-9_-]{0,19}$/.test(value)) return;
+  r.bindings[index][key] = value;
+  dirty(); updateSaveButton();
+}
+function addRegistryBinding() {
+  const r = registryRoot();
+  const channels = r.inputs.concat(r.outputs);
+  if (!channels.length) return alert('Add at least one channel before adding a binding.');
+  if (r.bindings.length >= 5) return alert('The embedded registry supports up to 5 bindings.');
+  const key = (prompt('Binding key:', 'primary_n1') || '').trim();
+  if (!/^[A-Za-z0-9_-]{1,19}$/.test(key)) return alert('A binding key is required.');
+  if (r.bindings.some(b => b.key === key)) return alert('That binding key already exists.');
+  r.bindings.push({key, channel: channels[0].id});
+  renderRegistryInventory(); dirty(); updateSaveButton();
+}
+function removeRegistryBinding(index) {
+  const r = registryRoot();
+  r.bindings.splice(index, 1);
+  renderRegistryBindings(); dirty(); updateSaveButton();
 }
 function addRegistryChannel(direction) {
   const id = (prompt('Stable ID (letters, numbers, _ or -):') || '').trim();
