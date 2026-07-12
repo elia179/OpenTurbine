@@ -3,6 +3,7 @@
 #include "../version.h"
 #include "../Config.h"
 #include "../HardwareConfig.h"
+#include "../HardwareCapabilities.h"
 #include "../FlightRecorder.h"
 #include "../SessionLogger.h"
 #include "../../engine/EngineData.h"
@@ -1984,6 +1985,14 @@ void WebServer::_setupRoutes() {
         AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
         _finalizeJsonResponse(resp);
         req->send(resp);
+    });
+
+    _server.on("/api/hardware/capability", HTTP_GET, [](AsyncWebServerRequest* req) {
+        const char* feature = req->hasParam("feature") ? req->getParam("feature")->value().c_str() : "";
+        JsonDocument doc; HardwareCapabilities::toJson(doc.to<JsonObject>(), feature);
+        serializeJson(doc, g_webTxBuf, sizeof(g_webTxBuf));
+        AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", g_webTxBuf);
+        _finalizeJsonResponse(resp); req->send(resp);
     });
 
     // POST /api/hardware — validate + replace the hardware section, schedule reboot
