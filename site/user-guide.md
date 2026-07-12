@@ -1,6 +1,6 @@
 ---
 layout: document
-title: OpenTurbine user guide: setup, calibration and operation
+title: "OpenTurbine user guide: setup, calibration and operation"
 description: The complete OpenTurbine user guide covers installation, dashboard connection, hardware setup, turbine ECU calibration, sequences, dry testing, updates, logs, and recovery.
 lede: Configure and dry-test an OpenTurbine installation in a deliberate order.
 ---
