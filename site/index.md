@@ -5,11 +5,11 @@ description: OpenTurbine is an open-source ESP32 turbine ECU with guided Windows
 ---
 
 <section class="hero"><div class="shell hero-grid"><div>
-<p class="eyebrow">Experimental turbine control</p>
+<p class="eyebrow">Open-source ESP32 turbine ECU</p>
 <h1>Open-source turbine ECU software for ESP32</h1>
 <p class="lede">Guided Windows setup, configurable engine sequences, monitoring, data logging, and a browser-based dashboard.</p>
 {% include download-cta.html %}
-<p>For experimental turbojets, APUs, generators, turboshafts, turboprops, and turbine test rigs.</p>
+<p>For turbojets, APUs, generators, turboshafts, turboprops, and turbine test rigs.</p>
 {% include safety-note.html %}
 </div><div><img class="screenshot" src="{{ '/assets/images/hero-dashboard.png' | relative_url }}" width="1800" height="1050" alt="OpenTurbine browser dashboard in a deterministic demo state, showing temperature, RPM, oil, fuel, and sensor cards"></div></div></section>
 
@@ -25,6 +25,6 @@ description: OpenTurbine is an open-source ESP32 turbine ECU with guided Windows
 
 <section class="section"><div class="shell"><h2>Choose your path</h2><div class="card-grid four"><a class="card" href="{{ '/get-started/' | relative_url }}"><h3>Try on a board</h3><p>Install a supported board with the Windows Setup Tool.</p></a><a class="card" href="{{ '/hardware/' | relative_url }}"><h3>Build an ECU</h3><p>Plan drivers, sensors, wiring, power protection, and emergency shutdown.</p></a><a class="card" href="{{ '/troubleshooting/' | relative_url }}"><h3>Update or recover</h3><p>Back up an existing controller, update it, or diagnose installation problems.</p></a><a class="card" href="{{ '/developers/' | relative_url }}"><h3>Develop or integrate</h3><p>Build firmware, work with source, or integrate the serial protocol.</p></a></div></div></section>
 
-<section class="section alt"><div class="shell"><h2>Your responsibilities remain physical</h2><p>OpenTurbine does not replace suitable pump, solenoid, or ignition drivers; correct sensors and conditioning; independent emergency shutdown; power protection and fusing; safe limits; restrained test equipment; or operating judgment.</p><img class="system-diagram" src="{{ '/assets/images/system-overview.svg' | relative_url }}" loading="lazy" alt="System overview showing sensors and controls to OpenTurbine, the browser dashboard, driver electronics and loads, plus an independent physical emergency stop"></div></section>
+<section class="section alt"><div class="shell"><h2>System overview</h2><p>OpenTurbine connects configured sensors and controls to the browser dashboard and protected driver electronics.</p><img class="system-diagram" src="{{ '/assets/images/system-overview.svg' | relative_url }}" loading="lazy" alt="System overview showing sensors and controls to OpenTurbine, the browser dashboard, driver electronics and loads, plus an independent physical emergency stop"></div></section>
 
 <section class="section"><div class="shell"><h2>Get the right help</h2>{% include support-options.html %}</div></section>
