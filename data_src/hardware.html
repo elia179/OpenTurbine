@@ -3516,9 +3516,50 @@ function renderRegistryInventory() {
   };
   render('input', 'registry-inputs'); render('output', 'registry-outputs');
 }
+function registryDriverOptions(direction, selected) {
+  const drivers = direction === 'input'
+    ? [[0,'Digital'],[1,'Analog'],[2,'Pulse/frequency'],[3,'RC PWM']]
+    : [[4,'Relay'],[5,'PWM'],[6,'Servo/ESC']];
+  return drivers.map(([v, label]) => `<option value="${v}"${Number(selected)===v?' selected':''}>${label}</option>`).join('');
+}
+function renderRegistryInventory() {
+  const r = registryRoot();
+  const render = (direction, target) => {
+    const rows = r[direction + 's'];
+    document.getElementById(target).innerHTML = '<div class="hw-label" style="margin:.35rem 0">' + direction[0].toUpperCase()+direction.slice(1)+'s</div>' +
+      (rows.length ? rows.map((c, i) => `<div class="hw-item-card" style="margin:.3rem 0">
+        <div class="hw-desc" style="margin-bottom:.45rem">Stable ID: <code>${escapeHtmlText(c.id)}</code></div>
+        <div class="hw-grid">
+          <div class="hw-field"><span class="hw-label">Display name</span><input type="text" maxlength="15" value="${escapeHtmlText(c.name || c.id)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
+          <div class="hw-field"><span class="hw-label">Semantic role</span><input type="text" maxlength="13" value="${escapeHtmlText(c.role || 'generic')}" oninput="updateRegistryChannel('${direction}',${i},'role',this.value||'generic')"></div>
+          <div class="hw-field"><span class="hw-label">Electrical driver</span><select onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver)}</select></div>
+          <div class="hw-field"><span class="hw-label">GPIO pin</span><input type="number" min="-1" max="48" step="1" value="${Number.isFinite(Number(c.pin))?Number(c.pin):-1}" oninput="updateRegistryChannel('${direction}',${i},'pin',Math.trunc(+this.value))"></div>
+          <div class="hw-field"><span class="hw-label">Minimum mapped value</span><input type="number" step="0.001" value="${Number(c.min ?? 0)}" oninput="updateRegistryChannel('${direction}',${i},'min',+this.value)"></div>
+          <div class="hw-field"><span class="hw-label">Maximum mapped value</span><input type="number" step="0.001" value="${Number(c.max ?? 1)}" oninput="updateRegistryChannel('${direction}',${i},'max',+this.value)"></div>
+          ${direction==='output' ? `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'safe_demand',(+this.value)/100)"></div>
+          <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'fault_demand',(+this.value)/100)"></div>` : ''}
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:.5rem"><button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button></div>
+      </div>`).join('') : '<div class="hw-desc">No installed '+direction+' channels.</div>');
+  };
+  render('input', 'registry-inputs'); render('output', 'registry-outputs');
+}
+function updateRegistryChannel(direction, index, key, value) {
+  const r = registryRoot();
+  const c = r[direction + 's'][index];
+  if (!c) return;
+  if (key === 'pin') value = Number.isFinite(value) ? value : -1;
+  if (key === 'driver') {
+    if ((direction === 'input' && (value < 0 || value > 3)) || (direction === 'output' && (value < 4 || value > 6))) return;
+  }
+  if (key === 'safe_demand' || key === 'fault_demand') value = Math.max(0, Math.min(1, Number(value) || 0));
+  if (key === 'min' || key === 'max') value = Number.isFinite(Number(value)) ? Number(value) : 0;
+  c[key] = value;
+  dirty(); updateSaveButton();
+}
 function addRegistryChannel(direction) {
   const id = (prompt('Stable ID (letters, numbers, _ or -):') || '').trim();
-  if (!/^[A-Za-z0-9_-]{1,15}$/.test(id)) return alert('A unique stable ID is required.');
+  if (!/^[A-Za-z0-9_-]{1,19}$/.test(id)) return alert('A unique stable ID is required.');
   const r = registryRoot(); if ([...r.inputs,...r.outputs].some(c => c.id === id)) return alert('That channel ID already exists.');
   const role = (prompt('Semantic role:', 'generic') || 'generic').trim(); const pin = Number(prompt('GPIO pin:', ''));
   if (!Number.isInteger(pin) || pin < 0) return alert('A valid GPIO pin is required.');
