@@ -53,6 +53,42 @@ Class Name: USBDevice
 	}
 }
 
+func TestBootloaderFailureKeepsMatchingDriverForBridgeWithoutCOM(t *testing.T) {
+	recommendation := driverRecommendation{
+		Message: "Windows detected a Silicon Labs CP210x USB bridge.",
+		Choices: []driverChoice{{Kind: driverCP210x, Label: "Install CP210x"}},
+		Device: usbBridgeDevice{
+			InstanceID: `USB\VID_10C4&PID_EA60\0001`,
+			DriverKind: driverCP210x,
+		},
+	}
+	got := bootloaderFailureDriverRecommendation(recommendation)
+	if len(got.Choices) != 1 || got.Choices[0].Kind != driverCP210x {
+		t.Fatalf("missing CP210x choice for detected bridge without COM: %+v", got)
+	}
+	if !strings.Contains(got.Message, "has not assigned") {
+		t.Fatalf("missing no-COM explanation: %q", got.Message)
+	}
+}
+
+func TestBootloaderFailureDoesNotOfferDriverForBridgeWithCOM(t *testing.T) {
+	recommendation := driverRecommendation{
+		Choices: []driverChoice{{Kind: driverWCH, Label: "Install WCH"}},
+		Device: usbBridgeDevice{
+			InstanceID: `USB\VID_1A86&PID_7523\0001`,
+			PortName:   "COM8",
+			DriverKind: driverWCH,
+		},
+	}
+	got := bootloaderFailureDriverRecommendation(recommendation)
+	if len(got.Choices) != 0 {
+		t.Fatalf("unexpected driver choices for bridge already on COM8: %+v", got)
+	}
+	if !strings.Contains(got.Message, "Hold BOOT") {
+		t.Fatalf("missing boot-mode advice: %q", got.Message)
+	}
+}
+
 func TestValidateDriverINFRootRejectsIncompletePackages(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, filepath.Join(root, "driver.inf"), "inf")

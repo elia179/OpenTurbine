@@ -167,6 +167,22 @@ func bootloaderNoAnswerDriverRecommendation() driverRecommendation {
 	}
 }
 
+// bootloaderFailureDriverRecommendation keeps the driver path available when
+// Windows can identify the connected bridge but has not assigned that bridge a
+// COM port. findSerialPorts may include an unrelated Bluetooth/modem COM port;
+// that must not hide the CP210x/WCH installer from a fresh Windows machine.
+func bootloaderFailureDriverRecommendation(recommendation driverRecommendation) driverRecommendation {
+	kind := normalizeDriverKind(string(recommendation.Device.DriverKind))
+	if (kind == driverCP210x || kind == driverWCH) &&
+		strings.TrimSpace(recommendation.Device.InstanceID) != "" &&
+		strings.TrimSpace(recommendation.Device.PortName) == "" {
+		recommendation.Message += "\n\nWindows has not assigned this connected bridge a COM port yet. Install the matching driver below, then reconnect the board and try again."
+		recommendation.Detail += "\n\nNo COM port is assigned to this detected USB bridge. Any other COM port shown by Windows may belong to a different device."
+		return recommendation
+	}
+	return bootloaderNoAnswerDriverRecommendation()
+}
+
 func detectUSBBridgeDevices() []usbBridgeDevice {
 	result := runDriverCommand("pnputil", "/enum-devices", "/connected", "/ids")
 	if result.ExitCode != 0 || strings.TrimSpace(result.Output) == "" {

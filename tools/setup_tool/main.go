@@ -1375,10 +1375,10 @@ func (j *Job) success(title, body string) {
 
 func (j *Job) waitContinue() { <-j.continueCh }
 
-func (j *Job) showDriverHelp(pkg *Package, reason string) string {
+func (j *Job) showDriverHelp(pkg *Package, reason string, bootloaderFailure bool) string {
 	recommendation := detectUSBDriverRecommendation()
-	if strings.Contains(strings.ToLower(reason), "com port was found") {
-		recommendation = bootloaderNoAnswerDriverRecommendation()
+	if bootloaderFailure {
+		recommendation = bootloaderFailureDriverRecommendation(recommendation)
 	}
 	body := "Board not found.\n\nTry this first:\n\n1. Use a USB data cable, not a charge-only cable.\n2. Plug the board directly into this computer.\n3. Hold BOOT on the board, then click Try Again.\n4. Close Arduino IDE, PlatformIO, Cura, serial monitors, or anything else that may use the COM port.\n\n" + recommendation.Message
 	detail := reason + "\n\n" + recommendation.Detail
@@ -1458,7 +1458,7 @@ func (j *Job) runNewBoard() {
 	for {
 		ports := findSerialPorts()
 		if len(ports) == 0 {
-			action := j.showDriverHelp(pkg, "No serial COM port was found for the board.")
+			action := j.showDriverHelp(pkg, "No serial COM port was found for the board.", false)
 			if action == "cancel" {
 				j.cancelToHome("Clean USB install was cancelled.")
 				return
@@ -1505,7 +1505,7 @@ func (j *Job) runNewBoard() {
 			j.fail(fmt.Errorf("only unsupported ESP chips were found: %s. OpenTurbine currently supports classic ESP32 and ESP32-S3 only; no board was erased", strings.Join(unsupported, ", ")))
 			return
 		}
-		action := j.showDriverHelp(pkg, "A COM port was found, but the ESP32 bootloader did not answer. The USB serial driver is probably working; the board may need BOOT held, EN/RESET tapped, a direct USB data cable, or another app may be holding the port.")
+		action := j.showDriverHelp(pkg, "A COM port was found, but the ESP32 bootloader did not answer. The connected USB bridge may still be missing its driver; otherwise the board may need BOOT held, EN/RESET tapped, a direct USB data cable, or another app may be holding the port.", true)
 		if action == "cancel" {
 			j.cancelToHome("Clean USB install was cancelled.")
 			return
