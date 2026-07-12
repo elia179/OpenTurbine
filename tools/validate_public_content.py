@@ -12,6 +12,7 @@ SITE = ROOT / "site"
 REQUIRED = ["index.md", "get-started.md", "hardware.md", "user-guide.md", "troubleshooting.md", "safety.md", "faq.md", "developers.md", "about.md", "404.html"]
 ROUTES = ["index.html", "get-started/index.html", "hardware/index.html", "user-guide/index.html", "troubleshooting/index.html", "safety/index.html", "faq/index.html", "developers/index.html", "about/index.html", "404.html"]
 MARKDOWN_SOURCES = [ROOT / "README.md", ROOT / "docs/README.md", ROOT / "docs/USER_GUIDE.md"]
+REQUIRED_IMAGES = ["hero-dashboard.png", "hardware-page.png", "calibration-page.png", "sequence-page.png", "social-preview.png", "system-overview.svg"]
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
@@ -44,6 +45,21 @@ def main() -> int:
     for image in re.findall(r"/assets/images/([\w.-]+)", public_text):
         if not (SITE / "assets/images" / image).is_file():
             fail(errors, f"referenced image is missing: {image}")
+    for image in REQUIRED_IMAGES:
+        if not (SITE / "assets/images" / image).is_file():
+            fail(errors, f"required public image is missing: {image}")
+    for image in (SITE / "assets/images").glob("*.png"):
+        if image.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+            fail(errors, f"PNG extension does not match image encoding: {image.name}")
+    for obsolete in ("OpenTurbine#first-setup", "OpenTurbine#electrical-and-wiring-basics", "openturbine-logo.svg"):
+        if obsolete in public_text:
+            fail(errors, f"public content contains obsolete reference: {obsolete}")
+    layout = (SITE / "_layouts/default.html").read_text(encoding="utf-8")
+    if "canonical" not in layout or "og:image" not in layout or "twitter:card" not in layout:
+        fail(errors, "default layout is missing sharing metadata")
+    header = (SITE / "_includes/header.html").read_text(encoding="utf-8")
+    if "aria-current=\"page\"" not in header:
+        fail(errors, "header is missing active-page navigation state")
     for markdown in MARKDOWN_SOURCES:
         check_local_links(markdown, errors)
     if args.built:

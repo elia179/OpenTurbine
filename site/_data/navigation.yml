@@ -1,4 +1,4 @@
-- label: Download
+- label: Windows download
   url: https://github.com/elia179/OpenTurbine/releases/latest/download/OpenTurbineSetupTool.exe
   primary: true
 - label: Get Started

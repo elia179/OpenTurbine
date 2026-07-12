@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="site/assets/images/openturbine-logo.svg" alt="OpenTurbine" width="560">
-</p>
+<h1 align="center">OpenTurbine</h1>
 
 <p align="center">
   Open-source turbine ECU software for supported ESP32 boards, with guided Windows setup and a browser-based dashboard.
@@ -60,7 +58,7 @@ Configure only the hardware you actually fitted, then verify inputs, limits, cal
 - [Public landing site](https://elia179.github.io/OpenTurbine/)
 - [Get started](https://elia179.github.io/OpenTurbine/get-started/)
 - [Hardware guide](https://elia179.github.io/OpenTurbine/hardware/)
-- [User guide](docs/USER_GUIDE.md)
+- [User guide](https://elia179.github.io/OpenTurbine/user-guide/) ([source document](docs/USER_GUIDE.md))
 - [Troubleshooting](https://elia179.github.io/OpenTurbine/troubleshooting/)
 - [Safety](https://elia179.github.io/OpenTurbine/safety/)
 - [Developer documentation](docs/README.md)

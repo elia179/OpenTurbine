@@ -4,26 +4,34 @@ title: FAQ
 lede: Quick answers for the normal Windows installation path.
 ---
 
-## Do I need programming experience or source code?
+## Do I need programming experience? Do I download the source ZIP?
 
-No. The normal Windows setup uses the Setup Tool. Manual source builds are an advanced/developer path.
+No. Download `OpenTurbineSetupTool.exe` from the official release. Do not use GitHub’s **Download ZIP** source-code button for normal Windows setup.
 
-## Which board should I use?
+## Which boards are supported?
 
-A Classic ESP32 with at least 4 MB flash, or the ESP32-S3 DevKitC-1 N16R8 target.
+Use a Classic ESP32 with at least 4 MB flash, or the ESP32-S3 DevKitC-1 N16R8 target. ESP32-C3 and other unlisted ESP32 families are not supported by the current normal setup path.
 
-## Does clean install erase settings? Can I update without erasing them?
+## Does driver installation require a restart?
 
-Clean install/reinstall erases the selected board. Update and keep my setup is the normal Wi-Fi update path; back up first.
+Usually not. The Setup Tool rescans after installing a driver and shows when Windows specifically requires a restart. If the connected CP210x/WCH bridge has no COM port, it offers the matching driver even when an unrelated COM port exists.
+
+## What does Clean install erase? How does Update keep my setup?
+
+Clean install/reinstall erases the selected board. **Update and keep my setup** is the normal Wi-Fi update path for a working controller; it backs up the engine file first. Keep backups private because they can contain Wi-Fi credentials.
+
+## Can I explore without a turbine? Can GPIO power a pump or igniter?
+
+You can explore and configure the dashboard with loads physically disconnected. GPIO pins are 3.3 V logic only: they do not power pumps, valves, starters, or ignition. Use suitable protected driver electronics.
 
 ## Why does Windows warn about the Setup Tool?
 
-The current Setup Tool release is unsigned. Download only from the official release and verify its checksum when needed.
+Download only from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page. A new or unsigned release can trigger a Windows warning; check that release’s notes and SHA-256 file.
 
-## Is OpenTurbine certified or inherently safe?
+## Where are logs and complete instructions?
 
-No. It is experimental and requires independently verified limits, drivers, and physical shutdown protection.
+Setup Tool diagnostics are under `%LOCALAPPDATA%\OpenTurbine\SetupTool\logs`. The [complete user guide](https://github.com/elia179/OpenTurbine/blob/main/docs/USER_GUIDE.md) covers operating and wiring details. Use [Setup Help](https://github.com/elia179/OpenTurbine/issues/new?template=setup_help.yml) for installation problems.
 
-## Does it work on macOS or Linux?
+## Is OpenTurbine certified or inherently safe? Does it work on macOS/Linux?
 
-There is no graphical installer for macOS/Linux currently. Manual PlatformIO builds are documented for advanced users.
+No. It is experimental and requires independently verified limits, drivers, and physical shutdown protection. There is no graphical macOS/Linux installer; manual PlatformIO builds are an advanced/developer path.
