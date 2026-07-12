@@ -1227,6 +1227,7 @@ bool validatePlatformPins(const JsonDocument& doc) {
 // Default values mirror hardware_profile.h so that a missing
 // an ecu_config.json without a hardware section produces identical behaviour to the current build.
 
+ChannelRegistry HardwareConfig::channelRegistry = {};
 char  HardwareConfig::profileId[64]    = {};
 char  HardwareConfig::profileDesc[64]  = {};
 char  HardwareConfig::wifiPassword[64] = {};   // empty = open network; WPA2 allows 8-63 chars
@@ -2095,6 +2096,10 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     }
     if (!validateDisplayLabels(doc["labels"])) return false;
     if (!validateCustomBlockStrings(doc["custom_blocks"])) return false;
+    if (!doc["channel_registry"].isNull()) {
+        ChannelRegistry registry;
+        if (!registry.fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
+    }
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
     if (n1["enabled"].as<bool>()) {
@@ -2467,10 +2472,21 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
         // would flag (a raw 0xFF here used to brick the next boot).
         ch["active_modes"] = (uint8_t)(diCh[i].activeModes & 0x1F);
     }
+    auto registry = doc["channel_registry"].to<JsonObject>();
+    registry["version"] = CHANNEL_REGISTRY_VERSION;
+    channelRegistry.toJson(registry);
 }
 
 // ── _fromDoc ─────────────────────────────────────────────────
 void HardwareConfig::_fromDoc(const JsonDocument& doc) {
+    // Legacy configurations have no registry.  Their singleton fields remain
+    // the boot-time compatibility source until the registry migration is
+    // complete; an empty inventory is deliberately not interpreted as an
+    // instruction to remove legacy hardware.
+    if (!doc["channel_registry"].isNull())
+        channelRegistry.fromJson(doc["channel_registry"].as<JsonObjectConst>());
+    else
+        channelRegistry.clear();
     const char* id   = doc["profile_id"]    | profileId;
     const char* desc = doc["profile_desc"]  | profileDesc;
     const char* pwd  = doc["wifi_password"] | (const char*)wifiPassword;
@@ -3231,4 +3247,30 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     sanitizeServoRange(fuelPump2MinUs, fuelPump2MaxUs);
     sanitizeServoRange(bleedValveMinUs, bleedValveMaxUs);
     sanitizeServoRange(propPitchMinUs, propPitchMaxUs);
+
+    // Deterministic compatibility migration.  The old singleton fields remain
+    // live adapters for this release, but all generated IDs are stable so
+    // callers can begin persisting references without relying on labels.
+    if (channelRegistry.inputCount == 0 && channelRegistry.outputCount == 0) {
+        auto addInput = [](const char* id, const char* role, int pin, ChannelRegistry::Driver driver) {
+            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::INPUT;
+            c.driver = driver; c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
+            HardwareConfig::channelRegistry.add(c);
+        };
+        auto addOutput = [](const char* id, const char* role, int pin, int legacyType) {
+            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::OUTPUT;
+            c.driver = legacyType == 0 ? ChannelRegistry::SERVO : legacyType == 1 ? ChannelRegistry::PWM : ChannelRegistry::RELAY;
+            c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
+            HardwareConfig::channelRegistry.add(c);
+        };
+        if (hasN1Rpm) addInput("n1_main", "speed", n1RpmPin, ChannelRegistry::PULSE);
+        if (hasN2Rpm) addInput("n2_main", "speed", n2RpmPin, ChannelRegistry::PULSE);
+        if (hasOilPress) addInput("oil_pressure_main", "pressure", oilPressPin, ChannelRegistry::ANALOG);
+        if (hasThrottle) addOutput("main_fuel", "fuel", throttlePin, throttleType);
+        if (hasStarter) addOutput("starter_main", "starter", starterPin, starterType);
+        if (hasOilPump) addOutput("oil_pump_main", "oil_pump", oilPumpPin, oilPumpType);
+        if (hasCoolFan) addOutput("cooling_fan_main", "cooling_fan", coolFanPin, coolFanType);
+        if (hasBleedValve) addOutput("bleed_valve_main", "valve", bleedValvePin, bleedValveType);
+        if (hasOilScavengePump) addOutput("oil_scavenge_main", "scavenge_pump", oilScavPumpPin, oilScavPumpType);
+    }
 }

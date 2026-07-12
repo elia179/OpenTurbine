@@ -81,7 +81,7 @@ public:
 class CoolFanOn : public IBlock {
 public:
     const char* name() override { return "CoolFanOn"; }
-    void onEnter() override { EngineData::instance().coolFanOn = true; }
+    void onEnter() override { auto& ed = EngineData::instance(); ed.coolFanDemand = 1.0f; ed.coolFanOn = true; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -89,7 +89,7 @@ public:
 class CoolFanOff : public IBlock {
 public:
     const char* name() override { return "CoolFanOff"; }
-    void onEnter() override { EngineData::instance().coolFanOn = false; }
+    void onEnter() override { auto& ed = EngineData::instance(); ed.coolFanDemand = 0.0f; ed.coolFanOn = false; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -97,7 +97,7 @@ public:
 class OilScavengeOn : public IBlock {
 public:
     const char* name() override { return "OilScavengeOn"; }
-    void onEnter() override { EngineData::instance().oilScavengeOn = true; }
+    void onEnter() override { auto& ed = EngineData::instance(); ed.oilScavengeDemand = 1.0f; ed.oilScavengeOn = true; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };
@@ -105,7 +105,7 @@ public:
 class OilScavengeOff : public IBlock {
 public:
     const char* name() override { return "OilScavengeOff"; }
-    void onEnter() override { EngineData::instance().oilScavengeOn = false; }
+    void onEnter() override { auto& ed = EngineData::instance(); ed.oilScavengeDemand = 0.0f; ed.oilScavengeOn = false; }
     BlockResult tick() override { return BlockResult::Complete; }
     void onExit() override {}
 };

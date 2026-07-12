@@ -402,7 +402,7 @@ public:
     static char    loadWarning[192];
 
     // ── Config version ────────────────────────────────────────
-    static constexpr uint8_t CONFIG_VERSION = 3;
+    static constexpr uint8_t CONFIG_VERSION = 4;
 
     // ── API ───────────────────────────────────────────────────
     static void load();
