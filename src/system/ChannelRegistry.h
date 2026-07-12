@@ -20,14 +20,14 @@ public:
         bool installed = false;
         Direction direction = Input;
         Driver driver = Digital;
-        char id[16] = {};
+        char id[20] = {};
         char name[16] = {};
         char role[14] = {"generic"};
         int8_t pin = -1;
         float minValue = 0.0f, maxValue = 1.0f;
         float safeDemand = 0.0f, faultDemand = 0.0f;
     };
-    struct Binding { char key[24] = {}; char channelId[24] = {}; };
+    struct Binding { char key[20] = {}; char channelId[20] = {}; };
 
     Channel inputs[MAX_INPUT_CHANNELS] = {};
     Channel outputs[MAX_OUTPUT_CHANNELS] = {};
@@ -74,7 +74,7 @@ public:
         for (JsonObjectConst b : root["bindings"].as<JsonArrayConst>()) { if (bindingCount >= MAX_BINDINGS) return false; Binding& x=bindings[bindingCount++]; strlcpy(x.key,b["key"]|"",sizeof(x.key)); strlcpy(x.channelId,b["channel"]|"",sizeof(x.channelId)); }
         return validate();
     }
-    static bool validId(const char* id) { if (!id || !id[0] || strlen(id) >= 16) return false; for (;*id;++id) if (!(isalnum(*id)||*id=='_'||*id=='-')) return false; return true; }
+    static bool validId(const char* id) { if (!id || !id[0] || strlen(id) >= 20) return false; for (;*id;++id) if (!(isalnum(*id)||*id=='_'||*id=='-')) return false; return true; }
 private:
     static bool driverMatches(Direction d, Driver v) { return d == Input ? v <= RcPwm : v >= Relay; }
     static bool demandsValid(const Channel& c) { return c.safeDemand >= 0 && c.safeDemand <= 1 && c.faultDemand >= 0 && c.faultDemand <= 1 && c.maxValue >= c.minValue; }

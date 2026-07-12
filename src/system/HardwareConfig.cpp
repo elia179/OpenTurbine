@@ -528,6 +528,81 @@ const char* customActuatorKey(uint8_t act) {
     }
 }
 
+const char* sequenceSourceId(uint8_t sensor) {
+    switch (sensor) {
+        case 0:  return "oil_temp_main";
+        case 1:  return "tot_main";
+        case 2:  return "n1_main";
+        case 3:  return "oil_pressure_main";
+        case 4:  return "tit_main";
+        case 5:  return "batt_voltage_main";
+        case 6:  return "n2_main";
+        case 7:  return "di0";
+        case 8:  return "di1";
+        case 9:  return "di2";
+        case 10: return "di3";
+        case 11: return "fuel_pressure_main";
+        case 12: return "fuel_flow_main";
+        case 13: return "p1_main";
+        case 14: return "p2_main";
+        case 15: return "torque_main";
+        case 16: return "flame_main";
+        case 17: return "throttle_input_main";
+        case 18: return "idle_input_main";
+        case 19: return "ab_flame_main";
+        case 20: return "glow_current_main";
+        case 21: return "igniter_current_main";
+        case 22: return "igniter2_current_main";
+        case 23: return "oil_pump_current_main";
+        case 24: return "ab_input_main";
+        case 25: return "start_switch";
+        case 26: return "stop_switch";
+        default: return "";
+    }
+}
+
+int8_t sequenceSourceHandle(const char* id) {
+    if (!id || !id[0]) return -1;
+    for (uint8_t i = 0; i <= 26; ++i) {
+        if (strcmp(id, sequenceSourceId(i)) == 0 || strcmp(id, customSensorKey(i)) == 0)
+            return (int8_t)i;
+    }
+    return -1;
+}
+
+const char* sequenceTargetId(uint8_t act) {
+    switch (act) {
+        case 0:  return "cooling_fan_main";
+        case 1:  return "bleed_valve_main";
+        case 2:  return "fuel_pump2_main";
+        case 3:  return "oil_scavenge_main";
+        case 4:  return "main_fuel";
+        case 5:  return "starter_main";
+        case 6:  return "starter_enable_main";
+        case 7:  return "oil_pump_main";
+        case 8:  return "fuel_solenoid_main";
+        case 9:  return "igniter_main";
+        case 10: return "igniter2_main";
+        case 11: return "ab_solenoid_main";
+        case 12: return "ab_pump_main";
+        case 13: return "request_shutdown";
+        case 14: return "request_fault";
+        case 15: return "airstarter_main";
+        case 16: return "glow_plug_main";
+        case 17: return "prop_pitch_main";
+        default: return "";
+    }
+}
+
+int8_t sequenceTargetHandle(const char* id) {
+    if (!id || !id[0]) return -1;
+    for (uint8_t i = 0; i <= 17; ++i) {
+        if (strcmp(id, sequenceTargetId(i)) == 0 || strcmp(id, customActuatorKey(i)) == 0)
+            return (int8_t)i;
+    }
+    return -1;
+}
+
 bool customActuatorIsAnalog(uint8_t act) {
     switch (act) {
         case 2:  return HardwareConfig::fuelPump2Type != 2;
@@ -596,6 +671,7 @@ void writeSeqSideActions(
             if (!a.enabled) continue;
             JsonObject item = slot.add<JsonObject>();
             item["act"] = a.actuator;
+            item["target"] = sequenceTargetId(a.actuator);
             item["value"] = a.value;
         }
     }
@@ -613,7 +689,8 @@ void readSeqSideActions(
         int out = 0;
         for (JsonObjectConst item : slot) {
             if (out >= HardwareConfig::MAX_SEQ_SIDE_ACTIONS) break;
-            int act = item["act"] | -1;
+            const char* target = item["target"] | "";
+            int act = target[0] ? sequenceTargetHandle(target) : (item["act"] | -1);
             if (act < 0 || act > 17) continue;
             actions[i][out].enabled = true;
             actions[i][out].actuator = (uint8_t)act;
@@ -648,6 +725,7 @@ void writeCustomBlocks(JsonDocument& doc) {
             } else {
                 so["type"] = "set_act";
                 so["act"] = customActuatorKey(step.actuator);
+                so["target"] = sequenceTargetId(step.actuator);
                 so["val"] = customActuatorValueToDisplay(step.actuator, step.value);
             }
         }
@@ -656,6 +734,7 @@ void writeCustomBlocks(JsonDocument& doc) {
         } else if (def.type == 2) {
             JsonObject cond = item["condition"].to<JsonObject>();
             cond["sensor"] = customSensorKey(def.sensor);
+            cond["source"] = sequenceSourceId(def.sensor);
             cond["op"] = customOpString(def.op);
             cond["value"] = customThresholdToDisplay(def.sensor, def.threshold);
             item["timeout_ms"] = def.timeoutMs;
@@ -694,7 +773,8 @@ void readCustomBlocks(const JsonDocument& doc) {
 
         if (def.type == 2 && item["condition"].is<JsonObjectConst>()) {
             JsonObjectConst cond = item["condition"];
-            int sensor = customSensorId(cond["sensor"] | "");
+            const char* source = cond["source"] | "";
+            int sensor = source[0] ? sequenceSourceHandle(source) : customSensorId(cond["sensor"] | "");
             if (sensor < 0) continue;
             def.sensor = (uint8_t)sensor;
             def.op = customOpId(cond["op"] | ">");
@@ -712,7 +792,8 @@ void readCustomBlocks(const JsonDocument& doc) {
                     out.delayMs = constrain((uint32_t)(step["val"] | 0UL), 0UL, 600000UL);
                     def.stepCount++;
                 } else if (strcmp(st, "set_act") == 0) {
-                    int act = customActuatorId(step["act"] | "");
+                    const char* target = step["target"] | "";
+                    int act = target[0] ? sequenceTargetHandle(target) : customActuatorId(step["act"] | "");
                     if (act < 0) continue;
                     out.type = 0;
                     out.actuator = (uint8_t)act;
