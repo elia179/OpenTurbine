@@ -1146,6 +1146,123 @@ bool validateCustomBlockStrings(JsonVariantConst blocks) {
     return true;
 }
 
+bool stagedOutputAvailable(JsonVariantConst doc, const ChannelRegistry* registry, const char* id) {
+    if (!id || !id[0]) return true;
+    auto act = doc["actuators"];
+    auto enabled = [&](const char* key) { return act[key]["enabled"].as<bool>(); };
+    auto abEnabled = [&](const char* key) { return doc["has_afterburner"].as<bool>() && enabled(key); };
+    if (!strcmp(id, "request_shutdown") || !strcmp(id, "request_fault")) return true;
+    if (!strcmp(id, "cooling_fan_main") || !strcmp(id, "cool_fan")) return enabled("cool_fan");
+    if (!strcmp(id, "bleed_valve_main") || !strcmp(id, "bleed_valve")) return enabled("bleed_valve");
+    if (!strcmp(id, "fuel_pump2_main") || !strcmp(id, "fuel_pump2")) return enabled("fuel_pump2");
+    if (!strcmp(id, "oil_scavenge_main") || !strcmp(id, "oil_scavenge_pump")) return enabled("oil_scavenge_pump");
+    if (!strcmp(id, "main_fuel") || !strcmp(id, "main_fuel_output") || !strcmp(id, "throttle")) return enabled("throttle");
+    if (!strcmp(id, "starter_main") || !strcmp(id, "main_starter") || !strcmp(id, "starter")) return enabled("starter");
+    if (!strcmp(id, "starter_enable_main") || !strcmp(id, "starter_en")) return enabled("starter_en");
+    if (!strcmp(id, "oil_pump_main") || !strcmp(id, "oil_pump")) return enabled("oil_pump");
+    if (!strcmp(id, "fuel_solenoid_main") || !strcmp(id, "main_fuel_shutoff") || !strcmp(id, "fuel_sol")) return enabled("fuel_sol");
+    if (!strcmp(id, "igniter_main") || !strcmp(id, "igniter")) return enabled("igniter");
+    if (!strcmp(id, "igniter2_main") || !strcmp(id, "ab_igniter") || !strcmp(id, "igniter2")) return enabled("igniter2");
+    if (!strcmp(id, "ab_solenoid_main") || !strcmp(id, "ab_sol")) return abEnabled("ab_sol");
+    if (!strcmp(id, "ab_pump_main") || !strcmp(id, "ab_pump")) return abEnabled("ab_pump");
+    if (!strcmp(id, "airstarter_main") || !strcmp(id, "airstarter_sol")) return enabled("airstarter_sol");
+    if (!strcmp(id, "glow_plug_main") || !strcmp(id, "glow_plug")) return enabled("glow_plug");
+    if (!strcmp(id, "prop_pitch_main") || !strcmp(id, "prop_pitch")) return enabled("prop_pitch");
+    if (!registry) return false;
+    const auto* out = registry->find(id, ChannelRegistry::Output);
+    return out && out->installed && out->pin >= 0 &&
+           !ChannelRegistry::isCoreManagedOutput(*out) &&
+           !registry->boundToCoreOutput(*out);
+}
+
+bool stagedInputAvailable(JsonVariantConst doc, const ChannelRegistry* registry, const char* id) {
+    if (!id || !id[0]) return true;
+    auto sensors = doc["sensors"];
+    auto enabled = [&](const char* key) { return sensors[key]["enabled"].as<bool>(); };
+    auto diPin = [&](uint8_t idx) {
+        JsonVariantConst ch = doc["di_channels"][idx];
+        return ch.is<JsonObjectConst>() && (ch["pin"] | -1) >= 0;
+    };
+    if (!strcmp(id, "oil_temp_main") || !strcmp(id, "oil_temp")) return enabled("oil_temp");
+    if (!strcmp(id, "tot_main") || !strcmp(id, "tot") || !strcmp(id, "primary_egt")) return enabled("tot");
+    if (!strcmp(id, "n1_main") || !strcmp(id, "n1_rpm") || !strcmp(id, "primary_n1")) return enabled("n1_rpm");
+    if (!strcmp(id, "oil_pressure_main") || !strcmp(id, "oil_press")) return enabled("oil_press");
+    if (!strcmp(id, "tit_main") || !strcmp(id, "tit")) return enabled("tit");
+    if (!strcmp(id, "batt_voltage_main") || !strcmp(id, "batt_voltage")) return enabled("batt_voltage");
+    if (!strcmp(id, "n2_main") || !strcmp(id, "n2_rpm") || !strcmp(id, "primary_n2")) return doc["has_two_shaft"].as<bool>() && enabled("n2_rpm");
+    if (!strcmp(id, "di0")) return diPin(0);
+    if (!strcmp(id, "di1")) return diPin(1);
+    if (!strcmp(id, "di2")) return diPin(2);
+    if (!strcmp(id, "di3")) return diPin(3);
+    if (!strcmp(id, "fuel_pressure_main") || !strcmp(id, "fuel_press")) return enabled("fuel_press");
+    if (!strcmp(id, "fuel_flow_main") || !strcmp(id, "fuel_flow")) return enabled("fuel_flow");
+    if (!strcmp(id, "p1_main") || !strcmp(id, "p1")) return enabled("p1");
+    if (!strcmp(id, "p2_main") || !strcmp(id, "p2")) return enabled("p2");
+    if (!strcmp(id, "torque_main") || !strcmp(id, "torque")) return enabled("torque");
+    if (!strcmp(id, "flame_main") || !strcmp(id, "flame")) return enabled("flame");
+    if (!strcmp(id, "throttle_input_main") || !strcmp(id, "throttle_in") || !strcmp(id, "operator_throttle")) return enabled("throttle_input");
+    if (!strcmp(id, "idle_input_main") || !strcmp(id, "idle_in")) return enabled("idle_input");
+    if (!strcmp(id, "ab_flame_main") || !strcmp(id, "ab_flame")) return doc["has_afterburner"].as<bool>() && enabled("ab_flame");
+    if (!strcmp(id, "glow_current_main") || !strcmp(id, "glow_current")) return doc["actuators"]["glow_plug"]["enabled"].as<bool>() && doc["actuators"]["glow_plug"]["has_current"].as<bool>();
+    if (!strcmp(id, "igniter_current_main") || !strcmp(id, "igniter_current")) return doc["actuators"]["igniter"]["enabled"].as<bool>() && doc["actuators"]["igniter"]["has_current"].as<bool>();
+    if (!strcmp(id, "igniter2_current_main") || !strcmp(id, "igniter2_current")) return doc["actuators"]["igniter2"]["enabled"].as<bool>() && doc["actuators"]["igniter2"]["has_current"].as<bool>();
+    if (!strcmp(id, "oil_pump_current_main") || !strcmp(id, "oil_pump_current")) return doc["actuators"]["oil_pump"]["enabled"].as<bool>() && doc["actuators"]["oil_pump"]["has_current"].as<bool>();
+    if (!strcmp(id, "ab_input_main") || !strcmp(id, "ab_input")) return doc["has_afterburner"].as<bool>() && (doc["ab_trigger"]["input_pin"] | -1) >= 0;
+    if (!strcmp(id, "start_switch")) return (doc["controls"]["start_pin"] | -1) >= 0;
+    if (!strcmp(id, "stop_switch")) return (doc["controls"]["stop_pin"] | -1) >= 0;
+    if (!registry) return false;
+    const auto* in = registry->find(id, ChannelRegistry::Input);
+    return in && in->installed && in->pin >= 0;
+}
+
+bool validateSequenceReferenceIds(JsonVariantConst doc, const ChannelRegistry* registry) {
+    auto validTarget = [&](JsonVariantConst target) {
+        if (target.isNull()) return true;
+        if (!target.is<const char*>()) return false;
+        const char* id = target.as<const char*>();
+        return id && stagedOutputAvailable(doc, registry, id);
+    };
+    auto validSource = [&](JsonVariantConst source) {
+        if (source.isNull()) return true;
+        if (!source.is<const char*>()) return false;
+        const char* id = source.as<const char*>();
+        return id && stagedInputAvailable(doc, registry, id);
+    };
+    static constexpr const char* sideKeys[] = {
+        "startup_enter_actions", "startup_exit_actions",
+        "shutdown_enter_actions", "shutdown_exit_actions",
+        "ab_enter_actions", "ab_exit_actions",
+        "ab_shut_enter_actions", "ab_shut_exit_actions"
+    };
+    for (const char* key : sideKeys) {
+        JsonVariantConst outer = doc[key];
+        if (outer.isNull()) continue;
+        if (!outer.is<JsonArrayConst>()) return false;
+        for (JsonVariantConst slot : outer.as<JsonArrayConst>()) {
+            if (!slot.is<JsonArrayConst>()) return false;
+            for (JsonVariantConst item : slot.as<JsonArrayConst>()) {
+                if (!item.is<JsonObjectConst>() || !validTarget(item["target"])) return false;
+            }
+        }
+    }
+    JsonVariantConst blocks = doc["custom_blocks"];
+    if (blocks.isNull()) return true;
+    if (!blocks.is<JsonObjectConst>()) return false;
+    for (JsonPairConst kv : blocks.as<JsonObjectConst>()) {
+        if (!kv.value().is<JsonObjectConst>()) return false;
+        JsonObjectConst block = kv.value().as<JsonObjectConst>();
+        if (block["condition"].is<JsonObjectConst>() &&
+            !validSource(block["condition"]["source"])) return false;
+        JsonVariantConst steps = block["steps"];
+        if (steps.isNull()) continue;
+        if (!steps.is<JsonArrayConst>()) return false;
+        for (JsonVariantConst step : steps.as<JsonArrayConst>()) {
+            if (!step.is<JsonObjectConst>() || !validTarget(step["target"])) return false;
+        }
+    }
+    return true;
+}
+
 bool pwmPercentRange(JsonVariantConst object, const char* minField, const char* maxField) {
     if (!numberRange(object, minField, 0.0f, 100.0f) ||
         !numberRange(object, maxField, 0.0f, 100.0f)) return false;
@@ -2421,6 +2538,7 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     }
     if (!validateOilLoops(doc["oil_loops"], registryForValidation)) return false;
     if (!validateHardwareDependencies(doc, registryForValidation)) return false;
+    if (!validateSequenceReferenceIds(doc.as<JsonVariantConst>(), registryForValidation)) return false;
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
     if (n1["enabled"].as<bool>()) {
