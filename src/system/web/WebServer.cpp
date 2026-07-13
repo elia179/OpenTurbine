@@ -1062,6 +1062,9 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["pin"] = c.pin;
             ch["min"] = c.minValue;
             ch["max"] = c.maxValue;
+            ch["active_high"] = c.activeHigh;
+            ch["pullup"] = c.pullup;
+            ch["pulldown"] = c.pulldown;
             ch["value"] = (float)(int)(ed.registryInputValue[i] * 1000) / 1000.0f;
             ch["healthy"] = ed.registryInputHealthy[i];
         }

@@ -456,20 +456,21 @@ namespace Hardware {
                 (c.driver == ChannelRegistry::Digital || c.driver == ChannelRegistry::Analog ||
                  c.driver == ChannelRegistry::Pulse || c.driver == ChannelRegistry::RcPwm);
             if (!ed.registryInputHealthy[i]) continue;
+            uint8_t inputMode = c.pullup ? INPUT_PULLUP : (c.pulldown ? INPUT_PULLDOWN : INPUT);
             if (c.driver == ChannelRegistry::Digital) {
-                pinMode(c.pin, INPUT);
+                pinMode(c.pin, inputMode);
             } else if (c.driver == ChannelRegistry::Pulse) {
                 g_registryPulseCounts[i] = 0;
                 g_registryPulseLastMs = millis();
                 ed.registryInputHealthy[i] = false;
-                pinMode(c.pin, INPUT);
+                pinMode(c.pin, inputMode);
                 attachInterruptArg(digitalPinToInterrupt(c.pin), registryPulseIsr, (void*)(uintptr_t)i, RISING);
             } else if (c.driver == ChannelRegistry::RcPwm) {
                 g_registryRcRiseUs[i] = 0;
                 g_registryRcPulseUs[i] = 0;
                 g_registryRcFlags[i] = 0;
                 g_registryRcLastMs[i] = 0;
-                pinMode(c.pin, INPUT);
+                pinMode(c.pin, inputMode);
                 attachInterruptArg(digitalPinToInterrupt(c.pin), registryRcIsr, (void*)(uintptr_t)i, CHANGE);
                 ed.registryInputHealthy[i] = false;
             }
@@ -529,7 +530,8 @@ namespace Hardware {
                 continue;
             }
             if (c.driver == ChannelRegistry::Digital) {
-                ed.registryInputValue[i] = digitalRead(c.pin) ? 1.0f : 0.0f;
+                bool high = digitalRead(c.pin) == HIGH;
+                ed.registryInputValue[i] = (c.activeHigh ? high : !high) ? 1.0f : 0.0f;
                 ed.registryInputHealthy[i] = true;
             } else if (c.driver == ChannelRegistry::Analog) {
                 int raw = analogRead(c.pin);
@@ -559,7 +561,11 @@ namespace Hardware {
         if (c.driver == ChannelRegistry::Relay) {
             digitalWrite(c.pin, driveDemand >= 0.5f ? HIGH : LOW);
         } else if (c.driver == ChannelRegistry::Pwm) {
-            uint32_t duty = (uint32_t)(driveDemand * 1023.0f + 0.5f);
+            float minDuty = constrain(c.minValue, 0.0f, 1.0f);
+            float maxDuty = constrain(c.maxValue, 0.0f, 1.0f);
+            if (maxDuty < minDuty) maxDuty = minDuty;
+            float dutyDemand = minDuty + (maxDuty - minDuty) * driveDemand;
+            uint32_t duty = (uint32_t)(dutyDemand * 1023.0f + 0.5f);
             ledcWrite(c.pin, duty);
         } else if (c.driver == ChannelRegistry::Servo) {
             float minUs = (c.minValue >= 500.0f && c.minValue <= 2500.0f) ? c.minValue : 1000.0f;

@@ -325,6 +325,56 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
 #endif
 }
 
+void normalizeChannelRegistryForBoot(JsonDocument& doc) {
+    JsonVariant registryVar = doc["channel_registry"];
+    if (!registryVar.is<JsonObject>()) return;
+    JsonObject registry = registryVar.as<JsonObject>();
+    auto normalizeArray = [](JsonArray arr, bool input) {
+        for (int i = (int)arr.size() - 1; i >= 0; --i) {
+            JsonObject ch = arr[i].as<JsonObject>();
+            const int pin = ch["pin"] | -1;
+            if (pin < 0) {
+                arr.remove(i);
+                continue;
+            }
+            const int driver = ch["driver"] | (input ? (int)ChannelRegistry::Digital : (int)ChannelRegistry::Relay);
+            float minValue = ch["min"] | 0.0f;
+            float maxValue = ch["max"] | 1.0f;
+            if (input) {
+                if (driver == ChannelRegistry::Analog &&
+                    (minValue < 0.0f || maxValue > 4095.0f || maxValue <= minValue)) {
+                    ch["min"] = 0.0f;
+                    ch["max"] = 4095.0f;
+                } else if (driver == ChannelRegistry::Pulse &&
+                           (minValue < 0.0f || maxValue <= minValue)) {
+                    ch["min"] = 0.0f;
+                    ch["max"] = 100.0f;
+                } else if (driver == ChannelRegistry::RcPwm &&
+                           (minValue < 500.0f || maxValue > 2500.0f || maxValue <= minValue)) {
+                    ch["min"] = 1000.0f;
+                    ch["max"] = 2000.0f;
+                }
+                if ((ch["pullup"] | false) && (ch["pulldown"] | false)) ch["pulldown"] = false;
+            } else {
+                if (driver == ChannelRegistry::Servo &&
+                    (minValue < 500.0f || maxValue > 2500.0f || maxValue <= minValue)) {
+                    ch["min"] = 1000.0f;
+                    ch["max"] = 2000.0f;
+                } else if (driver == ChannelRegistry::Pwm) {
+                    if (minValue < 0.0f) ch["min"] = 0.0f;
+                    if (maxValue > 1.0f) ch["max"] = 1.0f;
+                    if ((ch["max"] | 1.0f) < (ch["min"] | 0.0f)) {
+                        ch["min"] = 0.0f;
+                        ch["max"] = 1.0f;
+                    }
+                }
+            }
+        }
+    };
+    if (registry["inputs"].is<JsonArray>()) normalizeArray(registry["inputs"].as<JsonArray>(), true);
+    if (registry["outputs"].is<JsonArray>()) normalizeArray(registry["outputs"].as<JsonArray>(), false);
+}
+
 bool gpioAllowed(int pin) {
     if (pin < 0) return true;
 #if defined(OT_PLATFORM_ESP32S3)
@@ -2129,6 +2179,7 @@ void HardwareConfig::load() {
         return;
     }
     normalizeS3StatusLedDefault(workDoc);
+    normalizeChannelRegistryForBoot(workDoc);
     if (!validatePlatformPins(workDoc)) {
         inhibitStartForHardwareConfigFailure(
             "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");

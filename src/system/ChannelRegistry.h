@@ -111,6 +111,9 @@ public:
         float minValue = 0.0f, maxValue = 1.0f;
         float safeDemand = 0.0f, faultDemand = 0.0f;
         bool inverted = false;
+        bool activeHigh = true;
+        bool pullup = false;
+        bool pulldown = false;
     };
     static bool isCoreManagedOutput(const Channel& c) {
         return isCoreManagedOutputId(c.id);
@@ -136,7 +139,7 @@ public:
         return nullptr;
     }
     bool add(const Channel& c) {
-        if (!validId(c.id) || findMutable(c.id, Input) || findMutable(c.id, Output) || c.pin < -1) return false;
+        if (!validId(c.id) || findMutable(c.id, Input) || findMutable(c.id, Output) || c.pin < 0) return false;
         Channel* list = c.direction == Input ? inputs : outputs;
         uint8_t& count = c.direction == Input ? inputCount : outputCount;
         uint8_t max = c.direction == Input ? MAX_INPUT_CHANNELS : MAX_OUTPUT_CHANNELS;
@@ -146,7 +149,7 @@ public:
         list[count++] = c; return true;
     }
     bool validate() const {
-        for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver) || !roleValid(Input, inputs[i].role)) return false;
+        for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver) || !roleValid(Input, inputs[i].role) || !demandsValid(inputs[i])) return false;
         for (uint8_t i=0; i<outputCount; ++i) if (!validId(outputs[i].id) || !driverMatches(Output, outputs[i].driver) || !roleValid(Output, outputs[i].role) || !demandsValid(outputs[i])) return false;
         for (uint8_t i=0; i<inputCount; ++i) for (uint8_t j=0; j<outputCount; ++j) if (inputs[i].pin >= 0 && inputs[i].pin == outputs[j].pin) return false;
         for (uint8_t i=0; i<bindingCount; ++i) if (!bindingValid(bindings[i])) return false;
@@ -171,7 +174,19 @@ public:
     static bool validId(const char* id) { if (!id || !id[0] || strlen(id) >= 20) return false; for (;*id;++id) if (!(isalnum(*id)||*id=='_'||*id=='-')) return false; return true; }
 private:
     static bool driverMatches(Direction d, Driver v) { return d == Input ? v <= RcPwm : v >= Relay; }
-    static bool demandsValid(const Channel& c) { return c.safeDemand >= 0 && c.safeDemand <= 1 && c.faultDemand >= 0 && c.faultDemand <= 1 && c.maxValue >= c.minValue; }
+    static bool rangeValid(const Channel& c) {
+        if (c.maxValue < c.minValue) return false;
+        if (c.driver == Analog) return c.minValue >= 0.0f && c.maxValue <= 4095.0f && c.maxValue > c.minValue;
+        if (c.driver == Pulse) return c.minValue >= 0.0f && c.maxValue > c.minValue;
+        if (c.driver == RcPwm || c.driver == Servo) return c.minValue >= 500.0f && c.maxValue <= 2500.0f && c.maxValue > c.minValue;
+        if (c.driver == Pwm) return c.minValue >= 0.0f && c.maxValue <= 1.0f;
+        return true;
+    }
+    static bool demandsValid(const Channel& c) {
+        return c.safeDemand >= 0 && c.safeDemand <= 1 &&
+               c.faultDemand >= 0 && c.faultDemand <= 1 &&
+               !(c.pullup && c.pulldown) && rangeValid(c);
+    }
     bool bindingValid(const Binding& b) const {
         if (!validId(b.key)) return false;
         Direction expected = Input;
@@ -189,6 +204,6 @@ private:
         if (known) return find(b.channelId, expected) != nullptr;
         return find(b.channelId, Input) || find(b.channelId, Output);
     }
-    static void write(JsonArray a, const Channel* list, uint8_t n) { for(uint8_t i=0;i<n;i++) { const Channel& c=list[i]; JsonObject o=a.add<JsonObject>(); o["id"]=c.id;o["name"]=c.name;o["role"]=c.role;o["driver"]=(uint8_t)c.driver;o["pin"]=c.pin;o["min"]=c.minValue;o["max"]=c.maxValue;o["safe_demand"]=c.safeDemand;o["fault_demand"]=c.faultDemand;o["invert"]=c.inverted; } }
-    bool read(JsonVariantConst v, Direction d) { for(JsonObjectConst o:v.as<JsonArrayConst>()) { Channel c; c.direction=d;c.installed=true;strlcpy(c.id,o["id"]|"",sizeof(c.id));strlcpy(c.name,o["name"]|c.id,sizeof(c.name));strlcpy(c.role,o["role"]|"generic",sizeof(c.role));c.driver=(Driver)(o["driver"]|0);c.pin=o["pin"]|-1;c.minValue=o["min"]|0.0f;c.maxValue=o["max"]|1.0f;c.safeDemand=o["safe_demand"]|0.0f;c.faultDemand=o["fault_demand"]|0.0f;c.inverted=o["invert"]|false;if(!add(c))return false;} return true; }
+    static void write(JsonArray a, const Channel* list, uint8_t n) { for(uint8_t i=0;i<n;i++) { const Channel& c=list[i]; JsonObject o=a.add<JsonObject>(); o["id"]=c.id;o["name"]=c.name;o["role"]=c.role;o["driver"]=(uint8_t)c.driver;o["pin"]=c.pin;o["min"]=c.minValue;o["max"]=c.maxValue;o["safe_demand"]=c.safeDemand;o["fault_demand"]=c.faultDemand;o["invert"]=c.inverted;o["active_high"]=c.activeHigh;o["pullup"]=c.pullup;o["pulldown"]=c.pulldown; } }
+    bool read(JsonVariantConst v, Direction d) { for(JsonObjectConst o:v.as<JsonArrayConst>()) { Channel c; c.direction=d;c.installed=true;strlcpy(c.id,o["id"]|"",sizeof(c.id));strlcpy(c.name,o["name"]|c.id,sizeof(c.name));strlcpy(c.role,o["role"]|"generic",sizeof(c.role));c.driver=(Driver)(o["driver"]|0);c.pin=o["pin"]|-1;c.minValue=o["min"]|0.0f;c.maxValue=o["max"]|1.0f;c.safeDemand=o["safe_demand"]|0.0f;c.faultDemand=o["fault_demand"]|0.0f;c.inverted=o["invert"]|false;c.activeHigh=o["active_high"]|true;c.pullup=o["pullup"]|false;c.pulldown=o["pulldown"]|false;if(c.pullup)c.pulldown=false;if(!add(c))return false;} return true; }
 };

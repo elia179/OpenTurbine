@@ -3766,6 +3766,43 @@ function registryDemandEditor(c, index) {
   return `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'safe_demand',(+this.value)/100)"></div>
           <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'fault_demand',(+this.value)/100)"></div>`;
 }
+function registryRangeMeta(direction, driver) {
+  const d = Number(driver);
+  if (direction === 'input') {
+    if (d === 0) return {hide:true, note:'Digital input reads inactive as 0.00 and active as 1.00. Use Active LOW for switches wired to ground.'};
+    if (d === 1) return {min:'Minimum ADC count', max:'Maximum ADC count', step:'0.01', limitMin:0, limitMax:4095};
+    if (d === 2) return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01', limitMin:0};
+    if (d === 3) return {min:'Minimum pulse width (us)', max:'Maximum pulse width (us)', step:'0.01', limitMin:500, limitMax:2500};
+  } else {
+    if (d === 4) return {hide:true, note:'Relay output uses Off/On states. Use Output polarity for active-low relay boards.'};
+    if (d === 5) return {min:'Minimum command (%)', max:'Maximum command (%)', step:'0.01', scale:100, limitMin:0, limitMax:100};
+    if (d === 6) return {min:'Minimum pulse width (us)', max:'Maximum pulse width (us)', step:'0.01', limitMin:500, limitMax:2500};
+  }
+  return {min:'Minimum mapped value', max:'Maximum mapped value', step:'0.01'};
+}
+function registryRangeEditor(direction, c, index) {
+  const meta = registryRangeMeta(direction, c.driver);
+  if (meta.hide) return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Mapped value</span><span class="hw-desc">${escapeHtmlText(meta.note)}</span></div>`;
+  const scale = Number(meta.scale || 1);
+  const minAttr = meta.limitMin !== undefined ? ` min="${meta.limitMin}"` : '';
+  const maxAttr = meta.limitMax !== undefined ? ` max="${meta.limitMax}"` : '';
+  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span><input type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.min ?? 0) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'min',registryParseValue(this.value),${scale})"></div>
+          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span><input type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.max ?? 1) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'max',registryParseValue(this.value),${scale})"></div>`;
+}
+function registryInputOptionsEditor(direction, c, index) {
+  if (direction !== 'input') return '';
+  const d = Number(c.driver);
+  if (d === 1) {
+    return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Input bias</span><span class="hw-desc">ADC inputs leave internal pull-up and pull-down resistors disabled so the analog reading is not biased.</span></div>`;
+  }
+  const polarity = d === 0 ? `<div class="hw-field"><span class="hw-label">Active polarity</span><select onchange="updateRegistryChannel('input',${index},'active_high',this.value==='1')"><option value="1"${c.active_high !== false ? ' selected' : ''}>Active HIGH</option><option value="0"${c.active_high === false ? ' selected' : ''}>Active LOW</option></select></div>` : '';
+  return `${polarity}
+          <div class="hw-field"><span class="hw-label">Internal pull-up</span><label class="hw-toggle"><input type="checkbox" ${c.pullup ? 'checked' : ''} onchange="updateRegistryChannel('input',${index},'pullup',this.checked)"><span></span> Enable</label></div>
+          <div class="hw-field"><span class="hw-label">Internal pull-down</span><label class="hw-toggle"><input type="checkbox" ${c.pulldown ? 'checked' : ''} onchange="updateRegistryChannel('input',${index},'pulldown',this.checked)"><span></span> Enable</label></div>`;
+}
+function updateRegistryRangeField(direction, index, key, value, scale) {
+  updateRegistryChannel(direction, index, key, Number(value) / Number(scale || 1));
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
@@ -3802,8 +3839,34 @@ function registryRoleLabel(direction, role) {
 function registryStatus(c) {
   if (!c?.id) return {kind:'error', text:'Missing stable ID'};
   if ((c.pin ?? -1) < 0) return {kind:'error', text:'Pin required'};
-  if (Number(c.max ?? 1) < Number(c.min ?? 0)) return {kind:'error', text:'Invalid range'};
+  const rangeProblem = registryRangeProblem(c);
+  if (rangeProblem) return {kind:'error', text:rangeProblem};
+  if (c.pullup && c.pulldown) return {kind:'error', text:'Pull-up/down conflict'};
   return {kind:'ok', text:'Ready'};
+}
+function registryRangeProblem(c) {
+  const driver = Number(c?.driver);
+  const min = Number(c?.min ?? 0);
+  const max = Number(c?.max ?? 1);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return 'Invalid range';
+  if (driver === 0 || driver === 4) return '';
+  if (max <= min) return 'Invalid range';
+  if (driver === 1 && (min < 0 || max > 4095)) return 'ADC range 0-4095';
+  if (driver === 2 && min < 0) return 'Frequency below 0';
+  if ((driver === 3 || driver === 6) && (min < 500 || max > 2500)) return 'Pulse width 500-2500 us';
+  if (driver === 5 && (min < 0 || max > 1)) return 'PWM range 0-100%';
+  return '';
+}
+function registryInvalidChannels() {
+  const r = registryRoot();
+  const out = [];
+  for (const direction of ['input','output']) {
+    (r[direction + 's'] || []).forEach((c) => {
+      const status = registryStatus(c);
+      if (status.kind === 'error') out.push(`${c?.name || c?.id || direction}: ${status.text}`);
+    });
+  }
+  return out;
 }
 function registryReferenceSummary(direction, id) {
   const impact = registryRemovalImpact(direction, id);
@@ -4249,6 +4312,7 @@ function renderRegistryInventory() {
           <div class="hw-field"><span class="hw-label">Semantic role</span><select onchange="updateRegistryChannel('${direction}',${i},'role',this.value)">${registryRoleOptions(direction, c.role)}</select></div>
           <div class="hw-field"><span class="hw-label">Electrical driver</span><select onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role)}</select></div>
           <div class="hw-field"><span class="hw-label">GPIO pin</span><select onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryPinMode(direction, c.driver))}</select></div>
+          ${registryInputOptionsEditor(direction, c, i)}
           ${registryInvertEditor(direction, c, i)}
           ${registryRangeEditor(direction, c, i)}
           ${direction==='output' ? registryDemandEditor(c, i) : ''}
@@ -4272,6 +4336,8 @@ function updateRegistryChannel(direction, index, key, value) {
     c.max = range.max;
     c[key] = value;
     if (direction === 'input' && value === 1 && (c.pin ?? -1) >= 0 && !(GPIO_DB?.[c.pin]?.adc1 || GPIO_DB?.[c.pin]?.a2)) c.pin = -1;
+    if (direction === 'input' && value === 1) { c.pullup = false; c.pulldown = false; c.active_high = true; }
+    if (direction === 'input' && value === 0 && c.active_high === undefined) c.active_high = true;
     dirty(); updateSaveButton(); renderRegistryInventory();
     return;
   }
@@ -4285,14 +4351,23 @@ function updateRegistryChannel(direction, index, key, value) {
       c.min = range.min;
       c.max = range.max;
     }
+    if (direction === 'input' && registryIsSwitchRole(value)) {
+      c.active_high = false;
+      c.pullup = true;
+      c.pulldown = false;
+    }
     dirty(); updateSaveButton(); renderRegistryInventory();
     return;
   }
   if (key === 'invert') value = !!value;
+  if (key === 'active_high') value = !!value;
+  if (key === 'pullup') { value = !!value; if (value) c.pulldown = false; }
+  if (key === 'pulldown') { value = !!value; if (value) c.pullup = false; }
   if (key === 'safe_demand' || key === 'fault_demand') value = Math.max(0, Math.min(1, Number(value) || 0));
   if (key === 'min' || key === 'max') value = Number.isFinite(Number(value)) ? Number(value) : 0;
   c[key] = value;
   dirty(); updateSaveButton();
+  if (key === 'pullup' || key === 'pulldown' || key === 'active_high') renderRegistryInventory();
 }
 function registryChannelOptions(selected) {
   const r = registryRoot();
@@ -4409,6 +4484,11 @@ function selectRegistryAddPreset(index) {
   const fault = _registryAddDirection === 'output' ? 0 : undefined;
   const channel = {id, name:name.slice(0, 15), role:preset.role, driver:preset.driver, pin:-1, min:range.min, max:range.max};
   if (_registryAddDirection === 'output') { channel.safe_demand = safe; channel.fault_demand = fault; channel.invert = false; }
+  if (_registryAddDirection === 'input') {
+    channel.active_high = !registryIsSwitchRole(preset.role);
+    channel.pullup = registryIsSwitchRole(preset.role);
+    channel.pulldown = false;
+  }
   rows.push(channel);
   closeRegistryAddDialog();
   _registryEditOpen.add(registryEditKey(_registryAddDirection, rows.length - 1));
@@ -5083,7 +5163,8 @@ function clearDirty() {
 function updateSaveButton() {
   const locked = (engineMode !== 'STANDBY');
   const hasConflict = _pinConflictBlocking;
-  document.getElementById('btn-save').disabled = locked || hasConflict;
+  const registryInvalid = cfg ? registryInvalidChannels().length > 0 : false;
+  document.getElementById('btn-save').disabled = locked || hasConflict || registryInvalid;
   document.getElementById('standby-warn').style.display = locked ? '' : 'none';
 }
 
@@ -5631,6 +5712,12 @@ function saveHardware() {
     if (ch && ch.role && ch.role !== 'none' && (ch.pin ?? -1) < 0)
       missing.push('DI channel ' + (i + 1) + ' (' + ch.role + ')');
   });
+  const registryErrors = registryInvalidChannels();
+  if (registryErrors.length) {
+    alert('Fix hardware registry channel(s) before saving:\n\n' + registryErrors.map(e => '• ' + e).join('\n'));
+    updateSaveButton();
+    return;
+  }
   // MAX31856 needs MOSI (driver readback-verifies its config registers)
   for (const [key, label] of [['tot','TOT'], ['tit','TIT'], ['oil_temp','Oil Temperature']]) {
     const item = cfg.sensors?.[key];
