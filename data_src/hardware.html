@@ -3565,19 +3565,6 @@ function setStatusLedColor(key, value) {
 var _hideUnselActive = true;
 try { localStorage.setItem('ot_hide_unsel_act', '1'); } catch (e) {}
 
-function toggleHideUnselectedActuators() {
-  _hideUnselActive = true;
-  try { localStorage.setItem('ot_hide_unsel_act', '1'); } catch (e) {}
-  applyActuatorVisibility();
-}
-function showFullHardwareEditor(target) {
-  _hideUnselActive = true;
-  try { localStorage.setItem('ot_hide_unsel_act', '1'); } catch (e) {}
-  applyActuatorVisibility();
-  const anchors = {switches: 'hardware-inputs-panel', controllers: 'hardware-controllers-panel', safety: 'hardware-safety-panel'};
-  document.getElementById(anchors[target] || 'hardware-inputs-panel')?.scrollIntoView({behavior:'smooth', block:'start'});
-}
-
 function applyActuatorVisibility() {
   var main = document.querySelector('main');
   if (!main) return;
@@ -3712,32 +3699,12 @@ function registryDefaultRange(direction, driver) {
   if (driver === 6) return {min:1000, max:2000};
   return {min:0, max:1};
 }
-function registryRangeMeta(direction, driver) {
-  const d = Number(driver);
-  if (direction === 'input') {
-    if (d === 0) return {hide:true, note:'Digital input reads LOW as 0.00 and HIGH as 1.00.'};
-    if (d === 1) return {min:'Minimum ADC count', max:'Maximum ADC count', step:'0.01'};
-    if (d === 2) return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01'};
-    if (d === 3) return {min:'Minimum pulse width (µs)', max:'Maximum pulse width (µs)', step:'0.01'};
-  } else {
-    if (d === 4) return {hide:true, note:'Relay output is off below 50% demand and on at 50% or higher.'};
-    if (d === 5) return {hide:true, note:'PWM output uses 0–100% demand. Enable “Invert output” if 100% should drive low duty.'};
-    if (d === 6) return {min:'Minimum pulse width (µs)', max:'Maximum pulse width (µs)', step:'0.01'};
-  }
-  return {min:'Minimum mapped value', max:'Maximum mapped value', step:'0.01'};
-}
 function registryFormatValue(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(2) : '0.00';
 }
 function registryParseValue(value) {
   return Number(String(value).replace(',', '.'));
-}
-function registryRangeEditor(direction, c, index) {
-  const meta = registryRangeMeta(direction, c.driver);
-  if (meta.hide) return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Mapped value</span><span class="hw-desc">${escapeHtmlText(meta.note)}</span></div>`;
-  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span><input type="text" inputmode="decimal" value="${registryFormatValue(c.min ?? 0)}" oninput="updateRegistryChannel('${direction}',${index},'min',registryParseValue(this.value))"></div>
-          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span><input type="text" inputmode="decimal" value="${registryFormatValue(c.max ?? 1)}" oninput="updateRegistryChannel('${direction}',${index},'max',registryParseValue(this.value))"></div>`;
 }
 function registryIsSwitchRole(role) {
   return ['digital_switch','fault','estop','inhibit_start','sequence_gate','ab_arm','ab_fire','limp_mode'].includes(String(role || ''));
@@ -3934,15 +3901,6 @@ function registryOutputSubcards(direction, c, index) {
           ${actKey === 'glow_plug' ? registryGlowSubcards(c, index) : ''}
           ${registryCurrentEditor(direction, c, index)}`;
 }
-function renderRegistryInventory() {
-  const r = registryRoot();
-  const render = (direction, target) => {
-    const rows = r[direction + 's'];
-    document.getElementById(target).innerHTML = '<div class="hw-label" style="margin:.35rem 0">' + direction[0].toUpperCase()+direction.slice(1)+'s</div>' +
-      (rows.length ? rows.map((c, i) => `<div class="hw-item-card" style="margin:.3rem 0"><div class="hw-grid"><div><strong>${escapeHtmlText(c.name || c.id)}</strong><div class="hw-desc"><code>${escapeHtmlText(c.id)}</code> · ${escapeHtmlText(c.role || 'generic')} · GPIO ${c.pin}</div></div><div class="hw-desc">${driverName(c.driver)}${direction==='output' ? ' · safe '+Math.round((c.safe_demand||0)*100)+'%' : ''}</div><button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button></div></div>`).join('') : '<div class="hw-desc">No installed '+direction+' channels.</div>');
-  };
-  render('input', 'registry-inputs'); render('output', 'registry-outputs');
-}
 function registryDriverOptions(direction, selected) {
   const role = arguments.length > 2 ? arguments[2] : null;
   const allowed = new Set(registryAllowedDrivers(direction, role));
@@ -4064,60 +4022,6 @@ function renderHardwareRequirementsSummary() {
   items.push({state: conflictCount ? 'error' : 'ok', text: conflictCount ? `${conflictCount} GPIO conflict(s) detected` : 'No GPIO conflicts detected'});
   box.innerHTML = items.map(item => `<div class="requirement-row requirement-${item.state}"><span>${escapeHtmlText(item.text)}</span><span class="requirement-state">${item.state === 'ok' ? 'OK' : item.state}</span></div>`).join('');
 }
-function renderCommsIndicatorSummary() {
-  const box = document.getElementById('hardware-comms-summary');
-  if (!box || !cfg) return;
-  const rows = [];
-  const cluster = cfg.cluster_serial || {};
-  if (cluster.enabled) rows.push({
-    title: 'OT Cluster serial',
-    detail: `TX GPIO ${cluster.tx_pin ?? 'not set'}${(cluster.rx_pin ?? -1) >= 0 ? ` · RX GPIO ${cluster.rx_pin}` : ' · TX only'} · ${cluster.baud || 115200} baud`,
-    status: (cluster.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing'
-  });
-  const mav = cfg.mavlink || {};
-  if (mav.enabled) rows.push({
-    title: 'MAVLink telemetry',
-    detail: `TX GPIO ${mav.tx_pin ?? 'not set'} · ${mav.baud || 57600} baud · ${mav.interval_ms || 200} ms`,
-    status: (mav.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing'
-  });
-  const led = cfg.actuators?.status_led || {};
-  if (led.enabled !== false && (led.pin ?? -1) >= 0) rows.push({
-    title: 'Status LED',
-    detail: `${Number(led.type || 0) === 1 ? 'NeoPixel RGB' : 'GPIO LED'} · GPIO ${led.pin}`,
-    status: 'Ready'
-  });
-  const buz = cfg.buzzer || {};
-  if (buz.enabled) rows.push({
-    title: 'Buzzer',
-    detail: `GPIO ${buz.pin ?? 'not set'}`,
-    status: (buz.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing'
-  });
-  box.innerHTML = rows.length ? rows.map(row => `<div class="hw-item-card">
-    <div class="registry-card-summary">
-      <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
-      <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
-    </div>
-  </div>`).join('') : '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="toggleWorkflowEditor(\'comms\')">Add / edit device</button></div>';
-  if (_workflowEditOpen.has('comms')) {
-    const cluster = cfg.cluster_serial || {};
-    const mav = cfg.mavlink || {};
-    const led = cfg.actuators?.status_led || {};
-    const buz = cfg.buzzer || {};
-    box.innerHTML += `<div class="hw-item-card registry-card-open">
-      <div class="registry-card-editor" style="display:block">
-        <div class="hw-grid">
-          <div class="hw-field"><span class="hw-label">Cluster serial</span><label class="hw-toggle"><input type="checkbox" ${cluster.enabled?'checked':''} onchange="setNested('cluster_serial','enabled',this.checked)"><span></span> Enable</label></div>
-          <div class="hw-field"><span class="hw-label">Cluster TX GPIO</span><select onchange="setNested('cluster_serial','tx_pin',+this.value)">${buildPinOptions(cluster.tx_pin, 'out')}</select></div>
-          <div class="hw-field"><span class="hw-label">MAVLink</span><label class="hw-toggle"><input type="checkbox" ${mav.enabled?'checked':''} onchange="setNested('mavlink','enabled',this.checked)"><span></span> Enable</label></div>
-          <div class="hw-field"><span class="hw-label">MAVLink TX GPIO</span><select onchange="setNested('mavlink','tx_pin',+this.value)">${buildPinOptions(mav.tx_pin, 'out')}</select></div>
-          <div class="hw-field"><span class="hw-label">Status LED GPIO</span><select onchange="setAct('status_led','pin',+this.value)">${buildPinOptions(led.pin, 'status-led')}</select></div>
-          <div class="hw-field"><span class="hw-label">Buzzer</span><label class="hw-toggle"><input type="checkbox" ${buz.enabled?'checked':''} onchange="setBuzzerEnabled(this.checked)"><span></span> Enable</label></div>
-          <div class="hw-field"><span class="hw-label">Buzzer GPIO</span><select onchange="setNested('buzzer','pin',+this.value);refreshAllPins()">${buildPinOptions(buz.pin, 'out')}</select></div>
-        </div>
-      </div>
-    </div>`;
-  }
-}
 function digitalSwitchEditor(row) {
   const pinOptions = buildPinOptions(row.pin, 'in');
   const labelValue = escapeHtmlText(row.label || '');
@@ -4132,42 +4036,6 @@ function digitalSwitchEditor(row) {
       <div class="hw-field"><span class="hw-label">Display label</span><input type="text" maxlength="31" placeholder="${escapeHtmlText(row.defaultLabel)}" value="${labelValue}" onchange="${row.labelSet}"></div>
     </div>
   </div>`;
-}
-function renderBuiltinInputSummary() {
-  const box = document.getElementById('builtin-inputs');
-  if (!box || !cfg) return;
-  const rows = [];
-  const controls = cfg.controls || {};
-  const labels = cfg.labels || {};
-  const addSwitch = (title, pin, activeHigh, detail) => rows.push({
-    title,
-    detail: `${detail} · Digital input · GPIO ${(pin ?? -1) >= 0 ? pin : 'not set'} · ${activeHigh ? 'Active HIGH' : 'Active LOW'}`,
-    status: (pin ?? -1) >= 0 ? 'Ready' : 'Pin missing',
-    target: 'switches'
-  });
-  addSwitch(labels.stop || 'Stop switch', controls.stop_pin, !!controls.stop_active_h, 'Hard stop / shutdown command');
-  addSwitch(labels.start || 'Start switch', controls.start_pin, !!controls.start_active_h, 'Start command input');
-  (cfg.di_channels || []).forEach((ch, i) => {
-    if (!ch) return;
-    const role = ch.role || 'none';
-    const configured = (ch.pin ?? -1) >= 0 || role !== 'none' || (ch.label || '').trim();
-    if (!configured) return;
-    const roleLabel = DI_ROLES.find(r => r.val === role)?.lbl || role;
-    rows.push({
-      title: ch.label || `Digital input ${i + 1}`,
-      detail: `${roleLabel} · Digital input · GPIO ${(ch.pin ?? -1) >= 0 ? ch.pin : 'not set'} · ${ch.active_h ? 'Active HIGH' : 'Active LOW'}`,
-      status: (ch.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing',
-      target: 'switches'
-    });
-  });
-  box.innerHTML = rows.map(row => `<div class="hw-item-card">
-    <div class="registry-card-summary">
-      <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
-      <div class="registry-card-actions">
-        <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
-      </div>
-    </div>
-  </div>`).join('');
 }
 function renderBuiltinInputSummary() {
   const box = document.getElementById('builtin-inputs');
@@ -4551,16 +4419,6 @@ function updateRegistryBinding(index, key, value) {
   if (key === 'key' && !/^[A-Za-z0-9_-]{0,19}$/.test(value)) return;
   r.bindings[index][key] = value;
   dirty(); updateSaveButton();
-}
-function addRegistryBinding() {
-  const r = registryRoot();
-  const channels = r.inputs.concat(r.outputs);
-  if (!channels.length) return alert('Add at least one channel before adding a binding.');
-  if (r.bindings.length >= 5) return alert('The embedded registry supports up to 5 bindings.');
-  const used = new Set(r.bindings.map(b => b.key));
-  const key = REGISTRY_BINDING_KEYS.find(k => !used.has(k)) || `binding_${r.bindings.length + 1}`;
-  r.bindings.push({key, channel: channels[0].id});
-  renderRegistryInventory(); dirty(); updateSaveButton();
 }
 function removeRegistryBinding(index) {
   const r = registryRoot();
