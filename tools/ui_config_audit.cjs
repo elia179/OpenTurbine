@@ -193,6 +193,8 @@ async function goto(page, route, waitSelector) {
     assert.match(hardwareDeps.withAb.ign2Label, /AB Igniter/);
     results.push('hardware master feature flags gate N2, governor, dynamic idle, and afterburner children');
 
+    const hardwareViewToggle = page.locator('#btn-hide-unsel-act');
+    if (((await hardwareViewToggle.textContent()) || '').includes('Show full editor')) await hardwareViewToggle.click();
     const typeGroups = await page.evaluate(() => {
       function visible(id) { return getComputedStyle(document.getElementById(id)).display !== 'none'; }
       const out = {};

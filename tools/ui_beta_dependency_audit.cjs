@@ -163,6 +163,7 @@ async function optionDisabled(page, selector, value) {
     assert.equal(hwPrereq.n2Visible, false);
     results.push('hardware editor removes unsafe safety/controller dependencies when prerequisite sensors or actuators disappear');
 
+    await page.locator('#btn-hide-unsel-act', { hasText: 'Show full editor / supported hardware' }).click();
     const typeMatrix = await page.evaluate(() => {
       function visible(id) {
         const el = document.getElementById(id);

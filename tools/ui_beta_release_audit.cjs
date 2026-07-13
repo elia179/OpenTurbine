@@ -205,6 +205,8 @@ function enumNames(source, marker) {
       await patchHardware(page, profile.patch);
       await page.goto(`${base}/hardware.html`);
       await page.waitForSelector('#f-profile-id', { state: 'attached' });
+      const hardwareViewToggle = page.locator('#btn-hide-unsel-act');
+      if (((await hardwareViewToggle.textContent()) || '').includes('Show full editor')) await hardwareViewToggle.click();
       await profile.checks();
     }
     results.push(`representative hardware profiles render expected feature gates (${profiles.map(p => p.name).join(', ')})`);

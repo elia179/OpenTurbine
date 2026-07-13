@@ -68,11 +68,11 @@
     <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
     <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
     <button type="button" id="btn-hide-unsel-act" title="Toggle between the installed inventory view and the full supported-hardware catalogue" onclick="toggleHideUnselectedActuators()"
-            style="margin-left:auto;font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.25rem .65rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Show all supported hardware</button>
+            style="margin-left:auto;font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.25rem .65rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Show full editor / supported hardware</button>
   </div>
   <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
-  <div class="hw-section">
+  <div class="hw-section" id="hardware-profile-section">
     <div class="hw-title">System Profile</div>
     <div class="hw-item-card">
       <div class="hw-grid">
@@ -133,7 +133,7 @@
     <div id="registry-inputs"></div><div id="registry-outputs"></div><div id="registry-bindings"></div>
   </div>
 
-  <div class="hw-section">
+  <div class="hw-section" id="hardware-features-section">
     <div class="hw-title">System Features</div>
     <!-- Engine type quick-setup presets -->
     <div style="margin-bottom:.75rem;padding:.6rem .75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">
@@ -3524,6 +3524,7 @@ function toggleHideUnselectedActuators() {
 function applyActuatorVisibility() {
   var main = document.querySelector('main');
   if (!main) return;
+  main.classList.toggle('hw-installed-view', _hideUnselActive);
   var cards = main.querySelectorAll('.hw-item-card');
   cards.forEach(function (card) {
     var en = card.querySelector('input[type=checkbox][id^="en-"]');
@@ -3545,7 +3546,8 @@ function applyActuatorVisibility() {
     }
   }
   main.querySelectorAll('.hw-section').forEach(function (section) {
-    if (section.id === 'registry-inventory') return;
+    if (section.id === 'registry-inventory' || section.id === 'hardware-requirements-panel' ||
+        section.id === 'hardware-profile-section' || section.id === 'hardware-features-section') return;
     const title = (section.querySelector('.hw-title')?.textContent || '').trim();
     if (title === 'System Profile' || title === 'System Features') return;
     const sectionCards = Array.from(section.querySelectorAll('.hw-item-card'));
@@ -3554,7 +3556,7 @@ function applyActuatorVisibility() {
     section.classList.toggle('hw-hide-unselected', _hideUnselActive && !anyVisible);
   });
   var b = document.getElementById('btn-hide-unsel-act');
-  if (b) b.textContent = _hideUnselActive ? 'Show all supported hardware' : 'Show installed only';
+  if (b) b.textContent = _hideUnselActive ? 'Show full editor / supported hardware' : 'Show installed summary';
 }
 
 function registryRoot() {
