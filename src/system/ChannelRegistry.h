@@ -61,6 +61,35 @@ public:
                         !strcmp(role, "fuel_shutoff"));
     }
     enum Direction : uint8_t { Input, Output };
+    static bool roleValid(Direction d, const char* role) {
+        if (!role || !role[0] || strlen(role) >= 18) return false;
+        if (!strcmp(role, "generic")) return true;
+        if (d == Input) {
+            return !strcmp(role, "speed") ||
+                   !strcmp(role, "pressure") ||
+                   !strcmp(role, "temperature") ||
+                   !strcmp(role, "flame") ||
+                   !strcmp(role, "flow") ||
+                   !strcmp(role, "torque") ||
+                   !strcmp(role, "operator") ||
+                   !strcmp(role, "digital_switch");
+        }
+        return !strcmp(role, "fuel") ||
+               !strcmp(role, "fuel_shutoff") ||
+               !strcmp(role, "starter") ||
+               !strcmp(role, "starter_en") ||
+               !strcmp(role, "oil_pump") ||
+               !strcmp(role, "scavenge_pump") ||
+               !strcmp(role, "cooling_fan") ||
+               !strcmp(role, "valve") ||
+               !strcmp(role, "igniter") ||
+               !strcmp(role, "ab_igniter") ||
+               !strcmp(role, "glow_plug") ||
+               !strcmp(role, "fuel_pump") ||
+               !strcmp(role, "ab_pump") ||
+               !strcmp(role, "prop_pitch") ||
+               !strcmp(role, "contactor");
+    }
     enum Driver : uint8_t { Digital, Analog, Pulse, RcPwm, Relay, Pwm, Servo };
     struct Channel {
         bool installed = false;
@@ -68,7 +97,7 @@ public:
         Driver driver = Digital;
         char id[20] = {};
         char name[16] = {};
-        char role[14] = {"generic"};
+        char role[18] = {"generic"};
         int8_t pin = -1;
         float minValue = 0.0f, maxValue = 1.0f;
         float safeDemand = 0.0f, faultDemand = 0.0f;
@@ -101,14 +130,14 @@ public:
         Channel* list = c.direction == Input ? inputs : outputs;
         uint8_t& count = c.direction == Input ? inputCount : outputCount;
         uint8_t max = c.direction == Input ? MAX_INPUT_CHANNELS : MAX_OUTPUT_CHANNELS;
-        if (count >= max || !driverMatches(c.direction, c.driver) || !demandsValid(c)) return false;
+        if (count >= max || !driverMatches(c.direction, c.driver) || !roleValid(c.direction, c.role) || !demandsValid(c)) return false;
         for (uint8_t i=0; i<inputCount; ++i) if (c.pin >= 0 && inputs[i].pin == c.pin) return false;
         for (uint8_t i=0; i<outputCount; ++i) if (c.pin >= 0 && outputs[i].pin == c.pin) return false;
         list[count++] = c; return true;
     }
     bool validate() const {
-        for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver)) return false;
-        for (uint8_t i=0; i<outputCount; ++i) if (!validId(outputs[i].id) || !driverMatches(Output, outputs[i].driver) || !demandsValid(outputs[i])) return false;
+        for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver) || !roleValid(Input, inputs[i].role)) return false;
+        for (uint8_t i=0; i<outputCount; ++i) if (!validId(outputs[i].id) || !driverMatches(Output, outputs[i].driver) || !roleValid(Output, outputs[i].role) || !demandsValid(outputs[i])) return false;
         for (uint8_t i=0; i<inputCount; ++i) for (uint8_t j=0; j<outputCount; ++j) if (inputs[i].pin >= 0 && inputs[i].pin == outputs[j].pin) return false;
         for (uint8_t i=0; i<bindingCount; ++i) if (!bindingValid(bindings[i])) return false;
         return true;
