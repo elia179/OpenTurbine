@@ -137,11 +137,19 @@
     </div>
   </div>
 
-  <div class="hw-section" id="registry-inventory">
-    <div class="hw-title">Installed Channel Inventory</div>
-    <div class="hw-desc" style="margin-bottom:.6rem">Normal view shows what is physically installed. Use the catalogue button above only when adding older singleton hardware that has not yet been moved into the registry. IDs are stable configuration keys; names may be changed without breaking rules or sequences.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('input')">+ Add input</button><button type="button" onclick="addRegistryChannel('output')">+ Add output</button><button type="button" onclick="addRegistryBinding()">+ Add binding</button></div>
-    <div id="registry-inputs"></div><div id="registry-outputs"></div><div id="registry-bindings"></div>
+  <div class="hw-section" id="hardware-inputs-panel">
+    <div class="hw-title">Inputs</div>
+    <div class="hw-desc" style="margin-bottom:.6rem">Sensors, switches and operator inputs physically wired to this ECU.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('input')">+ Add input</button></div>
+    <div id="registry-inputs"></div>
+  </div>
+
+  <div class="hw-section" id="hardware-outputs-panel">
+    <div class="hw-title">Outputs</div>
+    <div class="hw-desc" style="margin-bottom:.6rem">Actuators and writable outputs. PWM and servo drivers keep proportional 0-100% demand.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('output')">+ Add output</button></div>
+    <div id="registry-outputs"></div>
+    <div id="registry-bindings" class="registry-bindings-panel"></div>
   </div>
 
   <div class="hw-section" id="hardware-comms-panel">
@@ -149,6 +157,20 @@
     <div class="hw-desc" style="margin-bottom:.6rem">Installed external communication links and local indication devices.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor()">Edit devices</button></div>
     <div id="hardware-comms-summary"></div>
+  </div>
+
+  <div class="hw-section" id="hardware-controllers-panel">
+    <div class="hw-title">Controllers</div>
+    <div class="hw-desc" style="margin-bottom:.6rem">Closed-loop and helper controllers enabled for this engine.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor('controllers')">Edit controllers</button></div>
+    <div id="hardware-controllers-summary"></div>
+  </div>
+
+  <div class="hw-section" id="hardware-safety-panel">
+    <div class="hw-title">Safety</div>
+    <div class="hw-desc" style="margin-bottom:.6rem">Safety interlocks available from installed hardware.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor('safety')">Edit safety</button></div>
+    <div id="hardware-safety-summary"></div>
   </div>
 
   <div class="hw-section" id="hardware-features-section">
@@ -1894,7 +1916,7 @@
   </div>
 
   <!-- ── Controllers ───────────────────────────────────── -->
-  <div class="hw-section">
+  <div class="hw-section" id="legacy-controllers-section">
     <div class="hw-title">Controllers</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.6rem">
       <div class="hw-item-card">
@@ -2009,7 +2031,7 @@
   </div>
 
   <!-- ── Safety Enables ───────────────────────────────── -->
-  <div class="hw-section">
+  <div class="hw-section" id="legacy-safety-section">
     <div class="hw-title">Safety Interlocks</div>
     <p style="font-size:.7rem;color:var(--yellow);margin-bottom:.6rem">
       ⚠ Disabling safety interlocks can cause equipment damage or injury. Only disable for specific test purposes.
@@ -2403,8 +2425,7 @@ function refreshAllPins() {
     refreshPinSel('f-di' + i + '-pin', 'in', ch.pin);
   });
   checkPinConflicts();
-  renderHardwareRequirementsSummary();
-  renderCommsIndicatorSummary();
+  renderHardwareWorkflowSummaries();
 }
 
 // ─── General-purpose DI channel renderer ────────────────────
@@ -3539,11 +3560,12 @@ function toggleHideUnselectedActuators() {
   try { localStorage.setItem('ot_hide_unsel_act', _hideUnselActive ? '1' : '0'); } catch (e) {}
   applyActuatorVisibility();
 }
-function showFullHardwareEditor() {
+function showFullHardwareEditor(target) {
   _hideUnselActive = false;
   try { localStorage.setItem('ot_hide_unsel_act', '0'); } catch (e) {}
   applyActuatorVisibility();
-  document.getElementById('hardware-features-section')?.scrollIntoView({behavior:'smooth', block:'start'});
+  const anchors = {controllers: 'legacy-controllers-section', safety: 'legacy-safety-section'};
+  document.getElementById(anchors[target] || 'hardware-inputs-panel')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 function applyActuatorVisibility() {
@@ -3571,8 +3593,8 @@ function applyActuatorVisibility() {
     }
   }
   main.querySelectorAll('.hw-section').forEach(function (section) {
-    if (section.id === 'registry-inventory' || section.id === 'hardware-requirements-panel' || section.id === 'hardware-comms-panel' ||
-        section.id === 'hardware-profile-section' || section.id === 'hardware-features-section') return;
+    if (['hardware-inputs-panel','hardware-outputs-panel','hardware-requirements-panel','hardware-comms-panel',
+         'hardware-controllers-panel','hardware-safety-panel','hardware-profile-section','hardware-features-section'].includes(section.id)) return;
     const title = (section.querySelector('.hw-title')?.textContent || '').trim();
     if (title === 'System Profile' || title === 'System Features') return;
     const sectionCards = Array.from(section.querySelectorAll('.hw-item-card'));
@@ -3805,11 +3827,64 @@ function renderCommsIndicatorSummary() {
     </div>
   </div>`).join('') : '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="showFullHardwareEditor()">Add / edit device</button></div>';
 }
+function workflowCard(title, detail, state) {
+  const ok = state === 'Enabled' || state === 'Ready';
+  return `<div class="hw-item-card workflow-card">
+    <div class="registry-card-summary">
+      <div><strong>${escapeHtmlText(title)}</strong><div class="hw-desc">${escapeHtmlText(detail)}</div></div>
+      <span class="registry-status ${ok ? 'registry-status-ok' : ''}">${escapeHtmlText(state)}</span>
+    </div>
+  </div>`;
+}
+function renderControllerSummary() {
+  const box = document.getElementById('hardware-controllers-summary');
+  if (!box || !cfg) return;
+  const c = cfg.controllers || {};
+  const rows = [
+    ['Oil pressure loop', 'Closed-loop oil pressure control', !!c.oil_loop],
+    ['Throttle slew limiter', 'Rate-limits throttle changes and protection actions', c.throttle_slew !== false],
+    ['Dynamic idle', 'Automatic idle RPM controller', !!c.dynamic_idle],
+    ['Power turbine governor', 'N2 / prop-pitch governor', !!c.governor],
+  ];
+  const enabled = rows.filter(r => r[2]).length;
+  box.innerHTML = enabled
+    ? rows.filter(r => r[2]).map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
+    : '<div class="registry-empty"><div>No optional controllers enabled.</div><button type="button" onclick="showFullHardwareEditor(\'controllers\')">Edit controllers</button></div>';
+}
+function renderSafetySummary() {
+  const box = document.getElementById('hardware-safety-summary');
+  if (!box || !cfg) return;
+  const s = cfg.safety || {};
+  const rows = [
+    ['N1 overspeed', 'Requires primary N1 speed input', s.overspeed !== false],
+    ['EGT overtemperature', 'Requires TOT or TIT input', s.overtemp !== false],
+    ['Low oil pressure', 'Requires oil-pressure input', s.low_oil !== false],
+    ['Zero oil pressure', 'Requires oil-pressure input', s.oil_zero !== false],
+    ['Flameout', 'Requires flame, N1, TOT or TIT confirmation', s.flameout !== false],
+    ['Hot start', 'Requires EGT input', !!s.hot_start],
+    ['TIT overtemperature', 'Requires TIT input', !!s.tit_overtemp],
+    ['Oil temperature high', 'Requires oil-temperature input', !!s.oil_temp_high],
+    ['Fuel pressure low', 'Requires fuel-pressure input', !!s.fuel_press_low],
+    ['Battery undervoltage', 'Requires battery-voltage input', !!s.batt_low],
+    ['Surge / compressor instability', 'Requires N1 input', !!s.surge],
+  ];
+  const enabledRows = rows.filter(r => r[2]);
+  box.innerHTML = enabledRows.length
+    ? enabledRows.map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
+    : '<div class="registry-empty"><div>No safety interlocks enabled.</div><button type="button" onclick="showFullHardwareEditor(\'safety\')">Edit safety</button></div>';
+}
+function renderHardwareWorkflowSummaries() {
+  renderHardwareRequirementsSummary();
+  renderHardwareBoardSummary();
+  renderCommsIndicatorSummary();
+  renderControllerSummary();
+  renderSafetySummary();
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
     const rows = r[direction + 's'];
-    document.getElementById(target).innerHTML = '<div class="hw-label" style="margin:.35rem 0">' + direction[0].toUpperCase()+direction.slice(1)+'s</div>' +
+    document.getElementById(target).innerHTML =
       (rows.length ? rows.map((c, i) => {
         const open = _registryEditOpen.has(registryEditKey(direction, i));
         const status = registryStatus(c);
@@ -3844,7 +3919,7 @@ function renderRegistryInventory() {
       </div>`;
       }).join('') : `<div class="registry-empty"><div>No installed ${direction} channels.</div><button type="button" onclick="addRegistryChannel('${direction}')">+ Add ${direction}</button></div>`);
   };
-  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings(); renderHardwareRequirementsSummary(); renderHardwareBoardSummary(); renderCommsIndicatorSummary();
+  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings(); renderHardwareWorkflowSummaries();
 }
 function updateRegistryChannel(direction, index, key, value) {
   const r = registryRoot();
@@ -4638,6 +4713,7 @@ function dirty() {
     : 'Unsaved inventory changes — review before saving';
   document.querySelector('.save-bar').classList.add('is-dirty');
   _refreshChangedBorders();
+  renderHardwareWorkflowSummaries();
   checkPinConflicts();
   updateSaveButton();
 }
