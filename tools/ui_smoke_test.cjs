@@ -231,6 +231,7 @@ function installedBrowser() {
 
     await page.goto(`${base}/hardware.html`);
     await page.waitForSelector('#f-thinput-type');
+    await page.locator('#btn-hide-unsel-act', { hasText: 'Show all supported hardware' }).click();
     assert.equal(await page.locator('#f-thinput-type').inputValue(), 'servo');
     assert.equal(await page.locator('#f-wifi-tx-power').inputValue(), '8');
     results.push('hardware page restores servo-input source from saved hardware state');

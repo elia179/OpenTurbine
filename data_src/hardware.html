@@ -36,15 +36,15 @@
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
     <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
     <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
-    <button type="button" id="btn-hide-unsel-act" title="Hide hardware cards that are not enabled; view-only and does not change the saved setup" onclick="toggleHideUnselectedActuators()"
-            style="margin-left:auto;font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.25rem .65rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Hide unselected hardware</button>
+    <button type="button" id="btn-hide-unsel-act" title="Toggle between the installed inventory view and the full supported-hardware catalogue" onclick="toggleHideUnselectedActuators()"
+            style="margin-left:auto;font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.25rem .65rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Show all supported hardware</button>
   </div>
   <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
   <!-- ── System Profile ───────────────────────────────── -->
   <div class="hw-section" id="registry-inventory">
     <div class="hw-title">Installed Channel Inventory</div>
-    <div class="hw-desc" style="margin-bottom:.6rem">Only installed registry channels are shown here. IDs are stable configuration keys; names may be changed without breaking rules or sequences.</div>
+    <div class="hw-desc" style="margin-bottom:.6rem">Normal view shows what is physically installed. Use the catalogue button above only when adding older singleton hardware that has not yet been moved into the registry. IDs are stable configuration keys; names may be changed without breaking rules or sequences.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('input')">+ Add input</button><button type="button" onclick="addRegistryChannel('output')">+ Add output</button><button type="button" onclick="addRegistryBinding()">+ Add binding</button></div>
     <div id="registry-inputs"></div><div id="registry-outputs"></div><div id="registry-bindings"></div>
   </div>
@@ -3466,8 +3466,11 @@ function setStatusLedColor(key, value) {
 // ── "Hide unselected" actuator toggle ────────────────────────
 // Collapses fitted-hardware cards to enabled items. View-only; persisted per
 // browser. Profile/settings cards without an enable checkbox remain visible.
-var _hideUnselActive = false;
-try { _hideUnselActive = localStorage.getItem('ot_hide_unsel_act') === '1'; } catch (e) {}
+var _hideUnselActive = true;
+try {
+  const savedHardwareView = localStorage.getItem('ot_hide_unsel_act');
+  _hideUnselActive = savedHardwareView === null ? true : savedHardwareView === '1';
+} catch (e) {}
 
 function toggleHideUnselectedActuators() {
   _hideUnselActive = !_hideUnselActive;
@@ -3486,19 +3489,29 @@ function applyActuatorVisibility() {
   });
   // Hide an actuator sub-header when every card up to the next header is hidden.
   var sec = document.getElementById('hw-actuators');
-  if (!sec) return;
-  var kids = Array.prototype.slice.call(sec.children);
-  for (var i = 0; i < kids.length; i++) {
-    if (!kids[i].classList || !kids[i].classList.contains('hw-sub')) continue;
-    var anyVisible = false;
-    for (var j = i + 1; j < kids.length; j++) {
-      if (kids[j].classList && kids[j].classList.contains('hw-sub')) break;
-      if (kids[j].classList && kids[j].classList.contains('hw-item-card') && getComputedStyle(kids[j]).display !== 'none') { anyVisible = true; break; }
+  if (sec) {
+    var kids = Array.prototype.slice.call(sec.children);
+    for (var i = 0; i < kids.length; i++) {
+      if (!kids[i].classList || !kids[i].classList.contains('hw-sub')) continue;
+      var anyVisible = false;
+      for (var j = i + 1; j < kids.length; j++) {
+        if (kids[j].classList && kids[j].classList.contains('hw-sub')) break;
+        if (kids[j].classList && kids[j].classList.contains('hw-item-card') && getComputedStyle(kids[j]).display !== 'none') { anyVisible = true; break; }
+      }
+      kids[i].classList.toggle('hw-hide-unselected', _hideUnselActive && !anyVisible);
     }
-    kids[i].classList.toggle('hw-hide-unselected', _hideUnselActive && !anyVisible);
   }
+  main.querySelectorAll('.hw-section').forEach(function (section) {
+    if (section.id === 'registry-inventory') return;
+    const title = (section.querySelector('.hw-title')?.textContent || '').trim();
+    if (title === 'System Profile' || title === 'System Features') return;
+    const sectionCards = Array.from(section.querySelectorAll('.hw-item-card'));
+    if (!sectionCards.length) return;
+    const anyVisible = sectionCards.some(card => getComputedStyle(card).display !== 'none');
+    section.classList.toggle('hw-hide-unselected', _hideUnselActive && !anyVisible);
+  });
   var b = document.getElementById('btn-hide-unsel-act');
-  if (b) b.textContent = _hideUnselActive ? 'Show all hardware' : 'Hide unselected hardware';
+  if (b) b.textContent = _hideUnselActive ? 'Show all supported hardware' : 'Show installed only';
 }
 
 function registryRoot() {
@@ -3601,12 +3614,50 @@ function registryDriverOptions(direction, selected) {
     : [[4,'Relay'],[5,'PWM'],[6,'Servo/ESC']];
   return drivers.map(([v, label]) => `<option value="${v}"${Number(selected)===v?' selected':''}>${label}</option>`).join('');
 }
+const _registryEditOpen = new Set();
+function registryEditKey(direction, index) { return direction + ':' + index; }
+function toggleRegistryEdit(direction, index) {
+  const key = registryEditKey(direction, index);
+  if (_registryEditOpen.has(key)) _registryEditOpen.delete(key); else _registryEditOpen.add(key);
+  renderRegistryInventory();
+}
+function registryRoleLabel(direction, role) {
+  const roles = direction === 'input' ? REGISTRY_INPUT_ROLES : REGISTRY_OUTPUT_ROLES;
+  return roles.find(([v]) => v === String(role || 'generic'))?.[1] || (role || 'Generic');
+}
+function registryStatus(c) {
+  if (!c?.id) return {kind:'error', text:'Missing stable ID'};
+  if ((c.pin ?? -1) < 0) return {kind:'error', text:'Pin required'};
+  if (Number(c.max ?? 1) < Number(c.min ?? 0)) return {kind:'error', text:'Invalid range'};
+  return {kind:'ok', text:'Ready'};
+}
+function registryReferenceSummary(direction, id) {
+  const impact = registryRemovalImpact(direction, id);
+  return impact.length ? impact.join(', ') : 'No references yet';
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
     const rows = r[direction + 's'];
     document.getElementById(target).innerHTML = '<div class="hw-label" style="margin:.35rem 0">' + direction[0].toUpperCase()+direction.slice(1)+'s</div>' +
-      (rows.length ? rows.map((c, i) => `<div class="hw-item-card" style="margin:.3rem 0">
+      (rows.length ? rows.map((c, i) => {
+        const open = _registryEditOpen.has(registryEditKey(direction, i));
+        const status = registryStatus(c);
+        const proportional = direction === 'output' && (Number(c.driver) === 5 || Number(c.driver) === 6);
+        return `<div class="hw-item-card registry-card ${open ? 'registry-card-open' : ''}" style="margin:.3rem 0">
+        <div class="registry-card-summary">
+          <div>
+            <strong>${escapeHtmlText(c.name || c.id || (direction + ' channel'))}</strong>
+            <div class="hw-desc">${escapeHtmlText(registryRoleLabel(direction, c.role))} &middot; ${driverName(c.driver)} &middot; GPIO ${(c.pin ?? -1) >= 0 ? escapeHtmlText(c.pin) : 'not set'}${direction==='output' ? ' &middot; '+(proportional ? 'Proportional 0-100%' : 'On/Off') : ''}</div>
+            <div class="hw-desc">Used by: ${escapeHtmlText(registryReferenceSummary(direction, c.id))}</div>
+          </div>
+          <div class="registry-card-actions">
+            <span class="registry-status registry-status-${status.kind}">${status.kind === 'ok' ? 'OK' : '!' } ${escapeHtmlText(status.text)}</span>
+            <button type="button" onclick="toggleRegistryEdit('${direction}',${i})">${open ? 'Done' : 'Edit'}</button>
+            <button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button>
+          </div>
+        </div>
+        <div class="registry-card-editor" style="${open ? '' : 'display:none'}">
         <div class="hw-desc" style="margin-bottom:.45rem">Stable ID: <code>${escapeHtmlText(c.id)}</code></div>
         <div class="hw-grid">
           <div class="hw-field"><span class="hw-label">Display name</span><input type="text" maxlength="15" value="${escapeHtmlText(c.name || c.id)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
@@ -3618,8 +3669,9 @@ function renderRegistryInventory() {
           ${direction==='output' ? `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'safe_demand',(+this.value)/100)"></div>
           <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'fault_demand',(+this.value)/100)"></div>` : ''}
         </div>
-        <div style="display:flex;justify-content:flex-end;margin-top:.5rem"><button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button></div>
-      </div>`).join('') : '<div class="hw-desc">No installed '+direction+' channels.</div>');
+        </div>
+      </div>`;
+      }).join('') : `<div class="registry-empty"><div>No installed ${direction} channels.</div><button type="button" onclick="addRegistryChannel('${direction}')">+ Add ${direction}</button></div>`);
   };
   render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings();
 }
