@@ -31,7 +31,7 @@
     <div style="display:flex;justify-content:space-between;gap:1rem;align-items:start">
       <div>
         <h2 id="registry-add-title" style="margin:.1rem 0 .25rem;font-size:1rem">Add channel</h2>
-        <div class="hw-desc">Choose an installed device type, then set its stable ID, driver and pin before adding it to the inventory.</div>
+        <div class="hw-desc">Choose an installed device type. The card is added immediately, then pin, name and driver details are edited in the list.</div>
       </div>
       <button type="button" onclick="closeRegistryAddDialog()">Close</button>
     </div>
@@ -3712,6 +3712,30 @@ function registryDefaultRange(direction, driver) {
   if (driver === 6) return {min:1000, max:2000};
   return {min:0, max:1};
 }
+function registryRangeMeta(direction, driver) {
+  const d = Number(driver);
+  if (direction === 'input') {
+    if (d === 0) return {hide:true, note:'Digital input reads LOW as 0.00 and HIGH as 1.00.'};
+    if (d === 1) return {min:'Minimum ADC count', max:'Maximum ADC count', step:'0.01'};
+    if (d === 2) return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01'};
+    if (d === 3) return {min:'Minimum pulse width (µs)', max:'Maximum pulse width (µs)', step:'0.01'};
+  } else {
+    if (d === 4) return {hide:true, note:'Relay output is off below 50% demand and on at 50% or higher.'};
+    if (d === 5) return {min:'Minimum demand', max:'Maximum demand', step:'0.01'};
+    if (d === 6) return {min:'Minimum pulse width (µs)', max:'Maximum pulse width (µs)', step:'0.01'};
+  }
+  return {min:'Minimum mapped value', max:'Maximum mapped value', step:'0.01'};
+}
+function registryFormatValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+}
+function registryRangeEditor(direction, c, index) {
+  const meta = registryRangeMeta(direction, c.driver);
+  if (meta.hide) return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Mapped value</span><span class="hw-desc">${escapeHtmlText(meta.note)}</span></div>`;
+  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span><input type="number" step="${escapeHtmlText(meta.step)}" value="${registryFormatValue(c.min ?? 0)}" oninput="updateRegistryChannel('${direction}',${index},'min',+this.value)"></div>
+          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span><input type="number" step="${escapeHtmlText(meta.step)}" value="${registryFormatValue(c.max ?? 1)}" oninput="updateRegistryChannel('${direction}',${index},'max',+this.value)"></div>`;
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
@@ -3762,16 +3786,19 @@ function renderHardwareBoardSummary() {
   if (!box || !cfg) return;
   const r = registryRoot();
   const gpioEntries = Object.entries(GPIO_DB || {});
-  const usablePins = gpioEntries.filter(([, meta]) => !meta.r).length;
-  const outputPins = gpioEntries.filter(([, meta]) => !meta.r && !meta.i).length;
-  const adcPins = gpioEntries.filter(([, meta]) => meta.adc1 || meta.a2).length;
+  const used = new Set(Array.from(collectUsedPins()).map(Number));
+  [...(r.inputs || []), ...(r.outputs || [])].forEach(c => { if ((c?.pin ?? -1) >= 0) used.add(Number(c.pin)); });
+  const freePins = gpioEntries.filter(([pin, meta]) => !meta.r && !used.has(Number(pin))).length;
+  const freeOutputPins = gpioEntries.filter(([pin, meta]) => !meta.r && !meta.i && !used.has(Number(pin))).length;
+  const freeAdcPins = gpioEntries.filter(([pin, meta]) => !meta.r && (meta.adc1 || meta.a2) && !used.has(Number(pin))).length;
   const platformName = cfg.platform === 'esp32s3' ? 'ESP32-S3' : 'ESP32';
   const target = cfg.platform || 'unknown target';
   const registryCounts = `${(r.inputs || []).length} input(s), ${(r.outputs || []).length} output(s), ${(r.bindings || []).length} binding(s)`;
   box.innerHTML = [
     `${escapeHtmlText(platformName)} / ${escapeHtmlText(target)}`,
-    `Validation pin map: ${escapeHtmlText(platformName)}`,
-    `${usablePins} usable GPIO · ${outputPins} output-capable · ${adcPins} ADC-capable`,
+    `${freePins} total GPIO free`,
+    `${freeOutputPins} output-capable GPIO free`,
+    `${freeAdcPins} ADC-capable GPIO free`,
     `Registry: ${escapeHtmlText(registryCounts)}`
   ].map(line => `<div>${line}</div>`).join('');
 }
@@ -4052,6 +4079,7 @@ function renderCommsIndicatorSummary() {
   const led = cfg.actuators?.status_led || {};
   const buz = cfg.buzzer || {};
   const statusClass = status => (status === 'Ready' || status === 'Disabled') ? 'registry-status-ok' : 'registry-status-error';
+  const optionList = (values, selected) => values.map(v => `<option value="${v}"${Number(selected)===v?' selected':''}>${v}</option>`).join('');
   const card = (title, detail, status, installed, editor) => {
     if (!installed && !editing) return '';
     return `<div class="hw-item-card ${editing ? 'registry-card-open' : ''}">
@@ -4064,8 +4092,10 @@ function renderCommsIndicatorSummary() {
   };
   const clusterStatus = cluster.enabled ? ((cluster.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing') : 'Disabled';
   const mavStatus = mav.enabled ? ((mav.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing') : 'Disabled';
-  const ledInstalled = led.enabled !== false && (led.pin ?? -1) >= 0;
-  const ledStatus = ledInstalled ? 'Ready' : 'Disabled';
+  const ledEnabled = led.enabled !== false;
+  const ledType = Number(led.type ?? (cfg.platform === 'esp32s3' ? 1 : 0));
+  const ledMode = Number(led.mode ?? 0);
+  const ledStatus = ledEnabled ? ((led.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing') : 'Disabled';
   const buzStatus = buz.enabled ? ((buz.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing') : 'Disabled';
   const cards = [
     card('OT Cluster serial',
@@ -4073,32 +4103,46 @@ function renderCommsIndicatorSummary() {
       clusterStatus,
       !!cluster.enabled,
       `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
-        <div class="hw-field"><span class="hw-label">Cluster serial</span><label class="hw-toggle"><input type="checkbox" ${cluster.enabled?'checked':''} onchange="setNested('cluster_serial','enabled',this.checked)"><span></span> Enable</label></div>
-        <div class="hw-field"><span class="hw-label">Cluster TX GPIO</span><select onchange="setNested('cluster_serial','tx_pin',+this.value)">${buildPinOptions(cluster.tx_pin, 'out')}</select></div>
+        <div class="hw-field"><span class="hw-label">Cluster serial</span><label class="hw-toggle"><input type="checkbox" ${cluster.enabled?'checked':''} onchange="setNested('cluster_serial','enabled',this.checked);renderHardwareWorkflowSummaries()"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">Cluster TX GPIO</span><select onchange="setNested('cluster_serial','tx_pin',+this.value);renderHardwareWorkflowSummaries()">${buildPinOptions(cluster.tx_pin, 'out')}</select></div>
+        <div class="hw-field"><span class="hw-label">Cluster RX GPIO</span><span class="hw-desc">Optional. Leave unassigned for TX-only streaming.</span><select onchange="setNested('cluster_serial','rx_pin',+this.value);renderHardwareWorkflowSummaries()">${buildPinOptions(cluster.rx_pin, 'in')}</select></div>
+        <div class="hw-field"><span class="hw-label">Baud rate</span><select onchange="setNested('cluster_serial','baud',+this.value);renderHardwareWorkflowSummaries()">${optionList([9600,19200,38400,57600,115200,230400,460800,921600], cluster.baud || 115200)}</select></div>
+        <div class="hw-field"><span class="hw-label">Interval (ms)</span><input type="number" min="10" max="5000" value="${Number(cluster.interval_ms ?? 200)}" oninput="setNested('cluster_serial','interval_ms',+this.value)"></div>
       </div></div>`),
     card('MAVLink telemetry',
       mav.enabled ? `TX GPIO ${mav.tx_pin ?? 'not set'} / ${mav.baud || 57600} baud / ${mav.interval_ms || 200} ms` : 'MAVLink telemetry output',
       mavStatus,
       !!mav.enabled,
       `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
-        <div class="hw-field"><span class="hw-label">MAVLink</span><label class="hw-toggle"><input type="checkbox" ${mav.enabled?'checked':''} onchange="setNested('mavlink','enabled',this.checked)"><span></span> Enable</label></div>
-        <div class="hw-field"><span class="hw-label">MAVLink TX GPIO</span><select onchange="setNested('mavlink','tx_pin',+this.value)">${buildPinOptions(mav.tx_pin, 'out')}</select></div>
+        <div class="hw-field"><span class="hw-label">MAVLink</span><label class="hw-toggle"><input type="checkbox" ${mav.enabled?'checked':''} onchange="setNested('mavlink','enabled',this.checked);renderHardwareWorkflowSummaries()"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">MAVLink TX GPIO</span><select onchange="setNested('mavlink','tx_pin',+this.value);renderHardwareWorkflowSummaries()">${buildPinOptions(mav.tx_pin, 'out')}</select></div>
+        <div class="hw-field"><span class="hw-label">Baud rate</span><select onchange="setNested('mavlink','baud',+this.value);renderHardwareWorkflowSummaries()">${optionList([57600,115200,230400], mav.baud || 57600)}</select></div>
+        <div class="hw-field"><span class="hw-label">Interval (ms)</span><input type="number" min="50" max="5000" step="50" value="${Number(mav.interval_ms ?? 200)}" oninput="setNested('mavlink','interval_ms',+this.value)"></div>
       </div></div>`),
     card('Status LED',
-      ledInstalled ? `${Number(led.type || 0) === 1 ? 'NeoPixel RGB' : 'GPIO LED'} / GPIO ${led.pin}` : 'Local status indicator LED',
+      ledEnabled && (led.pin ?? -1) >= 0 ? `${ledType === 1 ? 'NeoPixel RGB' : 'GPIO LED'} / GPIO ${led.pin}` : 'Local status indicator LED',
       ledStatus,
-      ledInstalled,
+      ledEnabled,
       `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
-        <div class="hw-field"><span class="hw-label">Status LED</span><label class="hw-toggle"><input type="checkbox" ${led.enabled !== false?'checked':''} onchange="setStatusLedEnabled(this.checked)"><span></span> Enable</label></div>
-        <div class="hw-field"><span class="hw-label">Status LED GPIO</span><select onchange="setAct('status_led','pin',+this.value)">${buildPinOptions(led.pin, 'status-led')}</select></div>
+        <div class="hw-field"><span class="hw-label">Status LED</span><label class="hw-toggle"><input type="checkbox" ${ledEnabled?'checked':''} onchange="setStatusLedEnabled(this.checked);renderHardwareWorkflowSummaries()"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">LED type</span><select onchange="setStatusLedType(+this.value);renderHardwareWorkflowSummaries()"><option value="0"${ledType===0?' selected':''}>Plain GPIO on/off</option><option value="1"${ledType===1?' selected':''}>NeoPixel RGB data LED</option></select></div>
+        <div class="hw-field"><span class="hw-label">Status LED GPIO</span><select onchange="setAct('status_led','pin',+this.value);renderHardwareWorkflowSummaries()">${buildPinOptions(led.pin, 'status-led')}</select></div>
+        ${ledType === 1 ? `<div class="hw-field"><span class="hw-label">NeoPixel mode</span><select onchange="setStatusLedMode(+this.value);renderHardwareWorkflowSummaries()"><option value="0"${ledMode===0?' selected':''}>Blink pattern</option><option value="1"${ledMode===1?' selected':''}>State colors</option></select></div>` : ''}
+        ${ledType === 1 && ledMode !== 1 ? `<div class="hw-field"><span class="hw-label">Blink color</span><input type="color" value="${colorToHex(led.blink_color, '#0000ff')}" onchange="setStatusLedColor('blink_color',this.value)"></div>` : ''}
+        ${ledType === 1 && ledMode === 1 ? `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">State colors</span><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.5rem">
+          <label>Standby <input type="color" value="${colorToHex(led.standby_color, '#00ff40')}" onchange="setStatusLedColor('standby_color',this.value)"></label>
+          <label>Startup <input type="color" value="${colorToHex(led.startup_color, '#0060ff')}" onchange="setStatusLedColor('startup_color',this.value)"></label>
+          <label>Running <input type="color" value="${colorToHex(led.running_color, '#00ff00')}" onchange="setStatusLedColor('running_color',this.value)"></label>
+          <label>Shutdown <input type="color" value="${colorToHex(led.shutdown_color, '#ff8000')}" onchange="setStatusLedColor('shutdown_color',this.value)"></label>
+        </div></div>` : ''}
       </div></div>`),
     card('Buzzer',
       buz.enabled ? `GPIO ${buz.pin ?? 'not set'}` : 'Local audible indicator',
       buzStatus,
       !!buz.enabled,
       `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
-        <div class="hw-field"><span class="hw-label">Buzzer</span><label class="hw-toggle"><input type="checkbox" ${buz.enabled?'checked':''} onchange="setBuzzerEnabled(this.checked)"><span></span> Enable</label></div>
-        <div class="hw-field"><span class="hw-label">Buzzer GPIO</span><select onchange="setNested('buzzer','pin',+this.value);refreshAllPins()">${buildPinOptions(buz.pin, 'out')}</select></div>
+        <div class="hw-field"><span class="hw-label">Buzzer</span><label class="hw-toggle"><input type="checkbox" ${buz.enabled?'checked':''} onchange="setBuzzerEnabled(this.checked);renderHardwareWorkflowSummaries()"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">Buzzer GPIO</span><select onchange="setNested('buzzer','pin',+this.value);refreshAllPins();renderHardwareWorkflowSummaries()">${buildPinOptions(buz.pin, 'out')}</select></div>
       </div></div>`)
   ].join('');
   box.innerHTML = cards || '<div class="registry-empty"><div>No communication or indicator devices installed.</div></div>';
@@ -4128,7 +4172,7 @@ function renderRegistryInventory() {
             <div class="hw-desc">Used by: ${escapeHtmlText(registryReferenceSummary(direction, c.id))}</div>
           </div>
           <div class="registry-card-actions">
-            <span class="registry-status registry-status-${status.kind}">${status.kind === 'ok' ? 'OK' : '!' } ${escapeHtmlText(status.text)}</span>
+            <span class="registry-status registry-status-${status.kind}">${escapeHtmlText(status.text)}</span>
             <button type="button" onclick="toggleRegistryEdit('${direction}',${i})">${open ? 'Done' : 'Edit'}</button>
             ${direction === 'output' ? `<button type="button" onclick="duplicateRegistryChannel(${i})">Duplicate</button>` : ''}
             <button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button>
@@ -4141,8 +4185,7 @@ function renderRegistryInventory() {
           <div class="hw-field"><span class="hw-label">Semantic role</span><select onchange="updateRegistryChannel('${direction}',${i},'role',this.value)">${registryRoleOptions(direction, c.role)}</select></div>
           <div class="hw-field"><span class="hw-label">Electrical driver</span><select onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver)}</select></div>
           <div class="hw-field"><span class="hw-label">GPIO pin</span><input type="number" min="-1" max="48" step="1" value="${Number.isFinite(Number(c.pin))?Number(c.pin):-1}" oninput="updateRegistryChannel('${direction}',${i},'pin',Math.trunc(+this.value))"></div>
-          <div class="hw-field"><span class="hw-label">Minimum mapped value</span><input type="number" step="0.001" value="${Number(c.min ?? 0)}" oninput="updateRegistryChannel('${direction}',${i},'min',+this.value)"></div>
-          <div class="hw-field"><span class="hw-label">Maximum mapped value</span><input type="number" step="0.001" value="${Number(c.max ?? 1)}" oninput="updateRegistryChannel('${direction}',${i},'max',+this.value)"></div>
+          ${registryRangeEditor(direction, c, i)}
           ${direction==='output' ? `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'safe_demand',(+this.value)/100)"></div>
           <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'fault_demand',(+this.value)/100)"></div>` : ''}
         </div>
@@ -4159,6 +4202,12 @@ function updateRegistryChannel(direction, index, key, value) {
   if (key === 'pin') value = Number.isFinite(value) ? value : -1;
   if (key === 'driver') {
     if ((direction === 'input' && (value < 0 || value > 3)) || (direction === 'output' && (value < 4 || value > 6))) return;
+    const range = registryDefaultRange(direction, value);
+    c.min = range.min;
+    c.max = range.max;
+    c[key] = value;
+    dirty(); updateSaveButton(); renderRegistryInventory();
+    return;
   }
   if (key === 'role') {
     const allowed = (direction === 'input' ? REGISTRY_INPUT_ROLES : REGISTRY_OUTPUT_ROLES).some(([r]) => r === value);
@@ -4271,22 +4320,24 @@ function selectRegistryAddPreset(index) {
   const presets = _registryAddDirection === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
   const preset = presets[index];
   if (!preset) return;
-  _registryAddPreset = preset;
-  _registryAddAutoId = true;
+  const r = registryRoot();
+  const rows = r[_registryAddDirection + 's'];
+  const max = _registryAddDirection === 'input' ? 6 : 6;
+  if (rows.length >= max) return registryAddError(`Registry capacity is full (${rows.length}/${max}). Remove an unused ${_registryAddDirection} first.`);
   const n = registryRoleNumber(_registryAddDirection, preset.role);
   const name = _registryAddDirection === 'output' && preset.role !== 'generic' ? `${preset.name} ${n}` : preset.name;
   const range = registryDefaultRange(_registryAddDirection, preset.driver);
-  document.getElementById('registry-add-name').value = name.slice(0, 15);
-  document.getElementById('registry-add-id').value = registryUniqueId(preset.role === 'generic' ? registrySlug(name) : preset.id);
-  document.getElementById('registry-add-driver').innerHTML = registryDriverOptions(_registryAddDirection, preset.driver);
-  document.getElementById('registry-add-driver').value = String(preset.driver);
-  document.getElementById('registry-add-pin').value = '';
-  document.getElementById('registry-add-min').value = range.min;
-  document.getElementById('registry-add-max').value = range.max;
-  document.querySelectorAll('.registry-add-output-only').forEach(el => el.style.display = _registryAddDirection === 'output' ? '' : 'none');
-  document.getElementById('registry-add-editor').style.display = '';
-  document.getElementById('registry-add-error').style.display = 'none';
-  document.getElementById('registry-add-id').oninput = () => { _registryAddAutoId = false; };
+  const id = registryUniqueId(preset.role === 'generic' ? registrySlug(name) : preset.id);
+  if (!id) return registryAddError('Could not allocate a unique stable ID.');
+  const safe = _registryAddDirection === 'output' ? 0 : undefined;
+  const fault = _registryAddDirection === 'output' ? 0 : undefined;
+  const channel = {id, name:name.slice(0, 15), role:preset.role, driver:preset.driver, pin:-1, min:range.min, max:range.max};
+  if (_registryAddDirection === 'output') { channel.safe_demand = safe; channel.fault_demand = fault; }
+  rows.push(channel);
+  closeRegistryAddDialog();
+  _registryEditOpen.add(registryEditKey(_registryAddDirection, rows.length - 1));
+  renderRegistryInventory();
+  dirty(); updateSaveButton(); applyActuatorVisibility();
 }
 function updateRegistryAddIdSuggestion() {
   if (!_registryAddPreset || !_registryAddAutoId) return;
