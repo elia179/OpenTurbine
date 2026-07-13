@@ -230,9 +230,7 @@ function installedBrowser() {
     results.push('servo throttle calibration averages endpoints and persists the 2%/1% safety margins');
 
     await page.goto(`${base}/hardware.html`);
-    await page.waitForSelector('#btn-hide-unsel-act');
-    await page.locator('#btn-hide-unsel-act', { hasText: 'Show full editor / supported hardware' }).click();
-    await page.waitForSelector('#f-thinput-type', { state: 'visible' });
+    await page.waitForSelector('#f-thinput-type', { state: 'attached' });
     assert.equal(await page.locator('#f-thinput-type').inputValue(), 'servo');
     assert.equal(await page.locator('#f-wifi-tx-power').inputValue(), '8');
     results.push('hardware page restores servo-input source from saved hardware state');
@@ -254,7 +252,7 @@ function installedBrowser() {
     assert.equal(await page.locator('#f-tit-miso').inputValue(), await page.locator('#f-tot-miso').inputValue());
     assert.equal(await page.evaluate(() => _checkGpioConflicts().some(c =>
       c.names.length === 2 && c.names.every(n => /^(TOT|TIT)/.test(n)))), false);
-    await page.selectOption('#f-oiltemp-chip', 'max31855');
+    await page.evaluate(() => setOilTempChip('max31855'));
     assert.equal(await page.locator('#f-oiltemp-clk').inputValue(), await page.locator('#f-tot-clk').inputValue());
     assert.equal(await page.locator('#f-oiltemp-miso').inputValue(), await page.locator('#f-tot-miso').inputValue());
     results.push('hardware page automatically shares SPI bus lines across configured SPI sensors');

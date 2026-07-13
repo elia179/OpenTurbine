@@ -78,8 +78,6 @@
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
     <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
     <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
-    <button type="button" id="btn-hide-unsel-act" title="Toggle between the installed inventory view and the full supported-hardware catalogue" onclick="toggleHideUnselectedActuators()"
-            style="margin-left:auto;font-size:.7rem;font-weight:400;text-transform:none;letter-spacing:0;padding:.25rem .65rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Show full editor / supported hardware</button>
   </div>
   <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
@@ -3551,21 +3549,18 @@ function setStatusLedColor(key, value) {
 // Collapses fitted-hardware cards to enabled items. View-only; persisted per
 // browser. Profile/settings cards without an enable checkbox remain visible.
 var _hideUnselActive = true;
-try {
-  const savedHardwareView = localStorage.getItem('ot_hide_unsel_act');
-  _hideUnselActive = savedHardwareView === null ? true : savedHardwareView === '1';
-} catch (e) {}
+try { localStorage.setItem('ot_hide_unsel_act', '1'); } catch (e) {}
 
 function toggleHideUnselectedActuators() {
-  _hideUnselActive = !_hideUnselActive;
-  try { localStorage.setItem('ot_hide_unsel_act', _hideUnselActive ? '1' : '0'); } catch (e) {}
+  _hideUnselActive = true;
+  try { localStorage.setItem('ot_hide_unsel_act', '1'); } catch (e) {}
   applyActuatorVisibility();
 }
 function showFullHardwareEditor(target) {
-  _hideUnselActive = false;
-  try { localStorage.setItem('ot_hide_unsel_act', '0'); } catch (e) {}
+  _hideUnselActive = true;
+  try { localStorage.setItem('ot_hide_unsel_act', '1'); } catch (e) {}
   applyActuatorVisibility();
-  const anchors = {switches: 'legacy-switches-section', controllers: 'legacy-controllers-section', safety: 'legacy-safety-section'};
+  const anchors = {switches: 'hardware-inputs-panel', controllers: 'hardware-controllers-panel', safety: 'hardware-safety-panel'};
   document.getElementById(anchors[target] || 'hardware-inputs-panel')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
@@ -3603,8 +3598,6 @@ function applyActuatorVisibility() {
     const anyVisible = sectionCards.some(card => getComputedStyle(card).display !== 'none');
     section.classList.toggle('hw-hide-unselected', _hideUnselActive && !anyVisible);
   });
-  var b = document.getElementById('btn-hide-unsel-act');
-  if (b) b.textContent = _hideUnselActive ? 'Show full editor / supported hardware' : 'Show installed summary';
 }
 
 function registryRoot() {
@@ -3899,7 +3892,6 @@ function renderBuiltinInputSummary() {
       <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
       <div class="registry-card-actions">
         <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
-        <button type="button" onclick="showFullHardwareEditor('${row.target}')">Edit</button>
       </div>
     </div>
   </div>`).join('');
@@ -3946,7 +3938,7 @@ function renderBuiltinInputSummary() {
       <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
       <div class="registry-card-actions">
         <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
-        <button type="button" onclick="${row.target ? `showFullHardwareEditor('${row.target}')` : `toggleWorkflowEditor('${row.key}')`}">${_workflowEditOpen.has(row.key) ? 'Done' : 'Edit'}</button>
+        ${row.target ? '' : `<button type="button" onclick="toggleWorkflowEditor('${row.key}')">${_workflowEditOpen.has(row.key) ? 'Done' : 'Edit'}</button>`}
       </div>
     </div>
     ${_workflowEditOpen.has(row.key) && !row.target ? digitalSwitchEditor(row) : ''}
@@ -4036,6 +4028,65 @@ function renderSafetySummary() {
     ? enabledRows.map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
     : '<div class="registry-empty"><div>No safety interlocks enabled.</div><button type="button" onclick="toggleWorkflowEditor(\'safety\')">Edit safety</button></div>')
     + (_workflowEditOpen.has('safety') ? safetyInlineEditor() : '');
+}
+function renderCommsIndicatorSummary() {
+  const box = document.getElementById('hardware-comms-summary');
+  if (!box || !cfg) return;
+  const editing = _workflowEditOpen.has('comms');
+  const cluster = cfg.cluster_serial || {};
+  const mav = cfg.mavlink || {};
+  const led = cfg.actuators?.status_led || {};
+  const buz = cfg.buzzer || {};
+  const statusClass = status => (status === 'Ready' || status === 'Disabled') ? 'registry-status-ok' : 'registry-status-error';
+  const card = (title, detail, status, installed, editor) => {
+    if (!installed && !editing) return '';
+    return `<div class="hw-item-card ${editing ? 'registry-card-open' : ''}">
+      <div class="registry-card-summary">
+        <div><strong>${escapeHtmlText(title)}</strong><div class="hw-desc">${escapeHtmlText(detail)}</div></div>
+        <span class="registry-status ${statusClass(status)}">${escapeHtmlText(status)}</span>
+      </div>
+      ${editing ? editor : ''}
+    </div>`;
+  };
+  const clusterStatus = cluster.enabled ? ((cluster.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing') : 'Disabled';
+  const mavStatus = mav.enabled ? ((mav.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing') : 'Disabled';
+  const ledInstalled = led.enabled !== false && (led.pin ?? -1) >= 0;
+  const ledStatus = ledInstalled ? 'Ready' : 'Disabled';
+  const buzStatus = buz.enabled ? ((buz.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing') : 'Disabled';
+  const cards = [
+    card('OT Cluster serial',
+      cluster.enabled ? `TX GPIO ${cluster.tx_pin ?? 'not set'}${(cluster.rx_pin ?? -1) >= 0 ? ` / RX GPIO ${cluster.rx_pin}` : ' / TX only'} / ${cluster.baud || 115200} baud` : 'External cluster telemetry link',
+      clusterStatus,
+      !!cluster.enabled,
+      `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">Cluster serial</span><label class="hw-toggle"><input type="checkbox" ${cluster.enabled?'checked':''} onchange="setNested('cluster_serial','enabled',this.checked)"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">Cluster TX GPIO</span><select onchange="setNested('cluster_serial','tx_pin',+this.value)">${buildPinOptions(cluster.tx_pin, 'out')}</select></div>
+      </div></div>`),
+    card('MAVLink telemetry',
+      mav.enabled ? `TX GPIO ${mav.tx_pin ?? 'not set'} / ${mav.baud || 57600} baud / ${mav.interval_ms || 200} ms` : 'MAVLink telemetry output',
+      mavStatus,
+      !!mav.enabled,
+      `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">MAVLink</span><label class="hw-toggle"><input type="checkbox" ${mav.enabled?'checked':''} onchange="setNested('mavlink','enabled',this.checked)"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">MAVLink TX GPIO</span><select onchange="setNested('mavlink','tx_pin',+this.value)">${buildPinOptions(mav.tx_pin, 'out')}</select></div>
+      </div></div>`),
+    card('Status LED',
+      ledInstalled ? `${Number(led.type || 0) === 1 ? 'NeoPixel RGB' : 'GPIO LED'} / GPIO ${led.pin}` : 'Local status indicator LED',
+      ledStatus,
+      ledInstalled,
+      `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">Status LED GPIO</span><select onchange="setAct('status_led','pin',+this.value)">${buildPinOptions(led.pin, 'status-led')}</select></div>
+      </div></div>`),
+    card('Buzzer',
+      buz.enabled ? `GPIO ${buz.pin ?? 'not set'}` : 'Local audible indicator',
+      buzStatus,
+      !!buz.enabled,
+      `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">Buzzer</span><label class="hw-toggle"><input type="checkbox" ${buz.enabled?'checked':''} onchange="setBuzzerEnabled(this.checked)"><span></span> Enable</label></div>
+        <div class="hw-field"><span class="hw-label">Buzzer GPIO</span><select onchange="setNested('buzzer','pin',+this.value);refreshAllPins()">${buildPinOptions(buz.pin, 'out')}</select></div>
+      </div></div>`)
+  ].join('');
+  box.innerHTML = cards || '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="toggleWorkflowEditor(\'comms\')">Add / edit device</button></div>';
 }
 function renderHardwareWorkflowSummaries() {
   renderBuiltinInputSummary();

@@ -911,10 +911,13 @@ textarea.field-changed {
 main.hw-installed-view #hardware-requirements-panel {
   display: none !important;
 }
+#btn-hide-unsel-act {
+  display: none !important;
+}
 main.hw-installed-view .registry-bindings-panel {
   display: none !important;
 }
-main.hw-installed-view .hw-section:not(#hardware-profile-section):not(#hardware-inputs-panel):not(#hardware-outputs-panel):not(#hardware-comms-panel):not(#hardware-controllers-panel):not(#hardware-safety-panel):not(#hardware-requirements-panel):not(#hardware-features-section) {
+main .hw-section:not(#hardware-profile-section):not(#hardware-inputs-panel):not(#hardware-outputs-panel):not(#hardware-comms-panel):not(#hardware-controllers-panel):not(#hardware-safety-panel):not(#hardware-requirements-panel):not(#hardware-features-section) {
   display: none !important;
 }
 main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-outputs-panel):not(#hardware-requirements-panel):not(#hardware-comms-panel):not(#hardware-controllers-panel):not(#hardware-safety-panel):not(#hardware-profile-section):not(#hardware-features-section) .hw-item-card {

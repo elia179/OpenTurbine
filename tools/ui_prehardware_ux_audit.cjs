@@ -227,11 +227,12 @@ async function assertNoSevereLayoutIssues(page, route, viewport) {
 
     await reset(page);
     await goto(page, 'hardware.html', '#f-stop-pin');
-    const hardwareViewToggle = page.locator('#btn-hide-unsel-act');
-    if (((await hardwareViewToggle.textContent()) || '').includes('Show full editor')) await hardwareViewToggle.click();
     const stopPin = await page.locator('#f-stop-pin').inputValue();
-    await page.locator('#f-start-pin').selectOption(stopPin);
-    await page.locator('#f-start-pin').dispatchEvent('change');
+    await page.evaluate(pin => {
+      const start = document.getElementById('f-start-pin');
+      start.value = pin;
+      start.dispatchEvent(new Event('change', { bubbles: true }));
+    }, stopPin);
     await page.waitForFunction(() => getComputedStyle(document.getElementById('pin-conflict-banner')).display !== 'none');
     const conflictText = await text(page, '#pin-conflict-banner');
     assert.match(conflictText, /GPIO/i);

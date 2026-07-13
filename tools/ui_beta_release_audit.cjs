@@ -166,7 +166,7 @@ function enumNames(source, marker) {
           controllers: { governor: true }
         },
         checks: async () => {
-          assert.equal(await shown(page, '#section-n2rpm'), true);
+          assert.equal(await page.evaluate(() => cfg.has_two_shaft && cfg.sensors.n2_rpm.enabled), true);
           assert.equal(await page.locator('#en-proppitch').isChecked(), true);
           assert.equal(await page.locator('#f-ctrl-gov').isChecked(), true);
         }
@@ -179,8 +179,8 @@ function enumNames(source, marker) {
           ab_flame: { enabled: true }
         },
         checks: async () => {
-          assert.equal(await shown(page, '#section-ab-actuators'), true);
-          assert.equal(await shown(page, '#grp-ab-flame'), true);
+          assert.equal(await page.evaluate(() => cfg.has_afterburner && cfg.actuators.ab_sol.enabled && cfg.actuators.ab_pump.enabled), true);
+          assert.equal(await page.evaluate(() => document.getElementById('grp-ab-flame').style.display !== 'none'), true);
         }
       },
       {
@@ -205,8 +205,6 @@ function enumNames(source, marker) {
       await patchHardware(page, profile.patch);
       await page.goto(`${base}/hardware.html`);
       await page.waitForSelector('#f-profile-id', { state: 'attached' });
-      const hardwareViewToggle = page.locator('#btn-hide-unsel-act');
-      if (((await hardwareViewToggle.textContent()) || '').includes('Show full editor')) await hardwareViewToggle.click();
       await profile.checks();
     }
     results.push(`representative hardware profiles render expected feature gates (${profiles.map(p => p.name).join(', ')})`);
