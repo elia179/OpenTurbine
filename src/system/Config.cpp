@@ -71,16 +71,10 @@ int8_t ruleTargetHandle(const char* id) {
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;
-        if (!ChannelRegistry::isCoreManagedOutput(out))
+        if (!ChannelRegistry::isCoreManagedOutput(out) &&
+            !HardwareConfig::channelRegistry.boundToCoreOutput(out))
             return (int8_t)(ChannelRegistry::OUTPUT_ACTUATOR_BASE + i);
-        const auto* c = &out;
-        if (!strcmp(c->role, "fuel")) return RulesEngine::THROTTLE;
-        if (!strcmp(c->role, "starter")) return RulesEngine::STARTER;
-        if (!strcmp(c->role, "oil_pump")) return RulesEngine::OIL_PUMP;
-        if (!strcmp(c->role, "cooling_fan")) return RulesEngine::COOL_FAN;
-        if (!strcmp(c->role, "valve")) return RulesEngine::BLEED_VALVE;
-        if (!strcmp(c->role, "scavenge_pump")) return RulesEngine::OIL_SCAVENGE;
-        if (!strcmp(c->role, "fuel_shutoff")) return RulesEngine::FUEL_SOL;
+        return -1;
     }
     return -1;
 }
@@ -434,10 +428,12 @@ bool ruleSensorAvailable(uint8_t s) {
 bool ruleActuatorAvailable(uint8_t a) {
     if (ChannelRegistry::isOutputActuator(a)) {
         uint8_t idx = ChannelRegistry::outputIndexFromActuator(a);
-        return idx < HardwareConfig::channelRegistry.outputCount &&
-               HardwareConfig::channelRegistry.outputs[idx].installed &&
-               HardwareConfig::channelRegistry.outputs[idx].pin >= 0 &&
-               !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]);
+        if (idx >= HardwareConfig::channelRegistry.outputCount) return false;
+        const auto& out = HardwareConfig::channelRegistry.outputs[idx];
+        return out.installed &&
+               out.pin >= 0 &&
+               !ChannelRegistry::isCoreManagedOutput(out) &&
+               !HardwareConfig::channelRegistry.boundToCoreOutput(out);
     }
     switch (a) {
         case 0:  return HardwareConfig::hasCoolFan;

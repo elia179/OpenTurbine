@@ -134,14 +134,17 @@ function extraCooldownAvailable() {
 }
 
 const TEST_OUTPUT_KEYS={START_TEST:'start_test_pct',GLOW_TEST:'glow_test_pct',FUEL_PUMP2_TEST:'fuel_pump2_test_pct',AB_PUMP_TEST:'ab_pump_test_pct',PROP_PITCH_TEST:'prop_pitch_test_pct'};
-const CORE_REGISTRY_OUTPUT_ROLES=new Set(['fuel','starter','oil_pump','cooling_fan','scavenge_pump','valve','fuel_shutoff']);
 const CORE_REGISTRY_OUTPUT_IDS=new Set(['main_fuel_output','main_fuel','main_starter','starter_main','oil_pump_main','cooling_fan_main','oil_scavenge_main','bleed_valve_main','main_fuel_shutoff']);
+const CORE_REGISTRY_BINDING_KEYS=new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
 function syncRegistryOutputTools(){
   for(let i=TOOLS.length-1;i>=0;i--) if(TOOLS[i].registryOutput) TOOLS.splice(i,1);
   const outs=hwCfg?.channel_registry?.outputs||[];
+  const coreBound=new Set((hwCfg?.channel_registry?.bindings||[])
+    .filter(b=>CORE_REGISTRY_BINDING_KEYS.has(String(b?.key||'')))
+    .map(b=>String(b?.channel||'')));
   outs.forEach((c,i)=>{
     if(!c||c.pin==null||Number(c.pin)<0) return;
-    if(CORE_REGISTRY_OUTPUT_ROLES.has(String(c.role||''))||CORE_REGISTRY_OUTPUT_IDS.has(String(c.id||''))) return;
+    if(CORE_REGISTRY_OUTPUT_IDS.has(String(c.id||''))||coreBound.has(String(c.id||''))) return;
     const relay=Number(c.driver)===4;
     TOOLS.push({
       id:'REGISTRY_OUTPUT_TEST_'+i,

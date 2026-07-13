@@ -180,10 +180,12 @@ private:
     static bool _actuatorUsable(uint8_t act) {
         if (ChannelRegistry::isOutputActuator(act)) {
             uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
-            return idx < HardwareConfig::channelRegistry.outputCount &&
-                   HardwareConfig::channelRegistry.outputs[idx].installed &&
-                   HardwareConfig::channelRegistry.outputs[idx].pin >= 0 &&
-                   !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]);
+            if (idx >= HardwareConfig::channelRegistry.outputCount) return false;
+            const auto& out = HardwareConfig::channelRegistry.outputs[idx];
+            return out.installed &&
+                   out.pin >= 0 &&
+                   !ChannelRegistry::isCoreManagedOutput(out) &&
+                   !HardwareConfig::channelRegistry.boundToCoreOutput(out);
         }
         switch (act) {
             case COOL_FAN:         return HardwareConfig::hasCoolFan;

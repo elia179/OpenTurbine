@@ -2464,7 +2464,8 @@ static void handleCommand(const OTPacket& pkt) {
             if (standbyLike && !anyToolTimerActive()) {
                 uint8_t idx = (uint8_t)constrain(pkt.iParam, 0, (int)ChannelRegistry::MAX_OUTPUT_CHANNELS - 1);
                 if (idx < HardwareConfig::channelRegistry.outputCount &&
-                    !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx])) {
+                    !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]) &&
+                    !HardwareConfig::channelRegistry.boundToCoreOutput(HardwareConfig::channelRegistry.outputs[idx])) {
                     ed.registryOutputDemand[idx] = constrain(pkt.fParam, 0.0f, 1.0f);
                     _registryOutputTestIndex = idx;
                     _registryOutputTestUntilMs = millis() + 3000UL;

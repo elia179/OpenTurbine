@@ -230,7 +230,9 @@ static const char* _missingHardwareForCommand(const OTPacket& pkt) {
             if (pkt.iParam < 0 || pkt.iParam >= HardwareConfig::channelRegistry.outputCount)
                 return "Registry output is not configured";
             const auto& c = HardwareConfig::channelRegistry.outputs[pkt.iParam];
-            if (!c.installed || c.pin < 0 || ChannelRegistry::isCoreManagedOutput(c))
+            if (!c.installed || c.pin < 0 ||
+                ChannelRegistry::isCoreManagedOutput(c) ||
+                HardwareConfig::channelRegistry.boundToCoreOutput(c))
                 return "Registry output is not testable";
             return nullptr;
         }

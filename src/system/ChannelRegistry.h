@@ -51,14 +51,14 @@ public:
                       !strcmp(id, "oil_pressure_main") ||
                       !strcmp(id, "operator_throttle"));
     }
+    static bool isCoreOutputBindingKey(const char* key) {
+        return key && (!strcmp(key, "main_fuel_output") ||
+                       !strcmp(key, "main_fuel_shutoff") ||
+                       !strcmp(key, "main_starter"));
+    }
     static bool isCoreManagedOutputRole(const char* role) {
-        return role && (!strcmp(role, "fuel") ||
-                        !strcmp(role, "starter") ||
-                        !strcmp(role, "oil_pump") ||
-                        !strcmp(role, "cooling_fan") ||
-                        !strcmp(role, "scavenge_pump") ||
-                        !strcmp(role, "valve") ||
-                        !strcmp(role, "fuel_shutoff"));
+        (void)role;
+        return false;
     }
     enum Direction : uint8_t { Input, Output };
     static bool roleValid(Direction d, const char* role) {
@@ -103,7 +103,7 @@ public:
         float safeDemand = 0.0f, faultDemand = 0.0f;
     };
     static bool isCoreManagedOutput(const Channel& c) {
-        return isCoreManagedOutputId(c.id) || isCoreManagedOutputRole(c.role);
+        return isCoreManagedOutputId(c.id);
     }
     struct Binding { char key[20] = {}; char channelId[20] = {}; };
 
@@ -151,6 +151,12 @@ public:
         clear(); if (!read(root["inputs"], Input) || !read(root["outputs"], Output)) return false;
         for (JsonObjectConst b : root["bindings"].as<JsonArrayConst>()) { if (bindingCount >= MAX_BINDINGS) return false; Binding& x=bindings[bindingCount++]; strlcpy(x.key,b["key"]|"",sizeof(x.key)); strlcpy(x.channelId,b["channel"]|"",sizeof(x.channelId)); }
         return validate();
+    }
+    bool boundToCoreOutput(const Channel& c) const {
+        for (uint8_t i = 0; i < bindingCount; i++)
+            if (isCoreOutputBindingKey(bindings[i].key) &&
+                strcmp(bindings[i].channelId, c.id) == 0) return true;
+        return false;
     }
     static bool validId(const char* id) { if (!id || !id[0] || strlen(id) >= 20) return false; for (;*id;++id) if (!(isalnum(*id)||*id=='_'||*id=='-')) return false; return true; }
 private:

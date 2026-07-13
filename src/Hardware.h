@@ -449,7 +449,9 @@ namespace Hardware {
     }
 
     inline bool registryOutputManaged(const ChannelRegistry::Channel& c) {
-        return c.installed && c.pin >= 0 && !ChannelRegistry::isCoreManagedOutput(c);
+        return c.installed && c.pin >= 0 &&
+               !ChannelRegistry::isCoreManagedOutput(c) &&
+               !HardwareConfig::channelRegistry.boundToCoreOutput(c);
     }
 
     inline void writeRegistryOutput(const ChannelRegistry::Channel& c, float demand) {

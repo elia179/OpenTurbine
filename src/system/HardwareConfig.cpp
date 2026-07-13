@@ -539,7 +539,9 @@ int customActuatorId(const char* key) {
     if (!key) return -1;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
-        if (strcmp(key, out.id) == 0 && !ChannelRegistry::isCoreManagedOutput(out))
+        if (strcmp(key, out.id) == 0 &&
+            !ChannelRegistry::isCoreManagedOutput(out) &&
+            !HardwareConfig::channelRegistry.boundToCoreOutput(out))
             return ChannelRegistry::OUTPUT_ACTUATOR_BASE + i;
     }
     if (strcmp(key, "cool_fan") == 0) return 0;
@@ -690,16 +692,10 @@ int8_t sequenceTargetHandle(const char* id) {
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;
-        if (!ChannelRegistry::isCoreManagedOutput(out))
+        if (!ChannelRegistry::isCoreManagedOutput(out) &&
+            !HardwareConfig::channelRegistry.boundToCoreOutput(out))
             return (int8_t)(ChannelRegistry::OUTPUT_ACTUATOR_BASE + i);
-        const auto* c = &out;
-        if (strcmp(c->role, "fuel") == 0) return 4;
-        if (strcmp(c->role, "starter") == 0) return 5;
-        if (strcmp(c->role, "oil_pump") == 0) return 7;
-        if (strcmp(c->role, "cooling_fan") == 0) return 0;
-        if (strcmp(c->role, "valve") == 0) return 1;
-        if (strcmp(c->role, "scavenge_pump") == 0) return 3;
-        if (strcmp(c->role, "fuel_shutoff") == 0) return 8;
+        return -1;
     }
     return -1;
 }
@@ -919,10 +915,12 @@ void readCustomBlocks(const JsonDocument& doc) {
 bool seqActionActuatorAvailable(uint8_t act) {
     if (ChannelRegistry::isOutputActuator(act)) {
         uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
-        return idx < HardwareConfig::channelRegistry.outputCount &&
-               HardwareConfig::channelRegistry.outputs[idx].installed &&
-               HardwareConfig::channelRegistry.outputs[idx].pin >= 0 &&
-               !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]);
+        if (idx >= HardwareConfig::channelRegistry.outputCount) return false;
+        const auto& out = HardwareConfig::channelRegistry.outputs[idx];
+        return out.installed &&
+               out.pin >= 0 &&
+               !ChannelRegistry::isCoreManagedOutput(out) &&
+               !HardwareConfig::channelRegistry.boundToCoreOutput(out);
     }
     switch (act) {
         case 0:  return HardwareConfig::hasCoolFan;
@@ -3277,18 +3275,18 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         applyAnalog(byIdOrRole(ChannelRegistry::Input, "oil_pressure_main", "pressure"), hasOilPress, oilPressPin);
         applyInput(bound("operator_throttle", ChannelRegistry::Input), hasThrottleInput, throttleInputPin, throttleInputRcPwm);
         const auto* mainFuel = bound("main_fuel_output", ChannelRegistry::Output);
-        if (!mainFuel) mainFuel = byIdOrRole(ChannelRegistry::Output, "main_fuel", "fuel");
+        if (!mainFuel) mainFuel = byIdOrRole(ChannelRegistry::Output, "main_fuel", nullptr);
         applyOutput(mainFuel, hasThrottle, throttlePin, throttleType);
         const auto* starter = bound("main_starter", ChannelRegistry::Output);
-        if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter_main", "starter");
+        if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter_main", nullptr);
         applyOutput(starter, hasStarter, starterPin, starterType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump_main", "oil_pump"),
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump_main", nullptr),
                     hasOilPump, oilPumpPin, oilPumpType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "cooling_fan_main", "cooling_fan"),
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "cooling_fan_main", nullptr),
                     hasCoolFan, coolFanPin, coolFanType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_scavenge_main", "scavenge_pump"),
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_scavenge_main", nullptr),
                     hasOilScavengePump, oilScavPumpPin, oilScavPumpType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve_main", "valve"),
+        applyOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve_main", nullptr),
                     hasBleedValve, bleedValvePin, bleedValveType);
         if (const auto* c = bound("main_fuel_shutoff", ChannelRegistry::Output)) {
             if (c->pin >= 0) { hasFuelSol = true; fuelSolPin = c->pin; }
