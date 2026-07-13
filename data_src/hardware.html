@@ -37,23 +37,7 @@
     </div>
     <input id="registry-add-search" type="search" placeholder="Search sensors, actuators, switches, generic IO..." oninput="renderRegistryAddCatalog()" style="width:100%;margin:.8rem 0">
     <div id="registry-add-catalog" class="registry-add-catalog"></div>
-    <div id="registry-add-editor" class="registry-add-editor" style="display:none">
-      <div class="hw-grid">
-        <div class="hw-field"><span class="hw-label">Display name</span><input id="registry-add-name" type="text" maxlength="15" oninput="updateRegistryAddIdSuggestion()"></div>
-        <div class="hw-field"><span class="hw-label">Stable ID</span><input id="registry-add-id" type="text" maxlength="19"></div>
-        <div class="hw-field"><span class="hw-label">Electrical driver</span><select id="registry-add-driver"></select></div>
-        <div class="hw-field"><span class="hw-label">GPIO pin</span><input id="registry-add-pin" type="number" min="-1" max="48" step="1"></div>
-        <div class="hw-field"><span class="hw-label">Minimum mapped value</span><input id="registry-add-min" type="number" step="0.001"></div>
-        <div class="hw-field"><span class="hw-label">Maximum mapped value</span><input id="registry-add-max" type="number" step="0.001"></div>
-        <div class="hw-field registry-add-output-only"><span class="hw-label">Boot safe demand (%)</span><input id="registry-add-safe" type="number" min="0" max="100" step="1" value="0"></div>
-        <div class="hw-field registry-add-output-only"><span class="hw-label">Fault demand (%)</span><input id="registry-add-fault" type="number" min="0" max="100" step="1" value="0"></div>
-      </div>
-      <div id="registry-add-error" class="hw-desc" style="color:var(--red);margin-top:.5rem;display:none"></div>
-      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
-        <button type="button" onclick="closeRegistryAddDialog()">Cancel</button>
-        <button type="button" class="primary" onclick="confirmRegistryAddChannel()">Add to inventory</button>
-      </div>
-    </div>
+    <div id="registry-add-error" class="hw-desc" style="color:var(--red);margin-top:.5rem;display:none"></div>
   </div>
 </div>
 
@@ -170,23 +154,6 @@
     <div class="hw-desc" style="margin-bottom:.6rem">Safety interlocks available from installed hardware.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('safety')">Edit safety</button></div>
     <div id="hardware-safety-summary"></div>
-  </div>
-
-  <div class="hw-section" id="hardware-features-section">
-    <div class="hw-title">System Features</div>
-    <!-- Engine type quick-setup presets -->
-    <div style="margin-bottom:.75rem;padding:.6rem .75rem;background:var(--bg);border:1px solid var(--border);border-radius:6px">
-      <div style="font-size:.64rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.45rem;font-weight:600">Engine Type Preset</div>
-      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.4rem">
-        <button onclick="applyEnginePreset('turbojet')"     style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Turbojet</button>
-        <button onclick="applyEnginePreset('turbojet_ab')"  style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Turbojet + Afterburner</button>
-        <button onclick="applyEnginePreset('twin_shaft')"   style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Twin-shaft Turbojet</button>
-        <button onclick="applyEnginePreset('free_turbine')" style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Free Turbine</button>
-        <button onclick="applyEnginePreset('turboprop')"    style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-family:inherit">Turboprop</button>
-        <button onclick="applyEnginePreset('show_all')"     style="font-size:.76rem;padding:.3rem .75rem;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Something else (show all)</button>
-      </div>
-      <div id="eng-preset-desc" style="font-size:.67rem;color:var(--dim);line-height:1.4">Select your engine type to pre-configure sensors and actuators. All options can still be changed individually below.</div>
-    </div>
   </div>
 
   <!-- ── Switches ─────────────────────────────────────── -->
@@ -2126,18 +2093,6 @@
     <div id="di-channels-wrap"></div>
   </div>
 
-  <!-- ── Engine preset preview modal ─────────────────── -->
-  <div id="preset-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:center;justify-content:center">
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:1.25rem 1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.5)">
-      <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin-bottom:.75rem">Engine Preset Preview</div>
-      <div id="preset-modal-body" style="font-size:.82rem;line-height:1.6;color:var(--text-2);margin-bottom:1rem"></div>
-      <div style="display:flex;gap:.6rem;justify-content:flex-end">
-        <button onclick="closePresetModal()" style="font-size:.76rem;padding:.3rem .9rem">Cancel</button>
-        <button id="preset-modal-apply" onclick="applyPresetConfirmed()" class="primary" style="font-size:.76rem;padding:.3rem .9rem">Apply</button>
-      </div>
-    </div>
-  </div>
-
   <!-- ── Pin conflict banner ──────────────────────────── -->
   <div id="pin-conflict-banner" class="error-banner" style="display:none;margin-top:.75rem"></div>
 
@@ -3591,9 +3546,9 @@ function applyActuatorVisibility() {
   }
   main.querySelectorAll('.hw-section').forEach(function (section) {
     if (['hardware-inputs-panel','hardware-outputs-panel','hardware-requirements-panel','hardware-comms-panel',
-         'hardware-controllers-panel','hardware-safety-panel','hardware-profile-section','hardware-features-section'].includes(section.id)) return;
+         'hardware-controllers-panel','hardware-safety-panel','hardware-profile-section'].includes(section.id)) return;
     const title = (section.querySelector('.hw-title')?.textContent || '').trim();
-    if (title === 'System Profile' || title === 'System Features') return;
+    if (title === 'System Profile') return;
     const sectionCards = Array.from(section.querySelectorAll('.hw-item-card'));
     if (!sectionCards.length) return;
     const anyVisible = sectionCards.some(card => getComputedStyle(card).display !== 'none');
@@ -4426,19 +4381,13 @@ function removeRegistryBinding(index) {
   renderRegistryBindings(); dirty(); updateSaveButton();
 }
 let _registryAddDirection = 'input';
-let _registryAddPreset = null;
-let _registryAddAutoId = true;
 let _pendingRegistryRemove = null;
 function openRegistryAddDialog(direction) {
   _registryAddDirection = direction === 'output' ? 'output' : 'input';
-  _registryAddPreset = null;
-  _registryAddAutoId = true;
   const title = document.getElementById('registry-add-title');
   if (title) title.textContent = _registryAddDirection === 'input' ? 'Add input' : 'Add output';
   const search = document.getElementById('registry-add-search');
   if (search) search.value = '';
-  const editor = document.getElementById('registry-add-editor');
-  if (editor) editor.style.display = 'none';
   const err = document.getElementById('registry-add-error');
   if (err) err.style.display = 'none';
   document.getElementById('registry-add-modal').style.display = 'flex';
@@ -4507,42 +4456,11 @@ function selectRegistryAddPreset(index) {
   renderRegistryInventory();
   dirty(); updateSaveButton(); applyActuatorVisibility();
 }
-function updateRegistryAddIdSuggestion() {
-  if (!_registryAddPreset || !_registryAddAutoId) return;
-  const name = document.getElementById('registry-add-name')?.value || _registryAddPreset.name;
-  const base = _registryAddPreset.role === 'generic' ? registrySlug(name) : _registryAddPreset.id;
-  document.getElementById('registry-add-id').value = registryUniqueId(base);
-}
 function registryAddError(message) {
   const err = document.getElementById('registry-add-error');
   if (!err) return;
   err.textContent = message;
   err.style.display = '';
-}
-function confirmRegistryAddChannel() {
-  if (!_registryAddPreset) return registryAddError('Choose a hardware type first.');
-  const r = registryRoot();
-  const rows = r[_registryAddDirection + 's'];
-  const max = _registryAddDirection === 'input' ? 6 : 6;
-  if (rows.length >= max) return registryAddError(`Registry capacity is full (${rows.length}/${max}). Remove an unused ${_registryAddDirection} first.`);
-  const id = registrySlug(document.getElementById('registry-add-id').value);
-  const name = (document.getElementById('registry-add-name').value || _registryAddPreset.name).trim().slice(0, 15);
-  const pin = Math.trunc(Number(document.getElementById('registry-add-pin').value));
-  const driver = Number(document.getElementById('registry-add-driver').value);
-  const min = Number(document.getElementById('registry-add-min').value);
-  const maxValue = Number(document.getElementById('registry-add-max').value);
-  if (!/^[A-Za-z0-9_-]{1,19}$/.test(id)) return registryAddError('Stable ID must be 1-19 characters: letters, numbers, underscore or hyphen.');
-  if ([...r.inputs, ...r.outputs].some(c => c.id === id)) return registryAddError('Stable ID is already used.');
-  if (!Number.isInteger(pin) || pin < 0) return registryAddError('Set a valid GPIO pin.');
-  if ((_registryAddDirection === 'input' && (driver < 0 || driver > 3)) ||
-      (_registryAddDirection === 'output' && (driver < 4 || driver > 6))) return registryAddError('Driver is incompatible with this channel direction.');
-  if (!Number.isFinite(min) || !Number.isFinite(maxValue) || maxValue < min) return registryAddError('Mapped maximum must be greater than or equal to minimum.');
-  const safe = Math.max(0, Math.min(1, Number(document.getElementById('registry-add-safe').value || 0) / 100));
-  const fault = Math.max(0, Math.min(1, Number(document.getElementById('registry-add-fault').value || 0) / 100));
-  rows.push({id, name, role:_registryAddPreset.role, driver, pin, min, max:maxValue, safe_demand:safe, fault_demand:fault, invert:false});
-  closeRegistryAddDialog();
-  renderRegistryInventory();
-  dirty(); updateSaveButton(); applyActuatorVisibility();
 }
 function addRegistryChannel(direction) {
   openRegistryAddDialog(direction);
@@ -5283,120 +5201,6 @@ function updateAbFlameUI(checked) {
 }
 
 
-let _pendingPresetType = null;
-
-function _computePresetChanges(type) {
-  // Returns an array of {field, from, to} describing what would change.
-  // 'show_all' is a display-only action — no config changes to preview.
-  if (type === 'show_all') return null;  // null = special case
-  const changes = [];
-  function boolDesc(v) { return v ? 'enabled' : 'disabled'; }
-  function chkCfg(label, current, next) {
-    if (current !== next) changes.push({ field: label, from: boolDesc(current), to: boolDesc(next) });
-  }
-  const s  = cfg.sensors     || {};
-  const a  = cfg.actuators   || {};
-  const ct = cfg.controllers || {};
-  // Shared helper for all presets
-  function applyPreset(twoShaft, ab, n2, tit, torque, prop, governor) {
-    chkCfg('Two-shaft (N1+N2)',      cfg.has_two_shaft   || false, twoShaft);
-    chkCfg('Afterburner',            cfg.has_afterburner || false, ab);
-    chkCfg('N2 RPM sensor',          (s.n2_rpm    ||{}).enabled || false, n2);
-    chkCfg('TIT sensor',             (s.tit       ||{}).enabled || false, tit);
-    chkCfg('Torque sensor',          (s.torque    ||{}).enabled || false, torque);
-    chkCfg('Prop pitch actuator',    (a.prop_pitch||{}).enabled || false, prop);
-    chkCfg('Power turbine governor', ct.governor || false, governor);
-  }
-  //                          2shaft  AB     N2     TIT    torque prop   gov
-  if      (type === 'turbojet')     applyPreset(false, false, false, false, false, false, false);
-  else if (type === 'turbojet_ab')  applyPreset(false, true,  false, false, false, false, false);
-  else if (type === 'twin_shaft')   applyPreset(true,  false, true,  false, false, false, false);
-  else if (type === 'free_turbine') applyPreset(true,  false, true,  true,  false, false, true);
-  else if (type === 'turboprop')    applyPreset(true,  false, true,  true,  false, true,  true);
-  return changes;
-}
-
-function applyEnginePreset(type) {
-  // 'show_all' is immediate — just enable both feature flags and repopulate
-  if (type === 'show_all') {
-    cfg.has_two_shaft   = true;
-    cfg.has_afterburner = true;
-    dirty();
-    populate();
-    refreshAllPins();
-    const desc = document.getElementById('eng-preset-desc');
-    if (desc) desc.textContent = 'Showing all optional hardware sections. Enable or disable individual sensors and actuators below.';
-    return;
-  }
-  const changes = _computePresetChanges(type);
-  _pendingPresetType = type;
-  const presetNames = {
-    turbojet:    'Turbojet',
-    turbojet_ab: 'Turbojet + Afterburner',
-    twin_shaft:  'Twin-shaft Turbojet',
-    free_turbine:'Free Turbine',
-    turboprop:   'Turboprop',
-  };
-  const body = document.getElementById('preset-modal-body');
-  if (!changes || changes.length === 0) {
-    body.innerHTML = '<span style="color:var(--dim)">No changes — current config already matches this preset.</span>';
-  } else {
-    body.innerHTML = '<div style="margin-bottom:.5rem;color:var(--dim);font-size:.73rem">Fields that will change:</div>'
-      + '<table style="width:100%;border-collapse:collapse;font-size:.8rem">'
-      + changes.map(c =>
-          `<tr><td style="padding:.2rem .5rem .2rem 0;color:var(--text)">${escapeHtmlText(c.field)}</td>`
-          + `<td style="padding:.2rem .3rem;color:var(--red);text-decoration:line-through;white-space:nowrap">${escapeHtmlText(c.from)}</td>`
-          + `<td style="padding:.2rem 0 .2rem .3rem;color:var(--green);white-space:nowrap">→ ${escapeHtmlText(c.to)}</td></tr>`
-        ).join('')
-      + '</table>';
-  }
-  const overlay = document.getElementById('preset-modal-overlay');
-  overlay.style.display = 'flex';
-}
-
-function closePresetModal() {
-  document.getElementById('preset-modal-overlay').style.display = 'none';
-  _pendingPresetType = null;
-}
-
-function applyPresetConfirmed() {
-  const type = _pendingPresetType;
-  closePresetModal();
-  if (!type) return;
-  if (!cfg.sensors)     cfg.sensors     = {};
-  if (!cfg.actuators)   cfg.actuators   = {};
-  if (!cfg.controllers) cfg.controllers = {};
-  function ensS(k, en) { if (!cfg.sensors[k])  cfg.sensors[k]  = {}; cfg.sensors[k].enabled  = en; }
-  function ensA(k, en) { if (!cfg.actuators[k]) cfg.actuators[k] = {}; cfg.actuators[k].enabled = en; }
-  const desc = document.getElementById('eng-preset-desc');
-  //                                        2shaft  AB      N2      TIT     torque  prop    gov
-  const PRESETS = {
-    turbojet:    [false,  false,  false,  false,  false,  false,  false,
-      'Turbojet — single shaft, no afterburner or power turbine output.'],
-    turbojet_ab: [false,  true,   false,  false,  false,  false,  false,
-      'Turbojet + Afterburner — single shaft, AB solenoid, pump and sequencer enabled.'],
-    twin_shaft:  [true,   false,  true,   false,  false,  false,  false,
-      'Twin-shaft Turbojet — N1 + N2 RPM monitoring. No governor or prop pitch (N2 is a measurement only).'],
-    free_turbine:[true,   false,  true,   true,   false,  false,  true,
-      'Free Turbine — N2 drives output shaft. N2 governor and TIT sensor enabled. No prop pitch.'],
-    turboprop:   [true,   false,  true,   true,   false,  true,   true,
-      'Turboprop — free turbine with variable-pitch prop servo, N2 governor and TIT sensor.'],
-  };
-  const p = PRESETS[type];
-  if (!p) return;
-  const [twoShaft, ab, n2, tit, torque, prop, governor, descTxt] = p;
-  cfg.has_two_shaft   = twoShaft;
-  cfg.has_afterburner = ab;
-  ensS('n2_rpm',  n2);
-  ensS('tit',     tit);
-  ensS('torque',  torque);
-  ensA('prop_pitch', prop);
-  cfg.controllers.governor = governor;
-  if (desc) desc.textContent = descTxt;
-  dirty();
-  populate();
-  refreshAllPins();
-}
 function updateFeaturesUI() {
   const hasAB  = cfg.has_afterburner || false;
   const has2sh = cfg.has_two_shaft   || false;
