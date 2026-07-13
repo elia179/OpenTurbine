@@ -2816,12 +2816,12 @@ function _validateSequence(blocks) {
 // Control rules are edited here because they alter sequence-time actuator behavior.
 const RULE_SENSORS = [
   {v:0,l:'Oil Temp',u:'deg C',ok:()=>!!hwCfg.sensors?.oil_temp?.enabled},
-  {v:1,l:'TOT',u:'deg C',ok:()=>!!hwCfg.sensors?.tot?.enabled},
-  {v:2,l:'N1 RPM',u:'RPM',ok:()=>!!hwCfg.sensors?.n1_rpm?.enabled},
-  {v:3,l:'Oil Pressure',u:'bar',ok:()=>!!hwCfg.sensors?.oil_press?.enabled},
+  {v:1,l:'TOT',u:'deg C',id:'primary_egt',ok:()=>!!hwCfg.sensors?.tot?.enabled},
+  {v:2,l:'N1 RPM',u:'RPM',id:'n1_main',ok:()=>!!hwCfg.sensors?.n1_rpm?.enabled},
+  {v:3,l:'Oil Pressure',u:'bar',id:'oil_pressure_main',ok:()=>!!hwCfg.sensors?.oil_press?.enabled},
   {v:4,l:'TIT',u:'deg C',ok:()=>!!hwCfg.sensors?.tit?.enabled},
   {v:5,l:'Battery V',u:'V',ok:()=>!!hwCfg.sensors?.batt_voltage?.enabled},
-  {v:6,l:'N2 RPM',u:'RPM',ok:()=>!!(hwCfg.has_two_shaft && hwCfg.sensors?.n2_rpm?.enabled)},
+  {v:6,l:'N2 RPM',u:'RPM',id:'n2_main',ok:()=>!!(hwCfg.has_two_shaft && hwCfg.sensors?.n2_rpm?.enabled)},
   {v:7,l:'DI Channel 1',u:'0/1',ok:()=>((hwCfg.di_channels?.[0]?.pin ?? -1) >= 0)},
   {v:8,l:'DI Channel 2',u:'0/1',ok:()=>((hwCfg.di_channels?.[1]?.pin ?? -1) >= 0)},
   {v:9,l:'DI Channel 3',u:'0/1',ok:()=>((hwCfg.di_channels?.[2]?.pin ?? -1) >= 0)},
@@ -2832,7 +2832,7 @@ const RULE_SENSORS = [
   {v:14,l:'P2 Pressure',u:'bar',ok:()=>!!hwCfg.sensors?.p2?.enabled},
   {v:15,l:'Torque',u:'',ok:()=>!!hwCfg.sensors?.torque?.enabled},
   {v:16,l:'Flame Detected',u:'0/1',ok:()=>!!hwCfg.sensors?.flame?.enabled},
-  {v:17,l:'Throttle Input',u:'%',ok:()=>!!hwCfg.sensors?.throttle_input?.enabled},
+  {v:17,l:'Throttle Input',u:'%',id:'operator_throttle',ok:()=>!!hwCfg.sensors?.throttle_input?.enabled},
   {v:18,l:'Idle Input',u:'%',ok:()=>!!hwCfg.sensors?.idle_input?.enabled},
   {v:19,l:'AB Flame',u:'0/1',ok:()=>!!(hwCfg.has_afterburner && hwCfg.ab_flame?.enabled)},
   {v:20,l:'Glow Current',u:'A',ok:()=>!!(hwCfg.actuators?.glow_plug?.enabled && hwCfg.actuators?.glow_plug?.has_current)},
@@ -2845,17 +2845,17 @@ const RULE_SENSORS = [
 ];
 const RULE_OPS = [{v:0,l:'>'},{v:1,l:'<'},{v:2,l:'>='},{v:3,l:'<='},{v:4,l:'='}];
 const RULE_OUTPUTS = [
-  {v:0,l:'Cooling Fan',ok:()=>!!hwCfg.actuators?.cool_fan?.enabled},
-  {v:1,l:'Bleed Valve',ok:()=>!!hwCfg.actuators?.bleed_valve?.enabled},
+  {v:0,l:'Cooling Fan',id:'cooling_fan_main',ok:()=>!!hwCfg.actuators?.cool_fan?.enabled},
+  {v:1,l:'Bleed Valve',id:'bleed_valve_main',ok:()=>!!hwCfg.actuators?.bleed_valve?.enabled},
   {v:2,l:'Auxiliary Fuel Pump 2',ok:()=>!!hwCfg.actuators?.fuel_pump2?.enabled},
-  {v:3,l:'Oil Scavenge Pump',ok:()=>!!hwCfg.actuators?.oil_scavenge_pump?.enabled},
-  {v:4,l:'Throttle Demand',ok:()=>!!hwCfg.actuators?.throttle?.enabled},
-  {v:5,l:'Starter Demand',ok:()=>!!hwCfg.actuators?.starter?.enabled},
+  {v:3,l:'Oil Scavenge Pump',id:'oil_scavenge_main',ok:()=>!!hwCfg.actuators?.oil_scavenge_pump?.enabled},
+  {v:4,l:'Throttle Demand',id:'main_fuel',ok:()=>!!hwCfg.actuators?.throttle?.enabled},
+  {v:5,l:'Starter Demand',id:'starter_main',ok:()=>!!hwCfg.actuators?.starter?.enabled},
   {v:6,l:'Starter Enable',ok:()=>!!hwCfg.actuators?.starter_en?.enabled},
-  {v:7,l:'Oil Pump Demand',ok:()=>!!hwCfg.actuators?.oil_pump?.enabled},
-  {v:8,l:'Fuel Solenoid',ok:()=>!!hwCfg.actuators?.fuel_sol?.enabled},
+  {v:7,l:'Oil Pump Demand',id:'oil_pump_main',ok:()=>!!hwCfg.actuators?.oil_pump?.enabled},
+  {v:8,l:'Fuel Solenoid',id:'main_fuel_shutoff',ok:()=>!!hwCfg.actuators?.fuel_sol?.enabled},
   {v:9,l:'Igniter',ok:()=>!!hwCfg.actuators?.igniter?.enabled},
-  {v:10,l:'Igniter 2',ok:()=>!!hwCfg.actuators?.igniter2?.enabled},
+  {v:10,l:'Igniter 2',id:'ab_igniter',ok:()=>!!hwCfg.actuators?.igniter2?.enabled},
   {v:11,l:'AB Solenoid',ok:()=>!!(hwCfg.has_afterburner && hwCfg.actuators?.ab_sol?.enabled)},
   {v:12,l:'AB Pump',ok:()=>!!(hwCfg.has_afterburner && hwCfg.actuators?.ab_pump?.enabled)},
   {v:13,l:'Request Shutdown',ok:()=>true},
@@ -2864,15 +2864,65 @@ const RULE_OUTPUTS = [
   {v:16,l:'Glow Plug',ok:()=>!!hwCfg.actuators?.glow_plug?.enabled},
   {v:17,l:'Prop Pitch',ok:()=>!!hwCfg.actuators?.prop_pitch?.enabled}
 ];
+const RULE_REGISTRY_INPUT_BASE = 80;
+const RULE_REGISTRY_OUTPUT_BASE = 64;
+const RULE_CORE_OUTPUT_IDS = new Set(['main_fuel_output','main_fuel','main_starter','starter_main','oil_pump_main','cooling_fan_main','oil_scavenge_main','bleed_valve_main','ab_igniter','igniter2_main','main_fuel_shutoff']);
+const RULE_CORE_OUTPUT_BINDINGS = new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
+function registryChannelLabel(c, fallback) {
+  return (c?.name && c.name.trim()) || c?.id || fallback;
+}
+function registryRuleUnit(c) {
+  if (!c) return '';
+  if (c.driver === 0 || c.driver === 3 || c.role === 'digital_switch' || c.role === 'fault' ||
+      c.role === 'estop' || c.role === 'inhibit_start' || c.role === 'sequence_gate' ||
+      c.role === 'ab_arm' || c.role === 'ab_fire' || c.role === 'limp_mode' || c.role === 'flame') return '0/1';
+  if (c.role === 'speed') return c.driver === 2 ? 'Hz' : 'RPM';
+  if (c.role === 'pressure') return 'bar';
+  if (c.role === 'temperature') return 'deg C';
+  if (c.role === 'operator') return '%';
+  return '';
+}
+function registryRuleSensors() {
+  const inputs = hwCfg.channel_registry?.inputs || [];
+  return inputs.map((c, i) => ({
+    v: RULE_REGISTRY_INPUT_BASE + i,
+    id: c.id,
+    l: registryChannelLabel(c, `Input ${i + 1}`),
+    u: registryRuleUnit(c),
+    ok: () => c?.installed !== false && (c?.pin ?? -1) >= 0
+  }));
+}
+function registryOutputCoreBound(c) {
+  if (!c?.id) return false;
+  if (RULE_CORE_OUTPUT_IDS.has(c.id)) return true;
+  return (hwCfg.channel_registry?.bindings || []).some(b => RULE_CORE_OUTPUT_BINDINGS.has(b.key) && b.channel === c.id);
+}
+function registryRuleOutputs() {
+  const outputs = hwCfg.channel_registry?.outputs || [];
+  return outputs.map((c, i) => ({
+    v: RULE_REGISTRY_OUTPUT_BASE + i,
+    id: c.id,
+    driver: c.driver,
+    l: registryChannelLabel(c, `Output ${i + 1}`),
+    ok: () => c?.installed !== false && (c?.pin ?? -1) >= 0 && !registryOutputCoreBound(c)
+  }));
+}
+function ruleSensors() { return RULE_SENSORS.concat(registryRuleSensors()); }
+function ruleOutputs() { return RULE_OUTPUTS.concat(registryRuleOutputs()); }
 function ruleEsc(value) {
   return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function ruleOption(item, selected) {
+function ruleOption(item, selected, selectedId = '') {
   const available = item.ok();
-  return `<option value="${item.v}"${item.v === selected ? ' selected' : ''}${available ? '' : ' disabled'}>${ruleEsc(item.l)}${available ? '' : ' (not configured)'}</option>`;
+  const isSelected = (selectedId && item.id === selectedId) || (!selectedId && item.v === selected);
+  const idAttr = item.id ? ` data-id="${ruleEsc(item.id)}"` : '';
+  return `<option value="${item.v}"${idAttr}${isSelected ? ' selected' : ''}${available ? '' : ' disabled'}>${ruleEsc(item.l)}${available ? '' : ' (not configured)'}</option>`;
 }
-function ruleUnit(index) { return RULE_SENSORS.find(s => s.v === index)?.u || ''; }
+function missingRuleOption(id, selected) {
+  return `<option value="${selected}" data-id="${ruleEsc(id)}" selected disabled>Missing: ${ruleEsc(id)}</option>`;
+}
+function ruleUnit(index) { return ruleSensors().find(s => s.v === index)?.u || ''; }
 function ruleSensorScale(index) { return ruleUnit(index) === '%' ? 100 : 1; }
 function ruleDisplayThreshold(rule) {
   const scale = ruleSensorScale(rule.sensor);
@@ -2904,6 +2954,8 @@ const RULE_ANALOG_ACTUATOR_KEYS = {
 };
 function ruleOutputIsAnalog(actuator) {
   const act = +actuator;
+  const reg = ruleOutputs().find(o => o.v === act && o.id);
+  if (reg) return reg.driver === 5 || reg.driver === 6;
   if (act === 16) return !actuatorIsRelay('glow_plug');
   const key = RULE_ANALOG_ACTUATOR_KEYS[act];
   if (!key) return false;
@@ -2964,8 +3016,12 @@ function buildRuleRow(rule, index) {
   const binary = ruleUnit(rule.sensor) === '0/1';
   const pctSensor = ruleUnit(rule.sensor) === '%';
   const analogOut = ruleOutputIsAnalog(rule.actuator);
-  const sensors = RULE_SENSORS.map(s => ruleOption(s, rule.sensor)).join('');
-  const outputs = RULE_OUTPUTS.map(a => ruleOption(a, rule.actuator)).join('');
+  const sourceId = rule.source || '';
+  const targetId = rule.target || '';
+  let sensors = ruleSensors().map(s => ruleOption(s, rule.sensor, sourceId)).join('');
+  let outputs = ruleOutputs().map(a => ruleOption(a, rule.actuator, targetId)).join('');
+  if (sourceId && !ruleSensors().some(s => s.id === sourceId)) sensors += missingRuleOption(sourceId, rule.sensor);
+  if (targetId && !ruleOutputs().some(a => a.id === targetId)) outputs += missingRuleOption(targetId, rule.actuator);
   const ops = RULE_OPS.map(o => `<option value="${o.v}"${o.v === rule.op ? ' selected' : ''}>${o.l}</option>`).join('');
   const modeMask = rule.mode_mask ?? 6;
   const hystDisabled = binary ? ' disabled' : '';
@@ -2997,8 +3053,8 @@ function renderRules() {
   if (addBtn) addBtn.disabled = rules.length >= 8 || !hasAvailableRuleSensor() || !hasAvailableRuleOutput();
   renderRuleWarnings();
 }
-function hasAvailableRuleSensor() { return RULE_SENSORS.some(item => item.ok()); }
-function hasAvailableRuleOutput() { return RULE_OUTPUTS.some(item => item.ok()); }
+function hasAvailableRuleSensor() { return ruleSensors().some(item => item.ok()); }
+function hasAvailableRuleOutput() { return ruleOutputs().some(item => item.ok()); }
 function firstAvailable(list) {
   const item = list.find(item => item.ok());
   return item ? item.v : null;
@@ -3007,8 +3063,8 @@ function addRule() {
   collectRules();
   cfg.rules = cfg.rules || [];
   if (cfg.rules.length >= 8) return;
-  const sensor = firstAvailable(RULE_SENSORS);
-  const actuator = firstAvailable(RULE_OUTPUTS);
+  const sensor = firstAvailable(ruleSensors());
+  const actuator = firstAvailable(ruleOutputs());
   if (sensor === null) {
     alert('No configured sensor is available for a control rule.');
     return;
@@ -3041,16 +3097,16 @@ function addRulePreset(kind) {
     return add({name:'DI shutdown',sensor:diSensor,op:0,threshold:0.5,actuator:13,on_value:1,off_value:-1,mode_mask:6});
   }
   if (kind === 'oil_temp_fan') {
-    if (!RULE_SENSORS.find(s => s.v === 0)?.ok()) return alert('Oil temperature sensor is not configured.');
-    if (!RULE_OUTPUTS.find(o => o.v === 0)?.ok()) return alert('Cooling fan output is not configured.');
+    if (!ruleSensors().find(s => s.v === 0)?.ok()) return alert('Oil temperature sensor is not configured.');
+    if (!ruleOutputs().find(o => o.v === 0)?.ok()) return alert('Cooling fan output is not configured.');
     return add({name:'Oil temp fan',sensor:0,op:0,threshold:100,actuator:0,on_value:1,off_value:0,hysteresis:5,mode_mask:6});
   }
   if (kind === 'fuel_press_fault') {
-    if (!RULE_SENSORS.find(s => s.v === 11)?.ok()) return alert('Fuel pressure sensor is not configured.');
+    if (!ruleSensors().find(s => s.v === 11)?.ok()) return alert('Fuel pressure sensor is not configured.');
     return add({name:'Fuel pressure low',sensor:11,op:1,threshold:1.0,actuator:14,on_value:1,off_value:-1,hysteresis:0.2,mode_mask:4});
   }
   if (kind === 'batt_fault') {
-    if (!RULE_SENSORS.find(s => s.v === 5)?.ok()) return alert('Battery voltage sensor is not configured.');
+    if (!ruleSensors().find(s => s.v === 5)?.ok()) return alert('Battery voltage sensor is not configured.');
     return add({name:'Battery low',sensor:5,op:1,threshold:10.5,actuator:14,on_value:1,off_value:-1,hysteresis:0.5,mode_mask:6});
   }
 }
@@ -3063,11 +3119,15 @@ function collectRules() {
   const rows = document.querySelectorAll('#rules-list .rules-row');
   if (!rows.length) { cfg.rules = []; return; }
   cfg.rules = Array.from(rows).map((_, i) => {
-    const sensor = +document.getElementById('rule-sensor-' + i).value;
-    const actuator = +document.getElementById('rule-act-' + i).value;
+    const sensorSel = document.getElementById('rule-sensor-' + i);
+    const actSel = document.getElementById('rule-act-' + i);
+    const sensor = +sensorSel.value;
+    const actuator = +actSel.value;
+    const source = sensorSel.selectedOptions?.[0]?.dataset?.id || '';
+    const target = actSel.selectedOptions?.[0]?.dataset?.id || '';
     const startMode = document.getElementById('rule-mode-startup-' + i)?.checked ? 2 : 0;
     const runMode = document.getElementById('rule-mode-running-' + i)?.checked ? 4 : 0;
-    return {
+    const out = {
       enabled: document.getElementById('rule-en-' + i).checked,
       name: document.getElementById('rule-name-' + i).value.substring(0, 23),
       sensor,
@@ -3079,6 +3139,9 @@ function collectRules() {
       off_value: ruleOutputToStored(actuator, document.getElementById('rule-off-' + i).value),
       mode_mask: startMode | runMode
     };
+    if (source) out.source = source;
+    if (target) out.target = target;
+    return out;
   });
 }
 function ruleWarnings(rules) {
@@ -3093,7 +3156,7 @@ function ruleWarnings(rules) {
   });
   byAct.forEach((list, act) => {
     if (list.length > 1) {
-      const out = RULE_OUTPUTS.find(o => o.v === Number(act))?.l || ('output ' + act);
+      const out = ruleOutputs().find(o => o.v === Number(act))?.l || ('output ' + act);
       warnings.push(`${list.length} enabled rules drive ${out}; lower rules override earlier rules.`);
     }
   });
@@ -3117,8 +3180,12 @@ function validateRulesForSave() {
   const errors = [];
   if (rules.length > 8) errors.push(`Control rules: ${rules.length}/8. Remove ${rules.length - 8} rule(s).`);
   rules.forEach((rule, index) => {
-    const sensor = RULE_SENSORS.find(s => s.v === Number(rule.sensor));
-    const output = RULE_OUTPUTS.find(o => o.v === Number(rule.actuator));
+    const sensor = rule.source
+      ? ruleSensors().find(s => s.id === rule.source)
+      : ruleSensors().find(s => s.v === Number(rule.sensor));
+    const output = rule.target
+      ? ruleOutputs().find(o => o.id === rule.target)
+      : ruleOutputs().find(o => o.v === Number(rule.actuator));
     const name = rule.name ? `"${rule.name}"` : `#${index + 1}`;
     if (!sensor || !sensor.ok()) errors.push(`Rule ${name}: selected sensor is not configured.`);
     if (!output || !output.ok()) errors.push(`Rule ${name}: selected output is not configured.`);
