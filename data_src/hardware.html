@@ -3567,6 +3567,16 @@ function registryRoleNumber(direction, role) {
   const rows=registryRoot()[direction+'s'];
   return rows.filter(c=>String(c.role||'generic')===role).length+1;
 }
+function registryDefaultRange(direction, driver) {
+  if (direction === 'input') {
+    if (driver === 1) return {min:0, max:4095};
+    if (driver === 2) return {min:0, max:Number(prompt('Full-scale frequency (Hz):', '100') || 100)};
+    if (driver === 3) return {min:1000, max:2000};
+    return {min:0, max:1};
+  }
+  if (driver === 6) return {min:1000, max:2000};
+  return {min:0, max:1};
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
@@ -3684,8 +3694,9 @@ function addRegistryChannel(direction) {
     ? Number(prompt('Input electrical type: 0 Digital switch, 1 Analog ADC, 2 Pulse/frequency, 3 RC PWM', String(preset.driver)))
     : Number(prompt('Output driver: 4 Relay, 5 PWM, 6 Servo/ESC', String(preset.driver)));
   if ((direction === 'input' && (driver < 0 || driver > 3)) || (direction === 'output' && (driver < 4 || driver > 6))) return alert('Driver is incompatible with this channel direction.');
-  const max = direction === 'input' && driver === 1 ? 4095 : 1;
-  r[direction + 's'].push({id, name, role:preset.role, driver, pin, min:0, max, safe_demand:0, fault_demand:0});
+  const range = registryDefaultRange(direction, driver);
+  if (!Number.isFinite(range.max) || range.max <= range.min) return alert('Invalid input range.');
+  r[direction + 's'].push({id, name, role:preset.role, driver, pin, min:range.min, max:range.max, safe_demand:0, fault_demand:0});
   renderRegistryInventory(); updateSaveButton();
 }
 function removeRegistryChannel(direction, index) {
