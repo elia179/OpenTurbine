@@ -14,6 +14,34 @@ public:
     static constexpr uint8_t MAX_INPUT_CHANNELS = 6;
     static constexpr uint8_t MAX_OUTPUT_CHANNELS = 6;
     static constexpr uint8_t MAX_BINDINGS = 5;
+    static constexpr uint8_t OUTPUT_ACTUATOR_BASE = 64;
+    static constexpr bool isOutputActuator(uint8_t handle) {
+        return handle >= OUTPUT_ACTUATOR_BASE &&
+               handle < OUTPUT_ACTUATOR_BASE + MAX_OUTPUT_CHANNELS;
+    }
+    static constexpr uint8_t outputIndexFromActuator(uint8_t handle) {
+        return handle - OUTPUT_ACTUATOR_BASE;
+    }
+    static bool isCoreManagedOutputId(const char* id) {
+        return id && (!strcmp(id, "main_fuel_output") ||
+                      !strcmp(id, "main_fuel") ||
+                      !strcmp(id, "main_starter") ||
+                      !strcmp(id, "starter_main") ||
+                      !strcmp(id, "oil_pump_main") ||
+                      !strcmp(id, "cooling_fan_main") ||
+                      !strcmp(id, "oil_scavenge_main") ||
+                      !strcmp(id, "bleed_valve_main") ||
+                      !strcmp(id, "main_fuel_shutoff"));
+    }
+    static bool isCoreManagedOutputRole(const char* role) {
+        return role && (!strcmp(role, "fuel") ||
+                        !strcmp(role, "starter") ||
+                        !strcmp(role, "oil_pump") ||
+                        !strcmp(role, "cooling_fan") ||
+                        !strcmp(role, "scavenge_pump") ||
+                        !strcmp(role, "valve") ||
+                        !strcmp(role, "fuel_shutoff"));
+    }
     enum Direction : uint8_t { Input, Output };
     enum Driver : uint8_t { Digital, Analog, Pulse, RcPwm, Relay, Pwm, Servo };
     struct Channel {
@@ -27,6 +55,9 @@ public:
         float minValue = 0.0f, maxValue = 1.0f;
         float safeDemand = 0.0f, faultDemand = 0.0f;
     };
+    static bool isCoreManagedOutput(const Channel& c) {
+        return isCoreManagedOutputId(c.id) || isCoreManagedOutputRole(c.role);
+    }
     struct Binding { char key[20] = {}; char channelId[20] = {}; };
 
     Channel inputs[MAX_INPUT_CHANNELS] = {};

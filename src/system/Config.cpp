@@ -18,6 +18,11 @@ const char* ruleSourceId(uint8_t sensor) {
     }
 }
 const char* ruleTargetId(uint8_t actuator) {
+    if (ChannelRegistry::isOutputActuator(actuator)) {
+        uint8_t idx = ChannelRegistry::outputIndexFromActuator(actuator);
+        if (idx < HardwareConfig::channelRegistry.outputCount)
+            return HardwareConfig::channelRegistry.outputs[idx].id;
+    }
     switch (actuator) {
         case RulesEngine::THROTTLE: return "main_fuel";
         case RulesEngine::STARTER: return "starter_main";
@@ -54,13 +59,19 @@ int8_t ruleTargetHandle(const char* id) {
     if (!strcmp(id, "main_fuel_output")) return RulesEngine::THROTTLE;
     if (!strcmp(id, "main_starter")) return RulesEngine::STARTER;
     if (!strcmp(id, "main_fuel_shutoff")) return RulesEngine::FUEL_SOL;
-    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Output)) {
+    for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
+        const auto& out = HardwareConfig::channelRegistry.outputs[i];
+        if (strcmp(out.id, id) != 0) continue;
+        if (!ChannelRegistry::isCoreManagedOutput(out))
+            return (int8_t)(ChannelRegistry::OUTPUT_ACTUATOR_BASE + i);
+        const auto* c = &out;
         if (!strcmp(c->role, "fuel")) return RulesEngine::THROTTLE;
         if (!strcmp(c->role, "starter")) return RulesEngine::STARTER;
         if (!strcmp(c->role, "oil_pump")) return RulesEngine::OIL_PUMP;
         if (!strcmp(c->role, "cooling_fan")) return RulesEngine::COOL_FAN;
         if (!strcmp(c->role, "valve")) return RulesEngine::BLEED_VALVE;
         if (!strcmp(c->role, "scavenge_pump")) return RulesEngine::OIL_SCAVENGE;
+        if (!strcmp(c->role, "fuel_shutoff")) return RulesEngine::FUEL_SOL;
     }
     return -1;
 }
@@ -406,6 +417,13 @@ bool ruleSensorAvailable(uint8_t s) {
 }
 
 bool ruleActuatorAvailable(uint8_t a) {
+    if (ChannelRegistry::isOutputActuator(a)) {
+        uint8_t idx = ChannelRegistry::outputIndexFromActuator(a);
+        return idx < HardwareConfig::channelRegistry.outputCount &&
+               HardwareConfig::channelRegistry.outputs[idx].installed &&
+               HardwareConfig::channelRegistry.outputs[idx].pin >= 0 &&
+               !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]);
+    }
     switch (a) {
         case 0:  return HardwareConfig::hasCoolFan;
         case 1:  return HardwareConfig::hasBleedValve;
@@ -447,6 +465,15 @@ bool validInt(JsonVariantConst v, long minValue, long maxValue) {
     if (!v.is<int>() && !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
     long value = v.as<long>();
     return value >= minValue && value <= maxValue;
+}
+
+bool validActuatorHandle(JsonVariantConst v) {
+    if (!present(v)) return true;
+    if (!v.is<int>() && !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
+    long value = v.as<long>();
+    return (value >= 0 && value <= 17) ||
+           (value >= ChannelRegistry::OUTPUT_ACTUATOR_BASE &&
+            value < ChannelRegistry::OUTPUT_ACTUATOR_BASE + ChannelRegistry::MAX_OUTPUT_CHANNELS);
 }
 
 bool validBool(JsonVariantConst v) { return !present(v) || v.is<bool>(); }
@@ -771,7 +798,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
                 !validInt(rule["sensor"], 0, 26) ||
                 !validInt(rule["op"], 0, 4) ||
                 !validNumber(rule["threshold"], -1000000.0f, 1000000.0f) ||
-                !validInt(rule["actuator"], 0, 17) ||
+                !validActuatorHandle(rule["actuator"]) ||
                 // canonical unit is fraction -1..1 (negative = leave unchanged)
                 !validNumber(rule["on_value"], -1.0f, 1.0f) ||
                 !validNumber(rule["off_value"], -1.0f, 1.0f) ||
@@ -1891,7 +1918,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     for (int i = 0; i < ruleCount; i++) {
         rules[i].sensor = constrain(rules[i].sensor, 0, 26);
         rules[i].op = constrain(rules[i].op, 0, 4);
-        rules[i].actuator = constrain(rules[i].actuator, 0, 17);
+        if (rules[i].actuator > 17 && !ChannelRegistry::isOutputActuator(rules[i].actuator))
+            rules[i].enabled = false;
         if (rules[i].hysteresis < 0.0f) rules[i].hysteresis = 0.0f;
         rules[i].onValue = constrain(rules[i].onValue, -1.0f, 1.0f);
         rules[i].offValue = constrain(rules[i].offValue, -1.0f, 1.0f);

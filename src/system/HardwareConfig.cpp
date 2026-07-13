@@ -529,6 +529,11 @@ const char* customSensorKey(uint8_t sensor) {
 
 int customActuatorId(const char* key) {
     if (!key) return -1;
+    for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
+        const auto& out = HardwareConfig::channelRegistry.outputs[i];
+        if (strcmp(key, out.id) == 0 && !ChannelRegistry::isCoreManagedOutput(out))
+            return ChannelRegistry::OUTPUT_ACTUATOR_BASE + i;
+    }
     if (strcmp(key, "cool_fan") == 0) return 0;
     if (strcmp(key, "bleed_valve") == 0) return 1;
     if (strcmp(key, "fuel_pump2") == 0) return 2;
@@ -549,6 +554,11 @@ int customActuatorId(const char* key) {
 }
 
 const char* customActuatorKey(uint8_t act) {
+    if (ChannelRegistry::isOutputActuator(act)) {
+        uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+        if (idx < HardwareConfig::channelRegistry.outputCount)
+            return HardwareConfig::channelRegistry.outputs[idx].id;
+    }
     switch (act) {
         case 0: return "cool_fan";
         case 1: return "bleed_valve";
@@ -623,6 +633,11 @@ int8_t sequenceSourceHandle(const char* id) {
 }
 
 const char* sequenceTargetId(uint8_t act) {
+    if (ChannelRegistry::isOutputActuator(act)) {
+        uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+        if (idx < HardwareConfig::channelRegistry.outputCount)
+            return HardwareConfig::channelRegistry.outputs[idx].id;
+    }
     switch (act) {
         case 0:  return "cooling_fan_main";
         case 1:  return "bleed_valve_main";
@@ -655,18 +670,30 @@ int8_t sequenceTargetHandle(const char* id) {
     if (strcmp(id, "main_fuel_output") == 0) return 4;
     if (strcmp(id, "main_starter") == 0) return 5;
     if (strcmp(id, "main_fuel_shutoff") == 0) return 8;
-    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Output)) {
+    for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
+        const auto& out = HardwareConfig::channelRegistry.outputs[i];
+        if (strcmp(out.id, id) != 0) continue;
+        if (!ChannelRegistry::isCoreManagedOutput(out))
+            return (int8_t)(ChannelRegistry::OUTPUT_ACTUATOR_BASE + i);
+        const auto* c = &out;
         if (strcmp(c->role, "fuel") == 0) return 4;
         if (strcmp(c->role, "starter") == 0) return 5;
         if (strcmp(c->role, "oil_pump") == 0) return 7;
         if (strcmp(c->role, "cooling_fan") == 0) return 0;
         if (strcmp(c->role, "valve") == 0) return 1;
         if (strcmp(c->role, "scavenge_pump") == 0) return 3;
+        if (strcmp(c->role, "fuel_shutoff") == 0) return 8;
     }
     return -1;
 }
 
 bool customActuatorIsAnalog(uint8_t act) {
+    if (ChannelRegistry::isOutputActuator(act)) {
+        uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+        if (idx >= HardwareConfig::channelRegistry.outputCount) return false;
+        auto driver = HardwareConfig::channelRegistry.outputs[idx].driver;
+        return driver == ChannelRegistry::Pwm || driver == ChannelRegistry::Servo;
+    }
     switch (act) {
         case 2:  return HardwareConfig::fuelPump2Type != 2;
         case 4:  return HardwareConfig::throttleType != 2;
@@ -754,7 +781,8 @@ void readSeqSideActions(
             if (out >= HardwareConfig::MAX_SEQ_SIDE_ACTIONS) break;
             const char* target = item["target"] | "";
             int act = target[0] ? sequenceTargetHandle(target) : (item["act"] | -1);
-            if (act < 0 || act > 17) continue;
+            if (act < 0) continue;
+            if (act > 17 && !ChannelRegistry::isOutputActuator((uint8_t)act)) continue;
             actions[i][out].enabled = true;
             actions[i][out].actuator = (uint8_t)act;
             actions[i][out].value = constrain(item["value"] | 0.0f, 0.0f, 1.0f);
@@ -872,6 +900,13 @@ void readCustomBlocks(const JsonDocument& doc) {
 }
 
 bool seqActionActuatorAvailable(uint8_t act) {
+    if (ChannelRegistry::isOutputActuator(act)) {
+        uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+        return idx < HardwareConfig::channelRegistry.outputCount &&
+               HardwareConfig::channelRegistry.outputs[idx].installed &&
+               HardwareConfig::channelRegistry.outputs[idx].pin >= 0 &&
+               !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]);
+    }
     switch (act) {
         case 0:  return HardwareConfig::hasCoolFan;
         case 1:  return HardwareConfig::hasBleedValve;

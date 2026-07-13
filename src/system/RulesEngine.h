@@ -167,6 +167,13 @@ private:
     }
 
     static bool _actuatorUsable(uint8_t act) {
+        if (ChannelRegistry::isOutputActuator(act)) {
+            uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+            return idx < HardwareConfig::channelRegistry.outputCount &&
+                   HardwareConfig::channelRegistry.outputs[idx].installed &&
+                   HardwareConfig::channelRegistry.outputs[idx].pin >= 0 &&
+                   !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]);
+        }
         switch (act) {
             case COOL_FAN:         return HardwareConfig::hasCoolFan;
             case BLEED_VALVE:      return HardwareConfig::hasBleedValve;
@@ -253,6 +260,11 @@ private:
     }
 
     static void _applyActuator(uint8_t act, float dem, EngineData& ed, const char* ruleName) {
+        if (ChannelRegistry::isOutputActuator(act)) {
+            uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+            if (idx < ChannelRegistry::MAX_OUTPUT_CHANNELS) ed.registryOutputDemand[idx] = dem;
+            return;
+        }
         switch (act) {
             case COOL_FAN:    ed.coolFanDemand = dem; ed.coolFanOn = dem >= 0.5f; break;
             case BLEED_VALVE: ed.bleedValveDemand = dem; ed.bleedValveOpen = dem >= 0.5f; break;

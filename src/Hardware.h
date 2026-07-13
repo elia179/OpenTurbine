@@ -412,6 +412,63 @@ extern SafetyMonitor  g_safety;
 
 namespace Hardware {
 
+    inline bool registryOutputManaged(const ChannelRegistry::Channel& c) {
+        return c.installed && c.pin >= 0 && !ChannelRegistry::isCoreManagedOutput(c);
+    }
+
+    inline void writeRegistryOutput(const ChannelRegistry::Channel& c, float demand) {
+        if (!registryOutputManaged(c)) return;
+        demand = constrain(demand, 0.0f, 1.0f);
+        if (c.driver == ChannelRegistry::Relay) {
+            digitalWrite(c.pin, demand >= 0.5f ? HIGH : LOW);
+        } else if (c.driver == ChannelRegistry::Pwm) {
+            uint32_t duty = (uint32_t)(demand * 1023.0f + 0.5f);
+            ledcWrite(c.pin, duty);
+        } else if (c.driver == ChannelRegistry::Servo) {
+            float minUs = (c.minValue >= 500.0f && c.minValue <= 2500.0f) ? c.minValue : 1000.0f;
+            float maxUs = (c.maxValue >= 500.0f && c.maxValue <= 2500.0f && c.maxValue > minUs)
+                        ? c.maxValue : 2000.0f;
+            float us = minUs + (maxUs - minUs) * demand;
+            uint32_t duty = (uint32_t)(us * 16383.0f / 20000.0f + 0.5f);
+            ledcWrite(c.pin, duty);
+        }
+    }
+
+    inline void initRegistryOutputs(float fallbackDemand) {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        for (uint8_t i = 0; i < reg.outputCount; ++i) {
+            const auto& c = reg.outputs[i];
+            if (!registryOutputManaged(c)) continue;
+            ed.registryOutputDemand[i] = constrain(c.safeDemand, 0.0f, 1.0f);
+            if (c.driver == ChannelRegistry::Relay) {
+                pinMode(c.pin, OUTPUT);
+            } else if (c.driver == ChannelRegistry::Pwm) {
+                ledcAttach(c.pin, 1000, 10);
+            } else if (c.driver == ChannelRegistry::Servo) {
+                ledcAttach(c.pin, 50, 14);
+            }
+            writeRegistryOutput(c, fallbackDemand >= 0.0f ? fallbackDemand : c.safeDemand);
+        }
+    }
+
+    inline void updateRegistryOutputs() {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        for (uint8_t i = 0; i < reg.outputCount; ++i)
+            writeRegistryOutput(reg.outputs[i], ed.registryOutputDemand[i]);
+    }
+
+    inline void faultRegistryOutputs() {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        for (uint8_t i = 0; i < reg.outputCount; ++i) {
+            if (!registryOutputManaged(reg.outputs[i])) continue;
+            ed.registryOutputDemand[i] = constrain(reg.outputs[i].faultDemand, 0.0f, 1.0f);
+            writeRegistryOutput(reg.outputs[i], ed.registryOutputDemand[i]);
+        }
+    }
+
     inline void applyCurrentSensorCal(AnalogLinearSensor& sensor, float zeroV, float mvPerA) {
         float safeZeroV = constrain(zeroV, 0.0f, 3.3f);
         float safeMvPerA = mvPerA > 0.0f ? mvPerA : 100.0f;
@@ -986,6 +1043,7 @@ namespace Hardware {
         if (hw.hasGlowPlug)  driveInactive(hw.glowPlugPin,
                                            hw.glowPlugOutputType == 1 ? hw.glowPlugActiveH : true);
         if (hw.hasStarterEn) driveInactive(hw.starterEnPin, hw.starterEnActiveH);
+        initRegistryOutputs(-1.0f);
     }
 
     // ── Actuator init ─────────────────────────────────────────
@@ -1171,6 +1229,7 @@ namespace Hardware {
                 g_actWetGlowFuel = &g_actWetGlowFuelRelay;
             }
         }
+        initRegistryOutputs(-1.0f);
     }
 
     // ── Actuator update: EngineData demands → physical signals ─
@@ -1341,6 +1400,7 @@ namespace Hardware {
                 ed.wetGlowFuelDemand = 0.0f;
             }
         }
+        updateRegistryOutputs();
     }
 
     // ── Emergency all-off ─────────────────────────────────────
@@ -1366,6 +1426,7 @@ namespace Hardware {
             else g_actGlowPlug.off();
         }
         if (hw.hasGlowPlug && hw.glowPlugType == 2 && g_actWetGlowFuel) g_actWetGlowFuel->off();
+        faultRegistryOutputs();
         auto& _ed = EngineData::instance();
         _ed.throttleDemand  = 0;
         _ed.fuelSolOpen     = false;
