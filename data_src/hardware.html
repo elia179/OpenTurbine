@@ -133,6 +133,13 @@
     <div id="registry-inputs"></div><div id="registry-outputs"></div><div id="registry-bindings"></div>
   </div>
 
+  <div class="hw-section" id="hardware-comms-panel">
+    <div class="hw-title">Communications and indicators</div>
+    <div class="hw-desc" style="margin-bottom:.6rem">Installed external communication links and local indication devices.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor()">Edit devices</button></div>
+    <div id="hardware-comms-summary"></div>
+  </div>
+
   <div class="hw-section" id="hardware-features-section">
     <div class="hw-title">System Features</div>
     <!-- Engine type quick-setup presets -->
@@ -2386,6 +2393,7 @@ function refreshAllPins() {
   });
   checkPinConflicts();
   renderHardwareRequirementsSummary();
+  renderCommsIndicatorSummary();
 }
 
 // ─── General-purpose DI channel renderer ────────────────────
@@ -3520,6 +3528,12 @@ function toggleHideUnselectedActuators() {
   try { localStorage.setItem('ot_hide_unsel_act', _hideUnselActive ? '1' : '0'); } catch (e) {}
   applyActuatorVisibility();
 }
+function showFullHardwareEditor() {
+  _hideUnselActive = false;
+  try { localStorage.setItem('ot_hide_unsel_act', '0'); } catch (e) {}
+  applyActuatorVisibility();
+  document.getElementById('hardware-features-section')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
 
 function applyActuatorVisibility() {
   var main = document.querySelector('main');
@@ -3546,7 +3560,7 @@ function applyActuatorVisibility() {
     }
   }
   main.querySelectorAll('.hw-section').forEach(function (section) {
-    if (section.id === 'registry-inventory' || section.id === 'hardware-requirements-panel' ||
+    if (section.id === 'registry-inventory' || section.id === 'hardware-requirements-panel' || section.id === 'hardware-comms-panel' ||
         section.id === 'hardware-profile-section' || section.id === 'hardware-features-section') return;
     const title = (section.querySelector('.hw-title')?.textContent || '').trim();
     if (title === 'System Profile' || title === 'System Features') return;
@@ -3745,6 +3759,41 @@ function renderHardwareRequirementsSummary() {
   items.push({state: conflictCount ? 'error' : 'ok', text: conflictCount ? `${conflictCount} GPIO conflict(s) detected` : 'No GPIO conflicts detected'});
   box.innerHTML = items.map(item => `<div class="requirement-row requirement-${item.state}"><span>${escapeHtmlText(item.text)}</span><span class="requirement-state">${item.state === 'ok' ? 'OK' : item.state}</span></div>`).join('');
 }
+function renderCommsIndicatorSummary() {
+  const box = document.getElementById('hardware-comms-summary');
+  if (!box || !cfg) return;
+  const rows = [];
+  const cluster = cfg.cluster_serial || {};
+  if (cluster.enabled) rows.push({
+    title: 'OT Cluster serial',
+    detail: `TX GPIO ${cluster.tx_pin ?? 'not set'}${(cluster.rx_pin ?? -1) >= 0 ? ` · RX GPIO ${cluster.rx_pin}` : ' · TX only'} · ${cluster.baud || 115200} baud`,
+    status: (cluster.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing'
+  });
+  const mav = cfg.mavlink || {};
+  if (mav.enabled) rows.push({
+    title: 'MAVLink telemetry',
+    detail: `TX GPIO ${mav.tx_pin ?? 'not set'} · ${mav.baud || 57600} baud · ${mav.interval_ms || 200} ms`,
+    status: (mav.tx_pin ?? -1) >= 0 ? 'Ready' : 'TX pin missing'
+  });
+  const led = cfg.actuators?.status_led || {};
+  if (led.enabled !== false && (led.pin ?? -1) >= 0) rows.push({
+    title: 'Status LED',
+    detail: `${Number(led.type || 0) === 1 ? 'NeoPixel RGB' : 'GPIO LED'} · GPIO ${led.pin}`,
+    status: 'Ready'
+  });
+  const buz = cfg.buzzer || {};
+  if (buz.enabled) rows.push({
+    title: 'Buzzer',
+    detail: `GPIO ${buz.pin ?? 'not set'}`,
+    status: (buz.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing'
+  });
+  box.innerHTML = rows.length ? rows.map(row => `<div class="hw-item-card">
+    <div class="registry-card-summary">
+      <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
+      <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
+    </div>
+  </div>`).join('') : '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="showFullHardwareEditor()">Add / edit device</button></div>';
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
@@ -3783,7 +3832,7 @@ function renderRegistryInventory() {
       </div>`;
       }).join('') : `<div class="registry-empty"><div>No installed ${direction} channels.</div><button type="button" onclick="addRegistryChannel('${direction}')">+ Add ${direction}</button></div>`);
   };
-  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings(); renderHardwareRequirementsSummary(); renderHardwareBoardSummary();
+  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings(); renderHardwareRequirementsSummary(); renderHardwareBoardSummary(); renderCommsIndicatorSummary();
 }
 function updateRegistryChannel(direction, index, key, value) {
   const r = registryRoot();

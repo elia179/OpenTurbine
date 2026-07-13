@@ -230,8 +230,9 @@ function installedBrowser() {
     results.push('servo throttle calibration averages endpoints and persists the 2%/1% safety margins');
 
     await page.goto(`${base}/hardware.html`);
-    await page.waitForSelector('#f-thinput-type');
+    await page.waitForSelector('#btn-hide-unsel-act');
     await page.locator('#btn-hide-unsel-act', { hasText: 'Show full editor / supported hardware' }).click();
+    await page.waitForSelector('#f-thinput-type', { state: 'visible' });
     assert.equal(await page.locator('#f-thinput-type').inputValue(), 'servo');
     assert.equal(await page.locator('#f-wifi-tx-power').inputValue(), '8');
     results.push('hardware page restores servo-input source from saved hardware state');
