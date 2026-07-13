@@ -96,6 +96,8 @@ struct EngineData {
     volatile float    oilScavengeDemand = 0;   // 0.0–1.0
     volatile float    bleedValveDemand = 0;    // 0.0–1.0
     volatile float    registryOutputDemand[ChannelRegistry::MAX_OUTPUT_CHANNELS] = {};
+    volatile float    registryOutputCurrentAmps[ChannelRegistry::MAX_OUTPUT_CHANNELS] = {};
+    volatile bool     registryOutputCurrentHealthy[ChannelRegistry::MAX_OUTPUT_CHANNELS] = {};
     volatile bool     fuelSolOpen     = false;
     volatile bool     igniterOn       = false;
     volatile bool     igniter2On      = false;

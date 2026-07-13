@@ -3803,6 +3803,137 @@ function registryInputOptionsEditor(direction, c, index) {
 function updateRegistryRangeField(direction, index, key, value, scale) {
   updateRegistryChannel(direction, index, key, Number(value) / Number(scale || 1));
 }
+function registryCoreActuatorKey(c) {
+  const id = String(c?.id || '');
+  const role = String(c?.role || '');
+  const map = {
+    main_fuel:'throttle', main_fuel_output:'throttle',
+    starter:'starter', starter_main:'starter', main_starter:'starter',
+    starter_enable:'starter_en',
+    fuel_shutoff:'fuel_sol', main_fuel_shutoff:'fuel_sol',
+    igniter:'igniter', ab_igniter:'igniter2', igniter2_main:'igniter2',
+    oil_pump:'oil_pump', oil_pump_main:'oil_pump',
+    scavenge_pump:'oil_scavenge_pump', oil_scavenge_main:'oil_scavenge_pump',
+    cooling_fan:'cool_fan', cooling_fan_main:'cool_fan',
+    fuel_pump:'fuel_pump2', ab_pump:'ab_pump',
+    bleed_valve:'bleed_valve', bleed_valve_main:'bleed_valve',
+    prop_pitch:'prop_pitch', glow_plug:'glow_plug',
+    ab_solenoid:'ab_sol', air_starter:'airstarter_sol'
+  };
+  if (map[id]) return map[id];
+  if (id.startsWith('generic_')) return '';
+  if (role === 'glow_plug') return 'glow_plug';
+  if (role === 'igniter') return 'igniter';
+  if (role === 'ab_igniter') return 'igniter2';
+  return '';
+}
+function registryPinIsAdc(pin) {
+  const p = Number(pin);
+  return p >= 0 && !!(GPIO_DB?.[p]?.adc1 || GPIO_DB?.[p]?.a2);
+}
+function ensureActuatorObject(key) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators[key]) cfg.actuators[key] = {};
+  return cfg.actuators[key];
+}
+function setCoreActuatorCurrentEnabled(actKey, enabled) {
+  const act = ensureActuatorObject(actKey);
+  act.has_current = !!enabled;
+  if (enabled && (act.current_mv_a === undefined || act.current_mv_a <= 0)) act.current_mv_a = actKey === 'glow_plug' ? 185 : 100;
+  if (enabled && act.current_zero_v === undefined) act.current_zero_v = 1.65;
+  if (enabled && actKey === 'glow_plug' && act.current_ready_a === undefined) act.current_ready_a = 3;
+  if (!enabled) act.current_pin = -1;
+  refreshAllPins(); dirty(); updateSaveButton(); renderRegistryInventory();
+}
+function setCoreIgniterMode(actKey, mode) {
+  const act = ensureActuatorObject(actKey);
+  act.pwm = mode === 'pwm';
+  act.coil = mode === 'coil';
+  if (mode === 'coil') {
+    act.has_current = true;
+    if (act.coil_sat_a === undefined) act.coil_sat_a = 8;
+    if (act.current_mv_a === undefined) act.current_mv_a = 100;
+    if (act.current_zero_v === undefined) act.current_zero_v = 1.65;
+  }
+  dirty(); refreshAllPins(); updateSaveButton(); renderRegistryInventory();
+}
+function registryCurrentEditor(direction, c, index) {
+  if (direction !== 'output') return '';
+  const actKey = registryCoreActuatorKey(c);
+  const dedicated = ['oil_pump','glow_plug','igniter','igniter2'].includes(actKey);
+  const act = dedicated ? ensureActuatorObject(actKey) : null;
+  const enabled = dedicated ? !!act.has_current : !!c.has_current;
+  const setEnabled = dedicated
+    ? `setCoreActuatorCurrentEnabled('${actKey}',this.checked)`
+    : `updateRegistryChannel('output',${index},'has_current',this.checked)`;
+  const pin = dedicated ? act.current_pin : c.current_pin;
+  const mvA = dedicated ? (act.current_mv_a ?? (actKey === 'glow_plug' ? 185 : 100)) : (c.current_mv_a ?? 100);
+  const zeroV = dedicated ? (act.current_zero_v ?? 1.65) : (c.current_zero_v ?? 1.65);
+  const maxA = dedicated ? (act.current_max_a ?? 0) : (c.current_max_a ?? 0);
+  const fieldSet = dedicated
+    ? (field, expr) => `setActCurrentSensor('${actKey}','${field}',${expr})`
+    : (field, expr) => {
+        const keyMap = {pin:'current_pin', mv_a:'current_mv_a', zero_v:'current_zero_v', current_max_a:'current_max_a'};
+        return `updateRegistryChannel('output',${index},'${keyMap[field] || field}',${expr})`;
+      };
+  return `<div class="hw-item-card registry-subcard" style="grid-column:1/-1;margin:.35rem 0 0">
+    <div class="registry-card-summary">
+      <div><strong>Current sensing</strong><div class="hw-desc">${dedicated ? 'Feeds dedicated telemetry, rules, logging and protection for this actuator.' : 'Samples this output current and exposes it in registry telemetry.'}</div></div>
+      <label class="hw-toggle"><input type="checkbox" ${enabled ? 'checked' : ''} onchange="${setEnabled}"><span></span> Enable</label>
+    </div>
+    ${enabled ? `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
+      <div class="hw-field"><span class="hw-label">Current sensor ADC GPIO</span><select onchange="${fieldSet('pin','+this.value')}">${buildPinOptions(pin, 'adc')}</select></div>
+      <div class="hw-field"><span class="hw-label">Sensor sensitivity (mV/A)</span><input type="number" min="1" max="10000" step="1" value="${registryFormatValue(mvA)}" oninput="${fieldSet('mv_a','+this.value')}"></div>
+      <div class="hw-field"><span class="hw-label">Zero-current voltage (V)</span><input type="number" min="0" max="3.3" step="0.01" value="${registryFormatValue(zeroV)}" oninput="${fieldSet('zero_v','+this.value')}"></div>
+      ${actKey === 'glow_plug' ? `<div class="hw-field"><span class="hw-label">Ready current (A)</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_ready_a ?? 3)}" oninput="${fieldSet('ready_a','+this.value')}"></div>` : `<div class="hw-field"><span class="hw-label">Overcurrent limit (A)</span><span class="hw-desc">0 disables the limit.</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(maxA)}" oninput="${fieldSet('current_max_a','+this.value')}"></div>`}
+    </div></div>` : ''}
+  </div>`;
+}
+function registryIgniterSubcards(c, index, actKey) {
+  const act = ensureActuatorObject(actKey);
+  const mode = act.coil ? 'coil' : (act.pwm ? 'pwm' : 'relay');
+  return `<div class="hw-item-card registry-subcard" style="grid-column:1/-1;margin:.35rem 0 0">
+    <div class="registry-card-summary"><div><strong>Igniter behavior</strong><div class="hw-desc">Simple on/off, dwell PWM, or current-limited coil dwell.</div></div></div>
+    <div class="registry-card-editor" style="display:block"><div class="hw-grid">
+      <div class="hw-field"><span class="hw-label">Igniter mode</span><select onchange="setCoreIgniterMode('${actKey}',this.value)">
+        <option value="relay"${mode==='relay'?' selected':''}>Simple on/off</option>
+        <option value="pwm"${mode==='pwm'?' selected':''}>Dwell / rest PWM cycle</option>
+        <option value="coil"${mode==='coil'?' selected':''}>Current-limited coil dwell</option>
+      </select></div>
+      ${mode !== 'relay' ? `<div class="hw-field"><span class="hw-label">Dwell time (ms)</span><input type="number" min="1" max="200" value="${Number(act.dwell_ms ?? 6)}" oninput="setAct('${actKey}','dwell_ms',+this.value)"></div>
+      <div class="hw-field"><span class="hw-label">Rest time (ms)</span><input type="number" min="1" max="200" value="${Number(act.rest_ms ?? 3)}" oninput="setAct('${actKey}','rest_ms',+this.value)"></div>` : ''}
+      ${mode === 'coil' ? `<div class="hw-field"><span class="hw-label">Coil saturation current (A)</span><input type="number" min="0.1" max="1000" step="0.1" value="${registryFormatValue(act.coil_sat_a ?? 8)}" oninput="setAct('${actKey}','coil_sat_a',+this.value)"></div>` : ''}
+    </div></div>
+  </div>`;
+}
+function registryGlowSubcards(c, index) {
+  const act = ensureActuatorObject('glow_plug');
+  const wet = Number(act.type || 0) === 2;
+  const fuelType = Number(act.fuel_type || 0);
+  return `<div class="hw-item-card registry-subcard" style="grid-column:1/-1;margin:.35rem 0 0">
+    <div class="registry-card-summary"><div><strong>Glow plug options</strong><div class="hw-desc">Plain glow element or wet glow with pilot-fuel output.</div></div></div>
+    <div class="registry-card-editor" style="display:block"><div class="hw-grid">
+      <div class="hw-field"><span class="hw-label">Glow mode</span><select onchange="setGlowType(+this.value);renderRegistryInventory()"><option value="0"${!wet?' selected':''}>Plain glow plug</option><option value="2"${wet?' selected':''}>Wet glow with fuel output</option></select></div>
+      <div class="hw-field"><span class="hw-label">Glow PWM frequency (Hz)</span><input type="number" min="1" max="100000" value="${Number(act.freq_hz ?? 1000)}" oninput="setAct('glow_plug','freq_hz',+this.value)"></div>
+      <div class="hw-field"><span class="hw-label">PWM resolution (bits)</span><input type="number" min="8" max="14" value="${Number(act.res_bits ?? 8)}" oninput="setAct('glow_plug','res_bits',+this.value)"></div>
+      ${wet ? `<div class="hw-field"><span class="hw-label">Pilot fuel GPIO</span><select onchange="setAct('glow_plug','fuel_pin',+this.value)">${buildPinOptions(act.fuel_pin, 'out')}</select></div>
+      <div class="hw-field"><span class="hw-label">Pilot fuel driver</span><select onchange="setAct('glow_plug','fuel_type',+this.value);renderRegistryInventory()"><option value="0"${fuelType===0?' selected':''}>Relay / on-off</option><option value="1"${fuelType===1?' selected':''}>PWM</option><option value="2"${fuelType===2?' selected':''}>Servo/ESC</option></select></div>
+      <div class="hw-field"><span class="hw-label">Fuel active polarity</span><label class="hw-toggle"><input type="checkbox" ${act.fuel_active_h !== false ? 'checked' : ''} onchange="setAct('glow_plug','fuel_active_h',this.checked)"><span></span> Active high</label></div>
+      <div class="hw-field"><span class="hw-label">Fuel delay (ms)</span><input type="number" min="0" max="3600000" value="${Number(act.fuel_delay_ms ?? 8000)}" oninput="setAct('glow_plug','fuel_delay_ms',+this.value)"></div>
+      <div class="hw-field"><span class="hw-label">Fuel demand (%)</span><input type="number" min="0" max="100" value="${Number(act.fuel_demand_pct ?? 100)}" oninput="setAct('glow_plug','fuel_demand_pct',+this.value)"></div>
+      ${fuelType === 2 ? `<div class="hw-field"><span class="hw-label">Fuel servo pulse (us)</span><div style="display:flex;gap:.35rem"><input type="number" min="500" max="2500" value="${Number(act.fuel_min_us ?? 1000)}" oninput="setAct('glow_plug','fuel_min_us',+this.value)"><input type="number" min="500" max="2500" value="${Number(act.fuel_max_us ?? 2000)}" oninput="setAct('glow_plug','fuel_max_us',+this.value)"></div></div>` : ''}
+      ${fuelType === 1 ? `<div class="hw-field"><span class="hw-label">Fuel PWM freq / bits</span><div style="display:flex;gap:.35rem"><input type="number" min="1" max="100000" value="${Number(act.fuel_freq_hz ?? 1000)}" oninput="setAct('glow_plug','fuel_freq_hz',+this.value)"><input type="number" min="8" max="14" value="${Number(act.fuel_res_bits ?? 10)}" oninput="setAct('glow_plug','fuel_res_bits',+this.value)"></div></div>
+      <div class="hw-field"><span class="hw-label">Fuel PWM min / max (%)</span><div style="display:flex;gap:.35rem"><input type="number" min="0" max="100" value="${Number(act.fuel_pwm_min_pct ?? 0)}" oninput="setAct('glow_plug','fuel_pwm_min_pct',+this.value)"><input type="number" min="0" max="100" value="${Number(act.fuel_pwm_max_pct ?? 100)}" oninput="setAct('glow_plug','fuel_pwm_max_pct',+this.value)"></div></div>` : ''}` : ''}
+    </div></div>
+  </div>`;
+}
+function registryOutputSubcards(direction, c, index) {
+  if (direction !== 'output') return '';
+  const actKey = registryCoreActuatorKey(c);
+  return `${actKey === 'igniter' || actKey === 'igniter2' ? registryIgniterSubcards(c, index, actKey) : ''}
+          ${actKey === 'glow_plug' ? registryGlowSubcards(c, index) : ''}
+          ${registryCurrentEditor(direction, c, index)}`;
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
@@ -3842,6 +3973,12 @@ function registryStatus(c) {
   const rangeProblem = registryRangeProblem(c);
   if (rangeProblem) return {kind:'error', text:rangeProblem};
   if (c.pullup && c.pulldown) return {kind:'error', text:'Pull-up/down conflict'};
+  if (c.has_current) {
+    if ((c.current_pin ?? -1) < 0) return {kind:'error', text:'Current pin required'};
+    if (!registryPinIsAdc(c.current_pin)) return {kind:'error', text:'Current pin must be ADC'};
+    if (Number(c.current_mv_a ?? 0) <= 0) return {kind:'error', text:'Current mV/A invalid'};
+    if (Number(c.current_zero_v ?? 0) < 0 || Number(c.current_zero_v ?? 0) > 3.3) return {kind:'error', text:'Current zero invalid'};
+  }
   return {kind:'ok', text:'Ready'};
 }
 function registryRangeProblem(c) {
@@ -4316,6 +4453,7 @@ function renderRegistryInventory() {
           ${registryInvertEditor(direction, c, i)}
           ${registryRangeEditor(direction, c, i)}
           ${direction==='output' ? registryDemandEditor(c, i) : ''}
+          ${registryOutputSubcards(direction, c, i)}
         </div>
         </div>
       </div>`;
@@ -4363,11 +4501,25 @@ function updateRegistryChannel(direction, index, key, value) {
   if (key === 'active_high') value = !!value;
   if (key === 'pullup') { value = !!value; if (value) c.pulldown = false; }
   if (key === 'pulldown') { value = !!value; if (value) c.pullup = false; }
+  if (key === 'has_current') {
+    value = !!value;
+    if (value) {
+      if (c.current_mv_a === undefined || Number(c.current_mv_a) <= 0) c.current_mv_a = 100;
+      if (c.current_zero_v === undefined) c.current_zero_v = 1.65;
+      if (c.current_max_a === undefined) c.current_max_a = 0;
+    } else {
+      c.current_pin = -1;
+    }
+  }
+  if (key === 'current_pin') value = Number.isFinite(value) ? value : -1;
+  if (key === 'current_mv_a') value = Math.max(0.001, Number(value) || 100);
+  if (key === 'current_zero_v') value = Math.max(0, Math.min(3.3, Number(value) || 0));
+  if (key === 'current_max_a') value = Math.max(0, Number(value) || 0);
   if (key === 'safe_demand' || key === 'fault_demand') value = Math.max(0, Math.min(1, Number(value) || 0));
   if (key === 'min' || key === 'max') value = Number.isFinite(Number(value)) ? Number(value) : 0;
   c[key] = value;
   dirty(); updateSaveButton();
-  if (key === 'pullup' || key === 'pulldown' || key === 'active_high') renderRegistryInventory();
+  if (key === 'pullup' || key === 'pulldown' || key === 'active_high' || key === 'has_current') renderRegistryInventory();
 }
 function registryChannelOptions(selected) {
   const r = registryRoot();

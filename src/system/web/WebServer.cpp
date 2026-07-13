@@ -896,6 +896,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             auto ch = outArr.add<JsonObject>();
             ch["id"]     = HardwareConfig::channelRegistry.outputs[i].id;
             ch["demand"] = (float)(int)(ed.registryOutputDemand[i] * 1000) / 1000.0f;
+            ch["current_amps"] = (float)(int)(ed.registryOutputCurrentAmps[i] * 100) / 100.0f;
+            ch["current_healthy"] = ed.registryOutputCurrentHealthy[i];
         }
     }
 
@@ -1083,7 +1085,14 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["safe_demand"] = c.safeDemand;
             ch["fault_demand"] = c.faultDemand;
             ch["invert"] = c.inverted;
+            ch["has_current"] = c.hasCurrent;
+            ch["current_pin"] = c.currentPin;
+            ch["current_mv_a"] = c.currentMvPerA;
+            ch["current_zero_v"] = c.currentZeroV;
+            ch["current_max_a"] = c.currentMaxAmps;
             ch["demand"] = (float)(int)(ed.registryOutputDemand[i] * 1000) / 1000.0f;
+            ch["current_amps"] = (float)(int)(ed.registryOutputCurrentAmps[i] * 100) / 100.0f;
+            ch["current_healthy"] = ed.registryOutputCurrentHealthy[i];
         }
     }
     return serializeJson(doc, buf, len);

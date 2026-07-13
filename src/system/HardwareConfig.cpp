@@ -1683,11 +1683,16 @@ bool validatePlatformPins(const JsonDocument& doc) {
             } else if (!gpioAllowed(ch.pin)) {
                 return false;
             }
+            if (!ChannelRegistry::isCoreManagedInputId(ch.id) && !addPin(ch.pin)) return false;
         }
         for (uint8_t i = 0; i < registry.outputCount; i++) {
             const auto& ch = registry.outputs[i];
             if (ch.pin >= 0 && (!outputGpioAllowed(ch.pin) ||
                 ch.pin == stopPin || ch.pin == startPin)) return false;
+            if (ch.hasCurrent && !adcGpioAllowed(ch.currentPin)) return false;
+            if (ch.pin >= 0 && !ChannelRegistry::isCoreManagedOutput(ch) && !registry.boundToCoreOutput(ch) &&
+                !addPin(ch.pin)) return false;
+            if (ch.hasCurrent && !addPin(ch.currentPin)) return false;
         }
     }
 
@@ -3441,6 +3446,25 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             if (!c || c->pin < 0) return;
             has = true; pin = c->pin; type = outputType(c->driver);
         };
+        auto applyVariableOutput = [&](const ChannelRegistry::Channel* c, bool& has, int& pin, int& type,
+                                       int& minUs, int& maxUs, float& pwmMinPct, float& pwmMaxPct,
+                                       bool& activeH) {
+            if (!c || c->pin < 0) return;
+            has = true; pin = c->pin; type = outputType(c->driver);
+            if (c->driver == ChannelRegistry::Servo) {
+                minUs = (int)c->minValue;
+                maxUs = (int)c->maxValue;
+            } else if (c->driver == ChannelRegistry::Pwm) {
+                pwmMinPct = constrain(c->minValue, 0.0f, 1.0f) * 100.0f;
+                pwmMaxPct = constrain(c->maxValue, 0.0f, 1.0f) * 100.0f;
+            } else {
+                activeH = !c->inverted;
+            }
+        };
+        auto applyRelayOutput = [&](const ChannelRegistry::Channel* c, bool& has, int& pin, bool& activeH) {
+            if (!c || c->pin < 0) return;
+            has = true; pin = c->pin; activeH = !c->inverted;
+        };
         auto applyIgniterOutput = [&](const ChannelRegistry::Channel* c, bool& has, int& pin, bool& pwm) {
             if (!c || c->pin < 0) return;
             has = true; pin = c->pin; pwm = c->driver != ChannelRegistry::Relay;
@@ -3453,24 +3477,88 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         applyInput(bound("operator_throttle", ChannelRegistry::Input), hasThrottleInput, throttleInputPin, throttleInputRcPwm);
         const auto* mainFuel = bound("main_fuel_output", ChannelRegistry::Output);
         if (!mainFuel) mainFuel = byIdOrRole(ChannelRegistry::Output, "main_fuel", nullptr);
-        applyOutput(mainFuel, hasThrottle, throttlePin, throttleType);
+        applyVariableOutput(mainFuel, hasThrottle, throttlePin, throttleType,
+                            throttleMinUs, throttleMaxUs, throttlePwmMinPct, throttlePwmMaxPct,
+                            throttleActiveH);
         const auto* starter = bound("main_starter", ChannelRegistry::Output);
         if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter_main", nullptr);
-        applyOutput(starter, hasStarter, starterPin, starterType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump_main", nullptr),
-                    hasOilPump, oilPumpPin, oilPumpType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "cooling_fan_main", nullptr),
-                    hasCoolFan, coolFanPin, coolFanType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "oil_scavenge_main", nullptr),
-                    hasOilScavengePump, oilScavPumpPin, oilScavPumpType);
-        applyOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve_main", nullptr),
-                    hasBleedValve, bleedValvePin, bleedValveType);
+        if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter", nullptr);
+        applyVariableOutput(starter, hasStarter, starterPin, starterType,
+                            starterMinUs, starterMaxUs, starterPwmMinPct, starterPwmMaxPct,
+                            starterActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump_main", nullptr),
+                            hasOilPump, oilPumpPin, oilPumpType,
+                            oilPumpMinUs, oilPumpMaxUs, oilPumpPwmMinPct, oilPumpPwmMaxPct,
+                            oilPumpActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump", nullptr),
+                            hasOilPump, oilPumpPin, oilPumpType,
+                            oilPumpMinUs, oilPumpMaxUs, oilPumpPwmMinPct, oilPumpPwmMaxPct,
+                            oilPumpActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "cooling_fan_main", nullptr),
+                            hasCoolFan, coolFanPin, coolFanType,
+                            coolFanMinUs, coolFanMaxUs, coolFanPwmMinPct, coolFanPwmMaxPct,
+                            coolFanActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "cooling_fan", nullptr),
+                            hasCoolFan, coolFanPin, coolFanType,
+                            coolFanMinUs, coolFanMaxUs, coolFanPwmMinPct, coolFanPwmMaxPct,
+                            coolFanActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "oil_scavenge_main", nullptr),
+                            hasOilScavengePump, oilScavPumpPin, oilScavPumpType,
+                            oilScavPumpMinUs, oilScavPumpMaxUs, oilScavPumpPwmMinPct, oilScavPumpPwmMaxPct,
+                            oilScavPumpActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "scavenge_pump", nullptr),
+                            hasOilScavengePump, oilScavPumpPin, oilScavPumpType,
+                            oilScavPumpMinUs, oilScavPumpMaxUs, oilScavPumpPwmMinPct, oilScavPumpPwmMaxPct,
+                            oilScavPumpActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve_main", nullptr),
+                            hasBleedValve, bleedValvePin, bleedValveType,
+                            bleedValveMinUs, bleedValveMaxUs, bleedValvePwmMinPct, bleedValvePwmMaxPct,
+                            bleedValveActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve", nullptr),
+                            hasBleedValve, bleedValvePin, bleedValveType,
+                            bleedValveMinUs, bleedValveMaxUs, bleedValvePwmMinPct, bleedValvePwmMaxPct,
+                            bleedValveActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "fuel_pump", nullptr),
+                            hasFuelPump2, fuelPump2Pin, fuelPump2Type,
+                            fuelPump2MinUs, fuelPump2MaxUs, fuelPump2PwmMinPct, fuelPump2PwmMaxPct,
+                            fuelPump2ActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "ab_pump", nullptr),
+                            hasAbPump, abPumpPin, abPumpType,
+                            abPumpMinUs, abPumpMaxUs, abPumpPwmMinPct, abPumpPwmMaxPct,
+                            abPumpActiveH);
+        applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "prop_pitch", nullptr),
+                            hasPropPitch, propPitchPin, propPitchType,
+                            propPitchMinUs, propPitchMaxUs, propPitchPwmMinPct, propPitchPwmMaxPct,
+                            propPitchActiveH);
         applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "ab_igniter", nullptr),
                            hasIgniter2, igniter2Pin, igniter2Pwm);
         applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "igniter2_main", nullptr),
                            hasIgniter2, igniter2Pin, igniter2Pwm);
+        applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "igniter", nullptr),
+                           hasIgniter, igniterPin, igniterPwm);
+        if (const auto* c = byIdOrRole(ChannelRegistry::Output, "glow_plug", nullptr)) {
+            if (c->pin >= 0) {
+                hasGlowPlug = true;
+                glowPlugPin = c->pin;
+                glowPlugOutputType = c->driver == ChannelRegistry::Relay ? 1 : 0;
+                if (c->driver == ChannelRegistry::Pwm) {
+                    glowPlugPwmMinPct = constrain(c->minValue, 0.0f, 1.0f) * 100.0f;
+                    glowPlugPwmMaxPct = constrain(c->maxValue, 0.0f, 1.0f) * 100.0f;
+                } else if (c->driver == ChannelRegistry::Relay) {
+                    glowPlugActiveH = !c->inverted;
+                }
+            }
+        }
+        applyRelayOutput(byIdOrRole(ChannelRegistry::Output, "starter_enable", nullptr),
+                         hasStarterEn, starterEnPin, starterEnActiveH);
+        applyRelayOutput(byIdOrRole(ChannelRegistry::Output, "fuel_shutoff", nullptr),
+                         hasFuelSol, fuelSolPin, fuelSolActiveH);
+        applyRelayOutput(byIdOrRole(ChannelRegistry::Output, "ab_solenoid", nullptr),
+                         hasAbSol, abSolPin, abSolActiveH);
+        applyRelayOutput(byIdOrRole(ChannelRegistry::Output, "air_starter", nullptr),
+                         hasAirstarterSol, airstarterSolPin, airstarterSolActiveH);
         if (const auto* c = bound("main_fuel_shutoff", ChannelRegistry::Output)) {
-            if (c->pin >= 0) { hasFuelSol = true; fuelSolPin = c->pin; }
+            if (c->pin >= 0) { hasFuelSol = true; fuelSolPin = c->pin; fuelSolActiveH = !c->inverted; }
         }
     }
 
@@ -3911,6 +3999,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::Output;
             c.driver = legacyType == 0 ? ChannelRegistry::Servo : legacyType == 1 ? ChannelRegistry::Pwm : ChannelRegistry::Relay;
             c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
+            if (c.driver == ChannelRegistry::Servo) { c.minValue = 1000.0f; c.maxValue = 2000.0f; }
+            else { c.minValue = 0.0f; c.maxValue = 1.0f; }
             HardwareConfig::channelRegistry.add(c);
         };
         if (hasN1Rpm) addInput("n1_main", "speed", n1RpmPin, ChannelRegistry::Pulse);

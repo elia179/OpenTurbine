@@ -34,14 +34,28 @@ public:
         return id && (!strcmp(id, "main_fuel_output") ||
                       !strcmp(id, "main_fuel") ||
                       !strcmp(id, "main_starter") ||
+                      !strcmp(id, "starter") ||
                       !strcmp(id, "starter_main") ||
+                      !strcmp(id, "starter_enable") ||
                       !strcmp(id, "oil_pump_main") ||
+                      !strcmp(id, "oil_pump") ||
                       !strcmp(id, "cooling_fan_main") ||
+                      !strcmp(id, "cooling_fan") ||
                       !strcmp(id, "oil_scavenge_main") ||
+                      !strcmp(id, "scavenge_pump") ||
                       !strcmp(id, "bleed_valve_main") ||
+                      !strcmp(id, "bleed_valve") ||
+                      !strcmp(id, "igniter") ||
                       !strcmp(id, "ab_igniter") ||
                       !strcmp(id, "igniter2_main") ||
-                      !strcmp(id, "main_fuel_shutoff"));
+                      !strcmp(id, "main_fuel_shutoff") ||
+                      !strcmp(id, "fuel_shutoff") ||
+                      !strcmp(id, "ab_solenoid") ||
+                      !strcmp(id, "air_starter") ||
+                      !strcmp(id, "fuel_pump") ||
+                      !strcmp(id, "ab_pump") ||
+                      !strcmp(id, "prop_pitch") ||
+                      !strcmp(id, "glow_plug"));
     }
     static bool isCoreManagedInputId(const char* id) {
         return id && (!strcmp(id, "n1_main") ||
@@ -114,6 +128,11 @@ public:
         bool activeHigh = true;
         bool pullup = false;
         bool pulldown = false;
+        bool hasCurrent = false;
+        int8_t currentPin = -1;
+        float currentMvPerA = 100.0f;
+        float currentZeroV = 1.65f;
+        float currentMaxAmps = 0.0f;
     };
     static bool isCoreManagedOutput(const Channel& c) {
         return isCoreManagedOutputId(c.id);
@@ -185,7 +204,11 @@ private:
     static bool demandsValid(const Channel& c) {
         return c.safeDemand >= 0 && c.safeDemand <= 1 &&
                c.faultDemand >= 0 && c.faultDemand <= 1 &&
-               !(c.pullup && c.pulldown) && rangeValid(c);
+               !(c.pullup && c.pulldown) &&
+               (!c.hasCurrent || (c.currentPin >= 0 && c.currentMvPerA > 0.0f &&
+                                  c.currentZeroV >= 0.0f && c.currentZeroV <= 3.3f &&
+                                  c.currentMaxAmps >= 0.0f)) &&
+               rangeValid(c);
     }
     bool bindingValid(const Binding& b) const {
         if (!validId(b.key)) return false;
@@ -204,6 +227,6 @@ private:
         if (known) return find(b.channelId, expected) != nullptr;
         return find(b.channelId, Input) || find(b.channelId, Output);
     }
-    static void write(JsonArray a, const Channel* list, uint8_t n) { for(uint8_t i=0;i<n;i++) { const Channel& c=list[i]; JsonObject o=a.add<JsonObject>(); o["id"]=c.id;o["name"]=c.name;o["role"]=c.role;o["driver"]=(uint8_t)c.driver;o["pin"]=c.pin;o["min"]=c.minValue;o["max"]=c.maxValue;o["safe_demand"]=c.safeDemand;o["fault_demand"]=c.faultDemand;o["invert"]=c.inverted;o["active_high"]=c.activeHigh;o["pullup"]=c.pullup;o["pulldown"]=c.pulldown; } }
-    bool read(JsonVariantConst v, Direction d) { for(JsonObjectConst o:v.as<JsonArrayConst>()) { Channel c; c.direction=d;c.installed=true;strlcpy(c.id,o["id"]|"",sizeof(c.id));strlcpy(c.name,o["name"]|c.id,sizeof(c.name));strlcpy(c.role,o["role"]|"generic",sizeof(c.role));c.driver=(Driver)(o["driver"]|0);c.pin=o["pin"]|-1;c.minValue=o["min"]|0.0f;c.maxValue=o["max"]|1.0f;c.safeDemand=o["safe_demand"]|0.0f;c.faultDemand=o["fault_demand"]|0.0f;c.inverted=o["invert"]|false;c.activeHigh=o["active_high"]|true;c.pullup=o["pullup"]|false;c.pulldown=o["pulldown"]|false;if(c.pullup)c.pulldown=false;if(!add(c))return false;} return true; }
+    static void write(JsonArray a, const Channel* list, uint8_t n) { for(uint8_t i=0;i<n;i++) { const Channel& c=list[i]; JsonObject o=a.add<JsonObject>(); o["id"]=c.id;o["name"]=c.name;o["role"]=c.role;o["driver"]=(uint8_t)c.driver;o["pin"]=c.pin;o["min"]=c.minValue;o["max"]=c.maxValue;o["safe_demand"]=c.safeDemand;o["fault_demand"]=c.faultDemand;o["invert"]=c.inverted;o["active_high"]=c.activeHigh;o["pullup"]=c.pullup;o["pulldown"]=c.pulldown;o["has_current"]=c.hasCurrent;o["current_pin"]=c.currentPin;o["current_mv_a"]=c.currentMvPerA;o["current_zero_v"]=c.currentZeroV;o["current_max_a"]=c.currentMaxAmps; } }
+    bool read(JsonVariantConst v, Direction d) { for(JsonObjectConst o:v.as<JsonArrayConst>()) { Channel c; c.direction=d;c.installed=true;strlcpy(c.id,o["id"]|"",sizeof(c.id));strlcpy(c.name,o["name"]|c.id,sizeof(c.name));strlcpy(c.role,o["role"]|"generic",sizeof(c.role));c.driver=(Driver)(o["driver"]|0);c.pin=o["pin"]|-1;c.minValue=o["min"]|0.0f;c.maxValue=o["max"]|1.0f;c.safeDemand=o["safe_demand"]|0.0f;c.faultDemand=o["fault_demand"]|0.0f;c.inverted=o["invert"]|false;c.activeHigh=o["active_high"]|true;c.pullup=o["pullup"]|false;c.pulldown=o["pulldown"]|false;c.hasCurrent=o["has_current"]|false;c.currentPin=o["current_pin"]|-1;c.currentMvPerA=o["current_mv_a"]|100.0f;c.currentZeroV=o["current_zero_v"]|1.65f;c.currentMaxAmps=o["current_max_a"]|0.0f;if(c.pullup)c.pulldown=false;if(!add(c))return false;} return true; }
 };

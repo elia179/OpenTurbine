@@ -598,8 +598,20 @@ namespace Hardware {
     inline void updateRegistryOutputs() {
         auto& reg = HardwareConfig::channelRegistry;
         auto& ed = EngineData::instance();
-        for (uint8_t i = 0; i < reg.outputCount; ++i)
-            writeRegistryOutput(reg.outputs[i], ed.registryOutputDemand[i]);
+        for (uint8_t i = 0; i < reg.outputCount; ++i) {
+            const auto& c = reg.outputs[i];
+            writeRegistryOutput(c, ed.registryOutputDemand[i]);
+            if (c.hasCurrent && c.currentPin >= 0) {
+                int raw = analogRead(c.currentPin);
+                float volts = (float)raw * 3.3f / 4095.0f;
+                float mvPerA = c.currentMvPerA > 0.0f ? c.currentMvPerA : 100.0f;
+                ed.registryOutputCurrentAmps[i] = (volts - constrain(c.currentZeroV, 0.0f, 3.3f)) * 1000.0f / mvPerA;
+                ed.registryOutputCurrentHealthy[i] = true;
+            } else {
+                ed.registryOutputCurrentAmps[i] = 0.0f;
+                ed.registryOutputCurrentHealthy[i] = false;
+            }
+        }
     }
 
     inline void faultRegistryOutputs() {
