@@ -966,10 +966,37 @@ textarea.field-changed {
   box-shadow: var(--shadow-lg);
 }
 .registry-add-catalog {
+  display: block;
+  margin-bottom: .75rem;
+}
+.registry-add-capacity {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: .45rem .6rem;
+  margin-bottom: .6rem;
+  color: var(--dim);
+  background: var(--bg);
+  font-size: .72rem;
+}
+.registry-add-capacity-full {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
+}
+.registry-add-group {
+  margin-bottom: .75rem;
+}
+.registry-add-group-title {
+  color: var(--dim);
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin: 0 0 .35rem;
+  font-weight: 700;
+}
+.registry-add-group-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: .45rem;
-  margin-bottom: .75rem;
 }
 .registry-add-option {
   text-align: left;

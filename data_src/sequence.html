@@ -2879,6 +2879,9 @@ function registryRuleUnit(c) {
   if (c.role === 'speed') return c.driver === 2 ? 'Hz' : 'RPM';
   if (c.role === 'pressure') return 'bar';
   if (c.role === 'temperature') return 'deg C';
+  if (c.role === 'voltage') return 'V';
+  if (c.role === 'flow') return 'L/min';
+  if (c.role === 'torque') return 'Nm';
   if (c.role === 'operator') return '%';
   return '';
 }

@@ -3565,7 +3565,7 @@ function registryRoot() {
 function driverName(n) { return ['Digital','Analog','Pulse/frequency','RC PWM','Relay','PWM','Servo/ESC'][Number(n)] || 'Unknown'; }
 const REGISTRY_INPUT_ROLES=[
   ['generic','Generic input'],['speed','Speed input'],['pressure','Pressure input'],['temperature','Temperature input'],
-  ['flame','Flame input'],['flow','Flow input'],['torque','Torque input'],['operator','Operator input'],['digital_switch','Digital switch'],
+  ['flame','Flame input'],['flow','Flow input'],['torque','Torque input'],['voltage','Voltage input'],['operator','Operator input'],['digital_switch','Digital switch'],
   ['fault','Fault switch'],['estop','E-stop switch'],['inhibit_start','Inhibit-start switch'],['sequence_gate','Sequence gate switch'],
   ['ab_arm','AB arm switch'],['ab_fire','AB fire switch'],['limp_mode','Limp-mode switch']
 ];
@@ -3576,40 +3576,53 @@ const REGISTRY_OUTPUT_ROLES=[
   ['fuel_pump','Aux fuel pump'],['ab_pump','AB pump'],['prop_pitch','Prop pitch'],['contactor','Contactor']
 ];
 const REGISTRY_INPUT_PRESETS=[
-  {role:'generic',label:'Generic input',id:'generic_input',name:'Generic Input',driver:0},
-  {role:'speed',label:'Speed input',id:'speed_input',name:'Speed Input',driver:2},
-  {role:'pressure',label:'Pressure input',id:'pressure_input',name:'Pressure Input',driver:1},
-  {role:'temperature',label:'Temperature input',id:'temperature_input',name:'Temperature Input',driver:1},
-  {role:'flame',label:'Flame input',id:'flame_input',name:'Flame Input',driver:1},
-  {role:'flow',label:'Flow input',id:'flow_input',name:'Flow Input',driver:2},
-  {role:'torque',label:'Torque input',id:'torque_input',name:'Torque Input',driver:1},
-  {role:'operator',label:'Operator input',id:'operator_input',name:'Operator Input',driver:1},
-  {role:'digital_switch',label:'Digital switch',id:'digital_switch',name:'Digital Switch',driver:0},
-  {role:'inhibit_start',label:'Inhibit-start switch',id:'inhibit_start',name:'Inhibit Start',driver:0},
-  {role:'estop',label:'E-stop switch',id:'estop',name:'E-Stop',driver:0},
-  {role:'fault',label:'Fault switch',id:'fault_switch',name:'Fault Switch',driver:0},
-  {role:'sequence_gate',label:'Sequence gate switch',id:'sequence_gate',name:'Sequence Gate',driver:0},
-  {role:'ab_arm',label:'AB arm switch',id:'ab_arm',name:'AB Arm',driver:0},
-  {role:'ab_fire',label:'AB fire switch',id:'ab_fire',name:'AB Fire',driver:0},
-  {role:'limp_mode',label:'Limp-mode switch',id:'limp_mode',name:'Limp Mode',driver:0}
+  {group:'Engine sensors',role:'speed',label:'N1 speed',id:'n1_main',name:'Main N1 Speed',driver:2},
+  {group:'Engine sensors',role:'speed',label:'N2 speed',id:'n2_main',name:'Main N2 Speed',driver:2},
+  {group:'Engine sensors',role:'temperature',label:'TOT / EGT',id:'tot_main',name:'Main TOT',driver:1},
+  {group:'Engine sensors',role:'temperature',label:'TIT',id:'tit_main',name:'Main TIT',driver:1},
+  {group:'Engine sensors',role:'pressure',label:'Oil pressure',id:'oil_pressure_main',name:'Oil Pressure',driver:1},
+  {group:'Engine sensors',role:'temperature',label:'Oil temperature',id:'oil_temperature',name:'Oil Temp',driver:1},
+  {group:'Engine sensors',role:'pressure',label:'Fuel pressure',id:'fuel_pressure',name:'Fuel Pressure',driver:1},
+  {group:'Engine sensors',role:'flow',label:'Fuel flow',id:'fuel_flow',name:'Fuel Flow',driver:2},
+  {group:'Engine sensors',role:'flame',label:'Flame',id:'flame_main',name:'Flame',driver:1},
+  {group:'Engine sensors',role:'torque',label:'Torque',id:'torque_main',name:'Torque',driver:1},
+  {group:'Engine sensors',role:'voltage',label:'Battery voltage',id:'battery_voltage',name:'Battery Volt',driver:1},
+  {group:'Operator and interlock inputs',role:'operator',label:'Throttle input',id:'operator_throttle',name:'Throttle Input',driver:1},
+  {group:'Operator and interlock inputs',role:'operator',label:'Idle input',id:'operator_idle',name:'Idle Input',driver:1},
+  {group:'Operator and interlock inputs',role:'digital_switch',label:'Digital interlock',id:'digital_interlock',name:'Interlock',driver:0},
+  {group:'Operator and interlock inputs',role:'inhibit_start',label:'Inhibit-start switch',id:'inhibit_start',name:'Inhibit Start',driver:0},
+  {group:'Operator and interlock inputs',role:'estop',label:'E-stop switch',id:'estop',name:'E-Stop',driver:0},
+  {group:'Operator and interlock inputs',role:'fault',label:'Fault switch',id:'fault_switch',name:'Fault Switch',driver:0},
+  {group:'Operator and interlock inputs',role:'sequence_gate',label:'Sequence gate switch',id:'sequence_gate',name:'Sequence Gate',driver:0},
+  {group:'Operator and interlock inputs',role:'ab_arm',label:'AB arm switch',id:'ab_arm',name:'AB Arm',driver:0},
+  {group:'Operator and interlock inputs',role:'ab_fire',label:'AB fire switch',id:'ab_fire',name:'AB Fire',driver:0},
+  {group:'Operator and interlock inputs',role:'limp_mode',label:'Limp-mode switch',id:'limp_mode',name:'Limp Mode',driver:0},
+  {group:'Generic inputs',role:'generic',label:'Generic digital input',id:'generic_digital_input',name:'Digital Input',driver:0},
+  {group:'Generic inputs',role:'generic',label:'Generic analog input',id:'generic_analog_input',name:'Analog Input',driver:1},
+  {group:'Generic inputs',role:'generic',label:'Generic pulse/frequency',id:'generic_pulse_input',name:'Pulse Input',driver:2},
+  {group:'Generic inputs',role:'generic',label:'Generic RC PWM input',id:'generic_rc_input',name:'RC Input',driver:3}
 ];
 const REGISTRY_OUTPUT_PRESETS=[
-  {role:'generic',label:'Generic output',id:'generic_output',name:'Generic Output',driver:4},
-  {role:'fuel',label:'Fuel metering',id:'fuel_output',name:'Fuel Output',driver:5},
-  {role:'fuel_shutoff',label:'Fuel shutoff',id:'fuel_shutoff',name:'Fuel Shutoff',driver:4},
-  {role:'starter',label:'Starter',id:'starter',name:'Starter',driver:5},
-  {role:'starter_en',label:'Starter enable',id:'starter_enable',name:'Starter Enable',driver:4},
-  {role:'oil_pump',label:'Oil pump',id:'oil_pump',name:'Oil Pump',driver:5},
-  {role:'scavenge_pump',label:'Scavenge pump',id:'scavenge_pump',name:'Scavenge Pump',driver:5},
-  {role:'cooling_fan',label:'Cooling fan',id:'cooling_fan',name:'Cooling Fan',driver:4},
-  {role:'valve',label:'Valve / solenoid',id:'valve',name:'Valve',driver:4},
-  {role:'igniter',label:'Igniter',id:'igniter',name:'Igniter',driver:4},
-  {role:'ab_igniter',label:'AB igniter',id:'ab_igniter',name:'AB Igniter',driver:4},
-  {role:'glow_plug',label:'Glow plug',id:'glow_plug',name:'Glow Plug',driver:5},
-  {role:'fuel_pump',label:'Aux fuel pump',id:'fuel_pump',name:'Fuel Pump',driver:5},
-  {role:'ab_pump',label:'AB pump',id:'ab_pump',name:'AB Pump',driver:5},
-  {role:'prop_pitch',label:'Prop pitch',id:'prop_pitch',name:'Prop Pitch',driver:6},
-  {role:'contactor',label:'Contactor',id:'contactor',name:'Contactor',driver:4}
+  {group:'Engine actuators',role:'fuel',label:'Main fuel',id:'main_fuel',name:'Main Fuel',driver:5},
+  {group:'Engine actuators',role:'starter',label:'Starter',id:'starter',name:'Starter',driver:5},
+  {group:'Engine actuators',role:'starter_en',label:'Starter enable',id:'starter_enable',name:'Starter Enable',driver:4},
+  {group:'Engine actuators',role:'oil_pump',label:'Oil pump',id:'oil_pump',name:'Oil Pump',driver:5},
+  {group:'Engine actuators',role:'scavenge_pump',label:'Scavenge pump',id:'scavenge_pump',name:'Scavenge Pump',driver:5},
+  {group:'Engine actuators',role:'fuel_shutoff',label:'Fuel shutoff',id:'fuel_shutoff',name:'Fuel Shutoff',driver:4},
+  {group:'Engine actuators',role:'igniter',label:'Igniter',id:'igniter',name:'Igniter',driver:4},
+  {group:'Engine actuators',role:'ab_igniter',label:'AB igniter',id:'ab_igniter',name:'AB Igniter',driver:4},
+  {group:'Engine actuators',role:'glow_plug',label:'Glow plug',id:'glow_plug',name:'Glow Plug',driver:5},
+  {group:'Engine actuators',role:'starter',label:'Air starter',id:'air_starter',name:'Air Starter',driver:4},
+  {group:'Engine actuators',role:'cooling_fan',label:'Cooling fan',id:'cooling_fan',name:'Cooling Fan',driver:5},
+  {group:'Engine actuators',role:'fuel_pump',label:'Fuel pump',id:'fuel_pump',name:'Fuel Pump',driver:5},
+  {group:'Engine actuators',role:'valve',label:'Bleed valve',id:'bleed_valve',name:'Bleed Valve',driver:4},
+  {group:'Engine actuators',role:'prop_pitch',label:'Prop pitch',id:'prop_pitch',name:'Prop Pitch',driver:6},
+  {group:'Engine actuators',role:'valve',label:'AB solenoid',id:'ab_solenoid',name:'AB Solenoid',driver:4},
+  {group:'Engine actuators',role:'ab_pump',label:'AB pump',id:'ab_pump',name:'AB Pump',driver:5},
+  {group:'Generic outputs',role:'generic',label:'Relay output',id:'generic_relay_output',name:'Relay Output',driver:4},
+  {group:'Generic outputs',role:'generic',label:'PWM output',id:'generic_pwm_output',name:'PWM Output',driver:5},
+  {group:'Generic outputs',role:'generic',label:'Servo/ESC output',id:'generic_servo_output',name:'Servo Output',driver:6},
+  {group:'Generic outputs',role:'contactor',label:'Contactor',id:'contactor',name:'Contactor',driver:4}
 ];
 function registryRoleOptions(direction, selected) {
   const roles = direction === 'input' ? REGISTRY_INPUT_ROLES : REGISTRY_OUTPUT_ROLES;
@@ -3860,12 +3873,29 @@ function renderRegistryAddCatalog() {
   if (!box) return;
   const presets = _registryAddDirection === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
   const q = (document.getElementById('registry-add-search')?.value || '').trim().toLowerCase();
+  const r = registryRoot();
+  const used = (r[_registryAddDirection + 's'] || []).length;
+  const max = _registryAddDirection === 'input' ? 6 : 6;
   const rows = presets
     .map((p, i) => ({p, i}))
-    .filter(({p}) => !q || [p.label, p.name, p.role, p.id].some(v => String(v).toLowerCase().includes(q)));
-  box.innerHTML = rows.length ? rows.map(({p, i}) =>
-    `<button type="button" class="registry-add-option" onclick="selectRegistryAddPreset(${i})">${escapeHtmlText(p.label)}<small>${escapeHtmlText(driverName(p.driver))} default · role ${escapeHtmlText(p.role)}</small></button>`
-  ).join('') : '<div class="hw-desc">No matching hardware type.</div>';
+    .filter(({p}) => !q || [p.group, p.label, p.name, p.role, p.id].some(v => String(v).toLowerCase().includes(q)));
+  const capacity = `<div class="registry-add-capacity ${used >= max ? 'registry-add-capacity-full' : ''}">${used}/${max} ${_registryAddDirection} slots used${used >= max ? ' — capacity full; remove an unused channel before adding another.' : ''}</div>`;
+  if (!rows.length) {
+    box.innerHTML = capacity + '<div class="hw-desc">No matching hardware type.</div>';
+    return;
+  }
+  const groups = [];
+  rows.forEach(row => {
+    let group = groups.find(g => g.name === (row.p.group || 'Other'));
+    if (!group) { group = {name: row.p.group || 'Other', rows: []}; groups.push(group); }
+    group.rows.push(row);
+  });
+  box.innerHTML = capacity + groups.map(group => `<div class="registry-add-group">
+    <div class="registry-add-group-title">${escapeHtmlText(group.name)}</div>
+    <div class="registry-add-group-grid">${group.rows.map(({p, i}) =>
+      `<button type="button" class="registry-add-option" onclick="selectRegistryAddPreset(${i})">${escapeHtmlText(p.label)}<small>${escapeHtmlText(driverName(p.driver))} default · role ${escapeHtmlText(p.role)}</small></button>`
+    ).join('')}</div>
+  </div>`).join('');
 }
 function selectRegistryAddPreset(index) {
   const presets = _registryAddDirection === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
