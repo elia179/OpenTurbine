@@ -871,6 +871,21 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["pin"]   = HardwareConfig::diCh[i].pin;  // needed by JS show/hide logic
         }
     }
+    {
+        auto inArr = doc["registry_inputs"].to<JsonArray>();
+        for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; i++) {
+            auto ch = inArr.add<JsonObject>();
+            ch["id"]      = HardwareConfig::channelRegistry.inputs[i].id;
+            ch["value"]   = (float)(int)(ed.registryInputValue[i] * 1000) / 1000.0f;
+            ch["healthy"] = ed.registryInputHealthy[i];
+        }
+        auto outArr = doc["registry_outputs"].to<JsonArray>();
+        for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; i++) {
+            auto ch = outArr.add<JsonObject>();
+            ch["id"]     = HardwareConfig::channelRegistry.outputs[i].id;
+            ch["demand"] = (float)(int)(ed.registryOutputDemand[i] * 1000) / 1000.0f;
+        }
+    }
 
     // ── Slow fields — sent on connect + every ~30 s ───────────────────────
     // Hardware config flags, safety limits, labels, calibration raw values,
@@ -1022,6 +1037,37 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
                 ch["label"] = lbuf;  // ArduinoJson copies char* (non-const ptr)
             }
             ch["role"] = HardwareConfig::diCh[i].role;
+        }
+        doc["registry_inputs"].clear();
+        auto rin = doc["registry_inputs"].to<JsonArray>();
+        for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; i++) {
+            const auto& c = HardwareConfig::channelRegistry.inputs[i];
+            auto ch = rin.add<JsonObject>();
+            ch["id"] = c.id;
+            ch["name"] = c.name;
+            ch["role"] = c.role;
+            ch["driver"] = (uint8_t)c.driver;
+            ch["pin"] = c.pin;
+            ch["min"] = c.minValue;
+            ch["max"] = c.maxValue;
+            ch["value"] = (float)(int)(ed.registryInputValue[i] * 1000) / 1000.0f;
+            ch["healthy"] = ed.registryInputHealthy[i];
+        }
+        doc["registry_outputs"].clear();
+        auto rout = doc["registry_outputs"].to<JsonArray>();
+        for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; i++) {
+            const auto& c = HardwareConfig::channelRegistry.outputs[i];
+            auto ch = rout.add<JsonObject>();
+            ch["id"] = c.id;
+            ch["name"] = c.name;
+            ch["role"] = c.role;
+            ch["driver"] = (uint8_t)c.driver;
+            ch["pin"] = c.pin;
+            ch["min"] = c.minValue;
+            ch["max"] = c.maxValue;
+            ch["safe_demand"] = c.safeDemand;
+            ch["fault_demand"] = c.faultDemand;
+            ch["demand"] = (float)(int)(ed.registryOutputDemand[i] * 1000) / 1000.0f;
         }
     }
     return serializeJson(doc, buf, len);
