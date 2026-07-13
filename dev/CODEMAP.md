@@ -116,10 +116,11 @@ Writers/readers are cross-core. Fields grouped:
 - **Sensor readings** (`EngineData.h:39-57`): `n1Rpm`, `n2Rpm`, `tot`, `tit`, `oilPressure`, `oilTemp`, `fuelPressure`, `fuelFlow`, `p1`, `p2`, `battVoltage`, `torque`, raw ADC values.
 - **Health flags** (`:60-69`): `n1Healthy`, `n2Healthy`, `totHealthy`, `titHealthy`, `oilHealthy`, `oilTempHealthy`, `fuelPressHealthy`, `flameDetected`. Drives whether SafetyMonitor checks run.
 - **Demands** (`:72-86`): `throttleDemand` (0..1), `oilPumpPct`, `oilTargetBar`, `starterDemand`, `starterEnabled`, `propPitchDemand`, `fuelPump2Demand`, `glowPlugDemand`, `igniterOn`, `igniter2On`, `fuelSolOpen`, `bleedValveOpen`, `airstarterOpen`, `coolFanOn`, `oilScavengeOn`, `abPumpDemand`, `abSolOpen`, `abFuelOffset`.
+- **Registry channel telemetry/demand**: fixed `registryInputValue[]`, `registryInputHealthy[]`, and `registryOutputDemand[]` arrays mirror bounded `ChannelRegistry` inputs/outputs for generic rules, sequences, tools, and live API telemetry.
 - **AB state** (`:98-107`): `abMode` (ABMode enum), `abTriggerActive`, `abArmSwitchOn`, `abInputRaw`.
 - **Mode / flags** (`:110-126`): `mode` (SysMode), `flameMonitorActive`, `relightArmed`, `relightAttempts`, `manualRelightActive`, `oilFailsafeActive`, `extraCooldownActive`, `standbyOilFeedActive`, `starterAssistActive`, `devMode`, `benchMode`, `skipSafetyChecks`, `limpMode`, `configVersionMismatch`.
 - **Strings** (`:130-145`): `lastEvent[64]`, `faultDescription[160]`, `currentBlock[24]`, `seqIssues[N]`, etc. All `strncpy`d.
-- **DI state** (`:148-152`): `diState[MAX_DI]`.
+- **DI state** (`:148-152`): `diState[MAX_DI]`. Legacy `di_channels` remain the runtime adapter; registry digital-switch behavior roles can bridge into free DI slots at hardware load.
 - **Timers** (`:176-180`): `extraCooldownUntilMs` (unsigned long).
 - **Sequence telemetry** (`:158-170`): `seqBlockIdx`, `seqBlockTotal`, `seqIssueCount`, `seqHasErrors`.
 - **Peaks** (`:206-214`): `maxN1`, `maxN2`, `maxTot`, `maxTit`, `maxP1`, `maxP2`, `maxOilTemp`, `maxBattVoltage`, `maxFuelPressure`.

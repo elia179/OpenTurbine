@@ -17,7 +17,9 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - A practical OpenTurbine Cluster example and implementation guide.
 - A bounded hardware channel registry with installed input/output inventory, stable channel IDs, editable registry cards on the Hardware page, and compatibility migration from legacy singleton hardware fields.
 - Stable channel references for control rules, sequence side actions, and custom sequence blocks, while retaining legacy numeric fields for older configuration files.
-- Fixed-capacity oil-loop definitions that bind pressure input channels to oil-pump output channels and feed the existing oil-pressure controller compatibility path.
+- Fixed-capacity oil-loop definitions that bind pressure input channels to oil-pump output channels. The first enabled loop feeds the existing oil-pressure controller compatibility path; additional enabled registry loops drive their selected non-core pump outputs before rules run.
+- Runtime dispatch for generic registry inputs and outputs: digital/analog/pulse/RC-PWM inputs publish telemetry and rule values, relay/PWM/servo outputs use normalized demand, and testable registry outputs appear in Tools.
+- Registry input switch roles for existing DI behaviors (`fault`, `estop`, `inhibit_start`, `sequence_gate`, `ab_arm`, `ab_fire`, `limp_mode`) with a compatibility bridge into the fixed DI runtime slots.
 
 ### Changed
 - Configuration suggestions are explicitly unverified starting points; unavailable hardware-dependent controls are hidden in Setup and retained as explained, disabled controls in Advanced.
@@ -27,6 +29,8 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Controller and safety enables are now rejected by Hardware save/import validation and START preflight when their required inventory is missing.
 - The first enabled oil-loop definition now supplies the oil controller's selected pressure/pump channels plus min/max demand and deadband; duplicate enabled pump ownership is rejected.
 - Rule and sequence ID resolution now accepts standard binding keys and registry channel IDs where they map to existing runtime inputs/outputs.
+- Core output ownership is determined by stable IDs or explicit bindings instead of semantic role, so repeatable same-role outputs such as `Oil Pump 2` remain available to rules, sequences, tools, or additional oil loops unless intentionally bound to a singleton subsystem.
+- The AB igniter registry role bridges to the existing Igniter 2 / afterburner ignition runtime when using the standard `ab_igniter` or `igniter2_main` ID.
 
 ### Fixed
 - Known-point oil-temperature curves now reject duplicate ADC captures, allow individual point removal, persist their calibrated ADC range, and clamp conversion to that range instead of extrapolating beyond measured data.

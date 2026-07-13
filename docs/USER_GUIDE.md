@@ -260,6 +260,10 @@ This is the literal path from an unopened board to a dry-tested ECU.
 Open **Hardware** and describe the actual installation. Do not enable a sensor or actuator merely because it appears in the list.
 
 - Use **Installed Channel Inventory** for channels that rules, sequences, and controller bindings need to reference by ID. The stable ID is the machine key; keep it short, unique, and unchanged after other features reference it. The display name is safe to edit.
+- Inventory inputs can be digital, analog, pulse/frequency, or RC PWM. Digital switch roles can feed existing DI behaviors such as inhibit-start, E-stop, AB arm/fire, limp mode, sequence gate, and fault inputs. Registry-driven DI behavior currently uses the existing active-low/pull-up default unless a legacy DI channel supplies richer switch metadata.
+- Inventory outputs can be relay, PWM, or servo/ESC. Relay outputs quantize at the driver boundary; PWM and servo outputs preserve the full 0-100% demand used by rules, sequences, tools, and controllers.
+- Repeatable outputs with the same role are allowed. For example, `Oil Pump 1` can be the main bound pump while `Oil Pump 2` is controlled by rules, sequences, tools, or another oil loop.
+- The standard `AB igniter` inventory output bridges to the existing Igniter 2 / afterburner ignition path when it uses the standard `ab_igniter` or `igniter2_main` ID.
 - Confirm the correct ESP32 target.
 - Assign each GPIO once; resolve every conflict reported by the page.
 - Select the real electrical output type: relay, PWM, servo/ESC, or other offered mode.
@@ -284,6 +288,8 @@ Review at least:
 - Flameout source and delay
 - Hot-start threshold
 - Every fitted optional safety threshold
+
+If using multiple oil systems, define each oil loop with its pressure input, pump output, target pressure, deadband, and min/max demand. The first enabled loop feeds the primary oil controller; additional enabled loops drive their own selected registry pump outputs before rules run.
 
 `0` can mean disabled, automatic, or unlimited depending on the field. Read the description beside that specific control.
 
