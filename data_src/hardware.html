@@ -3519,6 +3519,20 @@ function setStatusLedType(val) {
   refreshAllPins();
 }
 
+function setStatusLedEnabled(val) {
+  if (!cfg.actuators) cfg.actuators = {};
+  if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
+  cfg.actuators.status_led.enabled = !!val;
+  if (!val) {
+    cfg.actuators.status_led.pin = -1;
+  } else if ((cfg.actuators.status_led.pin ?? -1) < 0) {
+    cfg.actuators.status_led.pin = cfg.platform === 'esp32s3' ? 48 : 2;
+  }
+  dirty();
+  refreshAllPins();
+  updateSaveButton();
+}
+
 function setStatusLedMode(val) {
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators.status_led) cfg.actuators.status_led = {};
@@ -3981,7 +3995,7 @@ function renderControllerSummary() {
   const enabled = rows.filter(r => r[2]).length;
   box.innerHTML = (enabled
     ? rows.filter(r => r[2]).map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : '<div class="registry-empty"><div>No optional controllers enabled.</div><button type="button" onclick="toggleWorkflowEditor(\'controllers\')">Edit controllers</button></div>')
+    : '<div class="registry-empty"><div>No optional controllers enabled.</div></div>')
     + (_workflowEditOpen.has('controllers') ? controllerInlineEditor() : '');
 }
 function safetyInlineEditor() {
@@ -4026,7 +4040,7 @@ function renderSafetySummary() {
   const enabledRows = rows.filter(r => r[2]);
   box.innerHTML = (enabledRows.length
     ? enabledRows.map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : '<div class="registry-empty"><div>No safety interlocks enabled.</div><button type="button" onclick="toggleWorkflowEditor(\'safety\')">Edit safety</button></div>')
+    : '<div class="registry-empty"><div>No safety interlocks enabled.</div></div>')
     + (_workflowEditOpen.has('safety') ? safetyInlineEditor() : '');
 }
 function renderCommsIndicatorSummary() {
@@ -4075,6 +4089,7 @@ function renderCommsIndicatorSummary() {
       ledStatus,
       ledInstalled,
       `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">Status LED</span><label class="hw-toggle"><input type="checkbox" ${led.enabled !== false?'checked':''} onchange="setStatusLedEnabled(this.checked)"><span></span> Enable</label></div>
         <div class="hw-field"><span class="hw-label">Status LED GPIO</span><select onchange="setAct('status_led','pin',+this.value)">${buildPinOptions(led.pin, 'status-led')}</select></div>
       </div></div>`),
     card('Buzzer',
@@ -4086,7 +4101,7 @@ function renderCommsIndicatorSummary() {
         <div class="hw-field"><span class="hw-label">Buzzer GPIO</span><select onchange="setNested('buzzer','pin',+this.value);refreshAllPins()">${buildPinOptions(buz.pin, 'out')}</select></div>
       </div></div>`)
   ].join('');
-  box.innerHTML = cards || '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="toggleWorkflowEditor(\'comms\')">Add / edit device</button></div>';
+  box.innerHTML = cards || '<div class="registry-empty"><div>No communication or indicator devices installed.</div></div>';
 }
 function renderHardwareWorkflowSummaries() {
   renderBuiltinInputSummary();
@@ -4133,7 +4148,7 @@ function renderRegistryInventory() {
         </div>
         </div>
       </div>`;
-      }).join('') : `<div class="registry-empty"><div>No installed ${direction} channels.</div><button type="button" onclick="addRegistryChannel('${direction}')">+ Add ${direction}</button></div>`);
+      }).join('') : `<div class="registry-empty"><div>No installed ${direction} channels.</div></div>`);
   };
   render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings(); renderHardwareWorkflowSummaries();
 }
