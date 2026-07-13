@@ -412,6 +412,39 @@ extern SafetyMonitor  g_safety;
 
 namespace Hardware {
 
+    inline volatile uint16_t g_registryPulseCounts[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline unsigned long     g_registryPulseLastMs = 0;
+    inline volatile uint16_t g_registryRcRiseUs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline volatile uint16_t g_registryRcPulseUs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline volatile uint8_t  g_registryRcFlags[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline uint16_t          g_registryRcLastMs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    static constexpr uint8_t REG_RC_FRESH = 0x01;
+    static constexpr uint8_t REG_RC_VALID = 0x02;
+
+    inline float registryMappedInput(float raw, const ChannelRegistry::Channel& c) {
+        float span = c.maxValue - c.minValue;
+        return span > 0.0f ? constrain((raw - c.minValue) / span, 0.0f, 1.0f) : raw;
+    }
+
+    static void IRAM_ATTR registryPulseIsr(void* arg) {
+        uint8_t idx = (uint8_t)(uintptr_t)arg;
+        g_registryPulseCounts[idx] = g_registryPulseCounts[idx] + 1;
+    }
+
+    static void IRAM_ATTR registryRcIsr(void* arg) {
+        uint8_t idx = (uint8_t)(uintptr_t)arg;
+        int pin = HardwareConfig::channelRegistry.inputs[idx].pin;
+        if (digitalRead(pin) == HIGH) {
+            g_registryRcRiseUs[idx] = (uint16_t)micros();
+        } else {
+            uint16_t pw = (uint16_t)micros() - g_registryRcRiseUs[idx];
+            if (pw >= 500 && pw <= 2500) {
+                g_registryRcPulseUs[idx] = pw;
+                g_registryRcFlags[idx] |= REG_RC_FRESH;
+            }
+        }
+    }
+
     inline void initRegistryInputs() {
         auto& reg = HardwareConfig::channelRegistry;
         auto& ed = EngineData::instance();
@@ -419,15 +452,75 @@ namespace Hardware {
             const auto& c = reg.inputs[i];
             ed.registryInputValue[i] = 0.0f;
             ed.registryInputHealthy[i] = c.installed && c.pin >= 0 &&
-                (c.driver == ChannelRegistry::Digital || c.driver == ChannelRegistry::Analog);
-            if (ed.registryInputHealthy[i] && c.driver == ChannelRegistry::Digital)
+                (c.driver == ChannelRegistry::Digital || c.driver == ChannelRegistry::Analog ||
+                 c.driver == ChannelRegistry::Pulse || c.driver == ChannelRegistry::RcPwm);
+            if (!ed.registryInputHealthy[i]) continue;
+            if (c.driver == ChannelRegistry::Digital) {
                 pinMode(c.pin, INPUT);
+            } else if (c.driver == ChannelRegistry::Pulse) {
+                g_registryPulseCounts[i] = 0;
+                g_registryPulseLastMs = millis();
+                ed.registryInputHealthy[i] = false;
+                pinMode(c.pin, INPUT);
+                attachInterruptArg(digitalPinToInterrupt(c.pin), registryPulseIsr, (void*)(uintptr_t)i, RISING);
+            } else if (c.driver == ChannelRegistry::RcPwm) {
+                g_registryRcRiseUs[i] = 0;
+                g_registryRcPulseUs[i] = 0;
+                g_registryRcFlags[i] = 0;
+                g_registryRcLastMs[i] = 0;
+                pinMode(c.pin, INPUT);
+                attachInterruptArg(digitalPinToInterrupt(c.pin), registryRcIsr, (void*)(uintptr_t)i, CHANGE);
+                ed.registryInputHealthy[i] = false;
+            }
         }
+    }
+
+    inline void updateRegistryPulseInput(uint8_t i, const ChannelRegistry::Channel& c, EngineData& ed, bool sample, unsigned long dt) {
+        if (sample) {
+            uint16_t count;
+            noInterrupts();
+            count = g_registryPulseCounts[i];
+            g_registryPulseCounts[i] = 0;
+            interrupts();
+            float hz = (float)count * 1000.0f / (float)dt;
+            ed.registryInputValue[i] = registryMappedInput(hz, c);
+            ed.registryInputHealthy[i] = true;
+        }
+    }
+
+    inline void updateRegistryRcInput(uint8_t i, const ChannelRegistry::Channel& c, EngineData& ed) {
+        unsigned long now = millis();
+        uint8_t flags;
+        uint32_t pulseUs;
+        noInterrupts();
+        flags = g_registryRcFlags[i];
+        pulseUs = g_registryRcPulseUs[i];
+        g_registryRcFlags[i] = flags & ~REG_RC_FRESH;
+        interrupts();
+
+        if (flags & REG_RC_FRESH) {
+            g_registryRcLastMs[i] = (uint16_t)now;
+            flags |= REG_RC_VALID;
+            g_registryRcFlags[i] |= REG_RC_VALID;
+        } else if ((flags & REG_RC_VALID) &&
+                   (uint16_t)((uint16_t)now - g_registryRcLastMs[i]) > (uint16_t)Config::rcFailsafeMs) {
+            flags &= ~REG_RC_VALID;
+            g_registryRcFlags[i] &= ~REG_RC_VALID;
+        }
+
+        float minUs = (c.minValue >= 500.0f && c.minValue <= 2500.0f) ? c.minValue : 1000.0f;
+        float maxUs = (c.maxValue >= 500.0f && c.maxValue <= 2500.0f && c.maxValue > minUs) ? c.maxValue : 2000.0f;
+        float span = maxUs - minUs;
+        ed.registryInputValue[i] = (flags & REG_RC_VALID) ? constrain(((float)pulseUs - minUs) / span, 0.0f, 1.0f) : 0.0f;
+        ed.registryInputHealthy[i] = flags & REG_RC_VALID;
     }
 
     inline void updateRegistryInputs() {
         auto& reg = HardwareConfig::channelRegistry;
         auto& ed = EngineData::instance();
+        unsigned long now = millis();
+        unsigned long pulseDt = now - g_registryPulseLastMs;
+        bool samplePulse = pulseDt >= 100UL;
         for (uint8_t i = 0; i < reg.inputCount; ++i) {
             const auto& c = reg.inputs[i];
             if (!c.installed || c.pin < 0) {
@@ -439,13 +532,17 @@ namespace Hardware {
                 ed.registryInputHealthy[i] = true;
             } else if (c.driver == ChannelRegistry::Analog) {
                 int raw = analogRead(c.pin);
-                float span = c.maxValue - c.minValue;
-                ed.registryInputValue[i] = span > 0.0f ? constrain((raw - c.minValue) / span, 0.0f, 1.0f) : 0.0f;
+                ed.registryInputValue[i] = registryMappedInput((float)raw, c);
                 ed.registryInputHealthy[i] = true;
+            } else if (c.driver == ChannelRegistry::Pulse) {
+                updateRegistryPulseInput(i, c, ed, samplePulse, pulseDt);
+            } else if (c.driver == ChannelRegistry::RcPwm) {
+                updateRegistryRcInput(i, c, ed);
             } else {
                 ed.registryInputHealthy[i] = false;
             }
         }
+        if (samplePulse) g_registryPulseLastMs = now;
     }
 
     inline bool registryOutputManaged(const ChannelRegistry::Channel& c) {

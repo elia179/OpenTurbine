@@ -13,7 +13,10 @@ definitions. Each loop persists a stable loop ID plus `pressure_input` and
 indexes; the first enabled loop feeds the existing single oil-pressure
 controller compatibility path, including min/max demand and deadband. Additional
 enabled loops are validated for unique pump ownership, but independent runtime
-multi-pump control still requires the generic output dispatch layer.
+multi-pump closed-loop control is still a compatibility bridge: the first
+enabled loop feeds the existing controller path while additional pump outputs
+remain available to rules, sequences, tools, or a later loop-controller
+dispatcher.
 
 Output demand is normalized to `0.0..1.0`. Relay drivers quantize at `0.5` at
 the physical boundary; PWM and servo drivers preserve intermediate values.
@@ -24,14 +27,22 @@ invalid demand ranges, conflicting input/output pins, overflowing capacities,
 bindings to nonexistent channels, and wrong-direction standard bindings such
 as an output bound to `primary_n1`.
 
+Digital, analog, pulse/frequency, and RC-PWM registry inputs are sampled by
+bounded runtime dispatch. Digital inputs publish `0.0` or `1.0`; analog and
+pulse inputs map raw ADC counts or frequency through the channel `min`/`max`
+range; RC-PWM inputs map pulse width through microsecond endpoints when
+`min`/`max` look like `500..2500 us`, otherwise they default to `1000..2000 us`.
+
+Generic registry outputs are initialized to boot-safe demand, driven through
+the same normalized relay/PWM/servo path as specialized outputs, and driven to
+fault-safe demand during `allOff()` / fault shutdown. Core singleton ownership
+is determined by standard core IDs or explicit core bindings, not by role, so a
+second `oil_pump` or `cooling_fan` role remains a normal repeatable output
+unless it is intentionally bound to a singleton subsystem.
+
 Control rules, sequence side actions, and custom sequence blocks now serialize
 stable `source` / `target` IDs and resolve them once at load to compact runtime
-handles. Legacy numeric fields remain readable for old files. Generic channel
-runtime I/O is still behind the compatibility adapter layer: stable IDs,
-standard binding keys such as `primary_n1` / `main_fuel_output`, and registry
-channel roles resolve onto the built-in singleton hardware paths where a safe
-compatibility mapping exists. Fully generic input reads and output writes still
-need the physical-driver dispatch layer to become the next authority.
+handles. Legacy numeric fields remain readable for old files.
 
 Legacy files without a registry retain their existing singleton hardware
 configuration during compatibility loading; the migration writer emits the new
