@@ -555,6 +555,8 @@ int customActuatorId(const char* key) {
     if (strcmp(key, "fuel_sol") == 0) return 8;
     if (strcmp(key, "igniter") == 0) return 9;
     if (strcmp(key, "igniter2") == 0) return 10;
+    if (strcmp(key, "ab_igniter") == 0) return 10;
+    if (strcmp(key, "igniter2_main") == 0) return 10;
     if (strcmp(key, "ab_sol") == 0) return 11;
     if (strcmp(key, "ab_pump") == 0) return 12;
     if (strcmp(key, "airstarter_sol") == 0) return 15;
@@ -689,6 +691,8 @@ int8_t sequenceTargetHandle(const char* id) {
     if (strcmp(id, "main_fuel_output") == 0) return 4;
     if (strcmp(id, "main_starter") == 0) return 5;
     if (strcmp(id, "main_fuel_shutoff") == 0) return 8;
+    if (strcmp(id, "ab_igniter") == 0) return 10;
+    if (strcmp(id, "igniter2_main") == 0) return 10;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;
@@ -3268,6 +3272,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             if (!c || c->pin < 0) return;
             has = true; pin = c->pin; type = outputType(c->driver);
         };
+        auto applyIgniterOutput = [&](const ChannelRegistry::Channel* c, bool& has, int& pin, bool& pwm) {
+            if (!c || c->pin < 0) return;
+            has = true; pin = c->pin; pwm = c->driver != ChannelRegistry::Relay;
+        };
 
         applyPulse(bound("primary_n1", ChannelRegistry::Input), hasN1Rpm, n1RpmPin);
         applyPulse(bound("primary_n2", ChannelRegistry::Input), hasN2Rpm, n2RpmPin);
@@ -3288,6 +3296,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
                     hasOilScavengePump, oilScavPumpPin, oilScavPumpType);
         applyOutput(byIdOrRole(ChannelRegistry::Output, "bleed_valve_main", nullptr),
                     hasBleedValve, bleedValvePin, bleedValveType);
+        applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "ab_igniter", nullptr),
+                           hasIgniter2, igniter2Pin, igniter2Pwm);
+        applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "igniter2_main", nullptr),
+                           hasIgniter2, igniter2Pin, igniter2Pwm);
         if (const auto* c = bound("main_fuel_shutoff", ChannelRegistry::Output)) {
             if (c->pin >= 0) { hasFuelSol = true; fuelSolPin = c->pin; }
         }
@@ -3708,6 +3720,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (hasCoolFan) addOutput("cooling_fan_main", "cooling_fan", coolFanPin, coolFanType);
         if (hasBleedValve) addOutput("bleed_valve_main", "valve", bleedValvePin, bleedValveType);
         if (hasOilScavengePump) addOutput("oil_scavenge_main", "scavenge_pump", oilScavPumpPin, oilScavPumpType);
+        if (hasIgniter2) addOutput("ab_igniter", "ab_igniter", igniter2Pin, igniter2Pwm ? 1 : 2);
     }
     if (oilLoopCount == 0 && hasOilLoop && hasOilPress && hasOilPump) {
         const ChannelRegistry::Channel* pressure = channelRegistry.find("oil_pressure_main", ChannelRegistry::Input);

@@ -39,6 +39,8 @@ public:
                       !strcmp(id, "cooling_fan_main") ||
                       !strcmp(id, "oil_scavenge_main") ||
                       !strcmp(id, "bleed_valve_main") ||
+                      !strcmp(id, "ab_igniter") ||
+                      !strcmp(id, "igniter2_main") ||
                       !strcmp(id, "main_fuel_shutoff"));
     }
     static bool isCoreManagedInputId(const char* id) {

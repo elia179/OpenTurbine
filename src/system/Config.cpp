@@ -35,6 +35,7 @@ const char* ruleTargetId(uint8_t actuator) {
         case RulesEngine::COOL_FAN: return "cooling_fan_main";
         case RulesEngine::BLEED_VALVE: return "bleed_valve_main";
         case RulesEngine::OIL_SCAVENGE: return "oil_scavenge_main";
+        case RulesEngine::IGNITER2: return "ab_igniter";
         default: return "";
     }
 }
@@ -68,6 +69,8 @@ int8_t ruleTargetHandle(const char* id) {
     if (!strcmp(id, "main_fuel_output")) return RulesEngine::THROTTLE;
     if (!strcmp(id, "main_starter")) return RulesEngine::STARTER;
     if (!strcmp(id, "main_fuel_shutoff")) return RulesEngine::FUEL_SOL;
+    if (!strcmp(id, "ab_igniter")) return RulesEngine::IGNITER2;
+    if (!strcmp(id, "igniter2_main")) return RulesEngine::IGNITER2;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;

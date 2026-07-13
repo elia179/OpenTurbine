@@ -134,7 +134,7 @@ function extraCooldownAvailable() {
 }
 
 const TEST_OUTPUT_KEYS={START_TEST:'start_test_pct',GLOW_TEST:'glow_test_pct',FUEL_PUMP2_TEST:'fuel_pump2_test_pct',AB_PUMP_TEST:'ab_pump_test_pct',PROP_PITCH_TEST:'prop_pitch_test_pct'};
-const CORE_REGISTRY_OUTPUT_IDS=new Set(['main_fuel_output','main_fuel','main_starter','starter_main','oil_pump_main','cooling_fan_main','oil_scavenge_main','bleed_valve_main','main_fuel_shutoff']);
+const CORE_REGISTRY_OUTPUT_IDS=new Set(['main_fuel_output','main_fuel','main_starter','starter_main','oil_pump_main','cooling_fan_main','oil_scavenge_main','bleed_valve_main','main_fuel_shutoff','ab_igniter','igniter2_main']);
 const CORE_REGISTRY_BINDING_KEYS=new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
 function syncRegistryOutputTools(){
   for(let i=TOOLS.length-1;i>=0;i--) if(TOOLS[i].registryOutput) TOOLS.splice(i,1);
