@@ -141,6 +141,7 @@
     <div class="hw-title">Inputs</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Sensors, switches and operator inputs physically wired to this ECU.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="addRegistryChannel('input')">+ Add input</button></div>
+    <div id="builtin-inputs"></div>
     <div id="registry-inputs"></div>
   </div>
 
@@ -191,7 +192,7 @@
   </div>
 
   <!-- ── Switches ─────────────────────────────────────── -->
-  <div class="hw-section">
+  <div class="hw-section" id="legacy-switches-section">
     <div class="hw-title">Physical Switches</div>
 
     <!-- Stop Switch -->
@@ -2118,7 +2119,7 @@
   </div>
 
   <!-- ── General-Purpose Digital Inputs ──────────────── -->
-  <div class="hw-section">
+  <div class="hw-section" id="legacy-digital-inputs-section">
     <div class="hw-title">Digital Inputs</div>
     <p style="font-size:.7rem;color:var(--dim);margin-bottom:.75rem;line-height:1.5">
       Up to 4 configurable digital input channels. Use for pressure switches, limit switches, safety interlocks,
@@ -3564,7 +3565,7 @@ function showFullHardwareEditor(target) {
   _hideUnselActive = false;
   try { localStorage.setItem('ot_hide_unsel_act', '0'); } catch (e) {}
   applyActuatorVisibility();
-  const anchors = {controllers: 'legacy-controllers-section', safety: 'legacy-safety-section'};
+  const anchors = {switches: 'legacy-switches-section', controllers: 'legacy-controllers-section', safety: 'legacy-safety-section'};
   document.getElementById(anchors[target] || 'hardware-inputs-panel')?.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
@@ -3827,6 +3828,43 @@ function renderCommsIndicatorSummary() {
     </div>
   </div>`).join('') : '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="showFullHardwareEditor()">Add / edit device</button></div>';
 }
+function renderBuiltinInputSummary() {
+  const box = document.getElementById('builtin-inputs');
+  if (!box || !cfg) return;
+  const rows = [];
+  const controls = cfg.controls || {};
+  const labels = cfg.labels || {};
+  const addSwitch = (title, pin, activeHigh, detail) => rows.push({
+    title,
+    detail: `${detail} · Digital input · GPIO ${(pin ?? -1) >= 0 ? pin : 'not set'} · ${activeHigh ? 'Active HIGH' : 'Active LOW'}`,
+    status: (pin ?? -1) >= 0 ? 'Ready' : 'Pin missing',
+    target: 'switches'
+  });
+  addSwitch(labels.stop || 'Stop switch', controls.stop_pin, !!controls.stop_active_h, 'Hard stop / shutdown command');
+  addSwitch(labels.start || 'Start switch', controls.start_pin, !!controls.start_active_h, 'Start command input');
+  (cfg.di_channels || []).forEach((ch, i) => {
+    if (!ch) return;
+    const role = ch.role || 'none';
+    const configured = (ch.pin ?? -1) >= 0 || role !== 'none' || (ch.label || '').trim();
+    if (!configured) return;
+    const roleLabel = DI_ROLES.find(r => r.val === role)?.lbl || role;
+    rows.push({
+      title: ch.label || `Digital input ${i + 1}`,
+      detail: `${roleLabel} · Digital input · GPIO ${(ch.pin ?? -1) >= 0 ? ch.pin : 'not set'} · ${ch.active_h ? 'Active HIGH' : 'Active LOW'}`,
+      status: (ch.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing',
+      target: 'switches'
+    });
+  });
+  box.innerHTML = rows.map(row => `<div class="hw-item-card">
+    <div class="registry-card-summary">
+      <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
+      <div class="registry-card-actions">
+        <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
+        <button type="button" onclick="showFullHardwareEditor('${row.target}')">Edit</button>
+      </div>
+    </div>
+  </div>`).join('');
+}
 function workflowCard(title, detail, state) {
   const ok = state === 'Enabled' || state === 'Ready';
   return `<div class="hw-item-card workflow-card">
@@ -3874,6 +3912,7 @@ function renderSafetySummary() {
     : '<div class="registry-empty"><div>No safety interlocks enabled.</div><button type="button" onclick="showFullHardwareEditor(\'safety\')">Edit safety</button></div>';
 }
 function renderHardwareWorkflowSummaries() {
+  renderBuiltinInputSummary();
   renderHardwareRequirementsSummary();
   renderHardwareBoardSummary();
   renderCommsIndicatorSummary();
