@@ -4569,8 +4569,24 @@ function _clearChangedBorders() {
   document.querySelectorAll('.field-changed').forEach(el => el.classList.remove('field-changed'));
 }
 
+function _changedFieldCount() {
+  let count = 0;
+  document.querySelectorAll(
+    'input[id^="f-"], select[id^="f-"], textarea[id^="f-"], input[id^="en-"]'
+  ).forEach(el => {
+    if (!(el.id in _fieldSnap)) return;
+    const cur = (el.type === 'checkbox') ? el.checked : el.value;
+    if (String(cur) !== String(_fieldSnap[el.id])) count++;
+  });
+  return count;
+}
+
 function dirty() {
   document.getElementById('save-msg').textContent = 'Unsaved changes — save to apply';
+  const changed = _changedFieldCount();
+  document.getElementById('save-msg').textContent = changed
+    ? `${changed} unsaved field change${changed === 1 ? '' : 's'} — review before saving`
+    : 'Unsaved inventory changes — review before saving';
   document.querySelector('.save-bar').classList.add('is-dirty');
   _refreshChangedBorders();
   checkPinConflicts();
