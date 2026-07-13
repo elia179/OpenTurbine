@@ -80,6 +80,13 @@
     <div id="registry-inputs"></div><div id="registry-outputs"></div><div id="registry-bindings"></div>
   </div>
 
+  <div class="hw-section" id="hardware-requirements-panel">
+    <div class="hw-title">Requirements and validation</div>
+    <div id="hardware-requirements-summary" class="requirements-summary">
+      <div class="hw-desc">Loading hardware requirements…</div>
+    </div>
+  </div>
+
   <div class="hw-section">
     <div class="hw-title">System Profile</div>
     <div class="hw-item-card">
@@ -2374,6 +2381,7 @@ function refreshAllPins() {
     refreshPinSel('f-di' + i + '-pin', 'in', ch.pin);
   });
   checkPinConflicts();
+  renderHardwareRequirementsSummary();
 }
 
 // ─── General-purpose DI channel renderer ────────────────────
@@ -3666,6 +3674,40 @@ function registryReferenceSummary(direction, id) {
   const impact = registryRemovalImpact(direction, id);
   return impact.length ? impact.join(', ') : 'No references yet';
 }
+function registryHas(direction, predicate) {
+  const rows = registryRoot()[direction + 's'] || [];
+  return rows.some(c => c?.installed !== false && predicate(c));
+}
+function renderHardwareRequirementsSummary() {
+  const box = document.getElementById('hardware-requirements-summary');
+  if (!box || !cfg) return;
+  const items = [];
+  const hasPrimarySpeed = !!cfg.sensors?.n1_rpm?.enabled ||
+    registryHas('input', c => c.id === 'n1_main' || c.role === 'speed') ||
+    (cfg.channel_registry?.bindings || []).some(b => b.key === 'primary_n1');
+  const hasMainFuel = !!cfg.actuators?.throttle?.enabled ||
+    registryHas('output', c => c.id === 'main_fuel' || c.id === 'main_fuel_output' || c.role === 'fuel') ||
+    (cfg.channel_registry?.bindings || []).some(b => b.key === 'main_fuel_output');
+  const hasOilPressure = !!cfg.sensors?.oil_press?.enabled || registryHas('input', c => c.id === 'oil_pressure_main' || c.role === 'pressure');
+  const hasOilPump = !!cfg.actuators?.oil_pump?.enabled || registryHas('output', c => c.id === 'oil_pump_main' || c.role === 'oil_pump');
+  items.push({state: hasPrimarySpeed ? 'ok' : 'warn', text: hasPrimarySpeed ? 'Primary speed input available' : 'Primary speed input not assigned'});
+  items.push({state: hasMainFuel ? 'ok' : 'error', text: hasMainFuel ? 'Main fuel output available' : 'Main fuel output missing'});
+  if (cfg.controllers?.oil_loop) {
+    items.push({state: hasOilPressure && hasOilPump ? 'ok' : 'error',
+      text: hasOilPressure && hasOilPump ? 'Closed-loop oil control has pressure input and pump output' : 'Oil loop requires an oil-pressure input and oil-pump output'});
+  } else {
+    items.push({state: hasOilPressure || hasOilPump ? 'warn' : 'ok',
+      text: hasOilPressure || hasOilPump ? 'Oil hardware installed; closed-loop oil control is disabled' : 'Closed-loop oil control disabled'});
+  }
+  const registryInvalid = ['input','output'].reduce((sum, dir) => sum + (registryRoot()[dir + 's'] || []).filter(c => {
+    return !c?.id || (c.pin ?? -1) < 0 || Number(c.max ?? 1) < Number(c.min ?? 0);
+  }).length, 0);
+  items.push({state: registryInvalid ? 'error' : 'ok', text: registryInvalid ? `${registryInvalid} registry channel(s) need ID, pin, or range fixes` : 'Registry channel cards are structurally ready'});
+  let conflictCount = 0;
+  try { conflictCount = _checkGpioConflicts().length; } catch (e) {}
+  items.push({state: conflictCount ? 'error' : 'ok', text: conflictCount ? `${conflictCount} GPIO conflict(s) detected` : 'No GPIO conflicts detected'});
+  box.innerHTML = items.map(item => `<div class="requirement-row requirement-${item.state}"><span>${escapeHtmlText(item.text)}</span><span class="requirement-state">${item.state === 'ok' ? 'OK' : item.state}</span></div>`).join('');
+}
 function renderRegistryInventory() {
   const r = registryRoot();
   const render = (direction, target) => {
@@ -3704,7 +3746,7 @@ function renderRegistryInventory() {
       </div>`;
       }).join('') : `<div class="registry-empty"><div>No installed ${direction} channels.</div><button type="button" onclick="addRegistryChannel('${direction}')">+ Add ${direction}</button></div>`);
   };
-  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings();
+  render('input', 'registry-inputs'); render('output', 'registry-outputs'); renderRegistryBindings(); renderHardwareRequirementsSummary();
 }
 function updateRegistryChannel(direction, index, key, value) {
   const r = registryRoot();
@@ -3731,11 +3773,11 @@ function registryChannelOptions(selected) {
     `<option value="${escapeHtmlText(c.id)}"${c.id===selected?' selected':''}>${escapeHtmlText(c.id)} (${dir}, ${escapeHtmlText(c.role || 'generic')})</option>`
   ).join('');
 }
+const REGISTRY_BINDING_KEYS = ['primary_n1','primary_n2','primary_egt','main_fuel_output','main_fuel_shutoff','main_starter','operator_throttle'];
 function renderRegistryBindings() {
   const r = registryRoot();
   const el = document.getElementById('registry-bindings');
   if (!el) return;
-  const keys = ['primary_n1','primary_n2','primary_egt','main_fuel_output','main_fuel_shutoff','main_starter','operator_throttle'];
   el.innerHTML = '<div class="hw-label" style="margin:.65rem 0 .35rem">Bindings</div>' +
     (r.bindings.length ? r.bindings.map((b, i) => `<div class="hw-item-card" style="margin:.3rem 0">
       <div class="hw-grid">
@@ -3744,7 +3786,7 @@ function renderRegistryBindings() {
         <div style="display:flex;align-items:end;justify-content:flex-end"><button type="button" onclick="removeRegistryBinding(${i})">Remove</button></div>
       </div>
     </div>`).join('') : '<div class="hw-desc">No controller bindings configured.</div>') +
-    `<datalist id="registry-binding-keys">${keys.map(k => `<option value="${k}"></option>`).join('')}</datalist>`;
+    `<datalist id="registry-binding-keys">${REGISTRY_BINDING_KEYS.map(k => `<option value="${k}"></option>`).join('')}</datalist>`;
 }
 function updateRegistryBinding(index, key, value) {
   const r = registryRoot();
@@ -3758,9 +3800,8 @@ function addRegistryBinding() {
   const channels = r.inputs.concat(r.outputs);
   if (!channels.length) return alert('Add at least one channel before adding a binding.');
   if (r.bindings.length >= 5) return alert('The embedded registry supports up to 5 bindings.');
-  const key = (prompt('Binding key:', 'primary_n1') || '').trim();
-  if (!/^[A-Za-z0-9_-]{1,19}$/.test(key)) return alert('A binding key is required.');
-  if (r.bindings.some(b => b.key === key)) return alert('That binding key already exists.');
+  const used = new Set(r.bindings.map(b => b.key));
+  const key = REGISTRY_BINDING_KEYS.find(k => !used.has(k)) || `binding_${r.bindings.length + 1}`;
   r.bindings.push({key, channel: channels[0].id});
   renderRegistryInventory(); dirty(); updateSaveButton();
 }

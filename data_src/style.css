@@ -993,6 +993,32 @@ textarea.field-changed {
   padding-top: .75rem;
   border-top: 1px solid var(--border);
 }
+.requirements-summary {
+  display: grid;
+  gap: .35rem;
+}
+.requirement-row {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: .45rem .6rem;
+  background: var(--bg);
+  font-size: .78rem;
+}
+.requirement-row span:first-child { color: var(--text); }
+.requirement-ok { border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
+.requirement-warn { border-color: color-mix(in srgb, var(--yellow) 45%, var(--border)); }
+.requirement-error { border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+.requirement-state {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--dim);
+  white-space: nowrap;
+}
 
 .hw-sub {
   font-size: 0.59rem;
