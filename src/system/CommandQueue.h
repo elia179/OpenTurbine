@@ -46,6 +46,7 @@ enum class OTCommand : uint8_t {
     AB_PUMP_TEST,         // run AB pump using configured test demand
     STARTER_EN_TEST,      // energise starter enable relay briefly
     PROP_PITCH_TEST,      // move prop pitch servo to mid-travel briefly
+    REGISTRY_OUTPUT_TEST, // iParam = registry output index, fParam = normalized demand
     RESET_PEAKS,          // clear session peak values (maxN1, maxN2, maxTot, maxP1, maxP2)
 };
 

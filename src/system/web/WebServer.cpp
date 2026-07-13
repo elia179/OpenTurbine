@@ -167,6 +167,7 @@ static bool _isStandbyToolCommand(OTCommand cmd) {
         case OTCommand::AB_PUMP_TEST:
         case OTCommand::STARTER_EN_TEST:
         case OTCommand::PROP_PITCH_TEST:
+        case OTCommand::REGISTRY_OUTPUT_TEST:
             return true;
         default:
             return false;
@@ -192,6 +193,7 @@ static bool _startsTimedActuatorTest(const OTPacket& pkt) {
         case OTCommand::AB_PUMP_TEST:
         case OTCommand::STARTER_EN_TEST:
         case OTCommand::PROP_PITCH_TEST:
+        case OTCommand::REGISTRY_OUTPUT_TEST:
             return true;
         case OTCommand::EXTRA_COOLDOWN:
             return pkt.iParam > 0;
@@ -200,8 +202,8 @@ static bool _startsTimedActuatorTest(const OTPacket& pkt) {
     }
 }
 
-static const char* _missingHardwareForCommand(OTCommand cmd) {
-    switch (cmd) {
+static const char* _missingHardwareForCommand(const OTPacket& pkt) {
+    switch (pkt.cmd) {
         case OTCommand::FUEL_PRIME:
         case OTCommand::FUEL_SOL_TEST: return HardwareConfig::hasFuelSol ? nullptr : "Fuel solenoid is not configured";
         case OTCommand::OIL_PRIME:
@@ -224,6 +226,14 @@ static const char* _missingHardwareForCommand(OTCommand cmd) {
             return (HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump) ? nullptr : "Afterburner pump is not configured";
         case OTCommand::STARTER_EN_TEST: return HardwareConfig::hasStarterEn ? nullptr : "Starter enable relay is not configured";
         case OTCommand::PROP_PITCH_TEST: return HardwareConfig::hasPropPitch ? nullptr : "Prop pitch actuator is not configured";
+        case OTCommand::REGISTRY_OUTPUT_TEST: {
+            if (pkt.iParam < 0 || pkt.iParam >= HardwareConfig::channelRegistry.outputCount)
+                return "Registry output is not configured";
+            const auto& c = HardwareConfig::channelRegistry.outputs[pkt.iParam];
+            if (!c.installed || c.pin < 0 || ChannelRegistry::isCoreManagedOutput(c))
+                return "Registry output is not testable";
+            return nullptr;
+        }
         case OTCommand::TOGGLE_DYNAMIC_IDLE:
             return HardwareConfig::hasDynamicIdle ? nullptr : "Dynamic Idle is not enabled in hardware";
         case OTCommand::TOGGLE_LIMP_MODE:
@@ -246,7 +256,7 @@ static const char* _commandPreflightRejectReason(const OTPacket& pkt) {
     if (_hwRebootPending && pkt.cmd != OTCommand::AB_STOP) {
         return "ECU is rebooting to apply a saved configuration. Reconnect and retry.";
     }
-    if (const char* hw = _missingHardwareForCommand(pkt.cmd)) return hw;
+    if (const char* hw = _missingHardwareForCommand(pkt)) return hw;
     if (_isStandbyToolCommand(pkt.cmd) && !_isStandbyLike(ed.mode)) {
         return "Command is only available in STANDBY";
     }
@@ -1623,6 +1633,7 @@ void WebServer::_setupRoutes() {
             else if (strcmp(cmdStr, "AB_PUMP_TEST")         == 0) pkt.cmd = OTCommand::AB_PUMP_TEST;
             else if (strcmp(cmdStr, "STARTER_EN_TEST")      == 0) pkt.cmd = OTCommand::STARTER_EN_TEST;
             else if (strcmp(cmdStr, "PROP_PITCH_TEST")      == 0) pkt.cmd = OTCommand::PROP_PITCH_TEST;
+            else if (strcmp(cmdStr, "REGISTRY_OUTPUT_TEST")  == 0) pkt.cmd = OTCommand::REGISTRY_OUTPUT_TEST;
             else if (strcmp(cmdStr, "RESET_PEAKS")          == 0) pkt.cmd = OTCommand::RESET_PEAKS;
             else { req->send(400); return; }
             pkt.fParam = doc["fParam"] | 0.0f;

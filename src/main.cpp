@@ -1054,6 +1054,8 @@ static unsigned long _abSolTestUntilMs      = 0;
 static unsigned long _abPumpTestUntilMs     = 0;
 static unsigned long _starterEnTestUntilMs  = 0;
 static unsigned long _propPitchTestUntilMs  = 0;
+static unsigned long _registryOutputTestUntilMs = 0;
+static uint8_t       _registryOutputTestIndex = 255;
 
 static bool anyToolTimerActive() {
     // Also block actuator tests while extra cooldown is running — it controls the
@@ -1066,6 +1068,7 @@ static bool anyToolTimerActive() {
            _coolFanTestUntilMs    || _airstarterTestUntilMs  ||
            _bleedValveTestUntilMs || _glowTestUntilMs        ||
            _propPitchTestUntilMs  ||
+           _registryOutputTestUntilMs ||
            _fuelPump2TestUntilMs  || _abSolTestUntilMs       ||
            _abPumpTestUntilMs     || _starterEnTestUntilMs;
 }
@@ -1117,6 +1120,13 @@ static void checkToolTimers() {
     if (deadlineExpired(now, _abPumpTestUntilMs))     { ed.abPumpDemand  = 0.0f;  _abPumpTestUntilMs     = 0; }
     if (deadlineExpired(now, _starterEnTestUntilMs))  { ed.starterEnabled  = false; _starterEnTestUntilMs  = 0; }
     if (deadlineExpired(now, _propPitchTestUntilMs))  { ed.propPitchDemand = 0;     _propPitchTestUntilMs  = 0; }
+    if (deadlineExpired(now, _registryOutputTestUntilMs)) {
+        if (_registryOutputTestIndex < HardwareConfig::channelRegistry.outputCount)
+            ed.registryOutputDemand[_registryOutputTestIndex] =
+                constrain(HardwareConfig::channelRegistry.outputs[_registryOutputTestIndex].safeDemand, 0.0f, 1.0f);
+        _registryOutputTestIndex = 255;
+        _registryOutputTestUntilMs = 0;
+    }
 }
 
 // ── Extra Cooldown monitor ────────────────────────────────────
@@ -1885,6 +1895,8 @@ static void enterStandby() {
     _abPumpTestUntilMs     = 0;
     _starterEnTestUntilMs  = 0;
     _propPitchTestUntilMs  = 0;
+    _registryOutputTestUntilMs = 0;
+    _registryOutputTestIndex = 255;
     _relightActive         = false;
     _relightBeginMs        = 0;
     _relightBeginEgt       = 0.0f;
@@ -2445,6 +2457,18 @@ static void handleCommand(const OTPacket& pkt) {
             if (HardwareConfig::hasPropPitch && standbyLike && !anyToolTimerActive()) {
                 ed.propPitchDemand     = constrain(Config::toolPropPitchTestPct / 100.0f, 0.0f, 1.0f);
                 _propPitchTestUntilMs  = millis() + Config::toolPropPitchTestMs;
+            }
+            break;
+
+        case OTCommand::REGISTRY_OUTPUT_TEST:
+            if (standbyLike && !anyToolTimerActive()) {
+                uint8_t idx = (uint8_t)constrain(pkt.iParam, 0, (int)ChannelRegistry::MAX_OUTPUT_CHANNELS - 1);
+                if (idx < HardwareConfig::channelRegistry.outputCount &&
+                    !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx])) {
+                    ed.registryOutputDemand[idx] = constrain(pkt.fParam, 0.0f, 1.0f);
+                    _registryOutputTestIndex = idx;
+                    _registryOutputTestUntilMs = millis() + 3000UL;
+                }
             }
             break;
 

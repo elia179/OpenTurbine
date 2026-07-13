@@ -134,6 +134,28 @@ function extraCooldownAvailable() {
 }
 
 const TEST_OUTPUT_KEYS={START_TEST:'start_test_pct',GLOW_TEST:'glow_test_pct',FUEL_PUMP2_TEST:'fuel_pump2_test_pct',AB_PUMP_TEST:'ab_pump_test_pct',PROP_PITCH_TEST:'prop_pitch_test_pct'};
+const CORE_REGISTRY_OUTPUT_ROLES=new Set(['fuel','starter','oil_pump','cooling_fan','scavenge_pump','valve','fuel_shutoff']);
+const CORE_REGISTRY_OUTPUT_IDS=new Set(['main_fuel_output','main_fuel','main_starter','starter_main','oil_pump_main','cooling_fan_main','oil_scavenge_main','bleed_valve_main','main_fuel_shutoff']);
+function syncRegistryOutputTools(){
+  for(let i=TOOLS.length-1;i>=0;i--) if(TOOLS[i].registryOutput) TOOLS.splice(i,1);
+  const outs=hwCfg?.channel_registry?.outputs||[];
+  outs.forEach((c,i)=>{
+    if(!c||c.pin==null||Number(c.pin)<0) return;
+    if(CORE_REGISTRY_OUTPUT_ROLES.has(String(c.role||''))||CORE_REGISTRY_OUTPUT_IDS.has(String(c.id||''))) return;
+    const relay=Number(c.driver)===4;
+    TOOLS.push({
+      id:'REGISTRY_OUTPUT_TEST_'+i,
+      cmd:'REGISTRY_OUTPUT_TEST',
+      name:(c.name||c.id||('Output '+(i+1)))+' Test',
+      durationMs:3000,
+      desc:'Bench-test registry output '+(c.id||i)+' at '+(relay?'ON':'100%')+' for 3 s.',
+      registryOutput:true,
+      iParam:i,
+      fParam:1.0,
+      visibleIf:()=>true
+    });
+  });
+}
 function openTestSettings(){
   if(engineMode!=='STANDBY'&&engineMode!=='FAULT'){alert('Bench-test settings can only be changed in STANDBY or FAULT.');return;}
   const body=document.getElementById('test-settings-body'); let html='';
@@ -398,7 +420,9 @@ function runTool(id) {
   const tool = TOOLS.find(t => t.id === id);
   if (!tool) return;
 
-  const payload = { cmd: id };
+  const payload = { cmd: tool.cmd || id };
+  if (tool.iParam !== undefined) payload.iParam = tool.iParam;
+  if (tool.fParam !== undefined) payload.fParam = tool.fParam;
   // STARTER_ASSIST is a stateful arm/disarm, not a firmware-side toggle:
   // iParam carries the DESIRED state (1 = arm, 0 = disarm).
   if (id === 'STARTER_ASSIST') payload.iParam = liveData?.starter_assist_active ? 0 : 1;
@@ -762,6 +786,7 @@ loadToolConfig().then(({cfg, hw}) => {
     const v = getNestedVal(cfg, t.configKey);
     if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
   });
+  syncRegistryOutputTools();
   syncDynamicToolText();
   renderTools();
   startToolsTelemetry();
