@@ -134,7 +134,21 @@ function extraCooldownAvailable() {
 }
 
 const TEST_OUTPUT_KEYS={START_TEST:'start_test_pct',GLOW_TEST:'glow_test_pct',FUEL_PUMP2_TEST:'fuel_pump2_test_pct',AB_PUMP_TEST:'ab_pump_test_pct',PROP_PITCH_TEST:'prop_pitch_test_pct'};
-const CORE_REGISTRY_OUTPUT_IDS=new Set(['main_fuel_output','main_fuel','main_starter','starter_main','oil_pump_main','cooling_fan_main','oil_scavenge_main','bleed_valve_main','main_fuel_shutoff','ab_igniter','igniter2_main']);
+const CORE_REGISTRY_OUTPUT_IDS=new Set([
+  'main_fuel_output','main_fuel','throttle',
+  'main_starter','starter','starter_main',
+  'starter_enable','starter_enable_main',
+  'oil_pump','oil_pump_main',
+  'cooling_fan','cooling_fan_main','cool_fan',
+  'oil_scavenge_main','oil_scavenge_pump','scavenge_pump',
+  'bleed_valve','bleed_valve_main',
+  'igniter','igniter_main','ab_igniter','igniter2','igniter2_main',
+  'main_fuel_shutoff','fuel_shutoff','fuel_sol','fuel_solenoid_main',
+  'ab_solenoid','ab_solenoid_main','ab_sol',
+  'air_starter','airstarter_main','airstarter_sol',
+  'fuel_pump','fuel_pump2','fuel_pump2_main',
+  'ab_pump','ab_pump_main','prop_pitch','prop_pitch_main','glow_plug','glow_plug_main'
+]);
 const CORE_REGISTRY_BINDING_KEYS=new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
 function syncRegistryOutputTools(){
   for(let i=TOOLS.length-1;i>=0;i--) if(TOOLS[i].registryOutput) TOOLS.splice(i,1);

@@ -16,9 +16,29 @@ const char* ruleSourceId(uint8_t sensor) {
             return HardwareConfig::channelRegistry.inputs[idx].id;
     }
     switch (sensor) {
+        case RulesEngine::OIL_TEMP: return "oil_temp";
+        case RulesEngine::TOT: return "tot_main";
         case RulesEngine::N1_RPM: return "n1_main";
         case RulesEngine::N2_RPM: return "n2_main";
         case RulesEngine::OIL_PRESS: return "oil_pressure_main";
+        case RulesEngine::TIT: return "tit_main";
+        case RulesEngine::BATT_V: return "batt_voltage";
+        case RulesEngine::FUEL_PRESS: return "fuel_press";
+        case RulesEngine::FUEL_FLOW: return "fuel_flow";
+        case RulesEngine::P1: return "p1";
+        case RulesEngine::P2: return "p2";
+        case RulesEngine::TORQUE: return "torque";
+        case RulesEngine::FLAME: return "flame";
+        case RulesEngine::THROTTLE_INPUT: return "operator_throttle";
+        case RulesEngine::IDLE_INPUT: return "idle_input";
+        case RulesEngine::AB_FLAME: return "ab_flame";
+        case RulesEngine::GLOW_CURRENT: return "glow_current";
+        case RulesEngine::IGNITER_CURRENT: return "igniter_current";
+        case RulesEngine::IGNITER2_CURRENT: return "igniter2_current";
+        case RulesEngine::OIL_PUMP_CURRENT: return "oil_pump_current";
+        case RulesEngine::AB_INPUT: return "ab_input";
+        case RulesEngine::START_SWITCH: return "start_switch";
+        case RulesEngine::STOP_SWITCH: return "stop_switch";
         default: return "";
     }
 }
@@ -35,18 +55,47 @@ const char* ruleTargetId(uint8_t actuator) {
         case RulesEngine::COOL_FAN: return "cooling_fan_main";
         case RulesEngine::BLEED_VALVE: return "bleed_valve_main";
         case RulesEngine::OIL_SCAVENGE: return "oil_scavenge_main";
+        case RulesEngine::FUEL_PUMP2: return "fuel_pump";
+        case RulesEngine::STARTER_ENABLE: return "starter_enable";
+        case RulesEngine::FUEL_SOL: return "fuel_shutoff";
+        case RulesEngine::IGNITER: return "igniter";
         case RulesEngine::IGNITER2: return "ab_igniter";
+        case RulesEngine::AB_SOL: return "ab_solenoid";
+        case RulesEngine::AB_PUMP: return "ab_pump";
+        case RulesEngine::AIRSTARTER: return "air_starter";
+        case RulesEngine::GLOW_PLUG: return "glow_plug";
+        case RulesEngine::PROP_PITCH: return "prop_pitch";
         default: return "";
     }
 }
 int8_t ruleSourceHandle(const char* id) {
-    if (!strcmp(id, "n1_main")) return RulesEngine::N1_RPM;
-    if (!strcmp(id, "n2_main")) return RulesEngine::N2_RPM;
-    if (!strcmp(id, "oil_pressure_main")) return RulesEngine::OIL_PRESS;
+    if (!id || !id[0]) return -1;
+    if (!strcmp(id, "oil_temp") || !strcmp(id, "oil_temp_main")) return RulesEngine::OIL_TEMP;
+    if (!strcmp(id, "tot") || !strcmp(id, "tot_main")) return RulesEngine::TOT;
+    if (!strcmp(id, "n1_main") || !strcmp(id, "n1_rpm")) return RulesEngine::N1_RPM;
+    if (!strcmp(id, "n2_main") || !strcmp(id, "n2_rpm")) return RulesEngine::N2_RPM;
+    if (!strcmp(id, "oil_pressure_main") || !strcmp(id, "oil_press")) return RulesEngine::OIL_PRESS;
     if (!strcmp(id, "primary_n1")) return RulesEngine::N1_RPM;
     if (!strcmp(id, "primary_n2")) return RulesEngine::N2_RPM;
     if (!strcmp(id, "primary_egt")) return RulesEngine::TOT;
-    if (!strcmp(id, "operator_throttle")) return RulesEngine::THROTTLE_INPUT;
+    if (!strcmp(id, "operator_throttle") || !strcmp(id, "throttle_input") || !strcmp(id, "throttle_in") || !strcmp(id, "throttle_input_main")) return RulesEngine::THROTTLE_INPUT;
+    if (!strcmp(id, "tit") || !strcmp(id, "tit_main")) return RulesEngine::TIT;
+    if (!strcmp(id, "batt_voltage") || !strcmp(id, "batt_voltage_main")) return RulesEngine::BATT_V;
+    if (!strcmp(id, "fuel_press") || !strcmp(id, "fuel_pressure_main")) return RulesEngine::FUEL_PRESS;
+    if (!strcmp(id, "fuel_flow") || !strcmp(id, "fuel_flow_main")) return RulesEngine::FUEL_FLOW;
+    if (!strcmp(id, "p1") || !strcmp(id, "p1_main")) return RulesEngine::P1;
+    if (!strcmp(id, "p2") || !strcmp(id, "p2_main")) return RulesEngine::P2;
+    if (!strcmp(id, "torque") || !strcmp(id, "torque_main")) return RulesEngine::TORQUE;
+    if (!strcmp(id, "flame") || !strcmp(id, "flame_main")) return RulesEngine::FLAME;
+    if (!strcmp(id, "idle_input") || !strcmp(id, "idle_in") || !strcmp(id, "idle_input_main")) return RulesEngine::IDLE_INPUT;
+    if (!strcmp(id, "ab_flame") || !strcmp(id, "ab_flame_main")) return RulesEngine::AB_FLAME;
+    if (!strcmp(id, "glow_current") || !strcmp(id, "glow_current_main")) return RulesEngine::GLOW_CURRENT;
+    if (!strcmp(id, "igniter_current") || !strcmp(id, "igniter_current_main")) return RulesEngine::IGNITER_CURRENT;
+    if (!strcmp(id, "igniter2_current") || !strcmp(id, "igniter2_current_main")) return RulesEngine::IGNITER2_CURRENT;
+    if (!strcmp(id, "oil_pump_current") || !strcmp(id, "oil_pump_current_main")) return RulesEngine::OIL_PUMP_CURRENT;
+    if (!strcmp(id, "ab_input") || !strcmp(id, "ab_input_main")) return RulesEngine::AB_INPUT;
+    if (!strcmp(id, "start_switch")) return RulesEngine::START_SWITCH;
+    if (!strcmp(id, "stop_switch")) return RulesEngine::STOP_SWITCH;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i) {
         const auto& in = HardwareConfig::channelRegistry.inputs[i];
         if (strcmp(in.id, id) != 0) continue;
@@ -60,17 +109,23 @@ int8_t ruleSourceHandle(const char* id) {
     return -1;
 }
 int8_t ruleTargetHandle(const char* id) {
-    if (!strcmp(id, "main_fuel")) return RulesEngine::THROTTLE;
-    if (!strcmp(id, "starter_main")) return RulesEngine::STARTER;
-    if (!strcmp(id, "oil_pump_main")) return RulesEngine::OIL_PUMP;
-    if (!strcmp(id, "cooling_fan_main")) return RulesEngine::COOL_FAN;
-    if (!strcmp(id, "bleed_valve_main")) return RulesEngine::BLEED_VALVE;
-    if (!strcmp(id, "oil_scavenge_main")) return RulesEngine::OIL_SCAVENGE;
-    if (!strcmp(id, "main_fuel_output")) return RulesEngine::THROTTLE;
-    if (!strcmp(id, "main_starter")) return RulesEngine::STARTER;
-    if (!strcmp(id, "main_fuel_shutoff")) return RulesEngine::FUEL_SOL;
-    if (!strcmp(id, "ab_igniter")) return RulesEngine::IGNITER2;
-    if (!strcmp(id, "igniter2_main")) return RulesEngine::IGNITER2;
+    if (!id || !id[0]) return -1;
+    if (!strcmp(id, "main_fuel") || !strcmp(id, "main_fuel_output") || !strcmp(id, "throttle")) return RulesEngine::THROTTLE;
+    if (!strcmp(id, "starter_main") || !strcmp(id, "main_starter") || !strcmp(id, "starter")) return RulesEngine::STARTER;
+    if (!strcmp(id, "oil_pump_main") || !strcmp(id, "oil_pump")) return RulesEngine::OIL_PUMP;
+    if (!strcmp(id, "cooling_fan_main") || !strcmp(id, "cooling_fan") || !strcmp(id, "cool_fan")) return RulesEngine::COOL_FAN;
+    if (!strcmp(id, "bleed_valve_main") || !strcmp(id, "bleed_valve")) return RulesEngine::BLEED_VALVE;
+    if (!strcmp(id, "oil_scavenge_main") || !strcmp(id, "scavenge_pump") || !strcmp(id, "oil_scavenge_pump")) return RulesEngine::OIL_SCAVENGE;
+    if (!strcmp(id, "fuel_pump") || !strcmp(id, "fuel_pump2") || !strcmp(id, "fuel_pump2_main")) return RulesEngine::FUEL_PUMP2;
+    if (!strcmp(id, "starter_enable") || !strcmp(id, "starter_en") || !strcmp(id, "starter_enable_main")) return RulesEngine::STARTER_ENABLE;
+    if (!strcmp(id, "main_fuel_shutoff") || !strcmp(id, "fuel_shutoff") || !strcmp(id, "fuel_sol")) return RulesEngine::FUEL_SOL;
+    if (!strcmp(id, "igniter") || !strcmp(id, "igniter_main")) return RulesEngine::IGNITER;
+    if (!strcmp(id, "ab_igniter") || !strcmp(id, "igniter2_main") || !strcmp(id, "igniter2")) return RulesEngine::IGNITER2;
+    if (!strcmp(id, "ab_solenoid") || !strcmp(id, "ab_sol") || !strcmp(id, "ab_solenoid_main")) return RulesEngine::AB_SOL;
+    if (!strcmp(id, "ab_pump") || !strcmp(id, "ab_pump_main")) return RulesEngine::AB_PUMP;
+    if (!strcmp(id, "air_starter") || !strcmp(id, "airstarter_sol") || !strcmp(id, "airstarter_main")) return RulesEngine::AIRSTARTER;
+    if (!strcmp(id, "glow_plug") || !strcmp(id, "glow_plug_main")) return RulesEngine::GLOW_PLUG;
+    if (!strcmp(id, "prop_pitch") || !strcmp(id, "prop_pitch_main")) return RulesEngine::PROP_PITCH;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;
