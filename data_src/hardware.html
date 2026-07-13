@@ -3609,9 +3609,12 @@ function addRegistryChannel(direction) {
   const r = registryRoot(); if ([...r.inputs,...r.outputs].some(c => c.id === id)) return alert('That channel ID already exists.');
   const role = (prompt('Semantic role:', 'generic') || 'generic').trim(); const pin = Number(prompt('GPIO pin:', ''));
   if (!Number.isInteger(pin) || pin < 0) return alert('A valid GPIO pin is required.');
-  const driver = direction === 'input' ? Number(prompt('Driver: 0 Digital, 1 Analog, 2 Pulse, 3 RC PWM', '0')) : Number(prompt('Driver: 4 Relay, 5 PWM, 6 Servo/ESC', '4'));
+  const driver = direction === 'input'
+    ? Number(prompt('Input electrical type: 0 Digital switch, 1 Analog ADC, 2 Pulse/frequency, 3 RC PWM', '0'))
+    : Number(prompt('Output driver: 4 Relay, 5 PWM, 6 Servo/ESC', '4'));
   if ((direction === 'input' && (driver < 0 || driver > 3)) || (direction === 'output' && (driver < 4 || driver > 6))) return alert('Driver is incompatible with this channel direction.');
-  r[direction + 's'].push({id, name:(prompt('Display name:', id) || id).trim(), role, driver, pin, min:0, max:1, safe_demand:0, fault_demand:0});
+  const max = direction === 'input' && driver === 1 ? 4095 : 1;
+  r[direction + 's'].push({id, name:(prompt('Display name:', id) || id).trim(), role, driver, pin, min:0, max, safe_demand:0, fault_demand:0});
   renderRegistryInventory(); updateSaveButton();
 }
 function removeRegistryChannel(direction, index) {

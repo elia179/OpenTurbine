@@ -10,6 +10,11 @@
 
 namespace {
 const char* ruleSourceId(uint8_t sensor) {
+    if (ChannelRegistry::isInputSensor(sensor)) {
+        uint8_t idx = ChannelRegistry::inputIndexFromSensor(sensor);
+        if (idx < HardwareConfig::channelRegistry.inputCount)
+            return HardwareConfig::channelRegistry.inputs[idx].id;
+    }
     switch (sensor) {
         case RulesEngine::N1_RPM: return "n1_main";
         case RulesEngine::N2_RPM: return "n2_main";
@@ -41,11 +46,15 @@ int8_t ruleSourceHandle(const char* id) {
     if (!strcmp(id, "primary_n2")) return RulesEngine::N2_RPM;
     if (!strcmp(id, "primary_egt")) return RulesEngine::TOT;
     if (!strcmp(id, "operator_throttle")) return RulesEngine::THROTTLE_INPUT;
-    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Input)) {
+    for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i) {
+        const auto& in = HardwareConfig::channelRegistry.inputs[i];
+        if (strcmp(in.id, id) != 0) continue;
+        const auto* c = &in;
         if (!strcmp(c->role, "speed")) return RulesEngine::N1_RPM;
         if (!strcmp(c->role, "pressure")) return RulesEngine::OIL_PRESS;
         if (!strcmp(c->role, "temperature")) return RulesEngine::TOT;
         if (!strcmp(c->role, "operator")) return RulesEngine::THROTTLE_INPUT;
+        return (int8_t)(ChannelRegistry::INPUT_SENSOR_BASE + i);
     }
     return -1;
 }
@@ -384,6 +393,12 @@ int          Config::ruleCount                = 0;
 
 namespace {
 bool ruleSensorAvailable(uint8_t s) {
+    if (ChannelRegistry::isInputSensor(s)) {
+        uint8_t idx = ChannelRegistry::inputIndexFromSensor(s);
+        return idx < HardwareConfig::channelRegistry.inputCount &&
+               HardwareConfig::channelRegistry.inputs[idx].installed &&
+               HardwareConfig::channelRegistry.inputs[idx].pin >= 0;
+    }
     switch (s) {
         case 0:  return HardwareConfig::hasOilTemp;
         case 1:  return HardwareConfig::hasTot;
@@ -474,6 +489,15 @@ bool validActuatorHandle(JsonVariantConst v) {
     return (value >= 0 && value <= 17) ||
            (value >= ChannelRegistry::OUTPUT_ACTUATOR_BASE &&
             value < ChannelRegistry::OUTPUT_ACTUATOR_BASE + ChannelRegistry::MAX_OUTPUT_CHANNELS);
+}
+
+bool validSensorHandle(JsonVariantConst v) {
+    if (!present(v)) return true;
+    if (!v.is<int>() && !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
+    long value = v.as<long>();
+    return (value >= 0 && value <= 26) ||
+           (value >= ChannelRegistry::INPUT_SENSOR_BASE &&
+            value < ChannelRegistry::INPUT_SENSOR_BASE + ChannelRegistry::MAX_INPUT_CHANNELS);
 }
 
 bool validBool(JsonVariantConst v) { return !present(v) || v.is<bool>(); }
@@ -795,7 +819,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         if (!rules.is<JsonArrayConst>() || rules.size() > Config::MAX_RULES) return false;
         for (JsonObjectConst rule : rules.as<JsonArrayConst>()) {
             if (!validBool(rule["enabled"]) ||
-                !validInt(rule["sensor"], 0, 26) ||
+                !validSensorHandle(rule["sensor"]) ||
                 !validInt(rule["op"], 0, 4) ||
                 !validNumber(rule["threshold"], -1000000.0f, 1000000.0f) ||
                 !validActuatorHandle(rule["actuator"]) ||
@@ -1916,7 +1940,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     standbyOilSource = constrain(standbyOilSource, 0, 2);
     manualRelightIgnitionTarget = constrain(manualRelightIgnitionTarget, 0, 2);
     for (int i = 0; i < ruleCount; i++) {
-        rules[i].sensor = constrain(rules[i].sensor, 0, 26);
+        if (rules[i].sensor > 26 && !ChannelRegistry::isInputSensor(rules[i].sensor))
+            rules[i].enabled = false;
         rules[i].op = constrain(rules[i].op, 0, 4);
         if (rules[i].actuator > 17 && !ChannelRegistry::isOutputActuator(rules[i].actuator))
             rules[i].enabled = false;

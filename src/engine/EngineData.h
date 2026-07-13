@@ -80,6 +80,8 @@ struct EngineData {
     // strong flame can legitimately saturate the sensor while RUNNING).
     volatile bool     flameHealthy    = true;
     volatile bool     flameDetected   = false;
+    volatile float    registryInputValue[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    volatile bool     registryInputHealthy[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
 
     // ── Actuator demands (written by controllers/sequencer) ───
     volatile float    throttleDemand  = 0;      // 0.0–1.0  main fuel/throttle ESC

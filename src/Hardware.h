@@ -412,6 +412,42 @@ extern SafetyMonitor  g_safety;
 
 namespace Hardware {
 
+    inline void initRegistryInputs() {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        for (uint8_t i = 0; i < reg.inputCount; ++i) {
+            const auto& c = reg.inputs[i];
+            ed.registryInputValue[i] = 0.0f;
+            ed.registryInputHealthy[i] = c.installed && c.pin >= 0 &&
+                (c.driver == ChannelRegistry::Digital || c.driver == ChannelRegistry::Analog);
+            if (ed.registryInputHealthy[i] && c.driver == ChannelRegistry::Digital)
+                pinMode(c.pin, INPUT);
+        }
+    }
+
+    inline void updateRegistryInputs() {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        for (uint8_t i = 0; i < reg.inputCount; ++i) {
+            const auto& c = reg.inputs[i];
+            if (!c.installed || c.pin < 0) {
+                ed.registryInputHealthy[i] = false;
+                continue;
+            }
+            if (c.driver == ChannelRegistry::Digital) {
+                ed.registryInputValue[i] = digitalRead(c.pin) ? 1.0f : 0.0f;
+                ed.registryInputHealthy[i] = true;
+            } else if (c.driver == ChannelRegistry::Analog) {
+                int raw = analogRead(c.pin);
+                float span = c.maxValue - c.minValue;
+                ed.registryInputValue[i] = span > 0.0f ? constrain((raw - c.minValue) / span, 0.0f, 1.0f) : 0.0f;
+                ed.registryInputHealthy[i] = true;
+            } else {
+                ed.registryInputHealthy[i] = false;
+            }
+        }
+    }
+
     inline bool registryOutputManaged(const ChannelRegistry::Channel& c) {
         return c.installed && c.pin >= 0 && !ChannelRegistry::isCoreManagedOutput(c);
     }
@@ -840,12 +876,14 @@ namespace Hardware {
             g_sensorOilPumpCurrent.begin(hw.oilPumpCurrentPin);
             applyCurrentSensorCal(g_sensorOilPumpCurrent, hw.oilPumpCurrentZeroV, hw.oilPumpCurrentMvPerA);
         }
+        initRegistryInputs();
     }
 
     // ── Sensor update → EngineData ────────────────────────────
     inline void updateSensors() {
         auto& hw = HardwareConfig::instance();
         auto& ed = EngineData::instance();
+        updateRegistryInputs();
         if (hw.hasN1Rpm) {
             g_sensorN1Rpm.update();
             ed.n1Rpm     = g_sensorN1Rpm.getValue();

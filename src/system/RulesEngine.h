@@ -86,6 +86,13 @@ public:
 
 private:
     static bool _sensorUsable(uint8_t s, const EngineData& ed) {
+        if (ChannelRegistry::isInputSensor(s)) {
+            uint8_t idx = ChannelRegistry::inputIndexFromSensor(s);
+            return idx < HardwareConfig::channelRegistry.inputCount &&
+                   HardwareConfig::channelRegistry.inputs[idx].installed &&
+                   HardwareConfig::channelRegistry.inputs[idx].pin >= 0 &&
+                   ed.registryInputHealthy[idx];
+        }
         switch (s) {
             case OIL_TEMP:        return HardwareConfig::hasOilTemp && ed.oilTempHealthy;
             case TOT:             return HardwareConfig::hasTot && ed.totHealthy;
@@ -122,6 +129,10 @@ private:
     }
 
     static float _readSensor(uint8_t s, const EngineData& ed) {
+        if (ChannelRegistry::isInputSensor(s)) {
+            uint8_t idx = ChannelRegistry::inputIndexFromSensor(s);
+            return idx < ChannelRegistry::MAX_INPUT_CHANNELS ? ed.registryInputValue[idx] : 0.0f;
+        }
         switch (s) {
             case OIL_TEMP:  return ed.oilTemp;
             case TOT:       return ed.tot;

@@ -486,6 +486,9 @@ bool validateOilLoops(JsonVariantConst loops, const ChannelRegistry* registry) {
 
 int customSensorId(const char* key) {
     if (!key) return -1;
+    for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i)
+        if (strcmp(key, HardwareConfig::channelRegistry.inputs[i].id) == 0)
+            return ChannelRegistry::INPUT_SENSOR_BASE + i;
     if (strcmp(key, "oil_temp") == 0) return 0;
     if (strcmp(key, "tot") == 0) return 1;
     if (strcmp(key, "n1_rpm") == 0) return 2;
@@ -517,6 +520,11 @@ int customSensorId(const char* key) {
 }
 
 const char* customSensorKey(uint8_t sensor) {
+    if (ChannelRegistry::isInputSensor(sensor)) {
+        uint8_t idx = ChannelRegistry::inputIndexFromSensor(sensor);
+        if (idx < HardwareConfig::channelRegistry.inputCount)
+            return HardwareConfig::channelRegistry.inputs[idx].id;
+    }
     static const char* keys[] = {
         "oil_temp", "tot", "n1_rpm", "oil_press", "tit", "batt_voltage",
         "n2_rpm", "di0", "di1", "di2", "di3", "fuel_press", "fuel_flow",
@@ -581,6 +589,11 @@ const char* customActuatorKey(uint8_t act) {
 }
 
 const char* sequenceSourceId(uint8_t sensor) {
+    if (ChannelRegistry::isInputSensor(sensor)) {
+        uint8_t idx = ChannelRegistry::inputIndexFromSensor(sensor);
+        if (idx < HardwareConfig::channelRegistry.inputCount)
+            return HardwareConfig::channelRegistry.inputs[idx].id;
+    }
     switch (sensor) {
         case 0:  return "oil_temp_main";
         case 1:  return "tot_main";
@@ -623,11 +636,15 @@ int8_t sequenceSourceHandle(const char* id) {
     if (strcmp(id, "primary_n2") == 0) return 6;
     if (strcmp(id, "primary_egt") == 0) return 1;
     if (strcmp(id, "operator_throttle") == 0) return 17;
-    if (const auto* c = HardwareConfig::channelRegistry.find(id, ChannelRegistry::Input)) {
+    for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i) {
+        const auto& in = HardwareConfig::channelRegistry.inputs[i];
+        if (strcmp(in.id, id) != 0) continue;
+        const auto* c = &in;
         if (strcmp(c->role, "speed") == 0) return 2;
         if (strcmp(c->role, "pressure") == 0) return 3;
         if (strcmp(c->role, "temperature") == 0) return 1;
         if (strcmp(c->role, "operator") == 0) return 17;
+        return (int8_t)(ChannelRegistry::INPUT_SENSOR_BASE + i);
     }
     return -1;
 }
@@ -929,6 +946,12 @@ bool seqActionActuatorAvailable(uint8_t act) {
 }
 
 bool ruleSensorAvailable(uint8_t sensor) {
+    if (ChannelRegistry::isInputSensor(sensor)) {
+        uint8_t idx = ChannelRegistry::inputIndexFromSensor(sensor);
+        return idx < HardwareConfig::channelRegistry.inputCount &&
+               HardwareConfig::channelRegistry.inputs[idx].installed &&
+               HardwareConfig::channelRegistry.inputs[idx].pin >= 0;
+    }
     switch (sensor) {
         case 0:  return HardwareConfig::hasOilTemp;
         case 1:  return HardwareConfig::hasTot;

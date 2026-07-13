@@ -14,7 +14,15 @@ public:
     static constexpr uint8_t MAX_INPUT_CHANNELS = 6;
     static constexpr uint8_t MAX_OUTPUT_CHANNELS = 6;
     static constexpr uint8_t MAX_BINDINGS = 5;
+    static constexpr uint8_t INPUT_SENSOR_BASE = 80;
     static constexpr uint8_t OUTPUT_ACTUATOR_BASE = 64;
+    static constexpr bool isInputSensor(uint8_t handle) {
+        return handle >= INPUT_SENSOR_BASE &&
+               handle < INPUT_SENSOR_BASE + MAX_INPUT_CHANNELS;
+    }
+    static constexpr uint8_t inputIndexFromSensor(uint8_t handle) {
+        return handle - INPUT_SENSOR_BASE;
+    }
     static constexpr bool isOutputActuator(uint8_t handle) {
         return handle >= OUTPUT_ACTUATOR_BASE &&
                handle < OUTPUT_ACTUATOR_BASE + MAX_OUTPUT_CHANNELS;
@@ -32,6 +40,16 @@ public:
                       !strcmp(id, "oil_scavenge_main") ||
                       !strcmp(id, "bleed_valve_main") ||
                       !strcmp(id, "main_fuel_shutoff"));
+    }
+    static bool isCoreManagedInputId(const char* id) {
+        return id && (!strcmp(id, "n1_main") ||
+                      !strcmp(id, "n2_main") ||
+                      !strcmp(id, "tot_main") ||
+                      !strcmp(id, "primary_n1") ||
+                      !strcmp(id, "primary_n2") ||
+                      !strcmp(id, "primary_egt") ||
+                      !strcmp(id, "oil_pressure_main") ||
+                      !strcmp(id, "operator_throttle"));
     }
     static bool isCoreManagedOutputRole(const char* role) {
         return role && (!strcmp(role, "fuel") ||
