@@ -4418,6 +4418,7 @@ function renderHardwareWorkflowSummaries() {
   renderCommsIndicatorSummary();
   renderControllerSummary();
   renderSafetySummary();
+  applyContextTooltips(document);
 }
 function renderRegistryInventory() {
   const r = registryRoot();
@@ -4615,9 +4616,10 @@ function renderRegistryAddCatalog() {
   box.innerHTML = capacity + groups.map(group => `<div class="registry-add-group">
     <div class="registry-add-group-title">${escapeHtmlText(group.name)}</div>
     <div class="registry-add-group-grid">${group.rows.map(({p, i}) =>
-      `<button type="button" class="registry-add-option" onclick="selectRegistryAddPreset(${i})">${escapeHtmlText(p.label)}<small>${escapeHtmlText(driverName(p.driver))} default · role ${escapeHtmlText(p.role)}</small></button>`
+      `<button type="button" class="registry-add-option" title="${escapeHtmlText(p.label)}: adds a ${escapeHtmlText(driverName(p.driver))} ${_registryAddDirection} card with role ${escapeHtmlText(p.role)}. Pin and detailed settings are edited after it is added." onclick="selectRegistryAddPreset(${i})">${escapeHtmlText(p.label)}<small>${escapeHtmlText(driverName(p.driver))} default · role ${escapeHtmlText(p.role)}</small></button>`
     ).join('')}</div>
   </div>`).join('');
+  applyContextTooltips(box);
 }
 function selectRegistryAddPreset(index) {
   const presets = _registryAddDirection === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
@@ -6041,12 +6043,97 @@ async function resetDefaults() {
 // visible label + description, so a user can hover any control for help without
 // reading the docs — matching the other pages that load app.js.
 function applyContextTooltips(root) {
+  const fallback = {
+    'Display name': 'Shown throughout the dashboard, logs, rules and sequence editors. Changing this does not change the stable ID.',
+    'Display label': 'Human-readable name shown in the dashboard, event log and related UI.',
+    'Stable ID': 'Permanent machine-readable ID used by rules, sequence blocks and saved references. Keep it stable once other settings reference it.',
+    'Binding key': 'Core firmware binding this registry channel satisfies, such as primary N1 or main fuel output.',
+    'Channel': 'Registry channel assigned to this core binding.',
+    'Semantic role': 'Tells OpenTurbine what this channel means, so rules, safety and sequence blocks can offer the right choices.',
+    'Electrical driver': 'Select the real signal type wired to the pin. Changing this changes the valid pin list and the settings shown below.',
+    'GPIO pin': 'Physical ESP32 GPIO used by this channel. Leave unassigned only while drafting; save is blocked for installed channels without a pin.',
+    'Active polarity': 'Choose which electrical level means active. Active LOW is typical for switches wired to ground with a pull-up.',
+    'Internal pull-up': 'Enables the ESP32 internal pull-up resistor. Use for switches to ground; do not use together with pull-down.',
+    'Internal pull-down': 'Enables the ESP32 internal pull-down resistor. Use for active-high switches; do not use together with pull-up.',
+    'Input bias': 'Internal bias resistors are disabled for analog inputs so the ADC reading is not distorted.',
+    'Output polarity': 'Use this when the output board is active-low or the PWM/servo demand must be reversed.',
+    'Mapped value': 'The firmware maps raw electrical input/output values into the normalized value used by rules and telemetry.',
+    'Minimum ADC count': 'Raw ADC count that maps to 0.00. Must be lower than the maximum and within 0-4095.',
+    'Maximum ADC count': 'Raw ADC count that maps to 1.00. Must be higher than the minimum and within 0-4095.',
+    'Minimum frequency (Hz)': 'Input frequency that maps to 0.00.',
+    'Maximum frequency (Hz)': 'Input frequency that maps to 1.00.',
+    'Minimum mapped value': 'Raw value that maps to 0.00. Must be lower than the maximum.',
+    'Maximum mapped value': 'Raw value that maps to 1.00. Must be higher than the minimum.',
+    'Minimum pulse width (us)': 'Servo/RC pulse width that maps to the low end of the range. Typical minimum is 1000 us.',
+    'Maximum pulse width (us)': 'Servo/RC pulse width that maps to the high end of the range. Typical maximum is 2000 us.',
+    'Min pulse (µs)': 'Servo/ESC pulse at 0% command. Typical value is 1000 µs.',
+    'Max pulse (µs)': 'Servo/ESC pulse at 100% command. Typical value is 2000 µs.',
+    'Servo min/max us': 'Servo/ESC pulse range. Typical range is 1000-2000 us.',
+    'Frequency (Hz)': 'PWM carrier frequency. Match the ESC, MOSFET driver or sensor datasheet.',
+    'PWM frequency (Hz)': 'PWM carrier frequency. Match the ESC, MOSFET driver or load requirements.',
+    'Resolution (bits)': 'PWM resolution. Higher bit depth can reduce the maximum usable PWM frequency.',
+    'Min non-zero (%)': 'Smallest duty sent for any nonzero demand. Useful for pump/ESC deadband.',
+    'Max output (%)': 'Maximum PWM duty the firmware is allowed to command.',
+    'PWM min/max %': 'Minimum and maximum PWM duty used for this output.',
+    'Output type': 'Electrical output mode: servo/ESC, PWM, or relay/on-off.',
+    'Minimum command (%)': 'Lowest command the firmware may send for this proportional output.',
+    'Maximum command (%)': 'Highest command the firmware may send for this proportional output.',
+    'Boot safe state': 'Relay state written when outputs are initialized or a registry output test ends.',
+    'Fault state': 'Relay state written when the ECU enters a fault-safe output state.',
+    'Boot safe demand (%)': 'Proportional demand written when outputs initialize or a registry output test ends.',
+    'Fault demand (%)': 'Proportional demand written when the ECU enters a fault-safe output state.',
+    'Current sensor ADC': 'ADC-capable pin connected to the current sensor output.',
+    'Current sensor ADC GPIO': 'ADC-capable GPIO connected to the current sensor output.',
+    'Sensor sensitivity (mV/A)': 'Current sensor sensitivity from the datasheet. Example: ACS712-20A = 100 mV/A.',
+    'Sensor mV/A': 'Current sensor sensitivity from the datasheet. Example: ACS712-20A = 100 mV/A.',
+    'Zero-current voltage (V)': 'Sensor output voltage at 0 A, usually half supply voltage.',
+    'Zero-current voltage': 'Sensor output voltage at 0 A, usually half supply voltage.',
+    'Overcurrent limit (A)': 'Trips overcurrent protection above this current. Set 0 to disable the limit.',
+    'Ready current (A)': 'Glow plug is considered hot when current has dropped below this value.',
+    'Igniter mode': 'Simple relay is on/off. Dwell mode pulses the coil. Current-limited dwell stops charging when current reaches the threshold.',
+    'Dwell time (ms)': 'Maximum coil charge time before spark. Keep within the coil/driver safe operating range.',
+    'Rest time (ms)': 'Off time between spark pulses so the coil and driver can recover.',
+    'Coil saturation current (A)': 'Current threshold that ends coil dwell early in current-limited mode.',
+    'Glow mode': 'Plain glow drives only the glow plug. Wet glow also drives a delayed pilot-fuel output.',
+    'Glow PWM frequency (Hz)': 'PWM carrier for glow MOSFET control. Resistive glow elements usually tolerate low PWM frequencies.',
+    'PWM resolution (bits)': 'PWM duty resolution. Higher resolution can limit maximum PWM frequency.',
+    'Pilot fuel GPIO': 'Output pin for the wet-glow pilot fuel solenoid or small pump.',
+    'Pilot fuel driver': 'Electrical driver for the wet-glow fuel output: relay/on-off, PWM, or servo/ESC.',
+    'Fuel output mode': 'Electrical driver for the wet-glow pilot fuel output.',
+    'Fuel active polarity': 'Choose whether the wet-glow fuel output is active when the GPIO is high or low.',
+    'Fuel active high': 'When enabled, GPIO HIGH turns the wet-glow fuel output on.',
+    'Fuel delay (ms)': 'Delay after glow starts before wet-glow pilot fuel is enabled.',
+    'Fuel delay after glow ON (ms)': 'Delay after the glow plug is commanded on before wet-glow pilot fuel starts.',
+    'Fuel demand (%)': 'Demand sent to the wet-glow fuel output while it is active.',
+    'Fuel servo pulse (us)': 'Servo/ESC pulse range used by the wet-glow fuel output.',
+    'Fuel PWM freq / bits': 'PWM carrier frequency and resolution for the wet-glow fuel output.',
+    'Fuel PWM min / max (%)': 'Minimum and maximum duty used by the wet-glow fuel output.',
+    'PWM freq / bits': 'PWM carrier frequency and resolution for this output.',
+    'CLK pin': 'SPI clock pin shared by thermocouple amplifier chips on the same bus.',
+    'CS pin': 'SPI chip-select pin. Each SPI thermocouple amplifier needs its own CS pin.',
+    'MISO pin': 'SPI data pin from the thermocouple amplifier to the ESP32.',
+    'Cluster serial': 'Enables OpenTurbine cluster-display telemetry over a UART.',
+    'Cluster TX GPIO': 'UART transmit pin from ECU to the cluster display.',
+    'Cluster RX GPIO': 'Optional UART receive pin. Leave unassigned for one-way telemetry.',
+    'Baud rate': 'Must match the receiving device, or the serial link will not decode correctly.',
+    'Interval (ms)': 'Telemetry send interval. Lower values update faster but use more serial bandwidth.',
+    'MAVLink': 'Enables MAVLink telemetry output for a ground station or companion device.',
+    'MAVLink TX GPIO': 'UART transmit pin for MAVLink telemetry.',
+    'Status LED': 'Enables a local status LED indicator.',
+    'LED type': 'Plain GPIO drives a normal LED. NeoPixel RGB drives a WS2812-style LED.',
+    'Status LED GPIO': 'GPIO connected to the LED or NeoPixel data input.',
+    'NeoPixel mode': 'Blink pattern keeps code-style flashes. State colors show a color per engine state.',
+    'Blink color': 'NeoPixel color used by blink-pattern status mode.',
+    'State colors': 'NeoPixel colors used for each engine state.',
+    'Buzzer': 'Enables local audible status/fault tones.',
+    'Buzzer GPIO': 'GPIO connected to the buzzer driver.'
+  };
   (root || document).querySelectorAll('.hw-field').forEach(el => {
     if (el.title) return;
     const lab = el.querySelector('.hw-label, b');
     const des = el.querySelector('.hw-desc');
     const l = lab && lab.textContent ? lab.textContent.trim() : '';
-    const d = des && des.textContent ? des.textContent.trim() : '';
+    const d = des && des.textContent ? des.textContent.trim() : (fallback[l] || '');
     if (d) el.title = l ? l + ': ' + d : d;
   });
 }
