@@ -420,6 +420,7 @@ namespace Hardware {
     inline uint16_t          g_registryRcLastMs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
     static constexpr uint8_t REG_RC_FRESH = 0x01;
     static constexpr uint8_t REG_RC_VALID = 0x02;
+    inline float             g_registryOilLoopPct[HardwareConfig::MAX_OIL_LOOPS] = {};
 
     inline float registryMappedInput(float raw, const ChannelRegistry::Channel& c) {
         float span = c.maxValue - c.minValue;
@@ -701,11 +702,13 @@ namespace Hardware {
             g_ctrlOilLoop.failsafeDelayMs = Config::oilFailsafeDelayMs;
             g_ctrlOilLoop.failsafePct     = Config::oilFailsafePct;
             g_ctrlOilLoop.deadband        = Config::oilPressureDeadband;
-            if (HardwareConfig::oilLoopCount > 0) {
-                const auto& loop = HardwareConfig::oilLoops[0];
+            for (uint8_t i = 0; i < HardwareConfig::oilLoopCount; ++i) {
+                const auto& loop = HardwareConfig::oilLoops[i];
+                if (!loop.enabled) continue;
                 g_ctrlOilLoop.minPct   = constrain((float)loop.minDemandPct, 0.0f, 100.0f);
                 g_ctrlOilLoop.maxPct   = constrain((float)loop.maxDemandPct, g_ctrlOilLoop.minPct, 100.0f);
                 g_ctrlOilLoop.deadband = loop.deadbandCentiBar / 100.0f;
+                break;
             }
         }
         if (hw.hasThrottleSlew) {
@@ -1609,6 +1612,54 @@ namespace Hardware {
         if (hw.hasThrottleSlew) g_ctrlThrottleSlew.begin();
         if (hw.hasDynamicIdle)  g_ctrlDynamicIdle.begin();
         if (hw.hasGovernor)     g_ctrlGovernor.begin();
+        for (uint8_t i = 0; i < HardwareConfig::MAX_OIL_LOOPS; ++i) {
+            g_registryOilLoopPct[i] = 0.0f;
+        }
+    }
+
+    inline void runAdditionalOilLoops() {
+        auto& hw = HardwareConfig::instance();
+        auto& ed = EngineData::instance();
+        if (!hw.hasOilLoop || ed.benchMode) return;
+
+        constexpr float dt = 1.0f / 400.0f;
+
+        bool legacyLoopSkipped = false;
+        for (uint8_t i = 0; i < HardwareConfig::oilLoopCount; ++i) {
+            const auto& loop = HardwareConfig::oilLoops[i];
+            if (!loop.enabled) continue;
+            if (!legacyLoopSkipped) {
+                legacyLoopSkipped = true;
+                continue;
+            }
+            if (loop.pressureInputIndex >= HardwareConfig::channelRegistry.inputCount ||
+                loop.pumpOutputIndex >= HardwareConfig::channelRegistry.outputCount ||
+                loop.pumpOutputIndex >= ChannelRegistry::MAX_OUTPUT_CHANNELS) continue;
+
+            const auto& pump = HardwareConfig::channelRegistry.outputs[loop.pumpOutputIndex];
+            if (!registryOutputManaged(pump)) continue;
+
+            float minPct = constrain((float)loop.minDemandPct, 0.0f, 100.0f);
+            float maxPct = constrain((float)loop.maxDemandPct, minPct, 100.0f);
+            if (g_registryOilLoopPct[i] < minPct) g_registryOilLoopPct[i] = minPct;
+
+            if (!ed.registryInputHealthy[loop.pressureInputIndex]) {
+                g_registryOilLoopPct[i] = constrain(Config::oilFailsafePct, minPct, maxPct);
+                ed.registryOutputDemand[loop.pumpOutputIndex] = g_registryOilLoopPct[i] / 100.0f;
+                continue;
+            }
+
+            const float pressureBar = constrain(ed.registryInputValue[loop.pressureInputIndex], 0.0f, 1.0f) * 20.0f;
+            const float targetBar = loop.targetCentiBar / 100.0f;
+            const float deadband = loop.deadbandCentiBar / 100.0f;
+            const float error = targetBar - pressureBar;
+            if (fabsf(error) > deadband) {
+                g_registryOilLoopPct[i] = constrain(
+                    g_registryOilLoopPct[i] + error * Config::oilAdjustScale * (dt * 400.0f),
+                    minPct, maxPct);
+            }
+            ed.registryOutputDemand[loop.pumpOutputIndex] = g_registryOilLoopPct[i] / 100.0f;
+        }
     }
 
     // ── Controller tick (RUNNING + late STARTUP) ──────────────
@@ -1666,6 +1717,7 @@ namespace Hardware {
                 }
             }
             g_ctrlOilLoop.tick();
+            runAdditionalOilLoops();
         }
         // Tick order matters:
         //  1. Governor first — adjusts throttleDemand toward N2 target (may reduce it).

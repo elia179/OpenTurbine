@@ -13,10 +13,15 @@ definitions. Each loop persists a stable loop ID plus `pressure_input` and
 indexes; the first enabled loop feeds the existing single oil-pressure
 controller compatibility path, including min/max demand and deadband. Additional
 enabled loops are validated for unique pump ownership, but independent runtime
-multi-pump closed-loop control is still a compatibility bridge: the first
-enabled loop feeds the existing controller path while additional pump outputs
-remain available to rules, sequences, tools, or a later loop-controller
-dispatcher.
+multi-pump closed-loop control is a bounded runtime bridge: the first enabled
+loop feeds the existing controller path, and additional enabled loops drive
+their own non-core registry pump outputs before rules run. Secondary loops read
+the selected registry pressure input value as normalized `0.0..1.0` and scale
+it across the oil-loop target range of `0..20 bar`; a later schema can add
+per-channel engineering-unit calibration without changing stable IDs. If a
+secondary loop loses its pressure input, it immediately drives the pump to the
+configured oil failsafe demand; the primary compatibility loop keeps the
+existing delayed failsafe behavior.
 
 Output demand is normalized to `0.0..1.0`. Relay drivers quantize at `0.5` at
 the physical boundary; PWM and servo drivers preserve intermediate values.
