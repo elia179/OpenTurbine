@@ -3721,7 +3721,7 @@ function registryRangeMeta(direction, driver) {
     if (d === 3) return {min:'Minimum pulse width (µs)', max:'Maximum pulse width (µs)', step:'0.01'};
   } else {
     if (d === 4) return {hide:true, note:'Relay output is off below 50% demand and on at 50% or higher.'};
-    if (d === 5) return {min:'Minimum demand', max:'Maximum demand', step:'0.01'};
+    if (d === 5) return {hide:true, note:'PWM output uses 0–100% demand. Enable “Invert output” if 100% should drive low duty.'};
     if (d === 6) return {min:'Minimum pulse width (µs)', max:'Maximum pulse width (µs)', step:'0.01'};
   }
   return {min:'Minimum mapped value', max:'Maximum mapped value', step:'0.01'};
@@ -3730,11 +3730,41 @@ function registryFormatValue(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(2) : '0.00';
 }
+function registryParseValue(value) {
+  return Number(String(value).replace(',', '.'));
+}
 function registryRangeEditor(direction, c, index) {
   const meta = registryRangeMeta(direction, c.driver);
   if (meta.hide) return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Mapped value</span><span class="hw-desc">${escapeHtmlText(meta.note)}</span></div>`;
-  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span><input type="number" step="${escapeHtmlText(meta.step)}" value="${registryFormatValue(c.min ?? 0)}" oninput="updateRegistryChannel('${direction}',${index},'min',+this.value)"></div>
-          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span><input type="number" step="${escapeHtmlText(meta.step)}" value="${registryFormatValue(c.max ?? 1)}" oninput="updateRegistryChannel('${direction}',${index},'max',+this.value)"></div>`;
+  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span><input type="text" inputmode="decimal" value="${registryFormatValue(c.min ?? 0)}" oninput="updateRegistryChannel('${direction}',${index},'min',registryParseValue(this.value))"></div>
+          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span><input type="text" inputmode="decimal" value="${registryFormatValue(c.max ?? 1)}" oninput="updateRegistryChannel('${direction}',${index},'max',registryParseValue(this.value))"></div>`;
+}
+function registryIsSwitchRole(role) {
+  return ['digital_switch','fault','estop','inhibit_start','sequence_gate','ab_arm','ab_fire','limp_mode'].includes(String(role || ''));
+}
+function registryAllowedDrivers(direction, role) {
+  if (direction === 'input' && registryIsSwitchRole(role)) return [0];
+  return direction === 'input' ? [0,1,2,3] : [4,5,6];
+}
+function registryPinMode(direction, driver) {
+  if (direction === 'input') return Number(driver) === 1 ? 'adc' : 'in';
+  return 'out';
+}
+function registryInvertEditor(direction, c, index) {
+  if (direction !== 'output') return '';
+  const label = Number(c.driver) === 4 ? 'Active LOW / inverted relay' : 'Invert output demand';
+  const desc = Number(c.driver) === 4
+    ? 'Normal relay drives GPIO HIGH when on. Inverted relay drives GPIO LOW when on.'
+    : 'Reverses the written duty/demand: 0% becomes 100%, 100% becomes 0%.';
+  return `<div class="hw-field"><span class="hw-label">Output polarity</span><span class="hw-desc">${escapeHtmlText(desc)}</span><label class="hw-toggle"><input type="checkbox" ${c.invert ? 'checked' : ''} onchange="updateRegistryChannel('${direction}',${index},'invert',this.checked)"><span></span> ${escapeHtmlText(label)}</label></div>`;
+}
+function registryDemandEditor(c, index) {
+  if (Number(c.driver) === 4) {
+    return `<div class="hw-field"><span class="hw-label">Boot safe state</span><select onchange="updateRegistryChannel('output',${index},'safe_demand',+this.value)"><option value="0"${Number(c.safe_demand||0)<0.5?' selected':''}>Off</option><option value="1"${Number(c.safe_demand||0)>=0.5?' selected':''}>On</option></select></div>
+            <div class="hw-field"><span class="hw-label">Fault state</span><select onchange="updateRegistryChannel('output',${index},'fault_demand',+this.value)"><option value="0"${Number(c.fault_demand||0)<0.5?' selected':''}>Off</option><option value="1"${Number(c.fault_demand||0)>=0.5?' selected':''}>On</option></select></div>`;
+  }
+  return `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'safe_demand',(+this.value)/100)"></div>
+          <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'fault_demand',(+this.value)/100)"></div>`;
 }
 function renderRegistryInventory() {
   const r = registryRoot();
@@ -3746,10 +3776,12 @@ function renderRegistryInventory() {
   render('input', 'registry-inputs'); render('output', 'registry-outputs');
 }
 function registryDriverOptions(direction, selected) {
+  const role = arguments.length > 2 ? arguments[2] : null;
+  const allowed = new Set(registryAllowedDrivers(direction, role));
   const drivers = direction === 'input'
     ? [[0,'Digital'],[1,'Analog'],[2,'Pulse/frequency'],[3,'RC PWM']]
     : [[4,'Relay'],[5,'PWM'],[6,'Servo/ESC']];
-  return drivers.map(([v, label]) => `<option value="${v}"${Number(selected)===v?' selected':''}>${label}</option>`).join('');
+  return drivers.filter(([v]) => allowed.has(v)).map(([v, label]) => `<option value="${v}"${Number(selected)===v?' selected':''}>${label}</option>`).join('');
 }
 const _registryEditOpen = new Set();
 const _workflowEditOpen = new Set();
@@ -4025,14 +4057,45 @@ function renderControllerSummary() {
     : '<div class="registry-empty"><div>No optional controllers enabled.</div></div>')
     + (_workflowEditOpen.has('controllers') ? controllerInlineEditor() : '');
 }
+function safetyAvailability(key) {
+  const hasSpeed = !!cfg.sensors?.n1_rpm?.enabled || registryHas('input', c => c.id === 'n1_main' || c.role === 'speed') ||
+    (cfg.channel_registry?.bindings || []).some(b => b.key === 'primary_n1');
+  const hasTot = !!cfg.sensors?.tot?.enabled || registryHas('input', c => c.id === 'tot_main' || c.id === 'egt_main');
+  const hasTit = !!cfg.sensors?.tit?.enabled || registryHas('input', c => c.id === 'tit_main');
+  const hasEgt = hasTot || hasTit || registryHas('input', c => c.role === 'temperature');
+  const hasOilPress = !!cfg.sensors?.oil_press?.enabled || registryHas('input', c => c.id === 'oil_pressure_main' || c.role === 'pressure');
+  const hasOilTemp = !!cfg.sensors?.oil_temp?.enabled || registryHas('input', c => c.id === 'oil_temperature');
+  const hasFuelPress = !!cfg.sensors?.fuel_press?.enabled || registryHas('input', c => c.id === 'fuel_pressure');
+  const hasBattery = !!cfg.sensors?.batt_voltage?.enabled || registryHas('input', c => c.id === 'battery_voltage' || c.role === 'voltage');
+  const hasFlameConfirm = !!cfg.sensors?.flame?.enabled || hasSpeed || hasEgt || registryHas('input', c => c.role === 'flame');
+  const map = {
+    overspeed: [hasSpeed, 'Requires primary N1 speed input.'],
+    overtemp: [hasEgt, 'Requires a TOT or TIT temperature input.'],
+    low_oil: [hasOilPress, 'Requires oil-pressure input.'],
+    oil_zero: [hasOilPress, 'Requires oil-pressure input.'],
+    flameout: [hasFlameConfirm, 'Requires flame, N1, TOT or TIT confirmation.'],
+    hot_start: [hasEgt, 'Requires EGT input.'],
+    tit_overtemp: [hasTit, 'Requires TIT input.'],
+    oil_temp_high: [hasOilTemp, 'Requires oil-temperature input.'],
+    fuel_press_low: [hasFuelPress, 'Requires fuel-pressure input.'],
+    batt_low: [hasBattery, 'Requires battery-voltage input.'],
+    surge: [hasSpeed, 'Requires N1 input.']
+  };
+  const [ok, reason] = map[key] || [true, ''];
+  return {ok, reason};
+}
 function safetyInlineEditor() {
   const s = cfg.safety || {};
-  const cb = (key, label, desc, checked) => `<div class="hw-item-card">
+  const cb = (key, label, desc, checked) => {
+    const availability = safetyAvailability(key);
+    const enabled = availability.ok;
+    return `<div class="hw-item-card ${enabled ? '' : 'disabled-safety'}" title="${enabled ? '' : escapeHtmlText(availability.reason)}">
     <div class="registry-card-summary">
       <div><strong>${escapeHtmlText(label)}</strong><div class="hw-desc">${escapeHtmlText(desc)}</div></div>
-      <label class="hw-toggle"><input type="checkbox" ${checked ? 'checked' : ''} onchange="setSafety('${key}',this.checked,null)"><span></span> Enable</label>
+      <label class="hw-toggle"><input type="checkbox" ${checked && enabled ? 'checked' : ''} ${enabled ? '' : 'disabled'} onchange="setSafety('${key}',this.checked,null)"><span></span> Enable</label>
     </div>
   </div>`;
+  };
   return `<div class="registry-card-editor" style="display:block">
     ${cb('overspeed', 'N1 overspeed', 'Requires primary N1 speed input.', s.overspeed !== false)}
     ${cb('overtemp', 'EGT overtemperature', 'Requires TOT or TIT input.', s.overtemp !== false)}
@@ -4065,10 +4128,11 @@ function renderSafetySummary() {
     ['Surge / compressor instability', 'Requires N1 input', !!s.surge],
   ];
   const enabledRows = rows.filter(r => r[2]);
+  const editing = _workflowEditOpen.has('safety');
   box.innerHTML = (enabledRows.length
     ? enabledRows.map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : '<div class="registry-empty"><div>No safety interlocks enabled.</div></div>')
-    + (_workflowEditOpen.has('safety') ? safetyInlineEditor() : '');
+    : (editing ? '' : '<div class="registry-empty"><div>No safety interlocks enabled.</div></div>'))
+    + (editing ? safetyInlineEditor() : '');
 }
 function renderCommsIndicatorSummary() {
   const box = document.getElementById('hardware-comms-summary');
@@ -4183,11 +4247,11 @@ function renderRegistryInventory() {
         <div class="hw-grid">
           <div class="hw-field"><span class="hw-label">Display name</span><input type="text" maxlength="15" value="${escapeHtmlText(c.name || c.id)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
           <div class="hw-field"><span class="hw-label">Semantic role</span><select onchange="updateRegistryChannel('${direction}',${i},'role',this.value)">${registryRoleOptions(direction, c.role)}</select></div>
-          <div class="hw-field"><span class="hw-label">Electrical driver</span><select onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver)}</select></div>
-          <div class="hw-field"><span class="hw-label">GPIO pin</span><input type="number" min="-1" max="48" step="1" value="${Number.isFinite(Number(c.pin))?Number(c.pin):-1}" oninput="updateRegistryChannel('${direction}',${i},'pin',Math.trunc(+this.value))"></div>
+          <div class="hw-field"><span class="hw-label">Electrical driver</span><select onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role)}</select></div>
+          <div class="hw-field"><span class="hw-label">GPIO pin</span><select onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryPinMode(direction, c.driver))}</select></div>
+          ${registryInvertEditor(direction, c, i)}
           ${registryRangeEditor(direction, c, i)}
-          ${direction==='output' ? `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'safe_demand',(+this.value)/100)"></div>
-          <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('${direction}',${i},'fault_demand',(+this.value)/100)"></div>` : ''}
+          ${direction==='output' ? registryDemandEditor(c, i) : ''}
         </div>
         </div>
       </div>`;
@@ -4202,17 +4266,29 @@ function updateRegistryChannel(direction, index, key, value) {
   if (key === 'pin') value = Number.isFinite(value) ? value : -1;
   if (key === 'driver') {
     if ((direction === 'input' && (value < 0 || value > 3)) || (direction === 'output' && (value < 4 || value > 6))) return;
+    if (!registryAllowedDrivers(direction, c.role).includes(value)) return;
     const range = registryDefaultRange(direction, value);
     c.min = range.min;
     c.max = range.max;
     c[key] = value;
+    if (direction === 'input' && value === 1 && (c.pin ?? -1) >= 0 && !(GPIO_DB?.[c.pin]?.adc1 || GPIO_DB?.[c.pin]?.a2)) c.pin = -1;
     dirty(); updateSaveButton(); renderRegistryInventory();
     return;
   }
   if (key === 'role') {
     const allowed = (direction === 'input' ? REGISTRY_INPUT_ROLES : REGISTRY_OUTPUT_ROLES).some(([r]) => r === value);
     if (!allowed) return;
+    c.role = value;
+    if (!registryAllowedDrivers(direction, value).includes(Number(c.driver))) {
+      c.driver = registryAllowedDrivers(direction, value)[0];
+      const range = registryDefaultRange(direction, c.driver);
+      c.min = range.min;
+      c.max = range.max;
+    }
+    dirty(); updateSaveButton(); renderRegistryInventory();
+    return;
   }
+  if (key === 'invert') value = !!value;
   if (key === 'safe_demand' || key === 'fault_demand') value = Math.max(0, Math.min(1, Number(value) || 0));
   if (key === 'min' || key === 'max') value = Number.isFinite(Number(value)) ? Number(value) : 0;
   c[key] = value;
@@ -4332,7 +4408,7 @@ function selectRegistryAddPreset(index) {
   const safe = _registryAddDirection === 'output' ? 0 : undefined;
   const fault = _registryAddDirection === 'output' ? 0 : undefined;
   const channel = {id, name:name.slice(0, 15), role:preset.role, driver:preset.driver, pin:-1, min:range.min, max:range.max};
-  if (_registryAddDirection === 'output') { channel.safe_demand = safe; channel.fault_demand = fault; }
+  if (_registryAddDirection === 'output') { channel.safe_demand = safe; channel.fault_demand = fault; channel.invert = false; }
   rows.push(channel);
   closeRegistryAddDialog();
   _registryEditOpen.add(registryEditKey(_registryAddDirection, rows.length - 1));
@@ -4371,7 +4447,7 @@ function confirmRegistryAddChannel() {
   if (!Number.isFinite(min) || !Number.isFinite(maxValue) || maxValue < min) return registryAddError('Mapped maximum must be greater than or equal to minimum.');
   const safe = Math.max(0, Math.min(1, Number(document.getElementById('registry-add-safe').value || 0) / 100));
   const fault = Math.max(0, Math.min(1, Number(document.getElementById('registry-add-fault').value || 0) / 100));
-  rows.push({id, name, role:_registryAddPreset.role, driver, pin, min, max:maxValue, safe_demand:safe, fault_demand:fault});
+  rows.push({id, name, role:_registryAddPreset.role, driver, pin, min, max:maxValue, safe_demand:safe, fault_demand:fault, invert:false});
   closeRegistryAddDialog();
   renderRegistryInventory();
   dirty(); updateSaveButton(); applyActuatorVisibility();

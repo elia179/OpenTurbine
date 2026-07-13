@@ -1079,6 +1079,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["max"] = c.maxValue;
             ch["safe_demand"] = c.safeDemand;
             ch["fault_demand"] = c.faultDemand;
+            ch["invert"] = c.inverted;
             ch["demand"] = (float)(int)(ed.registryOutputDemand[i] * 1000) / 1000.0f;
         }
     }

@@ -555,16 +555,17 @@ namespace Hardware {
     inline void writeRegistryOutput(const ChannelRegistry::Channel& c, float demand) {
         if (!registryOutputManaged(c)) return;
         demand = constrain(demand, 0.0f, 1.0f);
+        float driveDemand = c.inverted ? 1.0f - demand : demand;
         if (c.driver == ChannelRegistry::Relay) {
-            digitalWrite(c.pin, demand >= 0.5f ? HIGH : LOW);
+            digitalWrite(c.pin, driveDemand >= 0.5f ? HIGH : LOW);
         } else if (c.driver == ChannelRegistry::Pwm) {
-            uint32_t duty = (uint32_t)(demand * 1023.0f + 0.5f);
+            uint32_t duty = (uint32_t)(driveDemand * 1023.0f + 0.5f);
             ledcWrite(c.pin, duty);
         } else if (c.driver == ChannelRegistry::Servo) {
             float minUs = (c.minValue >= 500.0f && c.minValue <= 2500.0f) ? c.minValue : 1000.0f;
             float maxUs = (c.maxValue >= 500.0f && c.maxValue <= 2500.0f && c.maxValue > minUs)
                         ? c.maxValue : 2000.0f;
-            float us = minUs + (maxUs - minUs) * demand;
+            float us = minUs + (maxUs - minUs) * driveDemand;
             uint32_t duty = (uint32_t)(us * 16383.0f / 20000.0f + 0.5f);
             ledcWrite(c.pin, duty);
         }

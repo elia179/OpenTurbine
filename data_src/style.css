@@ -514,6 +514,7 @@ button.primary:hover { background: color-mix(in srgb,var(--accent) 85%,#000); bo
 input[type=number],
 input[type=text],
 input[type=password],
+input[type=search],
 select {
   font-family: var(--font-mono);
   font-size: 0.83rem;
@@ -530,10 +531,12 @@ select {
 input[type=number]:focus,
 input[type=text]:focus,
 input[type=password]:focus,
+input[type=search]:focus,
 select:focus             { outline: none; border-color: var(--accent); }
 input[type=number]:disabled,
 input[type=text]:disabled,
 input[type=password]:disabled,
+input[type=search]:disabled,
 select:disabled          { opacity: 0.35; }
 select {
   max-width: 100%;
@@ -1134,6 +1137,10 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
 }
 .safety-card:not(.disabled-safety) { border-color: var(--accent); }
 .safety-card.disabled-safety { border-color: var(--red); opacity: 0.72; }
+.hw-item-card.disabled-safety {
+  border-color: color-mix(in srgb, var(--red) 50%, var(--border));
+  opacity: 0.62;
+}
 
 .rebooting-overlay {
   display: none;
