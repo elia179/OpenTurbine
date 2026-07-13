@@ -1019,6 +1019,19 @@ textarea.field-changed {
   color: var(--dim);
   white-space: nowrap;
 }
+.board-summary {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  padding: .5rem .65rem;
+  color: var(--text);
+  font-size: .76rem;
+  line-height: 1.45;
+}
+.board-summary div + div {
+  color: var(--dim);
+  margin-top: .12rem;
+}
 
 .hw-sub {
   font-size: 0.59rem;
