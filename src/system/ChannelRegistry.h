@@ -74,7 +74,14 @@ public:
                    !strcmp(role, "flow") ||
                    !strcmp(role, "torque") ||
                    !strcmp(role, "operator") ||
-                   !strcmp(role, "digital_switch");
+                   !strcmp(role, "digital_switch") ||
+                   !strcmp(role, "fault") ||
+                   !strcmp(role, "estop") ||
+                   !strcmp(role, "inhibit_start") ||
+                   !strcmp(role, "sequence_gate") ||
+                   !strcmp(role, "ab_arm") ||
+                   !strcmp(role, "ab_fire") ||
+                   !strcmp(role, "limp_mode");
         }
         return !strcmp(role, "fuel") ||
                !strcmp(role, "fuel_shutoff") ||

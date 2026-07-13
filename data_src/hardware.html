@@ -3509,7 +3509,9 @@ function registryRoot() {
 function driverName(n) { return ['Digital','Analog','Pulse/frequency','RC PWM','Relay','PWM','Servo/ESC'][Number(n)] || 'Unknown'; }
 const REGISTRY_INPUT_ROLES=[
   ['generic','Generic input'],['speed','Speed input'],['pressure','Pressure input'],['temperature','Temperature input'],
-  ['flame','Flame input'],['flow','Flow input'],['torque','Torque input'],['operator','Operator input'],['digital_switch','Digital switch']
+  ['flame','Flame input'],['flow','Flow input'],['torque','Torque input'],['operator','Operator input'],['digital_switch','Digital switch'],
+  ['fault','Fault switch'],['estop','E-stop switch'],['inhibit_start','Inhibit-start switch'],['sequence_gate','Sequence gate switch'],
+  ['ab_arm','AB arm switch'],['ab_fire','AB fire switch'],['limp_mode','Limp-mode switch']
 ];
 const REGISTRY_OUTPUT_ROLES=[
   ['generic','Generic output'],['fuel','Fuel metering'],['fuel_shutoff','Fuel shutoff'],['starter','Starter'],
@@ -3526,7 +3528,14 @@ const REGISTRY_INPUT_PRESETS=[
   {role:'flow',label:'Flow input',id:'flow_input',name:'Flow Input',driver:2},
   {role:'torque',label:'Torque input',id:'torque_input',name:'Torque Input',driver:1},
   {role:'operator',label:'Operator input',id:'operator_input',name:'Operator Input',driver:1},
-  {role:'digital_switch',label:'Digital switch',id:'digital_switch',name:'Digital Switch',driver:0}
+  {role:'digital_switch',label:'Digital switch',id:'digital_switch',name:'Digital Switch',driver:0},
+  {role:'inhibit_start',label:'Inhibit-start switch',id:'inhibit_start',name:'Inhibit Start',driver:0},
+  {role:'estop',label:'E-stop switch',id:'estop',name:'E-Stop',driver:0},
+  {role:'fault',label:'Fault switch',id:'fault_switch',name:'Fault Switch',driver:0},
+  {role:'sequence_gate',label:'Sequence gate switch',id:'sequence_gate',name:'Sequence Gate',driver:0},
+  {role:'ab_arm',label:'AB arm switch',id:'ab_arm',name:'AB Arm',driver:0},
+  {role:'ab_fire',label:'AB fire switch',id:'ab_fire',name:'AB Fire',driver:0},
+  {role:'limp_mode',label:'Limp-mode switch',id:'limp_mode',name:'Limp Mode',driver:0}
 ];
 const REGISTRY_OUTPUT_PRESETS=[
   {role:'generic',label:'Generic output',id:'generic_output',name:'Generic Output',driver:4},

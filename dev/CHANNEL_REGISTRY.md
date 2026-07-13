@@ -38,6 +38,16 @@ pulse inputs map raw ADC counts or frequency through the channel `min`/`max`
 range; RC-PWM inputs map pulse width through microsecond endpoints when
 `min`/`max` look like `500..2500 us`, otherwise they default to `1000..2000 us`.
 
+Registry digital inputs may also use the existing switch behavior roles
+`fault`, `estop`, `inhibit_start`, `sequence_gate`, `ab_arm`, `ab_fire`, or
+`limp_mode`. At load, those channels are bridged into the fixed four-slot DI
+runtime adapter when a slot is available, using the channel name for UI/telemetry
+labels. The compatibility bridge currently defaults these registry-driven DI
+actions to active-low with pull-up and 20 ms debounce because the compact
+channel record does not yet persist switch polarity, debounce, or fault-message
+metadata. Legacy `di_channels` remain readable and are migrated into
+`digital_switch`/behavior-role registry inputs when capacity permits.
+
 Generic registry outputs are initialized to boot-safe demand, driven through
 the same normalized relay/PWM/servo path as specialized outputs, and driven to
 fault-safe demand during `allOff()` / fault shutdown. Core singleton ownership

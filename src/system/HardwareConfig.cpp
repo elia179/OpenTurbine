@@ -3581,6 +3581,39 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             i++;
         }
     }
+    auto registryDiRole = [](const char* role) {
+        return role &&
+               (strcmp(role, "fault") == 0 ||
+                strcmp(role, "estop") == 0 ||
+                strcmp(role, "inhibit_start") == 0 ||
+                strcmp(role, "sequence_gate") == 0 ||
+                strcmp(role, "ab_arm") == 0 ||
+                strcmp(role, "ab_fire") == 0 ||
+                strcmp(role, "limp_mode") == 0);
+    };
+    auto diPinAlreadyMapped = [](int pin) {
+        for (int i = 0; i < MAX_DI; ++i)
+            if (pin >= 0 && diCh[i].pin == pin) return true;
+        return false;
+    };
+    for (uint8_t ri = 0; ri < channelRegistry.inputCount; ++ri) {
+        const auto& c = channelRegistry.inputs[ri];
+        if (!c.installed || c.pin < 0 || c.driver != ChannelRegistry::Digital ||
+            !registryDiRole(c.role) || diPinAlreadyMapped(c.pin)) continue;
+        for (int di = 0; di < MAX_DI; ++di) {
+            if (diCh[di].pin >= 0) continue;
+            diCh[di] = DiChannel{};
+            diCh[di].pin = c.pin;
+            diCh[di].activeH = false;
+            diCh[di].debounceMs = 20;
+            strlcpy(diCh[di].label, c.name[0] ? c.name : c.id, sizeof(diCh[di].label));
+            strlcpy(diCh[di].role, c.role, sizeof(diCh[di].role));
+            if (strcmp(c.role, "fault") == 0)
+                strlcpy(diCh[di].faultCode, c.id, sizeof(diCh[di].faultCode));
+            diCh[di].activeModes = 0x1F;
+            break;
+        }
+    }
 
     if (n1RpmPpr <= 0.0f) n1RpmPpr = 1.0f;
     if (n2RpmPpr <= 0.0f) n2RpmPpr = 1.0f;
@@ -3721,6 +3754,20 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (hasBleedValve) addOutput("bleed_valve_main", "valve", bleedValvePin, bleedValveType);
         if (hasOilScavengePump) addOutput("oil_scavenge_main", "scavenge_pump", oilScavPumpPin, oilScavPumpType);
         if (hasIgniter2) addOutput("ab_igniter", "ab_igniter", igniter2Pin, igniter2Pwm ? 1 : 2);
+        for (int i = 0; i < MAX_DI; ++i) {
+            if (diCh[i].pin < 0) continue;
+            char id[20];
+            snprintf(id, sizeof(id), "di_%d", i + 1);
+            ChannelRegistry::Channel c;
+            c.installed = true;
+            c.direction = ChannelRegistry::Input;
+            c.driver = ChannelRegistry::Digital;
+            c.pin = diCh[i].pin;
+            strlcpy(c.id, id, sizeof(c.id));
+            strlcpy(c.name, diCh[i].label[0] ? diCh[i].label : id, sizeof(c.name));
+            strlcpy(c.role, strcmp(diCh[i].role, "none") == 0 ? "digital_switch" : diCh[i].role, sizeof(c.role));
+            HardwareConfig::channelRegistry.add(c);
+        }
     }
     if (oilLoopCount == 0 && hasOilLoop && hasOilPress && hasOilPump) {
         const ChannelRegistry::Channel* pressure = channelRegistry.find("oil_pressure_main", ChannelRegistry::Input);
