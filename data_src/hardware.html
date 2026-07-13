@@ -3824,6 +3824,7 @@ function renderRegistryInventory() {
           <div class="registry-card-actions">
             <span class="registry-status registry-status-${status.kind}">${status.kind === 'ok' ? 'OK' : '!' } ${escapeHtmlText(status.text)}</span>
             <button type="button" onclick="toggleRegistryEdit('${direction}',${i})">${open ? 'Done' : 'Edit'}</button>
+            ${direction === 'output' ? `<button type="button" onclick="duplicateRegistryChannel(${i})">Duplicate</button>` : ''}
             <button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button>
           </div>
         </div>
@@ -4052,6 +4053,24 @@ function cleanupRegistryReferences(direction, id) {
     if (direction === 'output' && Array.isArray(block.steps)) block.steps = block.steps.filter(s => s?.target !== id);
     if (block.type === 'action' && (!block.steps || block.steps.length === 0)) delete cfg.custom_blocks[key];
   }
+}
+function duplicateRegistryChannel(index) {
+  const r = registryRoot();
+  const src = r.outputs[index];
+  if (!src) return;
+  const max = 6;
+  if (r.outputs.length >= max) return alert(`Output registry capacity is full (${r.outputs.length}/${max}). Remove an unused output first.`);
+  const role = src.role || 'generic';
+  const n = registryRoleNumber('output', role);
+  const baseName = String(src.name || src.id || 'Output').replace(/\s+\d+$/, '');
+  const copy = {...src};
+  copy.id = registryUniqueId(src.id || role || 'output');
+  copy.name = `${baseName} ${n}`.slice(0, 15);
+  copy.pin = -1;
+  r.outputs.push(copy);
+  _registryEditOpen.add(registryEditKey('output', r.outputs.length - 1));
+  renderRegistryInventory();
+  dirty(); updateSaveButton();
 }
 function closeRegistryRemoveDialog() {
   _pendingRegistryRemove = null;
