@@ -945,6 +945,54 @@ textarea.field-changed {
   align-items: center;
   margin-bottom: .5rem;
 }
+.registry-add-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 850;
+  background: rgba(0,0,0,.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.registry-add-panel {
+  width: min(760px, 100%);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 1rem;
+  box-shadow: var(--shadow-lg);
+}
+.registry-add-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .45rem;
+  margin-bottom: .75rem;
+}
+.registry-add-option {
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: .55rem .65rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.registry-add-option small {
+  display: block;
+  margin-top: .18rem;
+  color: var(--dim);
+  font-weight: 400;
+}
+.registry-add-editor {
+  margin-top: .75rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
+}
 
 .hw-sub {
   font-size: 0.59rem;

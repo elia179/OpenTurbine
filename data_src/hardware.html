@@ -26,6 +26,37 @@
   <div id="reboot-timer" style="font-size:.85rem;color:var(--dim)"></div>
 </div>
 
+<div id="registry-add-modal" class="registry-add-backdrop" style="display:none" onclick="if(event.target===this)closeRegistryAddDialog()">
+  <div class="registry-add-panel">
+    <div style="display:flex;justify-content:space-between;gap:1rem;align-items:start">
+      <div>
+        <h2 id="registry-add-title" style="margin:.1rem 0 .25rem;font-size:1rem">Add channel</h2>
+        <div class="hw-desc">Choose an installed device type, then set its stable ID, driver and pin before adding it to the inventory.</div>
+      </div>
+      <button type="button" onclick="closeRegistryAddDialog()">Close</button>
+    </div>
+    <input id="registry-add-search" type="search" placeholder="Search sensors, actuators, switches, generic IO..." oninput="renderRegistryAddCatalog()" style="width:100%;margin:.8rem 0">
+    <div id="registry-add-catalog" class="registry-add-catalog"></div>
+    <div id="registry-add-editor" class="registry-add-editor" style="display:none">
+      <div class="hw-grid">
+        <div class="hw-field"><span class="hw-label">Display name</span><input id="registry-add-name" type="text" maxlength="15" oninput="updateRegistryAddIdSuggestion()"></div>
+        <div class="hw-field"><span class="hw-label">Stable ID</span><input id="registry-add-id" type="text" maxlength="19"></div>
+        <div class="hw-field"><span class="hw-label">Electrical driver</span><select id="registry-add-driver"></select></div>
+        <div class="hw-field"><span class="hw-label">GPIO pin</span><input id="registry-add-pin" type="number" min="-1" max="48" step="1"></div>
+        <div class="hw-field"><span class="hw-label">Minimum mapped value</span><input id="registry-add-min" type="number" step="0.001"></div>
+        <div class="hw-field"><span class="hw-label">Maximum mapped value</span><input id="registry-add-max" type="number" step="0.001"></div>
+        <div class="hw-field registry-add-output-only"><span class="hw-label">Boot safe demand (%)</span><input id="registry-add-safe" type="number" min="0" max="100" step="1" value="0"></div>
+        <div class="hw-field registry-add-output-only"><span class="hw-label">Fault demand (%)</span><input id="registry-add-fault" type="number" min="0" max="100" step="1" value="0"></div>
+      </div>
+      <div id="registry-add-error" class="hw-desc" style="color:var(--red);margin-top:.5rem;display:none"></div>
+      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
+        <button type="button" onclick="closeRegistryAddDialog()">Cancel</button>
+        <button type="button" class="primary" onclick="confirmRegistryAddChannel()">Add to inventory</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <main>
   <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem;line-height:1.5">
     <strong style="color:var(--text)">New build?</strong> Start here — define what sensors and actuators are fitted.
@@ -3592,7 +3623,7 @@ function registryRoleNumber(direction, role) {
 function registryDefaultRange(direction, driver) {
   if (direction === 'input') {
     if (driver === 1) return {min:0, max:4095};
-    if (driver === 2) return {min:0, max:Number(prompt('Full-scale frequency (Hz):', '100') || 100)};
+    if (driver === 2) return {min:0, max:100};
     if (driver === 3) return {min:1000, max:2000};
     return {min:0, max:1};
   }
@@ -3738,27 +3769,101 @@ function removeRegistryBinding(index) {
   r.bindings.splice(index, 1);
   renderRegistryBindings(); dirty(); updateSaveButton();
 }
-function addRegistryChannel(direction) {
-  const presets = direction === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
-  const choice = Number(prompt('Choose '+direction+' preset:\n' + presets.map((p,i)=>`${i+1}. ${p.label}`).join('\n'), '1')) - 1;
-  if (!Number.isInteger(choice) || choice < 0 || choice >= presets.length) return;
-  const preset = presets[choice];
-  const n = registryRoleNumber(direction, preset.role);
-  const defaultName = direction === 'output' && preset.role !== 'generic' ? `${preset.name} ${n}` : preset.name;
-  const name = (prompt('Display name:', defaultName) || defaultName).trim().slice(0,15);
-  const id = registryUniqueId(preset.role === 'generic' ? registrySlug(name) : preset.id);
-  if (!id) return alert('Could not create a unique stable ID.');
+let _registryAddDirection = 'input';
+let _registryAddPreset = null;
+let _registryAddAutoId = true;
+function openRegistryAddDialog(direction) {
+  _registryAddDirection = direction === 'output' ? 'output' : 'input';
+  _registryAddPreset = null;
+  _registryAddAutoId = true;
+  const title = document.getElementById('registry-add-title');
+  if (title) title.textContent = _registryAddDirection === 'input' ? 'Add input' : 'Add output';
+  const search = document.getElementById('registry-add-search');
+  if (search) search.value = '';
+  const editor = document.getElementById('registry-add-editor');
+  if (editor) editor.style.display = 'none';
+  const err = document.getElementById('registry-add-error');
+  if (err) err.style.display = 'none';
+  document.getElementById('registry-add-modal').style.display = 'flex';
+  renderRegistryAddCatalog();
+  setTimeout(() => search?.focus(), 0);
+}
+function closeRegistryAddDialog() {
+  const modal = document.getElementById('registry-add-modal');
+  if (modal) modal.style.display = 'none';
+}
+function renderRegistryAddCatalog() {
+  const box = document.getElementById('registry-add-catalog');
+  if (!box) return;
+  const presets = _registryAddDirection === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
+  const q = (document.getElementById('registry-add-search')?.value || '').trim().toLowerCase();
+  const rows = presets
+    .map((p, i) => ({p, i}))
+    .filter(({p}) => !q || [p.label, p.name, p.role, p.id].some(v => String(v).toLowerCase().includes(q)));
+  box.innerHTML = rows.length ? rows.map(({p, i}) =>
+    `<button type="button" class="registry-add-option" onclick="selectRegistryAddPreset(${i})">${escapeHtmlText(p.label)}<small>${escapeHtmlText(driverName(p.driver))} default · role ${escapeHtmlText(p.role)}</small></button>`
+  ).join('') : '<div class="hw-desc">No matching hardware type.</div>';
+}
+function selectRegistryAddPreset(index) {
+  const presets = _registryAddDirection === 'input' ? REGISTRY_INPUT_PRESETS : REGISTRY_OUTPUT_PRESETS;
+  const preset = presets[index];
+  if (!preset) return;
+  _registryAddPreset = preset;
+  _registryAddAutoId = true;
+  const n = registryRoleNumber(_registryAddDirection, preset.role);
+  const name = _registryAddDirection === 'output' && preset.role !== 'generic' ? `${preset.name} ${n}` : preset.name;
+  const range = registryDefaultRange(_registryAddDirection, preset.driver);
+  document.getElementById('registry-add-name').value = name.slice(0, 15);
+  document.getElementById('registry-add-id').value = registryUniqueId(preset.role === 'generic' ? registrySlug(name) : preset.id);
+  document.getElementById('registry-add-driver').innerHTML = registryDriverOptions(_registryAddDirection, preset.driver);
+  document.getElementById('registry-add-driver').value = String(preset.driver);
+  document.getElementById('registry-add-pin').value = '';
+  document.getElementById('registry-add-min').value = range.min;
+  document.getElementById('registry-add-max').value = range.max;
+  document.querySelectorAll('.registry-add-output-only').forEach(el => el.style.display = _registryAddDirection === 'output' ? '' : 'none');
+  document.getElementById('registry-add-editor').style.display = '';
+  document.getElementById('registry-add-error').style.display = 'none';
+  document.getElementById('registry-add-id').oninput = () => { _registryAddAutoId = false; };
+}
+function updateRegistryAddIdSuggestion() {
+  if (!_registryAddPreset || !_registryAddAutoId) return;
+  const name = document.getElementById('registry-add-name')?.value || _registryAddPreset.name;
+  const base = _registryAddPreset.role === 'generic' ? registrySlug(name) : _registryAddPreset.id;
+  document.getElementById('registry-add-id').value = registryUniqueId(base);
+}
+function registryAddError(message) {
+  const err = document.getElementById('registry-add-error');
+  if (!err) return;
+  err.textContent = message;
+  err.style.display = '';
+}
+function confirmRegistryAddChannel() {
+  if (!_registryAddPreset) return registryAddError('Choose a hardware type first.');
   const r = registryRoot();
-  const pin = Number(prompt('GPIO pin:', ''));
-  if (!Number.isInteger(pin) || pin < 0) return alert('A valid GPIO pin is required.');
-  const driver = direction === 'input'
-    ? Number(prompt('Input electrical type: 0 Digital switch, 1 Analog ADC, 2 Pulse/frequency, 3 RC PWM', String(preset.driver)))
-    : Number(prompt('Output driver: 4 Relay, 5 PWM, 6 Servo/ESC', String(preset.driver)));
-  if ((direction === 'input' && (driver < 0 || driver > 3)) || (direction === 'output' && (driver < 4 || driver > 6))) return alert('Driver is incompatible with this channel direction.');
-  const range = registryDefaultRange(direction, driver);
-  if (!Number.isFinite(range.max) || range.max <= range.min) return alert('Invalid input range.');
-  r[direction + 's'].push({id, name, role:preset.role, driver, pin, min:range.min, max:range.max, safe_demand:0, fault_demand:0});
-  renderRegistryInventory(); updateSaveButton();
+  const rows = r[_registryAddDirection + 's'];
+  const max = _registryAddDirection === 'input' ? 6 : 6;
+  if (rows.length >= max) return registryAddError(`Registry capacity is full (${rows.length}/${max}). Remove an unused ${_registryAddDirection} first.`);
+  const id = registrySlug(document.getElementById('registry-add-id').value);
+  const name = (document.getElementById('registry-add-name').value || _registryAddPreset.name).trim().slice(0, 15);
+  const pin = Math.trunc(Number(document.getElementById('registry-add-pin').value));
+  const driver = Number(document.getElementById('registry-add-driver').value);
+  const min = Number(document.getElementById('registry-add-min').value);
+  const maxValue = Number(document.getElementById('registry-add-max').value);
+  if (!/^[A-Za-z0-9_-]{1,19}$/.test(id)) return registryAddError('Stable ID must be 1-19 characters: letters, numbers, underscore or hyphen.');
+  if ([...r.inputs, ...r.outputs].some(c => c.id === id)) return registryAddError('Stable ID is already used.');
+  if (!Number.isInteger(pin) || pin < 0) return registryAddError('Set a valid GPIO pin.');
+  if ((_registryAddDirection === 'input' && (driver < 0 || driver > 3)) ||
+      (_registryAddDirection === 'output' && (driver < 4 || driver > 6))) return registryAddError('Driver is incompatible with this channel direction.');
+  if (!Number.isFinite(min) || !Number.isFinite(maxValue) || maxValue < min) return registryAddError('Mapped maximum must be greater than or equal to minimum.');
+  const safe = Math.max(0, Math.min(1, Number(document.getElementById('registry-add-safe').value || 0) / 100));
+  const fault = Math.max(0, Math.min(1, Number(document.getElementById('registry-add-fault').value || 0) / 100));
+  rows.push({id, name, role:_registryAddPreset.role, driver, pin, min, max:maxValue, safe_demand:safe, fault_demand:fault});
+  closeRegistryAddDialog();
+  renderRegistryInventory();
+  dirty(); updateSaveButton(); applyActuatorVisibility();
+}
+function addRegistryChannel(direction) {
+  openRegistryAddDialog(direction);
 }
 function registryRemovalImpact(direction, id) {
   const r = registryRoot(), impact = [];
