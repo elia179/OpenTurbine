@@ -156,21 +156,21 @@
   <div class="hw-section" id="hardware-comms-panel">
     <div class="hw-title">Communications and indicators</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Installed external communication links and local indication devices.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor()">Edit devices</button></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('comms')">Edit devices</button></div>
     <div id="hardware-comms-summary"></div>
   </div>
 
   <div class="hw-section" id="hardware-controllers-panel">
     <div class="hw-title">Controllers</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Closed-loop and helper controllers enabled for this engine.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor('controllers')">Edit controllers</button></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('controllers')">Edit controllers</button></div>
     <div id="hardware-controllers-summary"></div>
   </div>
 
   <div class="hw-section" id="hardware-safety-panel">
     <div class="hw-title">Safety</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Safety interlocks available from installed hardware.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="showFullHardwareEditor('safety')">Edit safety</button></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('safety')">Edit safety</button></div>
     <div id="hardware-safety-summary"></div>
   </div>
 
@@ -3721,11 +3721,16 @@ function registryDriverOptions(direction, selected) {
   return drivers.map(([v, label]) => `<option value="${v}"${Number(selected)===v?' selected':''}>${label}</option>`).join('');
 }
 const _registryEditOpen = new Set();
+const _workflowEditOpen = new Set();
 function registryEditKey(direction, index) { return direction + ':' + index; }
 function toggleRegistryEdit(direction, index) {
   const key = registryEditKey(direction, index);
   if (_registryEditOpen.has(key)) _registryEditOpen.delete(key); else _registryEditOpen.add(key);
   renderRegistryInventory();
+}
+function toggleWorkflowEditor(key) {
+  if (_workflowEditOpen.has(key)) _workflowEditOpen.delete(key); else _workflowEditOpen.add(key);
+  renderHardwareWorkflowSummaries();
 }
 function registryRoleLabel(direction, role) {
   const roles = direction === 'input' ? REGISTRY_INPUT_ROLES : REGISTRY_OUTPUT_ROLES;
@@ -3826,7 +3831,41 @@ function renderCommsIndicatorSummary() {
       <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
       <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
     </div>
-  </div>`).join('') : '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="showFullHardwareEditor()">Add / edit device</button></div>';
+  </div>`).join('') : '<div class="registry-empty"><div>No communication or indicator devices installed.</div><button type="button" onclick="toggleWorkflowEditor(\'comms\')">Add / edit device</button></div>';
+  if (_workflowEditOpen.has('comms')) {
+    const cluster = cfg.cluster_serial || {};
+    const mav = cfg.mavlink || {};
+    const led = cfg.actuators?.status_led || {};
+    const buz = cfg.buzzer || {};
+    box.innerHTML += `<div class="hw-item-card registry-card-open">
+      <div class="registry-card-editor" style="display:block">
+        <div class="hw-grid">
+          <div class="hw-field"><span class="hw-label">Cluster serial</span><label class="hw-toggle"><input type="checkbox" ${cluster.enabled?'checked':''} onchange="setNested('cluster_serial','enabled',this.checked)"><span></span> Enable</label></div>
+          <div class="hw-field"><span class="hw-label">Cluster TX GPIO</span><select onchange="setNested('cluster_serial','tx_pin',+this.value)">${buildPinOptions(cluster.tx_pin, 'out')}</select></div>
+          <div class="hw-field"><span class="hw-label">MAVLink</span><label class="hw-toggle"><input type="checkbox" ${mav.enabled?'checked':''} onchange="setNested('mavlink','enabled',this.checked)"><span></span> Enable</label></div>
+          <div class="hw-field"><span class="hw-label">MAVLink TX GPIO</span><select onchange="setNested('mavlink','tx_pin',+this.value)">${buildPinOptions(mav.tx_pin, 'out')}</select></div>
+          <div class="hw-field"><span class="hw-label">Status LED GPIO</span><select onchange="setAct('status_led','pin',+this.value)">${buildPinOptions(led.pin, 'status-led')}</select></div>
+          <div class="hw-field"><span class="hw-label">Buzzer</span><label class="hw-toggle"><input type="checkbox" ${buz.enabled?'checked':''} onchange="setBuzzerEnabled(this.checked)"><span></span> Enable</label></div>
+          <div class="hw-field"><span class="hw-label">Buzzer GPIO</span><select onchange="setNested('buzzer','pin',+this.value);refreshAllPins()">${buildPinOptions(buz.pin, 'out')}</select></div>
+        </div>
+      </div>
+    </div>`;
+  }
+}
+function digitalSwitchEditor(row) {
+  const pinOptions = buildPinOptions(row.pin, 'in');
+  const labelValue = escapeHtmlText(row.label || '');
+  const activeLow = row.activeHigh ? '' : ' selected';
+  const activeHigh = row.activeHigh ? ' selected' : '';
+  const pull = row.pullup !== false ? 'checked' : '';
+  return `<div class="registry-card-editor" style="display:block">
+    <div class="hw-grid">
+      <div class="hw-field"><span class="hw-label">GPIO pin</span><select onchange="${row.pinSet}">${pinOptions}</select></div>
+      <div class="hw-field"><span class="hw-label">Active polarity</span><select onchange="${row.polSet}"><option value="0"${activeLow}>Active LOW</option><option value="1"${activeHigh}>Active HIGH</option></select></div>
+      <div class="hw-field"><span class="hw-label">Internal pull-up</span><label class="hw-toggle"><input type="checkbox" ${pull} onchange="${row.pullSet}"><span></span> Enable</label></div>
+      <div class="hw-field"><span class="hw-label">Display label</span><input type="text" maxlength="31" placeholder="${escapeHtmlText(row.defaultLabel)}" value="${labelValue}" onchange="${row.labelSet}"></div>
+    </div>
+  </div>`;
 }
 function renderBuiltinInputSummary() {
   const box = document.getElementById('builtin-inputs');
@@ -3865,6 +3904,54 @@ function renderBuiltinInputSummary() {
     </div>
   </div>`).join('');
 }
+function renderBuiltinInputSummary() {
+  const box = document.getElementById('builtin-inputs');
+  if (!box || !cfg) return;
+  const rows = [];
+  const controls = cfg.controls || {};
+  const labels = cfg.labels || {};
+  const addSwitch = (key, title, pin, activeHigh, pullup, detail) => rows.push({
+    key,
+    title,
+    detail: `${detail} · Digital input · GPIO ${(pin ?? -1) >= 0 ? pin : 'not set'} · ${activeHigh ? 'Active HIGH' : 'Active LOW'}`,
+    status: (pin ?? -1) >= 0 ? 'Ready' : 'Pin missing',
+    pin,
+    activeHigh,
+    pullup,
+    label: labels[key] || '',
+    defaultLabel: key === 'stop' ? 'Stop' : 'Start',
+    pinSet: `setNested('controls','${key}_pin',+this.value)`,
+    polSet: `setNested('controls','${key}_active_h',this.value==='1')`,
+    pullSet: `setNested('controls','${key}_pullup',this.checked)`,
+    labelSet: `setLabel('${key}',this.value)`
+  });
+  addSwitch('stop', labels.stop || 'Stop switch', controls.stop_pin, !!controls.stop_active_h, controls.stop_pullup, 'Hard stop / shutdown command');
+  addSwitch('start', labels.start || 'Start switch', controls.start_pin, !!controls.start_active_h, controls.start_pullup, 'Start command input');
+  (cfg.di_channels || []).forEach((ch, i) => {
+    if (!ch) return;
+    const role = ch.role || 'none';
+    const configured = (ch.pin ?? -1) >= 0 || role !== 'none' || (ch.label || '').trim();
+    if (!configured) return;
+    const roleLabel = DI_ROLES.find(r => r.val === role)?.lbl || role;
+    rows.push({
+      key: `di${i}`,
+      title: ch.label || `Digital input ${i + 1}`,
+      detail: `${roleLabel} · Digital input · GPIO ${(ch.pin ?? -1) >= 0 ? ch.pin : 'not set'} · ${ch.active_h ? 'Active HIGH' : 'Active LOW'}`,
+      status: (ch.pin ?? -1) >= 0 ? 'Ready' : 'Pin missing',
+      target: 'switches'
+    });
+  });
+  box.innerHTML = rows.map(row => `<div class="hw-item-card">
+    <div class="registry-card-summary">
+      <div><strong>${escapeHtmlText(row.title)}</strong><div class="hw-desc">${escapeHtmlText(row.detail)}</div></div>
+      <div class="registry-card-actions">
+        <span class="registry-status ${row.status === 'Ready' ? 'registry-status-ok' : 'registry-status-error'}">${escapeHtmlText(row.status)}</span>
+        <button type="button" onclick="${row.target ? `showFullHardwareEditor('${row.target}')` : `toggleWorkflowEditor('${row.key}')`}">${_workflowEditOpen.has(row.key) ? 'Done' : 'Edit'}</button>
+      </div>
+    </div>
+    ${_workflowEditOpen.has(row.key) && !row.target ? digitalSwitchEditor(row) : ''}
+  </div>`).join('');
+}
 function workflowCard(title, detail, state) {
   const ok = state === 'Enabled' || state === 'Ready';
   return `<div class="hw-item-card workflow-card">
@@ -3872,6 +3959,21 @@ function workflowCard(title, detail, state) {
       <div><strong>${escapeHtmlText(title)}</strong><div class="hw-desc">${escapeHtmlText(detail)}</div></div>
       <span class="registry-status ${ok ? 'registry-status-ok' : ''}">${escapeHtmlText(state)}</span>
     </div>
+  </div>`;
+}
+function controllerInlineEditor() {
+  const c = cfg.controllers || {};
+  const cb = (label, desc, checked, handler) => `<div class="hw-item-card">
+    <div class="registry-card-summary">
+      <div><strong>${escapeHtmlText(label)}</strong><div class="hw-desc">${escapeHtmlText(desc)}</div></div>
+      <label class="hw-toggle"><input type="checkbox" ${checked ? 'checked' : ''} onchange="${handler}"><span></span> Enable</label>
+    </div>
+  </div>`;
+  return `<div class="registry-card-editor" style="display:block">
+    ${cb('Oil pressure loop', 'Closed-loop oil pressure control. Requires oil pressure input and oil pump output.', !!c.oil_loop, "setController('oil_loop',this.checked)")}
+    ${cb('Throttle slew limiter', 'Rate-limits throttle changes and protection actions.', c.throttle_slew !== false, "setNested('controllers','throttle_slew',this.checked)")}
+    ${cb('Dynamic idle', 'Automatic idle RPM controller. Requires throttle output and speed input.', !!c.dynamic_idle, "setController('dynamic_idle',this.checked)")}
+    ${cb('Power turbine governor', 'N2 / prop-pitch governor.', !!c.governor, "setController('governor',this.checked)")}
   </div>`;
 }
 function renderControllerSummary() {
@@ -3885,9 +3987,32 @@ function renderControllerSummary() {
     ['Power turbine governor', 'N2 / prop-pitch governor', !!c.governor],
   ];
   const enabled = rows.filter(r => r[2]).length;
-  box.innerHTML = enabled
+  box.innerHTML = (enabled
     ? rows.filter(r => r[2]).map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : '<div class="registry-empty"><div>No optional controllers enabled.</div><button type="button" onclick="showFullHardwareEditor(\'controllers\')">Edit controllers</button></div>';
+    : '<div class="registry-empty"><div>No optional controllers enabled.</div><button type="button" onclick="toggleWorkflowEditor(\'controllers\')">Edit controllers</button></div>')
+    + (_workflowEditOpen.has('controllers') ? controllerInlineEditor() : '');
+}
+function safetyInlineEditor() {
+  const s = cfg.safety || {};
+  const cb = (key, label, desc, checked) => `<div class="hw-item-card">
+    <div class="registry-card-summary">
+      <div><strong>${escapeHtmlText(label)}</strong><div class="hw-desc">${escapeHtmlText(desc)}</div></div>
+      <label class="hw-toggle"><input type="checkbox" ${checked ? 'checked' : ''} onchange="setSafety('${key}',this.checked,null)"><span></span> Enable</label>
+    </div>
+  </div>`;
+  return `<div class="registry-card-editor" style="display:block">
+    ${cb('overspeed', 'N1 overspeed', 'Requires primary N1 speed input.', s.overspeed !== false)}
+    ${cb('overtemp', 'EGT overtemperature', 'Requires TOT or TIT input.', s.overtemp !== false)}
+    ${cb('low_oil', 'Low oil pressure', 'Requires oil-pressure input.', s.low_oil !== false)}
+    ${cb('oil_zero', 'Zero oil pressure', 'Requires oil-pressure input.', s.oil_zero !== false)}
+    ${cb('flameout', 'Flameout', 'Requires flame, N1, TOT or TIT confirmation.', s.flameout !== false)}
+    ${cb('hot_start', 'Hot start', 'Requires EGT input.', !!s.hot_start)}
+    ${cb('tit_overtemp', 'TIT overtemperature', 'Requires TIT input.', !!s.tit_overtemp)}
+    ${cb('oil_temp_high', 'Oil temperature high', 'Requires oil-temperature input.', !!s.oil_temp_high)}
+    ${cb('fuel_press_low', 'Fuel pressure low', 'Requires fuel-pressure input.', !!s.fuel_press_low)}
+    ${cb('batt_low', 'Battery undervoltage', 'Requires battery-voltage input.', !!s.batt_low)}
+    ${cb('surge', 'Surge / compressor instability', 'Requires N1 input.', !!s.surge)}
+  </div>`;
 }
 function renderSafetySummary() {
   const box = document.getElementById('hardware-safety-summary');
@@ -3907,9 +4032,10 @@ function renderSafetySummary() {
     ['Surge / compressor instability', 'Requires N1 input', !!s.surge],
   ];
   const enabledRows = rows.filter(r => r[2]);
-  box.innerHTML = enabledRows.length
+  box.innerHTML = (enabledRows.length
     ? enabledRows.map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : '<div class="registry-empty"><div>No safety interlocks enabled.</div><button type="button" onclick="showFullHardwareEditor(\'safety\')">Edit safety</button></div>';
+    : '<div class="registry-empty"><div>No safety interlocks enabled.</div><button type="button" onclick="toggleWorkflowEditor(\'safety\')">Edit safety</button></div>')
+    + (_workflowEditOpen.has('safety') ? safetyInlineEditor() : '');
 }
 function renderHardwareWorkflowSummaries() {
   renderBuiltinInputSummary();
