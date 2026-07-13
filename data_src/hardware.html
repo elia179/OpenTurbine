@@ -57,6 +57,17 @@
   </div>
 </div>
 
+<div id="registry-remove-modal" class="registry-add-backdrop" style="display:none" onclick="if(event.target===this)closeRegistryRemoveDialog()">
+  <div class="registry-add-panel registry-remove-panel">
+    <h2 id="registry-remove-title" style="margin:.1rem 0 .25rem;font-size:1rem">Remove channel</h2>
+    <div id="registry-remove-body" class="hw-desc" style="margin:.5rem 0 .8rem"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
+      <button type="button" onclick="closeRegistryRemoveDialog()">Cancel</button>
+      <button type="button" class="primary danger" onclick="confirmRegistryRemoveChannel()">Remove and disable dependents</button>
+    </div>
+  </div>
+</div>
+
 <main>
   <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem;line-height:1.5">
     <strong style="color:var(--text)">New build?</strong> Start here — define what sensors and actuators are fitted.
@@ -3899,6 +3910,7 @@ function removeRegistryBinding(index) {
 let _registryAddDirection = 'input';
 let _registryAddPreset = null;
 let _registryAddAutoId = true;
+let _pendingRegistryRemove = null;
 function openRegistryAddDialog(direction) {
   _registryAddDirection = direction === 'output' ? 'output' : 'input';
   _registryAddPreset = null;
@@ -4041,15 +4053,33 @@ function cleanupRegistryReferences(direction, id) {
     if (block.type === 'action' && (!block.steps || block.steps.length === 0)) delete cfg.custom_blocks[key];
   }
 }
+function closeRegistryRemoveDialog() {
+  _pendingRegistryRemove = null;
+  const modal = document.getElementById('registry-remove-modal');
+  if (modal) modal.style.display = 'none';
+}
 function removeRegistryChannel(direction, index) {
   const r = registryRoot(), channel = r[direction + 's'][index];
+  if (!channel) return;
   const impact = registryRemovalImpact(direction, channel.id);
-  const msg = impact.length
-    ? `Remove ${channel.id}?\n\nThis will also remove:\n- ${impact.join('\n- ')}`
-    : `Remove ${channel.id}?`;
-  if (!confirm(msg)) return;
-  cleanupRegistryReferences(direction, channel.id);
-  r[direction + 's'].splice(index, 1); renderRegistryInventory(); updateSaveButton();
+  _pendingRegistryRemove = {direction, index, id: channel.id};
+  const title = document.getElementById('registry-remove-title');
+  if (title) title.textContent = `Remove ${channel.name || channel.id}?`;
+  const body = document.getElementById('registry-remove-body');
+  if (body) body.innerHTML = impact.length
+    ? `<div>This channel is used by:</div><ul>${impact.map(i => `<li>${escapeHtmlText(i)}</li>`).join('')}</ul><div>Removing it will clear those registry references in the same draft update.</div>`
+    : '<div>This channel has no known references yet.</div>';
+  document.getElementById('registry-remove-modal').style.display = 'flex';
+}
+function confirmRegistryRemoveChannel() {
+  if (!_pendingRegistryRemove) return;
+  const {direction, index, id} = _pendingRegistryRemove;
+  const r = registryRoot();
+  if (!r[direction + 's'][index] || r[direction + 's'][index].id !== id) return closeRegistryRemoveDialog();
+  cleanupRegistryReferences(direction, id);
+  r[direction + 's'].splice(index, 1);
+  closeRegistryRemoveDialog();
+  renderRegistryInventory(); dirty(); updateSaveButton();
 }
 
 function setActEnabled(act, grpId, val) {
