@@ -610,6 +610,17 @@ textarea.field-changed {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
   transition: border-color .15s, box-shadow .15s;
 }
+.field-error,
+input.field-error,
+select.field-error,
+textarea.field-error {
+  border-color: color-mix(in srgb, var(--red) 85%, transparent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 22%, transparent) !important;
+}
+.hw-item-card.field-error-card {
+  border-color: color-mix(in srgb, var(--red) 70%, var(--border)) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 14%, transparent);
+}
 
 /* ── Save-recap modal ─────────────────────────────────────────── */
 .save-recap-backdrop {

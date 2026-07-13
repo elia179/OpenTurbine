@@ -138,21 +138,21 @@
   <div class="hw-section" id="hardware-comms-panel">
     <div class="hw-title">Communications and indicators</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Installed external communication links and local indication devices.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('comms')">Edit devices</button></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button id="btn-edit-comms" type="button" onclick="toggleWorkflowEditor('comms')">Edit devices</button></div>
     <div id="hardware-comms-summary"></div>
   </div>
 
   <div class="hw-section" id="hardware-controllers-panel">
     <div class="hw-title">Controllers</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Closed-loop and helper controllers enabled for this engine.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('controllers')">Edit controllers</button></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button id="btn-edit-controllers" type="button" onclick="toggleWorkflowEditor('controllers')">Edit controllers</button></div>
     <div id="hardware-controllers-summary"></div>
   </div>
 
   <div class="hw-section" id="hardware-safety-panel">
     <div class="hw-title">Safety</div>
     <div class="hw-desc" style="margin-bottom:.6rem">Safety interlocks available from installed hardware.</div>
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button type="button" onclick="toggleWorkflowEditor('safety')">Edit safety</button></div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.65rem"><button id="btn-edit-safety" type="button" onclick="toggleWorkflowEditor('safety')">Edit safety</button></div>
     <div id="hardware-safety-summary"></div>
   </div>
 
@@ -3681,19 +3681,24 @@ function registryInvertEditor(direction, c, index) {
   return `<div class="hw-field"><span class="hw-label">Output polarity</span><span class="hw-desc">${escapeHtmlText(desc)}</span><label class="hw-toggle"><input type="checkbox" ${c.invert ? 'checked' : ''} onchange="updateRegistryChannel('${direction}',${index},'invert',this.checked)"><span></span> ${escapeHtmlText(label)}</label></div>`;
 }
 function registryDemandEditor(c, index) {
+  const safeChanged = registryFieldChangedClass('output', index, 'safe_demand');
+  const faultChanged = registryFieldChangedClass('output', index, 'fault_demand');
+  const safeInvalid = registryDemandProblem(c.safe_demand) ? ' field-error' : '';
+  const faultInvalid = registryDemandProblem(c.fault_demand) ? ' field-error' : '';
   if (Number(c.driver) === 4) {
-    return `<div class="hw-field"><span class="hw-label">Boot safe state</span><select onchange="updateRegistryChannel('output',${index},'safe_demand',+this.value)"><option value="0"${Number(c.safe_demand||0)<0.5?' selected':''}>Off</option><option value="1"${Number(c.safe_demand||0)>=0.5?' selected':''}>On</option></select></div>
-            <div class="hw-field"><span class="hw-label">Fault state</span><select onchange="updateRegistryChannel('output',${index},'fault_demand',+this.value)"><option value="0"${Number(c.fault_demand||0)<0.5?' selected':''}>Off</option><option value="1"${Number(c.fault_demand||0)>=0.5?' selected':''}>On</option></select></div>`;
+    return `<div class="hw-field"><span class="hw-label">Boot safe state</span><select class="${safeChanged}${safeInvalid}" onchange="updateRegistryChannel('output',${index},'safe_demand',+this.value)"><option value="0"${Number(c.safe_demand||0)<0.5?' selected':''}>Off</option><option value="1"${Number(c.safe_demand||0)>=0.5?' selected':''}>On</option></select></div>
+            <div class="hw-field"><span class="hw-label">Fault state</span><select class="${faultChanged}${faultInvalid}" onchange="updateRegistryChannel('output',${index},'fault_demand',+this.value)"><option value="0"${Number(c.fault_demand||0)<0.5?' selected':''}>Off</option><option value="1"${Number(c.fault_demand||0)>=0.5?' selected':''}>On</option></select></div>`;
   }
-  return `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'safe_demand',(+this.value)/100)"></div>
-          <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'fault_demand',(+this.value)/100)"></div>`;
+  return `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input class="${safeChanged}${safeInvalid}" type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'safe_demand',(+this.value)/100)"></div>
+          <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input class="${faultChanged}${faultInvalid}" type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'fault_demand',(+this.value)/100)"></div>`;
 }
 function registryRangeMeta(direction, driver) {
   const d = Number(driver);
   if (direction === 'input') {
     if (d === 0) return {hide:true, note:'Digital input reads inactive as 0.00 and active as 1.00. Use Active LOW for switches wired to ground.'};
     if (d === 1) return {min:'Minimum ADC count', max:'Maximum ADC count', step:'0.01', limitMin:0, limitMax:4095};
-    if (d === 2) return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01', limitMin:0};
+    if (d === 2) return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01', limitMin:0,
+      note:'These are mapping endpoints, not a guaranteed hardware maximum. Generic registry pulse inputs are counted by interrupt and sampled every 100 ms; keep sensor frequencies in the low-to-moderate kHz range unless you validate the exact installation. Built-in N1/N2 RPM paths use the ESP32 PCNT driver.'};
     if (d === 3) return {min:'Minimum pulse width (us)', max:'Maximum pulse width (us)', step:'0.01', limitMin:500, limitMax:2500};
   } else {
     if (d === 4) return {hide:true, note:'Relay output uses Off/On states. Use Output polarity for active-low relay boards.'};
@@ -3708,8 +3713,12 @@ function registryRangeEditor(direction, c, index) {
   const scale = Number(meta.scale || 1);
   const minAttr = meta.limitMin !== undefined ? ` min="${meta.limitMin}"` : '';
   const maxAttr = meta.limitMax !== undefined ? ` max="${meta.limitMax}"` : '';
-  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span><input type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.min ?? 0) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'min',registryParseValue(this.value),${scale})"></div>
-          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span><input type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.max ?? 1) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'max',registryParseValue(this.value),${scale})"></div>`;
+  const problem = registryRangeProblem(c);
+  const minClass = `${registryFieldChangedClass(direction, index, 'min')}${problem ? ' field-error' : ''}`;
+  const maxClass = `${registryFieldChangedClass(direction, index, 'max')}${problem ? ' field-error' : ''}`;
+  const desc = meta.note ? `<span class="hw-desc">${escapeHtmlText(meta.note)}</span>` : '';
+  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span>${desc}<input class="${minClass}" type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.min ?? 0) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'min',registryParseValue(this.value),${scale})"></div>
+          <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span>${desc}<input class="${maxClass}" type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.max ?? 1) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'max',registryParseValue(this.value),${scale})"></div>`;
 }
 function registryInputOptionsEditor(direction, c, index) {
   if (direction !== 'input') return '';
@@ -3717,10 +3726,14 @@ function registryInputOptionsEditor(direction, c, index) {
   if (d === 1) {
     return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Input bias</span><span class="hw-desc">ADC inputs leave internal pull-up and pull-down resistors disabled so the analog reading is not biased.</span></div>`;
   }
-  const polarity = d === 0 ? `<div class="hw-field"><span class="hw-label">Active polarity</span><select onchange="updateRegistryChannel('input',${index},'active_high',this.value==='1')"><option value="1"${c.active_high !== false ? ' selected' : ''}>Active HIGH</option><option value="0"${c.active_high === false ? ' selected' : ''}>Active LOW</option></select></div>` : '';
+  const polarityClass = registryFieldChangedClass(direction, index, 'active_high');
+  const pullupClass = registryFieldChangedClass(direction, index, 'pullup');
+  const pulldownClass = registryFieldChangedClass(direction, index, 'pulldown');
+  const pullConflict = c.pullup && c.pulldown ? ' field-error' : '';
+  const polarity = d === 0 ? `<div class="hw-field"><span class="hw-label">Active polarity</span><select class="${polarityClass}" onchange="updateRegistryChannel('input',${index},'active_high',this.value==='1')"><option value="1"${c.active_high !== false ? ' selected' : ''}>Active HIGH</option><option value="0"${c.active_high === false ? ' selected' : ''}>Active LOW</option></select></div>` : '';
   return `${polarity}
-          <div class="hw-field"><span class="hw-label">Internal pull-up</span><label class="hw-toggle"><input type="checkbox" ${c.pullup ? 'checked' : ''} onchange="updateRegistryChannel('input',${index},'pullup',this.checked)"><span></span> Enable</label></div>
-          <div class="hw-field"><span class="hw-label">Internal pull-down</span><label class="hw-toggle"><input type="checkbox" ${c.pulldown ? 'checked' : ''} onchange="updateRegistryChannel('input',${index},'pulldown',this.checked)"><span></span> Enable</label></div>`;
+          <div class="hw-field"><span class="hw-label">Internal pull-up</span><label class="hw-toggle"><input class="${pullupClass}${pullConflict}" type="checkbox" ${c.pullup ? 'checked' : ''} onchange="updateRegistryChannel('input',${index},'pullup',this.checked)"><span></span> Enable</label></div>
+          <div class="hw-field"><span class="hw-label">Internal pull-down</span><label class="hw-toggle"><input class="${pulldownClass}${pullConflict}" type="checkbox" ${c.pulldown ? 'checked' : ''} onchange="updateRegistryChannel('input',${index},'pulldown',this.checked)"><span></span> Enable</label></div>`;
 }
 function updateRegistryRangeField(direction, index, key, value, scale) {
   updateRegistryChannel(direction, index, key, Number(value) / Number(scale || 1));
@@ -3866,6 +3879,7 @@ function registryDriverOptions(direction, selected) {
 }
 const _registryEditOpen = new Set();
 const _workflowEditOpen = new Set();
+let _registrySnap = null;
 function registryEditKey(direction, index) { return direction + ':' + index; }
 function toggleRegistryEdit(direction, index) {
   const key = registryEditKey(direction, index);
@@ -3875,6 +3889,17 @@ function toggleRegistryEdit(direction, index) {
 function toggleWorkflowEditor(key) {
   if (_workflowEditOpen.has(key)) _workflowEditOpen.delete(key); else _workflowEditOpen.add(key);
   renderHardwareWorkflowSummaries();
+}
+function updateWorkflowEditButtons() {
+  const map = {
+    comms: ['btn-edit-comms', 'Edit devices', 'Done editing'],
+    controllers: ['btn-edit-controllers', 'Edit controllers', 'Done editing'],
+    safety: ['btn-edit-safety', 'Edit safety', 'Done editing'],
+  };
+  Object.entries(map).forEach(([key, [id, closed, open]]) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = _workflowEditOpen.has(key) ? open : closed;
+  });
 }
 function registryRoleLabel(direction, role) {
   const roles = direction === 'input' ? REGISTRY_INPUT_ROLES : REGISTRY_OUTPUT_ROLES;
@@ -3894,6 +3919,10 @@ function registryStatus(c) {
   }
   return {kind:'ok', text:'Ready'};
 }
+function registryDemandProblem(value) {
+  const n = Number(value ?? 0);
+  return !Number.isFinite(n) || n < 0 || n > 1 ? 'Demand 0-100%' : '';
+}
 function registryRangeProblem(c) {
   const driver = Number(c?.driver);
   const min = Number(c?.min ?? 0);
@@ -3907,16 +3936,52 @@ function registryRangeProblem(c) {
   if (driver === 5 && (min < 0 || max > 1)) return 'PWM range 0-100%';
   return '';
 }
-function registryInvalidChannels() {
+function registryInvalidDetails() {
   const r = registryRoot();
   const out = [];
   for (const direction of ['input','output']) {
-    (r[direction + 's'] || []).forEach((c) => {
+    (r[direction + 's'] || []).forEach((c, index) => {
       const status = registryStatus(c);
-      if (status.kind === 'error') out.push(`${c?.name || c?.id || direction}: ${status.text}`);
+      if (status.kind === 'error') out.push({direction, index, channel:c, text:`${c?.name || c?.id || direction}: ${status.text}`, reason:status.text});
     });
   }
   return out;
+}
+function registryInvalidChannels() {
+  return registryInvalidDetails().map(e => e.text);
+}
+function registryOriginalChannel(direction, index) {
+  return _registrySnap?.[direction + 's']?.[index] || null;
+}
+function registryFieldChanged(direction, index, key) {
+  const current = registryRoot()[direction + 's']?.[index];
+  const original = registryOriginalChannel(direction, index);
+  if (!current || !original) return false;
+  return String(current[key] ?? '') !== String(original[key] ?? '');
+}
+function registryFieldChangedClass(direction, index, key) {
+  return registryFieldChanged(direction, index, key) ? 'field-changed' : '';
+}
+function registryChannelChanged(direction, index) {
+  if (!_registrySnap) return false;
+  const current = registryRoot()[direction + 's']?.[index];
+  const original = registryOriginalChannel(direction, index);
+  return JSON.stringify(current || null) !== JSON.stringify(original || null);
+}
+function focusRegistryInvalid(details) {
+  if (!details) return;
+  _registryEditOpen.add(registryEditKey(details.direction, details.index));
+  renderRegistryInventory();
+  setTimeout(() => {
+    const rows = document.querySelectorAll(`#registry-${details.direction}s .registry-card`);
+    const card = rows[details.index];
+    if (card) {
+      card.scrollIntoView({behavior:'smooth', block:'center'});
+      card.classList.add('field-error-card');
+      const first = card.querySelector('.field-error, select, input, button');
+      if (first && typeof first.focus === 'function') first.focus();
+    }
+  }, 0);
 }
 function registryReferenceSummary(direction, id) {
   const impact = registryRemovalImpact(direction, id);
@@ -4049,19 +4114,51 @@ function workflowCard(title, detail, state) {
     </div>
   </div>`;
 }
+function controllerLabel(key) {
+  return ({
+    oil_loop: 'oil pressure loop',
+    throttle_slew: 'throttle slew limiter',
+    dynamic_idle: 'dynamic idle',
+    governor: 'power turbine governor'
+  })[key] || key;
+}
+function controllerAvailability(key) {
+  const sensors = cfg.sensors || {};
+  const acts = cfg.actuators || {};
+  const hasSpeed = !!sensors.n1_rpm?.enabled ||
+    registryHas('input', c => c.id === 'n1_main' || c.role === 'speed') ||
+    (cfg.has_two_shaft && (!!sensors.n2_rpm?.enabled || registryHas('input', c => c.id === 'n2_main')));
+  const hasThrottle = !!acts.throttle?.enabled || registryHas('output', c => c.id === 'main_fuel' || c.id === 'main_fuel_output' || c.role === 'fuel');
+  const hasOilPressure = !!sensors.oil_press?.enabled || registryHas('input', c => c.id === 'oil_pressure_main' || c.role === 'pressure');
+  const hasOilPump = !!acts.oil_pump?.enabled || registryHas('output', c => c.id === 'oil_pump_main' || c.role === 'oil_pump');
+  const hasN2 = !!(cfg.has_two_shaft && (sensors.n2_rpm?.enabled || registryHas('input', c => c.id === 'n2_main')));
+  const hasPropPitch = !!acts.prop_pitch?.enabled || registryHas('output', c => c.role === 'prop_pitch');
+  const map = {
+    oil_loop: [hasOilPressure && hasOilPump, 'Requires oil-pressure input and oil-pump output.'],
+    throttle_slew: [hasThrottle, 'Requires main fuel/throttle output.'],
+    dynamic_idle: [hasThrottle && hasSpeed, 'Requires main fuel/throttle output and N1 or N2 speed input.'],
+    governor: [hasN2 && (hasThrottle || hasPropPitch), 'Requires N2 speed input plus throttle or proportional prop-pitch output.']
+  };
+  const [ok, reason] = map[key] || [true, ''];
+  return {ok, reason};
+}
 function controllerInlineEditor() {
   const c = cfg.controllers || {};
-  const cb = (label, desc, checked, handler) => `<div class="hw-item-card">
+  const cb = (key, label, desc, checked, handler) => {
+    const availability = controllerAvailability(key);
+    const enabled = availability.ok;
+    return `<div class="hw-item-card ${enabled ? '' : 'disabled-safety'}" title="${enabled ? '' : escapeHtmlText(availability.reason)}">
     <div class="registry-card-summary">
       <div><strong>${escapeHtmlText(label)}</strong><div class="hw-desc">${escapeHtmlText(desc)}</div></div>
-      <label class="hw-toggle"><input type="checkbox" ${checked ? 'checked' : ''} onchange="${handler}"><span></span> Enable</label>
+      <label class="hw-toggle"><input type="checkbox" ${checked && enabled ? 'checked' : ''} ${enabled ? '' : 'disabled'} onchange="${handler}"><span></span> Enable</label>
     </div>
   </div>`;
+  };
   return `<div class="registry-card-editor" style="display:block">
-    ${cb('Oil pressure loop', 'Closed-loop oil pressure control. Requires oil pressure input and oil pump output.', !!c.oil_loop, "setController('oil_loop',this.checked)")}
-    ${cb('Throttle slew limiter', 'Rate-limits throttle changes and protection actions.', c.throttle_slew !== false, "setNested('controllers','throttle_slew',this.checked)")}
-    ${cb('Dynamic idle', 'Automatic idle RPM controller. Requires throttle output and speed input.', !!c.dynamic_idle, "setController('dynamic_idle',this.checked)")}
-    ${cb('Power turbine governor', 'N2 / prop-pitch governor.', !!c.governor, "setController('governor',this.checked)")}
+    ${cb('oil_loop', 'Oil pressure loop', 'Closed-loop oil pressure control. Requires oil pressure input and oil pump output.', !!c.oil_loop, "setController('oil_loop',this.checked)")}
+    ${cb('throttle_slew', 'Throttle slew limiter', 'Rate-limits throttle changes and protection actions.', c.throttle_slew !== false, "setController('throttle_slew',this.checked)")}
+    ${cb('dynamic_idle', 'Dynamic idle', 'Automatic idle RPM controller. Requires throttle output and speed input.', !!c.dynamic_idle, "setController('dynamic_idle',this.checked)")}
+    ${cb('governor', 'Power turbine governor', 'N2 / prop-pitch governor.', !!c.governor, "setController('governor',this.checked)")}
   </div>`;
 }
 function renderControllerSummary() {
@@ -4075,10 +4172,10 @@ function renderControllerSummary() {
     ['Power turbine governor', 'N2 / prop-pitch governor', !!c.governor],
   ];
   const enabled = rows.filter(r => r[2]).length;
-  box.innerHTML = (enabled
+  const editing = _workflowEditOpen.has('controllers');
+  box.innerHTML = editing ? controllerInlineEditor() : (enabled
     ? rows.filter(r => r[2]).map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : '<div class="registry-empty"><div>No optional controllers enabled.</div></div>')
-    + (_workflowEditOpen.has('controllers') ? controllerInlineEditor() : '');
+    : '<div class="registry-empty"><div>No optional controllers enabled.</div></div>');
 }
 function safetyAvailability(key) {
   const hasSpeed = !!cfg.sensors?.n1_rpm?.enabled || registryHas('input', c => c.id === 'n1_main' || c.role === 'speed') ||
@@ -4152,10 +4249,9 @@ function renderSafetySummary() {
   ];
   const enabledRows = rows.filter(r => r[2]);
   const editing = _workflowEditOpen.has('safety');
-  box.innerHTML = (enabledRows.length
+  box.innerHTML = editing ? safetyInlineEditor() : (enabledRows.length
     ? enabledRows.map(r => workflowCard(r[0], r[1], 'Enabled')).join('')
-    : (editing ? '' : '<div class="registry-empty"><div>No safety interlocks enabled.</div></div>'))
-    + (editing ? safetyInlineEditor() : '');
+    : '<div class="registry-empty"><div>No safety interlocks enabled.</div></div>');
 }
 function renderCommsIndicatorSummary() {
   const box = document.getElementById('hardware-comms-summary');
@@ -4235,6 +4331,7 @@ function renderCommsIndicatorSummary() {
   box.innerHTML = cards || '<div class="registry-empty"><div>No communication or indicator devices installed.</div></div>';
 }
 function renderHardwareWorkflowSummaries() {
+  updateWorkflowEditButtons();
   renderBuiltinInputSummary();
   renderHardwareRequirementsSummary();
   renderHardwareBoardSummary();
@@ -4252,7 +4349,18 @@ function renderRegistryInventory() {
         const open = _registryEditOpen.has(registryEditKey(direction, i));
         const status = registryStatus(c);
         const proportional = direction === 'output' && (Number(c.driver) === 5 || Number(c.driver) === 6);
-        return `<div class="hw-item-card registry-card ${open ? 'registry-card-open' : ''}" style="margin:.3rem 0">
+        const cardClass = [
+          'hw-item-card',
+          'registry-card',
+          open ? 'registry-card-open' : '',
+          registryChannelChanged(direction, i) ? 'field-changed' : '',
+          status.kind === 'error' ? 'field-error-card' : ''
+        ].filter(Boolean).join(' ');
+        const nameClass = registryFieldChangedClass(direction, i, 'name');
+        const roleClass = registryFieldChangedClass(direction, i, 'role');
+        const driverClass = registryFieldChangedClass(direction, i, 'driver');
+        const pinClass = `${registryFieldChangedClass(direction, i, 'pin')}${(c.pin ?? -1) < 0 ? ' field-error' : ''}`;
+        return `<div class="${cardClass}" style="margin:.3rem 0" title="${status.kind === 'error' ? escapeHtmlText(status.text) : ''}">
         <div class="registry-card-summary">
           <div>
             <strong>${escapeHtmlText(c.name || c.id || (direction + ' channel'))}</strong>
@@ -4262,17 +4370,17 @@ function renderRegistryInventory() {
           <div class="registry-card-actions">
             <span class="registry-status registry-status-${status.kind}">${escapeHtmlText(status.text)}</span>
             <button type="button" onclick="toggleRegistryEdit('${direction}',${i})">${open ? 'Done' : 'Edit'}</button>
-            ${direction === 'output' ? `<button type="button" onclick="duplicateRegistryChannel(${i})">Duplicate</button>` : ''}
+            ${direction === 'output' ? `<button type="button" title="Create another output with the same role, driver and safe/fault settings. The copy gets a new stable ID and no GPIO pin until you assign one." onclick="duplicateRegistryChannel(${i})">Duplicate</button>` : ''}
             <button type="button" onclick="removeRegistryChannel('${direction}',${i})">Remove</button>
           </div>
         </div>
         <div class="registry-card-editor" style="${open ? '' : 'display:none'}">
         <div class="hw-desc" style="margin-bottom:.45rem">Stable ID: <code>${escapeHtmlText(c.id)}</code></div>
         <div class="hw-grid">
-          <div class="hw-field"><span class="hw-label">Display name</span><input type="text" maxlength="15" value="${escapeHtmlText(c.name || c.id)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
-          <div class="hw-field"><span class="hw-label">Semantic role</span><select onchange="updateRegistryChannel('${direction}',${i},'role',this.value)">${registryRoleOptions(direction, c.role)}</select></div>
-          <div class="hw-field"><span class="hw-label">Electrical driver</span><select onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role)}</select></div>
-          <div class="hw-field"><span class="hw-label">GPIO pin</span><select onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryPinMode(direction, c.driver))}</select></div>
+          <div class="hw-field"><span class="hw-label">Display name</span><input class="${nameClass}" type="text" maxlength="15" value="${escapeHtmlText(c.name || c.id)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
+          <div class="hw-field"><span class="hw-label">Semantic role</span><select class="${roleClass}" onchange="updateRegistryChannel('${direction}',${i},'role',this.value)">${registryRoleOptions(direction, c.role)}</select></div>
+          <div class="hw-field"><span class="hw-label">Electrical driver</span><select class="${driverClass}" onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role)}</select></div>
+          <div class="hw-field"><span class="hw-label">GPIO pin</span><select class="${pinClass}" onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryPinMode(direction, c.driver))}</select></div>
           ${registryInputOptionsEditor(direction, c, i)}
           ${registryInvertEditor(direction, c, i)}
           ${registryRangeEditor(direction, c, i)}
@@ -4409,7 +4517,7 @@ function renderRegistryAddCatalog() {
   const rows = presets
     .map((p, i) => ({p, i}))
     .filter(({p}) => !q || [p.group, p.label, p.name, p.role, p.id].some(v => String(v).toLowerCase().includes(q)));
-  const capacity = `<div class="registry-add-capacity ${used >= max ? 'registry-add-capacity-full' : ''}">${used}/${max} ${_registryAddDirection} slots used${used >= max ? ' — capacity full; remove an unused channel before adding another.' : ''}</div>`;
+  const capacity = `<div class="registry-add-capacity ${used >= max ? 'registry-add-capacity-full' : ''}" title="Firmware registry capacity is ${max} ${_registryAddDirection} channels on this build.">${used}/${max} ${_registryAddDirection} slots used${used >= max ? ' — capacity full; remove an unused channel before adding another.' : ''}</div>`;
   if (!rows.length) {
     box.innerHTML = capacity + '<div class="hw-desc">No matching hardware type.</div>';
     return;
@@ -4619,6 +4727,13 @@ function updateSafetyPrerequisites(markDirty) {
 }
 
 function setController(key, val) {
+  if (!val && cfg.controllers?.[key]) {
+    const label = controllerLabel(key);
+    if (!confirm(`Disable ${label}?\n\nIts tuning values stay saved, but the controller will no longer act until enabled again.`)) {
+      renderHardwareWorkflowSummaries();
+      return;
+    }
+  }
   setNested('controllers', key, val);
   updateHardwarePrerequisites(true);
 }
@@ -4629,38 +4744,20 @@ function updateHardwarePrerequisites(markDirty) {
   if (!cfg.controllers) cfg.controllers = {};
 
   const controllerNeeds = {
-    oil_loop: {
-      id: 'f-ctrl-oil',
-      ok: !!(sensors.oil_press?.enabled && acts.oil_pump?.enabled),
-      why: 'Requires fitted oil pressure sensor and oil pump.'
-    },
-    throttle_slew: {
-      id: 'f-ctrl-slew',
-      ok: !!acts.throttle?.enabled,
-      why: 'Requires a fitted throttle / fuel output.'
-    },
-    dynamic_idle: {
-      id: 'f-ctrl-idle',
-      ok: !!(acts.throttle?.enabled &&
-              (sensors.n1_rpm?.enabled || (cfg.has_two_shaft && sensors.n2_rpm?.enabled))),
-      why: 'Requires fitted throttle output and an N1 or N2 RPM sensor.'
-    },
-    governor: {
-      id: 'f-ctrl-gov',
-      ok: !!(cfg.has_two_shaft && sensors.n2_rpm?.enabled &&
-              (acts.throttle?.enabled || (acts.prop_pitch?.enabled && Number(acts.prop_pitch?.type || 0) !== 2))),
-      why: 'Requires fitted N2 RPM sensor and throttle or proportional prop pitch output.'
-    }
+    oil_loop: {id: 'f-ctrl-oil', ...controllerAvailability('oil_loop')},
+    throttle_slew: {id: 'f-ctrl-slew', ...controllerAvailability('throttle_slew')},
+    dynamic_idle: {id: 'f-ctrl-idle', ...controllerAvailability('dynamic_idle')},
+    governor: {id: 'f-ctrl-gov', ...controllerAvailability('governor')}
   };
   for (const [key, requirement] of Object.entries(controllerNeeds)) {
     const input = document.getElementById(requirement.id);
     if (input) {
       input.disabled = !requirement.ok;
-      input.title = requirement.ok ? '' : requirement.why;
+      input.title = requirement.ok ? '' : requirement.reason;
       const card = input.closest('.hw-item-card');
       if (card) {
         card.style.opacity = requirement.ok ? '' : '.5';
-        card.title = requirement.ok ? '' : requirement.why;
+        card.title = requirement.ok ? '' : requirement.reason;
       }
     }
     if (!requirement.ok && cfg.controllers[key]) {
@@ -5037,6 +5134,7 @@ function _snapshotFields() {
   ).forEach(el => {
     _fieldSnap[el.id] = (el.type === 'checkbox') ? el.checked : el.value;
   });
+  _registrySnap = JSON.parse(JSON.stringify(registryRoot()));
 }
 
 function _refreshChangedBorders() {
@@ -5266,6 +5364,16 @@ function _buildChanges() {
       now:   _formatValue(el, cur),
     });
   });
+  if (_registrySnap && JSON.stringify(registryRoot()) !== JSON.stringify(_registrySnap)) {
+    const oldCounts = `${(_registrySnap.inputs || []).length} input(s), ${(_registrySnap.outputs || []).length} output(s), ${(_registrySnap.bindings || []).length} binding(s)`;
+    const r = registryRoot();
+    const newCounts = `${(r.inputs || []).length} input(s), ${(r.outputs || []).length} output(s), ${(r.bindings || []).length} binding(s)`;
+    changes.push({
+      label: 'Hardware inventory',
+      was: oldCounts,
+      now: newCounts + ' — card details changed'
+    });
+  }
   return changes;
 }
 
@@ -5528,9 +5636,10 @@ function saveHardware() {
     if (ch && ch.role && ch.role !== 'none' && (ch.pin ?? -1) < 0)
       missing.push('DI channel ' + (i + 1) + ' (' + ch.role + ')');
   });
-  const registryErrors = registryInvalidChannels();
+  const registryErrors = registryInvalidDetails();
   if (registryErrors.length) {
-    alert('Fix hardware registry channel(s) before saving:\n\n' + registryErrors.map(e => '• ' + e).join('\n'));
+    alert('Fix hardware registry channel(s) before saving:\n\n' + registryErrors.map(e => '• ' + e.text).join('\n'));
+    focusRegistryInvalid(registryErrors[0]);
     updateSaveButton();
     return;
   }
@@ -5722,8 +5831,8 @@ function applyContextTooltips(root) {
     'Mapped value': 'The firmware maps raw electrical input/output values into the normalized value used by rules and telemetry.',
     'Minimum ADC count': 'Raw ADC count that maps to 0.00. Must be lower than the maximum and within 0-4095.',
     'Maximum ADC count': 'Raw ADC count that maps to 1.00. Must be higher than the minimum and within 0-4095.',
-    'Minimum frequency (Hz)': 'Input frequency that maps to 0.00.',
-    'Maximum frequency (Hz)': 'Input frequency that maps to 1.00.',
+    'Minimum frequency (Hz)': 'Input frequency that maps to 0.00. This is a scaling endpoint, not a guaranteed hardware minimum.',
+    'Maximum frequency (Hz)': 'Input frequency that maps to 1.00. This is a scaling endpoint, not a guaranteed hardware ceiling; generic registry pulse inputs use interrupt counting sampled every 100 ms, while built-in N1/N2 RPM inputs use the ESP32 PCNT driver.',
     'Minimum mapped value': 'Raw value that maps to 0.00. Must be lower than the maximum.',
     'Maximum mapped value': 'Raw value that maps to 1.00. Must be higher than the minimum.',
     'Minimum pulse width (us)': 'Servo/RC pulse width that maps to the low end of the range. Typical minimum is 1000 us.',
