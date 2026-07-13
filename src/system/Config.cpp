@@ -501,14 +501,17 @@ bool validSensorHandle(JsonVariantConst v) {
 
 bool validBool(JsonVariantConst v) { return !present(v) || v.is<bool>(); }
 
-bool validRuleId(JsonVariantConst v, size_t maxLen, int8_t (*resolve)(const char*)) {
+bool validRuleId(JsonVariantConst v, size_t maxLen,
+                 int8_t (*resolve)(const char*),
+                 bool (*available)(uint8_t)) {
     if (!present(v)) return true;
     if (!v.is<const char*>()) return false;
     const char* id = v.as<const char*>();
     if (!id) return false;
     if (!id[0]) return true; // empty keeps the numeric legacy handle path
     if (strlen(id) >= maxLen) return false;
-    return resolve(id) >= 0;
+    int8_t handle = resolve(id);
+    return handle >= 0 && available((uint8_t)handle);
 }
 
 bool validRawPair(JsonVariantConst obj, const char* minKey, const char* maxKey) {
@@ -837,8 +840,8 @@ bool validateSettingsDoc(const JsonDocument& doc) {
                 !validNumber(rule["off_value"], -1.0f, 1.0f) ||
                 !validNumber(rule["hysteresis"], 0.0f, 1000000.0f) ||
                 !validInt(rule["mode_mask"], 0, 31) ||
-                !validRuleId(rule["source"], sizeof(Config::Rule::sourceId), ruleSourceHandle) ||
-                !validRuleId(rule["target"], sizeof(Config::Rule::targetId), ruleTargetHandle)) return false;
+                !validRuleId(rule["source"], sizeof(Config::Rule::sourceId), ruleSourceHandle, ruleSensorAvailable) ||
+                !validRuleId(rule["target"], sizeof(Config::Rule::targetId), ruleTargetHandle, ruleActuatorAvailable)) return false;
         }
     }
 
