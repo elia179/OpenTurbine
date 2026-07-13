@@ -57,7 +57,12 @@ unless it is intentionally bound to a singleton subsystem.
 
 Control rules, sequence side actions, and custom sequence blocks now serialize
 stable `source` / `target` IDs and resolve them once at load to compact runtime
-handles. Legacy numeric fields remain readable for old files.
+handles. Legacy numeric fields remain readable for old files. The Sequence page
+shows registry channels in the control-rule pickers and preserves missing
+`source` / `target` IDs as disabled, labelled options so they are visible instead
+of silently retargeted. Backend validation rejects explicit rule, side-action,
+and custom-block IDs that do not resolve to an installed readable input or
+writable output in the staged hardware/settings document.
 
 Legacy files without a registry retain their existing singleton hardware
 configuration during compatibility loading; the migration writer emits the new

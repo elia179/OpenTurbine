@@ -29,6 +29,7 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Controller and safety enables are now rejected by Hardware save/import validation and START preflight when their required inventory is missing.
 - The first enabled oil-loop definition now supplies the oil controller's selected pressure/pump channels plus min/max demand and deadband; duplicate enabled pump ownership is rejected.
 - Rule and sequence ID resolution now accepts standard binding keys and registry channel IDs where they map to existing runtime inputs/outputs.
+- Control-rule editing now includes installed registry inputs/outputs, preserves stable `source`/`target` IDs, and backend validation rejects unavailable explicit rule/sequence/custom-block references before save or full restore.
 - Core output ownership is determined by stable IDs or explicit bindings instead of semantic role, so repeatable same-role outputs such as `Oil Pump 2` remain available to rules, sequences, tools, or additional oil loops unless intentionally bound to a singleton subsystem.
 - The AB igniter registry role bridges to the existing Igniter 2 / afterburner ignition runtime when using the standard `ab_igniter` or `igniter2_main` ID.
 
