@@ -41,9 +41,11 @@ public:
     static int  stopPin;
     static bool stopActiveH;    // false = active-low (button to GND, INPUT_PULLUP) — default
     static bool stopPullup;     // true = enable ESP32 internal pull-up on stop pin (default on)
+    static bool stopPulldown;   // true = enable ESP32 internal pull-down on stop pin
     static int  startPin;
     static bool startActiveH;   // false = active-low
     static bool startPullup;    // true = enable ESP32 internal pull-up on start pin (default on)
+    static bool startPulldown;  // true = enable ESP32 internal pull-down on start pin
 
     // ── Sensor feature flags ──────────────────────────────────
     static bool hasN1Rpm;

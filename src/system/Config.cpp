@@ -30,7 +30,7 @@ const char* ruleSourceId(uint8_t sensor) {
         case RulesEngine::TORQUE: return "torque";
         case RulesEngine::FLAME: return "flame";
         case RulesEngine::THROTTLE_INPUT: return "operator_throttle";
-        case RulesEngine::IDLE_INPUT: return "idle_input";
+        case RulesEngine::IDLE_INPUT: return "operator_idle";
         case RulesEngine::AB_FLAME: return "ab_flame";
         case RulesEngine::GLOW_CURRENT: return "glow_current";
         case RulesEngine::IGNITER_CURRENT: return "igniter_current";
@@ -80,14 +80,14 @@ int8_t ruleSourceHandle(const char* id) {
     if (!strcmp(id, "primary_egt")) return RulesEngine::TOT;
     if (!strcmp(id, "operator_throttle") || !strcmp(id, "throttle_input") || !strcmp(id, "throttle_in") || !strcmp(id, "throttle_input_main")) return RulesEngine::THROTTLE_INPUT;
     if (!strcmp(id, "tit") || !strcmp(id, "tit_main")) return RulesEngine::TIT;
-    if (!strcmp(id, "batt_voltage") || !strcmp(id, "batt_voltage_main")) return RulesEngine::BATT_V;
+    if (!strcmp(id, "batt_voltage") || !strcmp(id, "batt_voltage_main") || !strcmp(id, "battery_voltage")) return RulesEngine::BATT_V;
     if (!strcmp(id, "fuel_press") || !strcmp(id, "fuel_pressure_main")) return RulesEngine::FUEL_PRESS;
     if (!strcmp(id, "fuel_flow") || !strcmp(id, "fuel_flow_main")) return RulesEngine::FUEL_FLOW;
     if (!strcmp(id, "p1") || !strcmp(id, "p1_main")) return RulesEngine::P1;
     if (!strcmp(id, "p2") || !strcmp(id, "p2_main")) return RulesEngine::P2;
     if (!strcmp(id, "torque") || !strcmp(id, "torque_main")) return RulesEngine::TORQUE;
     if (!strcmp(id, "flame") || !strcmp(id, "flame_main")) return RulesEngine::FLAME;
-    if (!strcmp(id, "idle_input") || !strcmp(id, "idle_in") || !strcmp(id, "idle_input_main")) return RulesEngine::IDLE_INPUT;
+    if (!strcmp(id, "idle_input") || !strcmp(id, "idle_in") || !strcmp(id, "idle_input_main") || !strcmp(id, "operator_idle")) return RulesEngine::IDLE_INPUT;
     if (!strcmp(id, "ab_flame") || !strcmp(id, "ab_flame_main")) return RulesEngine::AB_FLAME;
     if (!strcmp(id, "glow_current") || !strcmp(id, "glow_current_main")) return RulesEngine::GLOW_CURRENT;
     if (!strcmp(id, "igniter_current") || !strcmp(id, "igniter_current_main")) return RulesEngine::IGNITER_CURRENT;
@@ -99,11 +99,6 @@ int8_t ruleSourceHandle(const char* id) {
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i) {
         const auto& in = HardwareConfig::channelRegistry.inputs[i];
         if (strcmp(in.id, id) != 0) continue;
-        const auto* c = &in;
-        if (!strcmp(c->role, "speed")) return RulesEngine::N1_RPM;
-        if (!strcmp(c->role, "pressure")) return RulesEngine::OIL_PRESS;
-        if (!strcmp(c->role, "temperature")) return RulesEngine::TOT;
-        if (!strcmp(c->role, "operator")) return RulesEngine::THROTTLE_INPUT;
         return (int8_t)(ChannelRegistry::INPUT_SENSOR_BASE + i);
     }
     return -1;
@@ -1568,10 +1563,12 @@ void Config::_fromDoc(const JsonDocument& doc) {
         "engine", "oil", "sequence", "throttle", "safety", "calibration"
     };
     for (const char* sec : requiredSections) {
-        if (!doc[sec].is<JsonObject>()) {
+        if (!doc[sec].is<JsonObjectConst>()) {
             _missingRequiredSections = true;
-            Serial.printf("[Config] WARNING: '%s' section missing from ecu_config.json"
-                          " - affected fields will use compile-time defaults\n", sec);
+            // Do not spam UART from the boot task for every absent section:
+            // on some USB/serial host states that can block long enough to trip
+            // the interrupt watchdog. Config::load() emits one repair message
+            // and saves a completed file after _fromDoc().
         }
     }
 

@@ -35,7 +35,7 @@
       </div>
       <button type="button" onclick="closeRegistryAddDialog()">Close</button>
     </div>
-    <input id="registry-add-search" type="search" placeholder="Search sensors, actuators, switches, generic IO..." oninput="renderRegistryAddCatalog()" style="width:100%;margin:.8rem 0">
+    <input id="registry-add-search" class="registry-add-search" type="search" placeholder="Search sensors, actuators, switches, generic IO..." oninput="renderRegistryAddCatalog()">
     <div id="registry-add-catalog" class="registry-add-catalog"></div>
     <div id="registry-add-error" class="hw-desc" style="color:var(--red);margin-top:.5rem;display:none"></div>
   </div>
@@ -62,6 +62,13 @@
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
     <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Hardware Configuration</h2>
     <span id="hw-profile-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
+    <div style="display:flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--dim)">
+      Units:
+      <button id="unit-temp-btn" type="button" onclick="setHardwareTempUnit(tempUnit()==='C'?'F':'C')"
+        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit;min-height:0">&deg;F</button>
+      <button id="unit-press-btn" type="button" onclick="setHardwarePressUnit(pressUnit()==='bar'?'psi':'bar')"
+        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit;min-height:0">PSI</button>
+    </div>
   </div>
   <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
@@ -2277,6 +2284,19 @@ function collectUsedPins() {
   if (cfg.has_afterburner && abfl.enabled) add(abfl.pin);
   // General-purpose DI channels
   (cfg.di_channels || []).forEach(ch => add(ch.pin));
+  const r = registryRoot();
+  (r.inputs || []).forEach(ch => {
+    if (!ch || ch.installed === false || registryIsCoreManagedInput(ch)) return;
+    add(ch.pin);
+    if (String(ch.role||'') === 'temperature' && Number(ch.temp_interface||0) > 0) {
+      add(ch.spi_clk); add(ch.spi_cs); add(ch.spi_miso); add(ch.spi_mosi);
+    }
+  });
+  (r.outputs || []).forEach(ch => {
+    if (!ch || ch.installed === false || registryIsCoreManagedOutput(ch)) return;
+    add(ch.pin);
+    if (ch.has_current) add(ch.current_pin);
+  });
   return pins;
 }
 
@@ -3561,6 +3581,20 @@ function registryRoot() {
   cfg.channel_registry.inputs ||= []; cfg.channel_registry.outputs ||= []; cfg.channel_registry.bindings ||= [];
   return cfg.channel_registry;
 }
+const _unitPrefs = (() => { try { return JSON.parse(localStorage.getItem('ot_units') || '{}'); } catch (_) { return {}; } })();
+function _saveUnitPrefs() { try { localStorage.setItem('ot_units', JSON.stringify(_unitPrefs)); } catch (_) {} }
+function tempUnit() { return _unitPrefs.temp || 'C'; }
+function pressUnit() { return _unitPrefs.press || 'bar'; }
+function dispTempUnit() { return tempUnit() === 'F' ? '°F' : '°C'; }
+function dispPressUnit() { return pressUnit() === 'psi' ? 'PSI' : 'bar'; }
+function setHardwareTempUnit(value) { _unitPrefs.temp = value; _saveUnitPrefs(); updateHardwareUnitButtons(); renderRegistryInventory(); }
+function setHardwarePressUnit(value) { _unitPrefs.press = value; _saveUnitPrefs(); updateHardwareUnitButtons(); renderRegistryInventory(); }
+function updateHardwareUnitButtons() {
+  const bt = document.getElementById('unit-temp-btn');
+  const bp = document.getElementById('unit-press-btn');
+  if (bt) bt.textContent = tempUnit() === 'C' ? '°F' : '°C';
+  if (bp) bp.textContent = pressUnit() === 'bar' ? 'PSI' : 'bar';
+}
 function driverName(n) { return ['Digital','Analog','Pulse/frequency','RC PWM','Relay','PWM','Servo/ESC'][Number(n)] || 'Unknown'; }
 const REGISTRY_INPUT_ROLES=[
   ['generic','Generic input'],['speed','Speed input'],['pressure','Pressure input'],['temperature','Temperature input'],
@@ -3644,19 +3678,32 @@ function registryRoleNumber(direction, role) {
   const rows=registryRoot()[direction+'s'];
   return rows.filter(c=>String(c.role||'generic')===role).length+1;
 }
-function registryDefaultRange(direction, driver) {
+function registryDefaultRange(direction, driver, role) {
   if (direction === 'input') {
     if (driver === 1) return {min:0, max:4095};
-    if (driver === 2) return {min:0, max:100};
+    if (driver === 2) {
+      if (role === 'speed') return {min:0, max:500000};
+      if (role === 'flow') return {min:0, max:1000};
+      return {min:0, max:10000};
+    }
     if (driver === 3) return {min:1000, max:2000};
     return {min:0, max:1};
   }
   if (driver === 6) return {min:1000, max:2000};
   return {min:0, max:1};
 }
-function registryFormatValue(value) {
+function registryDefaultAnalogCalibration(role) {
+  if (role === 'voltage') return {analog_zero_mv:0, analog_mv_per_unit:1000, analog_divider:11};
+  if (role === 'speed') return {analog_zero_mv:0, analog_mv_per_unit:0.0066, analog_divider:1};
+  if (role === 'pressure') return {analog_zero_mv:500, analog_mv_per_unit:400, analog_divider:1};
+  if (role === 'temperature') return {analog_zero_mv:500, analog_mv_per_unit:10, analog_divider:1};
+  if (role === 'flow') return {analog_zero_mv:0, analog_mv_per_unit:10, analog_divider:1};
+  if (role === 'torque') return {analog_zero_mv:0, analog_mv_per_unit:10, analog_divider:1};
+  return {analog_zero_mv:0, analog_mv_per_unit:1000, analog_divider:1};
+}
+function registryFormatValue(value, digits = 2) {
   const n = Number(value);
-  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+  return Number.isFinite(n) ? n.toFixed(digits) : Number(0).toFixed(digits);
 }
 function registryParseValue(value) {
   return Number(String(value).replace(',', '.'));
@@ -3666,6 +3713,10 @@ function registryIsSwitchRole(role) {
 }
 function registryAllowedDrivers(direction, role) {
   if (direction === 'input' && registryIsSwitchRole(role)) return [0];
+  if (direction === 'input' && role === 'speed') return [2,1];
+  if (direction === 'input' && role === 'flow') return [2,1];
+  if (direction === 'input' && ['pressure','temperature','flame','torque','voltage'].includes(String(role || ''))) return [1];
+  if (direction === 'input' && role === 'operator') return [1,3];
   return direction === 'input' ? [0,1,2,3] : [4,5,6];
 }
 function registryPinMode(direction, driver) {
@@ -3674,7 +3725,10 @@ function registryPinMode(direction, driver) {
 }
 function registryInvertEditor(direction, c, index) {
   if (direction !== 'output') return '';
-  const label = Number(c.driver) === 4 ? 'Active LOW / inverted relay' : 'Invert output demand';
+  if (Number(c.driver) === 4) {
+    return `<div class="hw-field"><span class="hw-label">Output polarity</span><span class="hw-desc">When enabled, GPIO HIGH means On. Disable for active-low relay boards where GPIO LOW turns the output on.</span><label class="hw-toggle"><input type="checkbox" ${c.invert ? '' : 'checked'} onchange="updateRegistryChannel('${direction}',${index},'invert',!this.checked)"><span></span> Active high</label></div>`;
+  }
+  const label = 'Invert output demand';
   const desc = Number(c.driver) === 4
     ? 'Normal relay drives GPIO HIGH when on. Inverted relay drives GPIO LOW when on.'
     : 'Reverses the written duty/demand: 0% becomes 100%, 100% becomes 0%.';
@@ -3692,13 +3746,34 @@ function registryDemandEditor(c, index) {
   return `<div class="hw-field"><span class="hw-label">Boot safe demand (%)</span><input class="${safeChanged}${safeInvalid}" type="number" min="0" max="100" step="1" value="${Math.round((c.safe_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'safe_demand',(+this.value)/100)"></div>
           <div class="hw-field"><span class="hw-label">Fault demand (%)</span><input class="${faultChanged}${faultInvalid}" type="number" min="0" max="100" step="1" value="${Math.round((c.fault_demand||0)*100)}" oninput="updateRegistryChannel('output',${index},'fault_demand',(+this.value)/100)"></div>`;
 }
-function registryRangeMeta(direction, driver) {
+function registryPwmTimingEditor(c, index) {
+  if (Number(c.driver) !== 5) return '';
+  const freq = Number(c.pwm_freq_hz ?? 1000);
+  const bits = Number(c.pwm_res_bits ?? 10);
+  const invalid = freq < 1 || freq > 100000 || bits < 8 || bits > 14;
+  const cls = invalid ? ' field-error' : '';
+  return `<div class="hw-field"><span class="hw-label">PWM carrier frequency (Hz)</span><span class="hw-desc">Switching frequency for a MOSFET, motor driver or PWM-capable ESC. Check the driver datasheet.</span><input class="${registryFieldChangedClass('output',index,'pwm_freq_hz')}${cls}" type="number" min="1" max="100000" step="1" value="${freq}" oninput="updateRegistryChannel('output',${index},'pwm_freq_hz',+this.value)"></div>
+          <div class="hw-field"><span class="hw-label">PWM resolution (bits)</span><span class="hw-desc">Duty-cycle resolution. 8–14 bits; higher resolution may limit the available carrier frequency.</span><input class="${registryFieldChangedClass('output',index,'pwm_res_bits')}${cls}" type="number" min="8" max="14" step="1" value="${bits}" oninput="updateRegistryChannel('output',${index},'pwm_res_bits',+this.value)"></div>`;
+}
+function registryRangeMeta(direction, driver, role) {
   const d = Number(driver);
   if (direction === 'input') {
     if (d === 0) return {hide:true, note:'Digital input reads inactive as 0.00 and active as 1.00. Use Active LOW for switches wired to ground.'};
-    if (d === 1) return {min:'Minimum ADC count', max:'Maximum ADC count', step:'0.01', limitMin:0, limitMax:4095};
-    if (d === 2) return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01', limitMin:0,
-      note:'These are mapping endpoints, not a guaranteed hardware maximum. Generic registry pulse inputs are counted by interrupt and sampled every 100 ms; keep sensor frequencies in the low-to-moderate kHz range unless you validate the exact installation. Built-in N1/N2 RPM paths use the ESP32 PCNT driver.'};
+    if (d === 1) {
+      if (role === 'temperature') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:`Raw ADC validity window. Physical output uses the mV per ${dispTempUnit()} calibration below.`};
+      if (role === 'pressure') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:`Raw ADC validity window. Physical output uses mV per bar internally and displays system-wide as ${dispPressUnit()}.`};
+      if (role === 'speed') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:'Raw ADC validity window. Physical output is RPM using the mV/RPM calibration below. Pulse/PCNT is preferred for N1/N2.'};
+      if (role === 'voltage') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:'Raw ADC validity window. Battery/bus volts use the divider ratio below.'};
+      return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095};
+    }
+    if (d === 2) {
+      if (role === 'speed') return {min:'Minimum speed (RPM)', max:'Maximum speed (RPM)', step:'100', limitMin:0, limitMax:500000,
+        note:'N1/N2 speed registry cards are claimed by the ESP32 PCNT RPM path, not the low-rate generic interrupt counter. Set pulses/rev below.'};
+      if (role === 'flow') return {min:'Minimum flow (L/min)', max:'Maximum flow (L/min)', step:'0.01', limitMin:0,
+        note:'Fuel-flow pulse cards use pulses/litre below; displayed flow is litres/min before any page-level unit conversion.'};
+      return {min:'Minimum frequency (Hz)', max:'Maximum frequency (Hz)', step:'0.01', limitMin:0,
+        note:'Generic pulse inputs are interrupt counted. For high-rate shaft RPM use the N1/N2 speed roles so the PCNT path is used.'};
+    }
     if (d === 3) return {min:'Minimum pulse width (us)', max:'Maximum pulse width (us)', step:'0.01', limitMin:500, limitMax:2500};
   } else {
     if (d === 4) return {hide:true, note:'Relay output uses Off/On states. Use Output polarity for active-low relay boards.'};
@@ -3708,7 +3783,7 @@ function registryRangeMeta(direction, driver) {
   return {min:'Minimum mapped value', max:'Maximum mapped value', step:'0.01'};
 }
 function registryRangeEditor(direction, c, index) {
-  const meta = registryRangeMeta(direction, c.driver);
+  const meta = registryRangeMeta(direction, c.driver, c.role);
   if (meta.hide) return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Mapped value</span><span class="hw-desc">${escapeHtmlText(meta.note)}</span></div>`;
   const scale = Number(meta.scale || 1);
   const minAttr = meta.limitMin !== undefined ? ` min="${meta.limitMin}"` : '';
@@ -3720,10 +3795,64 @@ function registryRangeEditor(direction, c, index) {
   return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.min)}</span>${desc}<input class="${minClass}" type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.min ?? 0) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'min',registryParseValue(this.value),${scale})"></div>
           <div class="hw-field"><span class="hw-label">${escapeHtmlText(meta.max)}</span>${desc}<input class="${maxClass}" type="number" inputmode="decimal"${minAttr}${maxAttr} step="${escapeHtmlText(meta.step || '0.01')}" value="${registryFormatValue((c.max ?? 1) * scale)}" oninput="updateRegistryRangeField('${direction}',${index},'max',registryParseValue(this.value),${scale})"></div>`;
 }
+function registryPulseScaleEditor(direction, c, index) {
+  if (direction !== 'input' || Number(c.driver) !== 2) return '';
+  const role = String(c.role || '');
+  const label = role === 'speed' ? 'Pulses / revolution' : (role === 'flow' ? 'Pulses / litre' : 'Pulses / unit');
+  const desc = role === 'speed'
+    ? 'Hall/VR conditioner pulses per shaft revolution. Used by the PCNT RPM path for N1/N2 speed cards.'
+    : (role === 'flow' ? 'Flowmeter calibration. Flow is pulses/min divided by this value.' : 'Scale used by pulse input conversion.');
+  const cls = `${registryFieldChangedClass(direction, index, 'pulses_per_unit')}${Number(c.pulses_per_unit ?? 1) <= 0 ? ' field-error' : ''}`;
+  return `<div class="hw-field"><span class="hw-label">${escapeHtmlText(label)}</span><span class="hw-desc">${escapeHtmlText(desc)}</span><input class="${cls}" type="number" min="0.001" step="0.001" value="${registryFormatValue(c.pulses_per_unit ?? 1)}" oninput="updateRegistryChannel('${direction}',${index},'pulses_per_unit',registryParseValue(this.value))"></div>`;
+}
+function registryAnalogScaleEditor(direction, c, index) {
+  if (direction !== 'input' || Number(c.driver) !== 1) return '';
+  if (String(c.role||'') === 'temperature' && Number(c.temp_interface||0) !== 0) return '';
+  const role = String(c.role || '');
+  if (role === 'generic' || role === 'operator' || role === 'flame') return '';
+  const cal = registryDefaultAnalogCalibration(role);
+  if (role === 'voltage') {
+    const cls = `${registryFieldChangedClass(direction, index, 'analog_divider')}${Number(c.analog_divider ?? cal.analog_divider) < 1 ? ' field-error' : ''}`;
+    return `<div class="hw-field"><span class="hw-label">Voltage divider ratio</span><span class="hw-desc">Battery volts = ADC pin volts × this ratio. Example: 100k/10k divider is 11.0.</span><input class="${cls}" type="number" min="1" max="100" step="0.01" value="${registryFormatValue(c.analog_divider ?? cal.analog_divider)}" oninput="updateRegistryChannel('${direction}',${index},'analog_divider',registryParseValue(this.value))"></div>`;
+  }
+  const unit = role === 'speed' ? 'RPM' : role === 'pressure' ? 'bar' : role === 'temperature' ? '°C' : role === 'flow' ? 'L/min' : role === 'torque' ? 'Nm' : 'unit';
+  const zeroClass = registryFieldChangedClass(direction, index, 'analog_zero_mv');
+  const scaleClass = `${registryFieldChangedClass(direction, index, 'analog_mv_per_unit')}${Number(c.analog_mv_per_unit ?? cal.analog_mv_per_unit) <= 0 ? ' field-error' : ''}`;
+  const scaleDigits = role === 'speed' ? 4 : 3;
+  const scaleStep = role === 'speed' ? '0.0001' : '0.001';
+  return `<div class="hw-field"><span class="hw-label">Zero offset (mV)</span><span class="hw-desc">Sensor output voltage at 0 ${escapeHtmlText(unit)}.</span><input class="${zeroClass}" type="number" min="0" max="3300" step="0.1" value="${registryFormatValue(c.analog_zero_mv ?? cal.analog_zero_mv)}" oninput="updateRegistryChannel('${direction}',${index},'analog_zero_mv',registryParseValue(this.value))"></div>
+          <div class="hw-field"><span class="hw-label">mV per ${escapeHtmlText(unit)}</span><span class="hw-desc">Physical value = (ADC mV - zero offset) / this factor.</span><input class="${scaleClass}" type="number" min="0.000001" step="${scaleStep}" value="${registryFormatValue(c.analog_mv_per_unit ?? cal.analog_mv_per_unit, scaleDigits)}" oninput="updateRegistryChannel('${direction}',${index},'analog_mv_per_unit',registryParseValue(this.value))"></div>`;
+}
+function registryTemperatureIsSpi(c) {
+  const iface = Number(c?.temp_interface || 0);
+  return String(c?.role || '') === 'temperature' && iface >= 1 && iface <= 3;
+}
+function registryTemperatureInterfaceEditor(c, index) {
+  if (String(c.role||'') !== 'temperature' || Number(c.driver) !== 1) return '';
+  const iface = Number(c.temp_interface || 0), oil = String(c.id || '') === 'oil_temperature';
+  const dedicated = ['tot_main','tit_main','oil_temperature'].includes(String(c.id || ''));
+  const option = (n,label) => `<option value="${n}"${iface===n?' selected':''}>${label}</option>`;
+  const pin = (key, mode) => `<div class="hw-field"><span class="hw-label">${key.replace('spi_','').toUpperCase()} GPIO</span><select onchange="updateRegistryChannel('input',${index},'${key}',+this.value)">${buildPinOptions(c[key] ?? -1, mode)}</select></div>`;
+  let choices = `${option(0,'Analog temperature transmitter')}`;
+  if (dedicated) choices += `${option(1,'MAX6675 (K-type)')}${option(2,'MAX31855 (K-type)')}${option(3,'MAX31856 (configurable TC type)')}`;
+  if (oil) choices += `${option(4,'NTC thermistor (ADC divider)')}${option(5,'DS18B20 (OneWire)')}`;
+  const heading = iface >= 1 && iface <= 3
+    ? 'Dedicated turbine-rated thermocouple amplifier. CLK and MISO may be shared; every sensor needs its own CS GPIO.'
+    : oil ? 'Choose the actual oil/gearbox/coolant sensor interface. NTC and DS18B20 must never be used for turbine-gas temperatures.'
+    : 'Calibrated analog transmitter. Choose a MAX thermocouple amplifier for turbine-gas temperature probes.';
+  let details = '';
+  if (iface >= 1 && iface <= 3) details = `${pin('spi_clk','out')}${pin('spi_cs','out')}${pin('spi_miso','in')}${iface===3?pin('spi_mosi','out'):''}${iface===3?`<div class="hw-field"><span class="hw-label">Thermocouple type</span><select onchange="updateRegistryChannel('input',${index},'tc_type',this.value)">${['K','J','N','T','E','R','S','B'].map(v=>`<option value="${v}"${String(c.tc_type||'K')===v?' selected':''}>${v}</option>`).join('')}</select></div>`:''}`;
+  if (iface === 4) details = `<div class="hw-field"><span class="hw-label">NTC beta coefficient</span><input type="number" min="1" step="1" value="${registryFormatValue(c.ntc_beta ?? 3950)}" oninput="updateRegistryChannel('input',${index},'ntc_beta',registryParseValue(this.value))"></div><div class="hw-field"><span class="hw-label">NTC resistance at 25 °C (Ω)</span><input type="number" min="1" step="1" value="${registryFormatValue(c.ntc_r0 ?? 10000)}" oninput="updateRegistryChannel('input',${index},'ntc_r0',registryParseValue(this.value))"></div><div class="hw-field"><span class="hw-label">Fixed divider resistor (Ω)</span><input type="number" min="1" step="1" value="${registryFormatValue(c.ntc_r_fixed ?? 10000)}" oninput="updateRegistryChannel('input',${index},'ntc_r_fixed',registryParseValue(this.value))"></div>`;
+  if (iface === 5) details = `<div class="hw-field"><span class="hw-label">DS18B20 resolution</span><span class="hw-desc">Uses one data GPIO and an external 4.7 kΩ pull-up to 3.3 V.</span><select onchange="updateRegistryChannel('input',${index},'temp_resolution',+this.value)">${[9,10,11,12].map(v=>`<option value="${v}"${Number(c.temp_resolution ?? 12)===v?' selected':''}>${v}-bit</option>`).join('')}</select></div>`;
+  return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Temperature interface</span><span class="hw-desc">${heading}</span><select onchange="updateRegistryChannel('input',${index},'temp_interface',+this.value)">${choices}</select></div>${details}`;
+}
 function registryInputOptionsEditor(direction, c, index) {
   if (direction !== 'input') return '';
   const d = Number(c.driver);
   if (d === 1) {
+    if (registryTemperatureIsSpi(c)) return '';
+    if (String(c.role||'') === 'temperature' && Number(c.temp_interface||0) === 5)
+      return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">OneWire wiring</span><span class="hw-desc">Use an external 4.7 kΩ pull-up to 3.3 V. Internal pull-up/down is not used for a DS18B20 bus.</span></div>`;
     return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Input bias</span><span class="hw-desc">ADC inputs leave internal pull-up and pull-down resistors disabled so the analog reading is not biased.</span></div>`;
   }
   const polarityClass = registryFieldChangedClass(direction, index, 'active_high');
@@ -3766,6 +3895,38 @@ function registryPinIsAdc(pin) {
   const p = Number(pin);
   return p >= 0 && !!(GPIO_DB?.[p]?.adc1 || GPIO_DB?.[p]?.a2);
 }
+const REGISTRY_CORE_INPUT_IDS = new Set([
+  'n1_main','primary_n1','n2_main','primary_n2','tot_main','primary_egt',
+  'oil_pressure_main','operator_throttle','operator_idle',
+  'battery_voltage','batt_voltage_main'
+]);
+const REGISTRY_CORE_OUTPUT_IDS = new Set([
+  'main_fuel_output','main_fuel','throttle',
+  'main_starter','starter','starter_main',
+  'starter_enable','starter_enable_main',
+  'oil_pump','oil_pump_main',
+  'cooling_fan','cooling_fan_main','cool_fan',
+  'oil_scavenge_main','oil_scavenge_pump','scavenge_pump',
+  'bleed_valve','bleed_valve_main',
+  'igniter','igniter_main','ab_igniter','igniter2','igniter2_main',
+  'main_fuel_shutoff','fuel_shutoff','fuel_sol','fuel_solenoid_main',
+  'ab_solenoid','ab_solenoid_main','ab_sol',
+  'air_starter','airstarter_main','airstarter_sol',
+  'fuel_pump','fuel_pump2','fuel_pump2_main',
+  'ab_pump','ab_pump_main','prop_pitch','prop_pitch_main',
+  'glow_plug','glow_plug_main'
+]);
+const REGISTRY_CORE_OUTPUT_BINDING_KEYS = new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
+function registryIsCoreManagedInput(c) {
+  return REGISTRY_CORE_INPUT_IDS.has(String(c?.id || ''));
+}
+function registryIsCoreManagedOutput(c) {
+  const id = String(c?.id || '');
+  if (REGISTRY_CORE_OUTPUT_IDS.has(id)) return true;
+  return (registryRoot().bindings || []).some(b =>
+    REGISTRY_CORE_OUTPUT_BINDING_KEYS.has(String(b?.key || '')) &&
+    String(b?.channel || '') === id);
+}
 function ensureActuatorObject(key) {
   if (!cfg.actuators) cfg.actuators = {};
   if (!cfg.actuators[key]) cfg.actuators[key] = {};
@@ -3773,6 +3934,10 @@ function ensureActuatorObject(key) {
 }
 function setCoreActuatorCurrentEnabled(actKey, enabled) {
   const act = ensureActuatorObject(actKey);
+  if (!enabled && (actKey === 'igniter' || actKey === 'igniter2') && act.coil) {
+    act.coil = false;
+    act.pwm = true;
+  }
   act.has_current = !!enabled;
   if (enabled && (act.current_mv_a === undefined || act.current_mv_a <= 0)) act.current_mv_a = actKey === 'glow_plug' ? 185 : 100;
   if (enabled && act.current_zero_v === undefined) act.current_zero_v = 1.65;
@@ -3804,7 +3969,6 @@ function registryCurrentEditor(direction, c, index) {
   const pin = dedicated ? act.current_pin : c.current_pin;
   const mvA = dedicated ? (act.current_mv_a ?? (actKey === 'glow_plug' ? 185 : 100)) : (c.current_mv_a ?? 100);
   const zeroV = dedicated ? (act.current_zero_v ?? 1.65) : (c.current_zero_v ?? 1.65);
-  const maxA = dedicated ? (act.current_max_a ?? 0) : (c.current_max_a ?? 0);
   const fieldSet = dedicated
     ? (field, expr) => `setActCurrentSensor('${actKey}','${field}',${expr})`
     : (field, expr) => {
@@ -3820,7 +3984,8 @@ function registryCurrentEditor(direction, c, index) {
       <div class="hw-field"><span class="hw-label">Current sensor ADC GPIO</span><select onchange="${fieldSet('pin','+this.value')}">${buildPinOptions(pin, 'adc')}</select></div>
       <div class="hw-field"><span class="hw-label">Sensor sensitivity (mV/A)</span><input type="number" min="1" max="10000" step="1" value="${registryFormatValue(mvA)}" oninput="${fieldSet('mv_a','+this.value')}"></div>
       <div class="hw-field"><span class="hw-label">Zero-current voltage (V)</span><input type="number" min="0" max="3.3" step="0.01" value="${registryFormatValue(zeroV)}" oninput="${fieldSet('zero_v','+this.value')}"></div>
-      ${actKey === 'glow_plug' ? `<div class="hw-field"><span class="hw-label">Ready current (A)</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_ready_a ?? 3)}" oninput="${fieldSet('ready_a','+this.value')}"></div>` : `<div class="hw-field"><span class="hw-label">Overcurrent limit (A)</span><span class="hw-desc">0 disables the limit.</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(maxA)}" oninput="${fieldSet('current_max_a','+this.value')}"></div>`}
+       ${actKey === 'glow_plug' ? `<div class="hw-field"><span class="hw-label">Ready current (A)</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_ready_a ?? 3)}" oninput="${fieldSet('ready_a','+this.value')}"></div>` : ''}
+       ${actKey === 'oil_pump' ? `<div class="hw-field"><span class="hw-label">Overcurrent trip (A)</span><span class="hw-desc">0 disables the oil-pump overcurrent trip.</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_max_a ?? 0)}" oninput="${fieldSet('current_max_a','+this.value')}"></div>` : ''}
     </div></div>` : ''}
   </div>`;
 }
@@ -3907,7 +4072,14 @@ function registryRoleLabel(direction, role) {
 }
 function registryStatus(c) {
   if (!c?.id) return {kind:'error', text:'Missing stable ID'};
-  if ((c.pin ?? -1) < 0) return {kind:'error', text:'Pin required'};
+  if (Number(c.temp_interface || 0) > 0 && !['tot_main','tit_main','oil_temperature'].includes(String(c.id))) return {kind:'error', text:'Special temperature interface requires a TOT, TIT, or Oil temperature card'};
+  const thermocouple = registryTemperatureIsSpi(c);
+  if (thermocouple) {
+    if (![1,2,3].includes(Number(c.temp_interface)) || Number(c.spi_clk) < 0 || Number(c.spi_cs) < 0 || Number(c.spi_miso) < 0 || (Number(c.temp_interface) === 3 && Number(c.spi_mosi) < 0)) return {kind:'error', text:'Thermocouple pins required'};
+  }
+  if (!thermocouple && (c.pin ?? -1) < 0) return {kind:'error', text:'Pin required'};
+  if (Number(c.temp_interface||0) === 4 && (!(Number(c.ntc_beta) > 0) || !(Number(c.ntc_r0) > 0) || !(Number(c.ntc_r_fixed) > 0))) return {kind:'error', text:'NTC calibration invalid'};
+  if (Number(c.temp_interface||0) === 5 && (Number(c.temp_resolution) < 9 || Number(c.temp_resolution) > 12)) return {kind:'error', text:'DS18B20 resolution invalid'};
   const rangeProblem = registryRangeProblem(c);
   if (rangeProblem) return {kind:'error', text:rangeProblem};
   if (c.pullup && c.pulldown) return {kind:'error', text:'Pull-up/down conflict'};
@@ -3916,6 +4088,13 @@ function registryStatus(c) {
     if (!registryPinIsAdc(c.current_pin)) return {kind:'error', text:'Current pin must be ADC'};
     if (Number(c.current_mv_a ?? 0) <= 0) return {kind:'error', text:'Current mV/A invalid'};
     if (Number(c.current_zero_v ?? 0) < 0 || Number(c.current_zero_v ?? 0) > 3.3) return {kind:'error', text:'Current zero invalid'};
+  }
+  if (Number(c.driver) === 5 && (Number(c.pwm_freq_hz ?? 1000) < 1 || Number(c.pwm_freq_hz ?? 1000) > 100000 || Number(c.pwm_res_bits ?? 10) < 8 || Number(c.pwm_res_bits ?? 10) > 14)) {
+    return {kind:'error', text:'PWM timing invalid'};
+  }
+  const actKey = registryCoreActuatorKey(c);
+  if ((actKey === 'igniter' || actKey === 'igniter2') && ensureActuatorObject(actKey).coil && !ensureActuatorObject(actKey).has_current) {
+    return {kind:'error', text:'Current sensing required'};
   }
   return {kind:'ok', text:'Ready'};
 }
@@ -3931,9 +4110,26 @@ function registryRangeProblem(c) {
   if (driver === 0 || driver === 4) return '';
   if (max <= min) return 'Invalid range';
   if (driver === 1 && (min < 0 || max > 4095)) return 'ADC range 0-4095';
-  if (driver === 2 && min < 0) return 'Frequency below 0';
+  if (driver === 1) {
+    const role = String(c.role || '');
+    if (role === 'voltage' && Number(c.analog_divider ?? registryDefaultAnalogCalibration(role).analog_divider) < 1) return 'Voltage divider invalid';
+    if (!['generic','operator','flame','voltage'].includes(role) &&
+        Number(c.analog_mv_per_unit ?? registryDefaultAnalogCalibration(role).analog_mv_per_unit) <= 0) return 'Analog scale invalid';
+  }
+  if (driver === 2) {
+    if (min < 0) return 'Pulse range below 0';
+    if (Number(c.pulses_per_unit ?? 1) <= 0) return 'Pulse scale invalid';
+    if (String(c.role || '') === 'speed' && max > 500000) return 'RPM range max 500000';
+  }
   if ((driver === 3 || driver === 6) && (min < 500 || max > 2500)) return 'Pulse width 500-2500 us';
   if (driver === 5 && (min < 0 || max > 1)) return 'PWM range 0-100%';
+  return '';
+}
+function registryOutputSummary(c) {
+  const d = Number(c.driver);
+  if (d === 4) return 'On/Off';
+  if (d === 5) return `Proportional ${Math.round(Number(c.min || 0) * 100)}-${Math.round(Number(c.max ?? 1) * 100)}%`;
+  if (d === 6) return `Servo ${Math.round(Number(c.min || 1000))}-${Math.round(Number(c.max || 2000))} us`;
   return '';
 }
 function registryInvalidDetails() {
@@ -4048,14 +4244,24 @@ function digitalSwitchEditor(row) {
   const activeLow = row.activeHigh ? '' : ' selected';
   const activeHigh = row.activeHigh ? ' selected' : '';
   const pull = row.pullup !== false ? 'checked' : '';
+  const pullDown = row.pulldown ? 'checked' : '';
   return `<div class="registry-card-editor" style="display:block">
     <div class="hw-grid">
       <div class="hw-field"><span class="hw-label">GPIO pin</span><select onchange="${row.pinSet}">${pinOptions}</select></div>
       <div class="hw-field"><span class="hw-label">Active polarity</span><select onchange="${row.polSet}"><option value="0"${activeLow}>Active LOW</option><option value="1"${activeHigh}>Active HIGH</option></select></div>
       <div class="hw-field"><span class="hw-label">Internal pull-up</span><label class="hw-toggle"><input type="checkbox" ${pull} onchange="${row.pullSet}"><span></span> Enable</label></div>
+      <div class="hw-field"><span class="hw-label">Internal pull-down</span><label class="hw-toggle"><input type="checkbox" ${pullDown} onchange="${row.pullDownSet}"><span></span> Enable</label></div>
       <div class="hw-field"><span class="hw-label">Display label</span><input type="text" maxlength="31" placeholder="${escapeHtmlText(row.defaultLabel)}" value="${labelValue}" onchange="${row.labelSet}"></div>
     </div>
   </div>`;
+}
+function setControlPull(which, pull, value) {
+  if (!cfg.controls) cfg.controls = {};
+  const up = `${which}_pullup`;
+  const down = `${which}_pulldown`;
+  cfg.controls[pull === 'up' ? up : down] = !!value;
+  if (value) cfg.controls[pull === 'up' ? down : up] = false;
+  dirty(); renderBuiltinInputSummary();
 }
 function renderBuiltinInputSummary() {
   const box = document.getElementById('builtin-inputs');
@@ -4063,7 +4269,7 @@ function renderBuiltinInputSummary() {
   const rows = [];
   const controls = cfg.controls || {};
   const labels = cfg.labels || {};
-  const addSwitch = (key, title, pin, activeHigh, pullup, detail) => rows.push({
+  const addSwitch = (key, title, pin, activeHigh, pullup, pulldown, detail) => rows.push({
     key,
     title,
     detail: `${detail} · Digital input · GPIO ${(pin ?? -1) >= 0 ? pin : 'not set'} · ${activeHigh ? 'Active HIGH' : 'Active LOW'}`,
@@ -4071,15 +4277,17 @@ function renderBuiltinInputSummary() {
     pin,
     activeHigh,
     pullup,
+    pulldown,
     label: labels[key] || '',
     defaultLabel: key === 'stop' ? 'Stop' : 'Start',
     pinSet: `setNested('controls','${key}_pin',+this.value)`,
     polSet: `setNested('controls','${key}_active_h',this.value==='1')`,
-    pullSet: `setNested('controls','${key}_pullup',this.checked)`,
+    pullSet: `setControlPull('${key}','up',this.checked)`,
+    pullDownSet: `setControlPull('${key}','down',this.checked)`,
     labelSet: `setLabel('${key}',this.value)`
   });
-  addSwitch('stop', labels.stop || 'Stop switch', controls.stop_pin, !!controls.stop_active_h, controls.stop_pullup, 'Hard stop / shutdown command');
-  addSwitch('start', labels.start || 'Start switch', controls.start_pin, !!controls.start_active_h, controls.start_pullup, 'Start command input');
+  addSwitch('stop', labels.stop || 'Stop switch', controls.stop_pin, !!controls.stop_active_h, controls.stop_pullup, controls.stop_pulldown, 'Hard stop / shutdown command');
+  addSwitch('start', labels.start || 'Start switch', controls.start_pin, !!controls.start_active_h, controls.start_pullup, controls.start_pulldown, 'Start command input');
   (cfg.di_channels || []).forEach((ch, i) => {
     if (!ch) return;
     const role = ch.role || 'none';
@@ -4364,7 +4572,7 @@ function renderRegistryInventory() {
         <div class="registry-card-summary">
           <div>
             <strong>${escapeHtmlText(c.name || c.id || (direction + ' channel'))}</strong>
-            <div class="hw-desc">${escapeHtmlText(registryRoleLabel(direction, c.role))} &middot; ${driverName(c.driver)} &middot; GPIO ${(c.pin ?? -1) >= 0 ? escapeHtmlText(c.pin) : 'not set'}${direction==='output' ? ' &middot; '+(proportional ? 'Proportional 0-100%' : 'On/Off') : ''}</div>
+            <div class="hw-desc">${escapeHtmlText(registryRoleLabel(direction, c.role))} &middot; ${driverName(c.driver)} &middot; GPIO ${(c.pin ?? -1) >= 0 ? escapeHtmlText(c.pin) : 'not set'}${direction==='output' ? ' &middot; '+escapeHtmlText(registryOutputSummary(c)) : ''}</div>
             <div class="hw-desc">Used by: ${escapeHtmlText(registryReferenceSummary(direction, c.id))}</div>
           </div>
           <div class="registry-card-actions">
@@ -4380,11 +4588,15 @@ function renderRegistryInventory() {
           <div class="hw-field"><span class="hw-label">Display name</span><input class="${nameClass}" type="text" maxlength="15" value="${escapeHtmlText(c.name || c.id)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
           <div class="hw-field"><span class="hw-label">Semantic role</span><select class="${roleClass}" onchange="updateRegistryChannel('${direction}',${i},'role',this.value)">${registryRoleOptions(direction, c.role)}</select></div>
           <div class="hw-field"><span class="hw-label">Electrical driver</span><select class="${driverClass}" onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role)}</select></div>
-          <div class="hw-field"><span class="hw-label">GPIO pin</span><select class="${pinClass}" onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryPinMode(direction, c.driver))}</select></div>
+          ${!(direction==='input' && registryTemperatureIsSpi(c)) ? `<div class="hw-field"><span class="hw-label">GPIO pin</span><select class="${pinClass}" onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, Number(c.temp_interface||0)===5 ? 'in' : registryPinMode(direction, c.driver))}</select></div>` : ''}
           ${registryInputOptionsEditor(direction, c, i)}
           ${registryInvertEditor(direction, c, i)}
-          ${registryRangeEditor(direction, c, i)}
-          ${direction==='output' ? registryDemandEditor(c, i) : ''}
+          ${direction==='input' ? registryTemperatureInterfaceEditor(c, i) : ''}
+          ${registryPulseScaleEditor(direction, c, i)}
+          ${registryAnalogScaleEditor(direction, c, i)}
+           ${!(direction==='input' && registryTemperatureIsSpi(c)) ? registryRangeEditor(direction, c, i) : ''}
+           ${direction==='output' ? registryPwmTimingEditor(c, i) : ''}
+           ${direction==='output' ? registryDemandEditor(c, i) : ''}
           ${registryOutputSubcards(direction, c, i)}
         </div>
         </div>
@@ -4398,15 +4610,25 @@ function updateRegistryChannel(direction, index, key, value) {
   const c = r[direction + 's'][index];
   if (!c) return;
   if (key === 'pin') value = Number.isFinite(value) ? value : -1;
-  if (key === 'driver') {
+    if (key === 'driver') {
     if ((direction === 'input' && (value < 0 || value > 3)) || (direction === 'output' && (value < 4 || value > 6))) return;
     if (!registryAllowedDrivers(direction, c.role).includes(value)) return;
-    const range = registryDefaultRange(direction, value);
+    const range = registryDefaultRange(direction, value, c.role);
     c.min = range.min;
     c.max = range.max;
-    c[key] = value;
+     c[key] = value;
+     if (direction === 'output' && value === 5) {
+       c.pwm_freq_hz = Number(c.pwm_freq_hz ?? 1000) || 1000;
+       c.pwm_res_bits = Number(c.pwm_res_bits ?? 10) || 10;
+     }
     if (direction === 'input' && value === 1 && (c.pin ?? -1) >= 0 && !(GPIO_DB?.[c.pin]?.adc1 || GPIO_DB?.[c.pin]?.a2)) c.pin = -1;
-    if (direction === 'input' && value === 1) { c.pullup = false; c.pulldown = false; c.active_high = true; }
+    if (direction === 'input' && value === 1) {
+      c.pullup = false; c.pulldown = false; c.active_high = true;
+      const cal = registryDefaultAnalogCalibration(c.role);
+      c.analog_zero_mv = cal.analog_zero_mv;
+      c.analog_mv_per_unit = cal.analog_mv_per_unit;
+      c.analog_divider = cal.analog_divider;
+    }
     if (direction === 'input' && value === 0 && c.active_high === undefined) c.active_high = true;
     dirty(); updateSaveButton(); renderRegistryInventory();
     return;
@@ -4417,7 +4639,7 @@ function updateRegistryChannel(direction, index, key, value) {
     c.role = value;
     if (!registryAllowedDrivers(direction, value).includes(Number(c.driver))) {
       c.driver = registryAllowedDrivers(direction, value)[0];
-      const range = registryDefaultRange(direction, c.driver);
+      const range = registryDefaultRange(direction, c.driver, value);
       c.min = range.min;
       c.max = range.max;
     }
@@ -4425,6 +4647,12 @@ function updateRegistryChannel(direction, index, key, value) {
       c.active_high = false;
       c.pullup = true;
       c.pulldown = false;
+    }
+    if (direction === 'input' && Number(c.driver) === 1) {
+      const cal = registryDefaultAnalogCalibration(value);
+      if (c.analog_zero_mv === undefined) c.analog_zero_mv = cal.analog_zero_mv;
+      if (c.analog_mv_per_unit === undefined) c.analog_mv_per_unit = cal.analog_mv_per_unit;
+      if (c.analog_divider === undefined) c.analog_divider = cal.analog_divider;
     }
     dirty(); updateSaveButton(); renderRegistryInventory();
     return;
@@ -4444,6 +4672,20 @@ function updateRegistryChannel(direction, index, key, value) {
     }
   }
   if (key === 'current_pin') value = Number.isFinite(value) ? value : -1;
+  if (key === 'temp_interface') {
+    value = Math.max(0, Math.min(5, Number(value) || 0));
+    c[key] = value;
+    if (value >= 1 && value <= 3) { c.pin = -1; c.spi_clk ??= -1; c.spi_cs ??= -1; c.spi_miso ??= -1; c.spi_mosi ??= -1; c.tc_type ??= 'K'; }
+    if (value === 4) { c.pin ??= -1; c.ntc_beta ??= 3950; c.ntc_r0 ??= 10000; c.ntc_r_fixed ??= 10000; }
+    if (value === 5) { c.pin ??= -1; c.temp_resolution ??= 12; }
+    dirty(); updateSaveButton(); renderRegistryInventory(); return;
+  }
+  if (key === 'pulses_per_unit') value = Math.max(0.001, Number(value) || 1);
+  if (key === 'analog_zero_mv') value = Math.max(0, Math.min(3300, Number(value) || 0));
+  if (key === 'analog_mv_per_unit') value = Math.max(0.000001, Number(value) || 1);
+  if (key === 'analog_divider') value = Math.max(1, Math.min(100, Number(value) || 1));
+  if (key === 'ntc_beta' || key === 'ntc_r0' || key === 'ntc_r_fixed') value = Math.max(0.001, Number(value) || 1);
+  if (key === 'temp_resolution') value = Math.max(9, Math.min(12, Number(value) || 12));
   if (key === 'current_mv_a') value = Math.max(0.001, Number(value) || 100);
   if (key === 'current_zero_v') value = Math.max(0, Math.min(3.3, Number(value) || 0));
   if (key === 'current_max_a') value = Math.max(0, Number(value) || 0);
@@ -4513,7 +4755,7 @@ function renderRegistryAddCatalog() {
   const q = (document.getElementById('registry-add-search')?.value || '').trim().toLowerCase();
   const r = registryRoot();
   const used = (r[_registryAddDirection + 's'] || []).length;
-  const max = _registryAddDirection === 'input' ? 6 : 6;
+  const max = 16;
   const rows = presets
     .map((p, i) => ({p, i}))
     .filter(({p}) => !q || [p.group, p.label, p.name, p.role, p.id].some(v => String(v).toLowerCase().includes(q)));
@@ -4542,16 +4784,18 @@ function selectRegistryAddPreset(index) {
   if (!preset) return;
   const r = registryRoot();
   const rows = r[_registryAddDirection + 's'];
-  const max = _registryAddDirection === 'input' ? 6 : 6;
+  const max = 16;
   if (rows.length >= max) return registryAddError(`Registry capacity is full (${rows.length}/${max}). Remove an unused ${_registryAddDirection} first.`);
   const n = registryRoleNumber(_registryAddDirection, preset.role);
   const name = _registryAddDirection === 'output' && preset.role !== 'generic' ? `${preset.name} ${n}` : preset.name;
-  const range = registryDefaultRange(_registryAddDirection, preset.driver);
+  const range = registryDefaultRange(_registryAddDirection, preset.driver, preset.role);
   const id = registryUniqueId(preset.role === 'generic' ? registrySlug(name) : preset.id);
   if (!id) return registryAddError('Could not allocate a unique stable ID.');
   const safe = _registryAddDirection === 'output' ? 0 : undefined;
   const fault = _registryAddDirection === 'output' ? 0 : undefined;
   const channel = {id, name:name.slice(0, 15), role:preset.role, driver:preset.driver, pin:-1, min:range.min, max:range.max};
+  if (_registryAddDirection === 'input' && preset.driver === 2) channel.pulses_per_unit = preset.role === 'flow' ? 1000 : 1;
+  if (_registryAddDirection === 'input' && preset.driver === 1) Object.assign(channel, registryDefaultAnalogCalibration(preset.role));
   if (_registryAddDirection === 'output') { channel.safe_demand = safe; channel.fault_demand = fault; channel.invert = false; }
   if (_registryAddDirection === 'input') {
     channel.active_high = !registryIsSwitchRole(preset.role);
@@ -4575,41 +4819,65 @@ function addRegistryChannel(direction) {
 }
 function registryRemovalImpact(direction, id) {
   const r = registryRoot(), impact = [];
+  const aliases = registryReferenceAliases(direction, id);
+  const refMatches = value => aliases.includes(String(value || ''));
   const bindCount = r.bindings.filter(b => b.channel === id).length;
   if (bindCount) impact.push(`${bindCount} registry binding(s)`);
   const loopCount = (cfg.oil_loops || []).filter(l => l && (l.pressure_input === id || l.pump_output === id)).length;
   if (loopCount) impact.push(`${loopCount} oil loop definition(s)`);
   const seqKeys = ['startup_enter_actions','startup_exit_actions','shutdown_enter_actions','shutdown_exit_actions','ab_enter_actions','ab_exit_actions','ab_shut_enter_actions','ab_shut_exit_actions'];
   let seqCount = 0;
-  seqKeys.forEach(k => (cfg[k] || []).forEach(slot => (slot || []).forEach(a => { if (a?.target === id) seqCount++; })));
+  seqKeys.forEach(k => (cfg[k] || []).forEach(slot => (slot || []).forEach(a => { if (refMatches(a?.target)) seqCount++; })));
   if (seqCount) impact.push(`${seqCount} sequence side action(s)`);
   let customCount = 0;
   Object.values(cfg.custom_blocks || {}).forEach(b => {
     if (!b) return;
-    if (direction === 'input' && b.condition?.source === id) customCount++;
-    (b.steps || []).forEach(s => { if (direction === 'output' && s?.target === id) customCount++; });
+    if (direction === 'input' && refMatches(b.condition?.source)) customCount++;
+    (b.steps || []).forEach(s => { if (direction === 'output' && refMatches(s?.target)) customCount++; });
   });
   if (customCount) impact.push(`${customCount} custom block reference(s)`);
+  const ruleCount = (settingsCfg.rules || []).filter(rule => rule && (
+    (direction === 'input' && refMatches(rule.source)) ||
+    (direction === 'output' && refMatches(rule.target))
+  )).length;
+  if (ruleCount) impact.push(`${ruleCount} control rule(s)`);
   return impact;
+}
+function registryReferenceAliases(direction, id) {
+  const aliases = [String(id || '')];
+  if (direction === 'input') {
+    if (id === 'operator_throttle') aliases.push('throttle_input', 'throttle_input_main', 'throttle_in');
+    if (id === 'operator_idle') aliases.push('idle_input', 'idle_input_main', 'idle_in');
+    if (id === 'battery_voltage') aliases.push('batt_voltage', 'batt_voltage_main');
+  } else {
+    if (id === 'main_fuel') aliases.push('main_fuel_output', 'throttle');
+    if (id === 'oil_pump_main') aliases.push('oil_pump');
+    if (id === 'glow_plug') aliases.push('glow_plug_main');
+  }
+  return [...new Set(aliases.filter(Boolean))];
 }
 function cleanupRegistryReferences(direction, id) {
   const r = registryRoot();
+  const aliases = registryReferenceAliases(direction, id);
+  const refMatches = value => aliases.includes(String(value || ''));
   r.bindings = r.bindings.filter(b => b.channel !== id);
-  cfg.oil_loops = (cfg.oil_loops || []).filter(l => !(l && (l.pressure_input === id || l.pump_output === id)));
+  cfg.oil_loops = (cfg.oil_loops || []).filter(l => !(l && (refMatches(l.pressure_input) || refMatches(l.pump_output))));
   const seqKeys = ['startup_enter_actions','startup_exit_actions','shutdown_enter_actions','shutdown_exit_actions','ab_enter_actions','ab_exit_actions','ab_shut_enter_actions','ab_shut_exit_actions'];
-  seqKeys.forEach(k => { if (Array.isArray(cfg[k])) cfg[k] = cfg[k].map(slot => (slot || []).filter(a => a?.target !== id)); });
+  seqKeys.forEach(k => { if (Array.isArray(cfg[k])) cfg[k] = cfg[k].map(slot => (slot || []).filter(a => !refMatches(a?.target))); });
   for (const [key, block] of Object.entries(cfg.custom_blocks || {})) {
     if (!block) continue;
-    if (direction === 'input' && block.condition?.source === id) { delete cfg.custom_blocks[key]; continue; }
-    if (direction === 'output' && Array.isArray(block.steps)) block.steps = block.steps.filter(s => s?.target !== id);
+    if (direction === 'input' && refMatches(block.condition?.source)) { delete cfg.custom_blocks[key]; continue; }
+    if (direction === 'output' && Array.isArray(block.steps)) block.steps = block.steps.filter(s => !refMatches(s?.target));
     if (block.type === 'action' && (!block.steps || block.steps.length === 0)) delete cfg.custom_blocks[key];
   }
+  if (settingsCfg.rules && direction === 'input') settingsCfg.rules = settingsCfg.rules.filter(rule => !refMatches(rule?.source));
+  if (settingsCfg.rules && direction === 'output') settingsCfg.rules = settingsCfg.rules.filter(rule => !refMatches(rule?.target));
 }
 function duplicateRegistryChannel(index) {
   const r = registryRoot();
   const src = r.outputs[index];
   if (!src) return;
-  const max = 6;
+  const max = 16;
   if (r.outputs.length >= max) return alert(`Output registry capacity is full (${r.outputs.length}/${max}). Remove an unused output first.`);
   const role = src.role || 'generic';
   const n = registryRoleNumber('output', role);
@@ -5347,6 +5615,65 @@ function _formatValue(el, rawVal) {
   return rawVal !== '' && rawVal !== undefined ? String(rawVal) : '(empty)';
 }
 
+
+function _registryFieldLabel(key) {
+  return ({
+    id:'Stable ID', name:'Display name', role:'Semantic role', driver:'Electrical driver', pin:'GPIO pin',
+    min:'Minimum mapped value', max:'Maximum mapped value', pulses_per_unit:'Pulse scale',
+    analog_zero_mv:'Analog zero offset', analog_mv_per_unit:'Analog mV per unit', analog_divider:'Voltage divider ratio',
+    safe_demand:'Boot safe demand', fault_demand:'Fault demand', pwm_freq_hz:'PWM carrier frequency', pwm_res_bits:'PWM resolution', invert:'Output polarity',
+    active_high:'Active polarity', pullup:'Internal pull-up', pulldown:'Internal pull-down',
+    has_current:'Current sensing', current_pin:'Current sensor pin', current_mv_a:'Current sensor mV/A',
+    current_zero_v:'Current zero voltage', current_max_a:'Current limit'
+  })[key] || key.replace(/_/g, ' ');
+}
+function _registryFieldValue(key, value, direction) {
+  if (value === undefined || value === null || value === '') return '(empty)';
+  if (key === 'driver') return driverName(value);
+  if (key === 'role') return registryRoleLabel(direction, value);
+  if (key === 'pin' || key === 'current_pin') return Number(value) >= 0 ? `GPIO${value}` : '? Not assigned ?';
+  if (key === 'safe_demand' || key === 'fault_demand') return (Number(value) * 100).toFixed(0) + '%';
+  if (['invert','active_high','pullup','pulldown','has_current'].includes(key)) return value ? 'Enabled' : 'Disabled';
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toFixed(2) : String(value);
+  return String(value);
+}
+function _registryChannelsById(rows) {
+  const map = new Map();
+  (rows || []).forEach(c => { if (c?.id) map.set(c.id, c); });
+  return map;
+}
+function _registryDiffRows(direction) {
+  if (!_registrySnap) return [];
+  const nowRows = registryRoot()[direction + 's'] || [];
+  const oldRows = _registrySnap[direction + 's'] || [];
+  const now = _registryChannelsById(nowRows);
+  const old = _registryChannelsById(oldRows);
+  const rows = [];
+  const title = direction === 'input' ? 'Input' : 'Output';
+  now.forEach((c, id) => {
+    const label = `${title} ${c.name || id}`;
+    if (!old.has(id)) {
+      rows.push({label, was:'Not installed', now:`Added ${registryRoleLabel(direction, c.role)} / ${driverName(c.driver)} / ${_registryFieldValue('pin', c.pin, direction)}`});
+      return;
+    }
+    const prev = old.get(id);
+    Array.from(new Set([...Object.keys(prev || {}), ...Object.keys(c || {})])).filter(k => k !== 'installed').forEach(k => {
+      const a = prev?.[k], b = c?.[k];
+      if (JSON.stringify(a) === JSON.stringify(b)) return;
+      rows.push({label:`${label} / ${_registryFieldLabel(k)}`, was:_registryFieldValue(k, a, direction), now:_registryFieldValue(k, b, direction)});
+    });
+  });
+  old.forEach((c, id) => { if (!now.has(id)) rows.push({label:`${title} ${c.name || id}`, was:'Installed', now:'Removed'}); });
+  return rows;
+}
+function _registryBindingDiffRows() {
+  if (!_registrySnap) return [];
+  const now = registryRoot().bindings || [];
+  const old = _registrySnap.bindings || [];
+  if (JSON.stringify(now) === JSON.stringify(old)) return [];
+  return [{label:'Hardware bindings', was:old.map(b => `${b.key}?${b.channel}`).join(', ') || 'None', now:now.map(b => `${b.key}?${b.channel}`).join(', ') || 'None'}];
+}
+
 function _buildChanges() {
   const changes = [];
   document.querySelectorAll(
@@ -5364,16 +5691,7 @@ function _buildChanges() {
       now:   _formatValue(el, cur),
     });
   });
-  if (_registrySnap && JSON.stringify(registryRoot()) !== JSON.stringify(_registrySnap)) {
-    const oldCounts = `${(_registrySnap.inputs || []).length} input(s), ${(_registrySnap.outputs || []).length} output(s), ${(_registrySnap.bindings || []).length} binding(s)`;
-    const r = registryRoot();
-    const newCounts = `${(r.inputs || []).length} input(s), ${(r.outputs || []).length} output(s), ${(r.bindings || []).length} binding(s)`;
-    changes.push({
-      label: 'Hardware inventory',
-      was: oldCounts,
-      now: newCounts + ' — card details changed'
-    });
-  }
+  changes.push(..._registryDiffRows('input'), ..._registryDiffRows('output'), ..._registryBindingDiffRows());
   return changes;
 }
 
@@ -5474,6 +5792,18 @@ function _checkGpioConflicts() {
   if (cfg.buzzer?.enabled) add(cfg.buzzer.pin, 'Buzzer');
 
   (cfg.di_channels || []).forEach((ch, index) => add(ch.pin, 'DI-' + (index + 1)));
+
+  const r = registryRoot();
+  (r.inputs || []).forEach(ch => {
+    if (!ch || ch.installed === false || registryIsCoreManagedInput(ch)) return;
+    add(ch.pin, ch.name || ch.id || 'Registry input');
+  });
+  (r.outputs || []).forEach(ch => {
+    if (!ch || ch.installed === false || registryIsCoreManagedOutput(ch)) return;
+    const label = ch.name || ch.id || 'Registry output';
+    add(ch.pin, label);
+    if (ch.has_current) add(ch.current_pin, label + ' current');
+  });
 
   // Return only pins with more than one assignment
   return Object.entries(map)
@@ -5828,6 +6158,13 @@ function applyContextTooltips(root) {
     'Internal pull-down': 'Enables the ESP32 internal pull-down resistor. Use for active-high switches; do not use together with pull-up.',
     'Input bias': 'Internal bias resistors are disabled for analog inputs so the ADC reading is not distorted.',
     'Output polarity': 'Use this when the output board is active-low or the PWM/servo demand must be reversed.',
+    'Pulses / revolution': 'Number of electrical pulses produced for one shaft revolution. N1/N2 speed cards use this with the PCNT RPM path.',
+    'Pulses / litre': 'Fuel-flow sensor calibration. Flow is pulse rate converted to pulses/min, then divided by pulses/litre.',
+    'Pulses / unit': 'Pulse scaling used for generic pulse/frequency conversion.',
+    'Minimum speed (RPM)': 'Lower RPM endpoint for mapping this speed input.',
+    'Maximum speed (RPM)': 'Upper RPM endpoint for mapping this speed input. N1/N2 can be configured up to 500000 RPM.',
+    'Minimum flow (L/min)': 'Lower flow endpoint for mapping this pulse flow input.',
+    'Maximum flow (L/min)': 'Upper flow endpoint for mapping this pulse flow input.',
     'Mapped value': 'The firmware maps raw electrical input/output values into the normalized value used by rules and telemetry.',
     'Minimum ADC count': 'Raw ADC count that maps to 0.00. Must be lower than the maximum and within 0-4095.',
     'Maximum ADC count': 'Raw ADC count that maps to 1.00. Must be higher than the minimum and within 0-4095.',
@@ -5910,6 +6247,7 @@ function applyContextTooltips(root) {
 }
 
 window.addEventListener('load', () => {
+  updateHardwareUnitButtons();
   startStatusPoll();
   connectWs();
   loadHardware();

@@ -1247,6 +1247,24 @@ function actuatorIsRelay(key) {
 function actuatorHasProportionalOutput(key) {
   return actuatorEnabled(key) && !actuatorIsRelay(key);
 }
+function registryLabel(c, fallback) {
+  return (c?.name && c.name.trim()) || c?.id || fallback;
+}
+function registryOutputCoreBound(c) {
+  if (!c?.id) return false;
+  const id = String(c.id || '');
+  const coreIds = new Set([
+    'main_fuel_output','main_fuel','throttle','main_starter','starter','starter_main',
+    'starter_enable','starter_enable_main','oil_pump','oil_pump_main','cooling_fan','cooling_fan_main',
+    'oil_scavenge_main','scavenge_pump','bleed_valve','bleed_valve_main','igniter','igniter_main',
+    'ab_igniter','igniter2','igniter2_main','main_fuel_shutoff','fuel_shutoff','ab_solenoid',
+    'air_starter','fuel_pump','fuel_pump2','ab_pump','prop_pitch','glow_plug','glow_plug_main'
+  ]);
+  if (coreIds.has(id)) return true;
+  return (hwCfg.channel_registry?.bindings || []).some(b =>
+    ['main_fuel_output','main_fuel_shutoff','main_starter'].includes(String(b?.key || '')) &&
+    String(b?.channel || '') === id);
+}
 function hasIgnitionOutput(hw = hwCfg) {
   const a = hw?.actuators || {};
   return !!(a.igniter?.enabled || a.igniter2?.enabled || a.glow_plug?.enabled);
@@ -2353,6 +2371,8 @@ function moveBlock(tab, idx, dir) {
 }
 
 function removeBlock(tab, idx) {
+  const name = hwCfg[seqKey(tab)]?.[idx] || 'this block';
+  if (!confirm(`Remove "${name}" from this sequence?\n\nThis cannot be undone after you save.`)) return;
   ensureDelaySlots(tab);
   ensureActionSlots(tab);
   ensureIgnitionTargetSlots(tab);
@@ -2443,8 +2463,8 @@ function getEnabledSensors() {
   if (s.fuel_press?.enabled)    list.push({key:'fuel_press',   label:'Fuel Pressure',    unit:'bar',  def:1.0,  step:0.1});
   if (s.batt_voltage?.enabled)  list.push({key:'batt_voltage', label:'Battery Voltage',  unit:'V',    def:10,   step:0.1});
   if (s.flame?.enabled)         list.push({key:'flame',        label:'Flame Detected',   unit:'',     def:1,    bool:true});
-  if (s.throttle_input?.enabled)list.push({key:'throttle_in',  label:'Throttle Input',   unit:'%',    def:0,    step:1});
-  if (s.idle_input?.enabled)    list.push({key:'idle_in',      label:'Idle Pot',         unit:'%',    def:0,    step:1});
+  if (s.throttle_input?.enabled)list.push({key:'throttle_in',  source:'operator_throttle', label:'Throttle Input', unit:'%', def:0, step:1});
+  if (s.idle_input?.enabled)    list.push({key:'idle_in',      source:'operator_idle',     label:'Idle Pot',       unit:'%', def:0, step:1});
   if (s.p1?.enabled)            list.push({key:'p1',           label:'P1 Pressure',      unit:'bar',  def:0,    step:0.1});
   if (s.p2?.enabled)            list.push({key:'p2',           label:'P2 Pressure',      unit:'bar',  def:0,    step:0.1});
   if (s.fuel_flow?.enabled)     list.push({key:'fuel_flow',    label:'Fuel Flow',        unit:'',     def:0,    step:1});
@@ -2469,6 +2489,14 @@ function getEnabledSensors() {
                                   list.push({key:'start_switch', label:'Start Switch',   unit:'',     def:1,    bool:true});
   if ((hw.controls?.stop_pin ?? -1) >= 0)
                                   list.push({key:'stop_switch',  label:'Stop Switch',    unit:'',     def:1,    bool:true});
+  (hw.channel_registry?.inputs || []).forEach((c, i) => {
+    if (!c || c.installed === false || (c.pin ?? -1) < 0) return;
+    if (registryInputCoreBound(c)) return;
+    const role = String(c.role || '');
+    const binary = Number(c.driver) === 0 || ['digital_switch','fault','estop','inhibit_start','sequence_gate','ab_arm','ab_fire','limp_mode','flame'].includes(role);
+    const unit = binary ? '' : role === 'speed' ? 'rpm' : role === 'pressure' ? 'bar' : role === 'temperature' ? 'deg C' : role === 'voltage' ? 'V' : role === 'flow' ? 'L/min' : role === 'operator' ? '%' : '';
+    list.push({key:c.id, source:c.id, label:registryLabel(c, `Input ${i+1}`), unit, def:binary ? 1 : 0, step:role === 'speed' ? 100 : 1, bool:binary});
+  });
   return list;
 }
 
@@ -2496,6 +2524,11 @@ function getEnabledActuators() {
   // AB outputs
   if (hasAB && a.ab_sol?.enabled)list.push({key:'ab_sol',         label:'AB Fuel Solenoid',          mode:'relay'});
   if (hasAB && a.ab_pump?.enabled)list.push({key:'ab_pump',       label:demandLabel(a.ab_pump, 'AB Fuel Pump %', 'AB Fuel Pump Relay'), mode: isOnOff(a.ab_pump) ? 'relay':'pct'});
+  (hwCfg.channel_registry?.outputs || []).forEach((c, i) => {
+    if (!c || c.installed === false || (c.pin ?? -1) < 0 || registryOutputCoreBound(c)) return;
+    const relay = Number(c.driver) === 4;
+    list.push({key:c.id, target:c.id, label:registryLabel(c, `Output ${i+1}`) + (relay ? '' : ' %'), mode:relay ? 'relay':'pct'});
+  });
   return list;
 }
 
@@ -2536,7 +2569,7 @@ function editCustomBlock(key, tab) {
   document.getElementById('cblk-type').value  = def.type  || 'action';
   document.getElementById('cblk-dur').value   = def.timeout_ms || def.duration_ms || 1000;
   document.getElementById('cblk-timeout-action').value = def.timeout_action || 'abort';
-  _buildCondSensorSelect(def.condition?.sensor || null);
+  _buildCondSensorSelect(def.condition?.source || def.condition?.sensor || null);
   if (def.condition) {
     document.getElementById('cblk-cond-op').value  = def.condition.op    || '<';
     document.getElementById('cblk-cond-val').value = def.condition.value ?? 100;
@@ -2555,7 +2588,7 @@ function _buildCondSensorSelect(selectedKey) {
   const sel = document.getElementById('cblk-cond-sensor');
   const sensors = getEnabledSensors();
   sel.innerHTML = sensors.length
-    ? sensors.map(s => `<option value="${s.key}" ${s.key===selectedKey?'selected':''}>${esc(s.label)}</option>`).join('')
+    ? sensors.map(s => `<option value="${s.key}" data-source="${esc(s.source || '')}" ${s.key===selectedKey || s.source===selectedKey?'selected':''}>${esc(s.label)}</option>`).join('')
     : '<option value="">No sensors enabled</option>';
   updateCustomCondUI();
 }
@@ -2631,7 +2664,7 @@ function _renderStepRows() {
       const act = acts.find(a => a.key === step.act);
       const mode = act?.mode ?? 'relay';
       const actOpts = acts.map(a =>
-        `<option value="${a.key}" ${a.key===step.act?'selected':''}>${a.label}</option>`
+        `<option value="${a.key}" data-target="${esc(a.target || '')}" ${a.key===step.act?'selected':''}>${a.label}</option>`
       ).join('');
       const valCtrl = mode === 'relay'
         ? `<select onchange="updateStepVal(${i},+this.value)" style="max-width:80px">
@@ -2663,7 +2696,7 @@ function addCustomStep(type) {
   } else {
     const acts = getEnabledActuators();
     if (!acts.length) { alert('No actuators enabled in hardware configuration.'); return; }
-    _cblkSteps.push({type:'set_act', act: acts[0].key, val: acts[0].mode === 'relay' ? 1 : 50});
+    _cblkSteps.push({type:'set_act', act: acts[0].key, target: acts[0].target || undefined, val: acts[0].mode === 'relay' ? 1 : 50});
   }
   _renderStepRows();
 }
@@ -2680,7 +2713,7 @@ function moveStep(i, dir) {
 function updateStepAct(i, key) {
   const acts = getEnabledActuators();
   const act  = acts.find(a => a.key === key);
-  _cblkSteps[i] = {type:'set_act', act: key, val: act?.mode === 'relay' ? 1 : 50};
+  _cblkSteps[i] = {type:'set_act', act: key, target: act?.target || undefined, val: act?.mode === 'relay' ? 1 : 50};
   _renderStepRows();
 }
 function updateStepVal(i, val) {
@@ -2757,6 +2790,8 @@ function confirmCustomBlock() {
       op:     document.getElementById('cblk-cond-op').value,
       value:  parseFloat(document.getElementById('cblk-cond-val').value) || 0,
     };
+    const selectedSensor = getEnabledSensors().find(s => s.key === sKey);
+    if (selectedSensor?.source) rawDef.condition.source = selectedSensor.source;
     rawDef.timeout_ms      = parseInt(document.getElementById('cblk-dur').value) || 10000;
     rawDef.timeout_action  = document.getElementById('cblk-timeout-action').value;
   } else if (type === 'wait') {
@@ -2833,7 +2868,7 @@ const RULE_SENSORS = [
   {v:15,l:'Torque',u:'',id:'torque',ok:()=>!!hwCfg.sensors?.torque?.enabled},
   {v:16,l:'Flame Detected',u:'0/1',id:'flame',ok:()=>!!hwCfg.sensors?.flame?.enabled},
   {v:17,l:'Throttle Input',u:'%',id:'operator_throttle',ok:()=>!!hwCfg.sensors?.throttle_input?.enabled},
-  {v:18,l:'Idle Input',u:'%',id:'idle_input',ok:()=>!!hwCfg.sensors?.idle_input?.enabled},
+  {v:18,l:'Idle Input',u:'%',id:'operator_idle',ok:()=>!!hwCfg.sensors?.idle_input?.enabled},
   {v:19,l:'AB Flame',u:'0/1',id:'ab_flame',ok:()=>!!(hwCfg.has_afterburner && hwCfg.ab_flame?.enabled)},
   {v:20,l:'Glow Current',u:'A',id:'glow_current',ok:()=>!!(hwCfg.actuators?.glow_plug?.enabled && hwCfg.actuators?.glow_plug?.has_current)},
   {v:21,l:'Igniter 1 Current',u:'A',id:'igniter_current',ok:()=>!!(hwCfg.actuators?.igniter?.enabled && hwCfg.actuators?.igniter?.has_current)},
@@ -2843,7 +2878,13 @@ const RULE_SENSORS = [
   {v:25,l:'Start Switch',u:'0/1',id:'start_switch',ok:()=>((hwCfg.controls?.start_pin ?? -1) >= 0)},
   {v:26,l:'Stop Switch',u:'0/1',id:'stop_switch',ok:()=>((hwCfg.controls?.stop_pin ?? -1) >= 0)}
 ];
-const RULE_OPS = [{v:0,l:'>'},{v:1,l:'<'},{v:2,l:'>='},{v:3,l:'<='},{v:4,l:'='}];
+const RULE_OPS = [
+  {v:0,l:'is higher than'},
+  {v:1,l:'is lower than'},
+  {v:2,l:'is equal or higher than'},
+  {v:3,l:'is equal or lower than'},
+  {v:4,l:'is equal to'}
+];
 const RULE_OUTPUTS = [
   {v:0,l:'Cooling Fan',id:'cooling_fan_main',ok:()=>!!hwCfg.actuators?.cool_fan?.enabled},
   {v:1,l:'Bleed Valve',id:'bleed_valve_main',ok:()=>!!hwCfg.actuators?.bleed_valve?.enabled},
@@ -2866,6 +2907,11 @@ const RULE_OUTPUTS = [
 ];
 const RULE_REGISTRY_INPUT_BASE = 80;
 const RULE_REGISTRY_OUTPUT_BASE = 64;
+const RULE_CORE_INPUT_IDS = new Set([
+  'n1_main','primary_n1','n2_main','primary_n2','tot_main','primary_egt',
+  'oil_pressure_main','operator_throttle','operator_idle','idle_input','idle_input_main',
+  'battery_voltage','batt_voltage','batt_voltage_main'
+]);
 const RULE_CORE_OUTPUT_IDS = new Set([
   'main_fuel_output','main_fuel','throttle',
   'main_starter','starter','starter_main',
@@ -2890,7 +2936,7 @@ function registryRuleUnit(c) {
   if (c.driver === 0 || c.driver === 3 || c.role === 'digital_switch' || c.role === 'fault' ||
       c.role === 'estop' || c.role === 'inhibit_start' || c.role === 'sequence_gate' ||
       c.role === 'ab_arm' || c.role === 'ab_fire' || c.role === 'limp_mode' || c.role === 'flame') return '0/1';
-  if (c.role === 'speed') return c.driver === 2 ? 'Hz' : 'RPM';
+  if (c.role === 'speed') return 'RPM';
   if (c.role === 'pressure') return 'bar';
   if (c.role === 'temperature') return 'deg C';
   if (c.role === 'voltage') return 'V';
@@ -2899,9 +2945,14 @@ function registryRuleUnit(c) {
   if (c.role === 'operator') return '%';
   return '';
 }
+function registryInputCoreBound(c) {
+  return RULE_CORE_INPUT_IDS.has(String(c?.id || ''));
+}
 function registryRuleSensors() {
   const inputs = hwCfg.channel_registry?.inputs || [];
-  return inputs.map((c, i) => ({
+  const visible = inputs.map((c, i) => ({c, i})).filter(({c}) =>
+    c?.installed !== false && (c?.pin ?? -1) >= 0 && !registryInputCoreBound(c));
+  return visible.map(({c, i}) => ({
     v: RULE_REGISTRY_INPUT_BASE + i,
     id: c.id,
     l: registryChannelLabel(c, `Input ${i + 1}`),
@@ -2935,10 +2986,11 @@ function ruleOption(item, selected, selectedId = '') {
   const available = item.ok();
   const isSelected = (selectedId && item.id === selectedId) || (!selectedId && item.v === selected);
   const idAttr = item.id ? ` data-id="${ruleEsc(item.id)}"` : '';
-  return `<option value="${item.v}"${idAttr}${isSelected ? ' selected' : ''}${available ? '' : ' disabled'}>${ruleEsc(item.l)}${available ? '' : ' (not configured)'}</option>`;
+  const hidden = !available && !isSelected ? ' hidden style="display:none"' : '';
+  return `<option value="${item.v}"${idAttr}${isSelected ? ' selected' : ''}${available ? '' : ' disabled'}${hidden}>${ruleEsc(item.l)}${available ? '' : ' (not configured)'}</option>`;
 }
-function missingRuleOption(id, selected) {
-  return `<option value="${selected}" data-id="${ruleEsc(id)}" selected disabled>Missing: ${ruleEsc(id)}</option>`;
+function missingRuleOption(id, selected, label = 'Missing') {
+  return `<option value="${selected}" data-id="${ruleEsc(id)}" selected disabled>${ruleEsc(label)}: ${ruleEsc(id)}</option>`;
 }
 function ruleUnit(index) { return ruleSensors().find(s => s.v === index)?.u || ''; }
 function ruleSensorScale(index) { return ruleUnit(index) === '%' ? 100 : 1; }
@@ -3021,7 +3073,7 @@ function updateRuleOutput(index) {
     input.min = '0';
     input.max = analog ? '100' : '1';
     input.step = analog ? '1' : '1';
-    if (label) label.textContent = which === 'on' ? 'TRUE' : 'FALSE/ELSE';
+    if (label) label.textContent = which === 'on' ? 'to' : 'otherwise';
     if (unit) unit.textContent = analog ? '%' : '0/1';
     if (input.value !== '') {
       input.value = analog ? Math.max(0, Math.min(100, Number(input.value)||0))
@@ -3040,24 +3092,26 @@ function buildRuleRow(rule, index) {
   let outputs = ruleOutputs().map(a => ruleOption(a, rule.actuator, targetId)).join('');
   if (sourceId && !ruleSensors().some(s => s.id === sourceId)) sensors += missingRuleOption(sourceId, rule.sensor);
   if (targetId && !ruleOutputs().some(a => a.id === targetId)) outputs += missingRuleOption(targetId, rule.actuator);
+  if (!sourceId && !ruleSensors().some(s => s.v === Number(rule.sensor))) sensors += missingRuleOption('sensor ' + rule.sensor, rule.sensor, 'Unavailable');
+  if (!targetId && !ruleOutputs().some(a => a.v === Number(rule.actuator))) outputs += missingRuleOption('output ' + rule.actuator, rule.actuator, 'Unavailable');
   const ops = RULE_OPS.map(o => `<option value="${o.v}"${o.v === rule.op ? ' selected' : ''}>${o.l}</option>`).join('');
   const modeMask = rule.mode_mask ?? 6;
   const hystDisabled = binary ? ' disabled' : '';
   return `<div class="rules-row">
     <input type="checkbox" id="rule-en-${index}" ${rule.enabled ? 'checked' : ''} onchange="markRulesEdited()">
     <input type="text" id="rule-name-${index}" maxlength="23" value="${ruleEsc(rule.name || '')}" placeholder="Name" oninput="markRulesEdited()" style="width:7rem">
-    <span class="rule-dim">IF</span><select id="rule-sensor-${index}" onchange="updateRuleThreshold(${index})">${sensors}</select>
+    <span class="rule-dim">When</span><select id="rule-sensor-${index}" onchange="updateRuleThreshold(${index})">${sensors}</select>
     <select id="rule-op-${index}" onchange="markRulesEdited()">${ops}</select>
     <input type="number" id="rule-thresh-${index}" value="${ruleDisplayThreshold(rule)}" ${binary ? 'min="0" max="1" step="1"' : (pctSensor ? 'min="0" max="100" step="1"' : 'step="any"')} oninput="markRulesEdited()" style="width:4.5rem;text-align:right">
     <span class="rule-dim" id="rule-unit-${index}">${ruleUnit(rule.sensor)}</span>
-    <span class="rule-dim">HYS</span><input type="number" id="rule-hyst-${index}" value="${ruleDisplayHysteresis(rule)}" min="0" ${pctSensor ? 'max="100"' : ''} step="${pctSensor ? '1' : 'any'}"${hystDisabled} oninput="markRulesEdited()" style="width:3.8rem;text-align:right">
+    <span class="rule-dim" title="Deadband before the rule returns false. Example: higher than 70 with deadband 5 turns off again below 65.">deadband</span><input type="number" id="rule-hyst-${index}" value="${ruleDisplayHysteresis(rule)}" min="0" ${pctSensor ? 'max="100"' : ''} step="${pctSensor ? '1' : 'any'}"${hystDisabled} oninput="markRulesEdited()" style="width:3.8rem;text-align:right">
     <span class="rule-dim" id="rule-hyst-unit-${index}">${ruleUnit(rule.sensor)}</span>
-    <span class="rule-dim">SET</span><select id="rule-act-${index}" onchange="updateRuleOutput(${index})">${outputs}</select>
-    <span class="rule-dim" id="rule-on-label-${index}">TRUE</span><input type="number" id="rule-on-${index}" value="${ruleDisplayOutput(rule.actuator, rule.on_value ?? 1)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" oninput="markRulesEdited()" style="width:3.2rem"><span class="rule-dim" id="rule-on-unit-${index}">${analogOut ? '%' : '0/1'}</span>
-    <span class="rule-dim" id="rule-off-label-${index}">FALSE/ELSE</span><input type="number" id="rule-off-${index}" value="${ruleDisplayOutput(rule.actuator, rule.off_value ?? 0)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" placeholder="no change" oninput="markRulesEdited()" style="width:4.2rem"><span class="rule-dim" id="rule-off-unit-${index}">${analogOut ? '%' : '0/1'}</span>
+    <span class="rule-dim">drive</span><select id="rule-act-${index}" onchange="updateRuleOutput(${index})">${outputs}</select>
+    <span class="rule-dim" id="rule-on-label-${index}">to</span><input type="number" id="rule-on-${index}" value="${ruleDisplayOutput(rule.actuator, rule.on_value ?? 1)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" oninput="markRulesEdited()" style="width:3.2rem"><span class="rule-dim" id="rule-on-unit-${index}">${analogOut ? '%' : '0/1'}</span>
+    <span class="rule-dim" id="rule-off-label-${index}" title="Value used after the condition clears past the deadband. Leave blank for no change.">otherwise</span><input type="number" id="rule-off-${index}" value="${ruleDisplayOutput(rule.actuator, rule.off_value ?? 0)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" placeholder="no change" oninput="markRulesEdited()" style="width:4.2rem"><span class="rule-dim" id="rule-off-unit-${index}">${analogOut ? '%' : '0/1'}</span>
     <label class="rule-dim" title="Rule is evaluated during startup"><input type="checkbox" id="rule-mode-startup-${index}" ${(modeMask & 2) ? 'checked' : ''} onchange="markRulesEdited()">START</label>
     <label class="rule-dim" title="Rule is evaluated while running"><input type="checkbox" id="rule-mode-running-${index}" ${(modeMask & 4) ? 'checked' : ''} onchange="markRulesEdited()">RUN</label>
-    <button class="blk-btn del" onclick="removeRule(${index})">x</button>
+    <button class="blk-btn del" title="Remove this control rule" onclick="removeRule(${index})">Remove</button>
   </div>`;
 }
 function renderRules() {
@@ -3130,6 +3184,8 @@ function addRulePreset(kind) {
 }
 function removeRule(index) {
   collectRules();
+  const name = cfg.rules?.[index]?.name || `rule ${index + 1}`;
+  if (!confirm(`Remove ${name}?\n\nThe rule will be deleted when you save.`)) return;
   cfg.rules.splice(index, 1);
   renderRules(); markRulesEdited();
 }

@@ -1053,6 +1053,23 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
   color: var(--dim);
   font-weight: 400;
 }
+.registry-add-search {
+  width: 100%;
+  margin: .8rem 0;
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border-light);
+  border-radius: 7px;
+  padding: .55rem .7rem;
+  font-family: var(--font-ui);
+  font-size: .9rem;
+  letter-spacing: 0;
+}
+.registry-add-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
 .requirements-summary {
   display: grid;
   gap: .35rem;

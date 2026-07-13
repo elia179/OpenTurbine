@@ -793,7 +793,11 @@ function refreshOilTempCalMode(sensor) {
   const oilTempRow = document.getElementById('oiltemp-cal-row');
   if (oilTempRow) oilTempRow.style.display =
     hwSensorEnabled(c.hardware, 'oil_temp', 'has_oil_temp') ? '' : 'none';
-  refreshOilTempCalMode(c.hardware?.sensors?.oil_temp);
+  const registryOil = (c.hardware?.channel_registry?.inputs || []).find(x => x?.id === 'oil_temperature');
+  const oilCalSensor = registryOil
+    ? { chip: Number(registryOil.temp_interface) === 4 ? 'ntc' : Number(registryOil.temp_interface) === 5 ? 'ds18b20' : 'analog', ntc_beta: registryOil.ntc_beta, ntc_r0: registryOil.ntc_r0, ntc_r_fixed: registryOil.ntc_r_fixed }
+    : c.hardware?.sensors?.oil_temp;
+  refreshOilTempCalMode(oilCalSensor);
   // Idle input — hidden when idle input is not fitted
   const idleCalRow = document.getElementById('idle-cal-row');
   if (idleCalRow) idleCalRow.style.display =
@@ -1182,6 +1186,18 @@ function fpSaveCal() {
     setText('fuelpress-bar-max', refBar.toFixed(1) + ' bar');
     document.getElementById('fp-save-status').textContent = 'Saved.';
   });
+  const fpScale = ((fpRawRef - fpRawZero) * 3300.0 / 4095.0) / refBar;
+  const fpRegistryPatch = registryCalibrationPatch('fuel_pressure', {
+    analog_zero_mv: fpRawZero * 3300.0 / 4095.0,
+    analog_mv_per_unit: fpScale
+  });
+  if (fpRegistryPatch) patchHardware(fpRegistryPatch, () => {
+    const registry = registryInputById('fuel_pressure');
+    if (registry) {
+      registry.analog_zero_mv = fpRawZero * 3300.0 / 4095.0;
+      registry.analog_mv_per_unit = fpScale;
+    }
+  });
 }
 
 function fpClearCal() {
@@ -1197,6 +1213,11 @@ function fpClearCal() {
     document.getElementById('fp-save-status').textContent = '';
     setText('cal-fuelpress-range', '0 – 4095 raw');
     setText('fuelpress-bar-max', '10 bar');
+  });
+  const registryPatch = registryCalibrationPatch('fuel_pressure', { analog_zero_mv: 0, analog_mv_per_unit: 3300.0 / 10.0 });
+  if (registryPatch) patchHardware(registryPatch, () => {
+    const registry = registryInputById('fuel_pressure');
+    if (registry) { registry.analog_zero_mv = 0; registry.analog_mv_per_unit = 330; }
   });
 }
 
@@ -1797,9 +1818,10 @@ function patchHardware(patch, onOk) {
 function loadNtcValues() {
   fetch('/api/hardware').then(r=>r.json()).then(hw => {
     const oilt = hw.sensors?.oil_temp || {};
-    const beta = oilt.ntc_beta ?? 3950;
-    const r0   = oilt.ntc_r0   ?? 10000;
-    const rf   = oilt.ntc_r_fixed ?? 10000;
+    const registry = (hw.channel_registry?.inputs || []).find(c => c?.id === 'oil_temperature' && Number(c.temp_interface) === 4);
+    const beta = registry?.ntc_beta ?? oilt.ntc_beta ?? 3950;
+    const r0   = registry?.ntc_r0 ?? oilt.ntc_r0 ?? 10000;
+    const rf   = registry?.ntc_r_fixed ?? oilt.ntc_r_fixed ?? 10000;
     const betaEl = document.getElementById('ntc-beta');
     const r0El   = document.getElementById('ntc-r0');
     const rfEl   = document.getElementById('ntc-rfixed');
@@ -1818,16 +1840,33 @@ function saveNtcCal() {
     alert('Enter valid NTC values: Beta 1000-10000, R0 100-1000000 ohm, pull-up R 100-1000000 ohm.');
     return;
   }
-  patchHardware({ sensors: { oil_temp: { ntc_beta: beta, ntc_r0: r0, ntc_r_fixed: rf, use_raw_poly:false } } }, () => {
+  const patch = { sensors: { oil_temp: { ntc_beta: beta, ntc_r0: r0, ntc_r_fixed: rf, use_raw_poly:false } } };
+  const registryPatch = registryCalibrationPatch('oil_temperature', { ntc_beta: beta, ntc_r0: r0, ntc_r_fixed: rf });
+  if (registryPatch && Number(registryInputById('oil_temperature')?.temp_interface) === 4) Object.assign(patch, registryPatch);
+  patchHardware(patch, () => {
     if (!cfg.hardware) cfg.hardware = {};
     if (!cfg.hardware.sensors) cfg.hardware.sensors = {};
     if (!cfg.hardware.sensors.oil_temp) cfg.hardware.sensors.oil_temp = {};
     cfg.hardware.sensors.oil_temp.ntc_beta = beta;
     cfg.hardware.sensors.oil_temp.ntc_r0 = r0;
     cfg.hardware.sensors.oil_temp.ntc_r_fixed = rf;
+    const registry = registryInputById('oil_temperature');
+    if (registry && Number(registry.temp_interface) === 4) {
+      registry.ntc_beta = beta; registry.ntc_r0 = r0; registry.ntc_r_fixed = rf;
+    }
     document.getElementById('ntc-status').textContent =
       'Saved: Beta=' + beta + '  R₀=' + r0 + ' Ω  R_fixed=' + rf + ' Ω';
   });
+}
+
+// Registry calibration updates use a dedicated PATCH envelope so the server
+// can change numeric calibration without allowing topology edits.
+function registryInputById(id) {
+  return (cfg.hardware?.channel_registry?.inputs || []).find(c => String(c?.id || '') === id) || null;
+}
+function registryCalibrationPatch(id, fields) {
+  const card = registryInputById(id);
+  return card ? { channel_registry_calibration: { id, ...fields } } : null;
 }
 
 let _oilTempKnownPts=[];
@@ -1862,6 +1901,28 @@ function oilTempAddPoint(){
 function clearOilTempKnown(){_oilTempKnownPts=[];renderOilTempKnownPoints();}
 function saveOilTempKnown(){
   if(_oilTempKnownPts.length<4)return;
+  const registry = registryInputById('oil_temperature');
+  if (registry && Number(registry.temp_interface || 0) === 0) {
+    // Registry analog temperature cards are linear mV/°C inputs. Fit the
+    // captured points as a least-squares line and persist that native model.
+    const n = _oilTempKnownPts.length;
+    const meanX = _oilTempKnownPts.reduce((s,p)=>s+p.raw,0) / n;
+    const meanY = _oilTempKnownPts.reduce((s,p)=>s+p.b,0) / n;
+    let xx = 0, xy = 0;
+    _oilTempKnownPts.forEach(p => { const x=p.raw-meanX, y=p.b-meanY; xx += x*x; xy += x*y; });
+    const slope = xx > 0 ? xy / xx : 0;
+    const intercept = meanY - slope * meanX;
+    if (!(slope > 0)) { alert('The captured temperature points must increase with ADC counts.'); return; }
+    const zeroMv = -intercept / slope * 3300.0 / 4095.0;
+    const mvPerUnit = (3300.0 / 4095.0) / slope;
+    if (zeroMv < 0 || zeroMv > 3300 || !(mvPerUnit > 0)) { alert('The fitted analog temperature calibration is outside the supported 0-3300 mV range.'); return; }
+    const registryPatch = registryCalibrationPatch('oil_temperature', { analog_zero_mv: zeroMv, analog_mv_per_unit: mvPerUnit });
+    if (registryPatch) patchHardware(registryPatch, () => {
+      registry.analog_zero_mv = zeroMv; registry.analog_mv_per_unit = mvPerUnit;
+      document.getElementById('oilt-known-status').textContent = 'Known-point linear calibration saved for the registry temperature card.';
+    });
+    return;
+  }
   const fit=computeOilCubicFit(_oilTempKnownPts);
   if(!fit){alert('The points could not be fitted. Use four different ADC readings spread across the temperature range.');return;}
   const rawValues=_oilTempKnownPts.map(p=>p.raw);
@@ -1895,11 +1956,16 @@ function captureBattVolt() {
 }
 function saveBattVoltDivider() {
   if (_bvComputedDivider === null) return;
-  patchHardware({ sensors: { batt_voltage: { divider: _bvComputedDivider } } }, () => {
+  const patch = { sensors: { batt_voltage: { divider: _bvComputedDivider } } };
+  const registryPatch = registryCalibrationPatch('battery_voltage', { analog_divider: _bvComputedDivider });
+  if (registryPatch) Object.assign(patch, registryPatch);
+  patchHardware(patch, () => {
     if (!cfg.hardware) cfg.hardware = {};
     if (!cfg.hardware.sensors) cfg.hardware.sensors = {};
     if (!cfg.hardware.sensors.batt_voltage) cfg.hardware.sensors.batt_voltage = {};
     cfg.hardware.sensors.batt_voltage.divider = _bvComputedDivider;
+    const registry = registryInputById('battery_voltage');
+    if (registry) registry.analog_divider = _bvComputedDivider;
     document.getElementById('bv-status').textContent =
       'Saved divider = ' + _bvComputedDivider;
     document.getElementById('btn-bv-save').disabled = true;
@@ -1930,12 +1996,23 @@ function saveTorqueScale() {
     const zeroV = (_torqueZeroRaw / 4095.0) * 3.3;
     offsetNm = zeroV * scaleNmPerV;
   }
-  patchHardware({ sensors: { torque: { scale: scaleNmPerV, offset: offsetNm } } }, () => {
+  const patch = { sensors: { torque: { scale: scaleNmPerV, offset: offsetNm } } };
+  const registryPatch = registryCalibrationPatch('torque_main', {
+    analog_zero_mv: offsetNm * 1000.0 / scaleNmPerV,
+    analog_mv_per_unit: 1000.0 / scaleNmPerV
+  });
+  if (registryPatch) Object.assign(patch, registryPatch);
+  patchHardware(patch, () => {
     if (!cfg.hardware) cfg.hardware = {};
     if (!cfg.hardware.sensors) cfg.hardware.sensors = {};
     if (!cfg.hardware.sensors.torque) cfg.hardware.sensors.torque = {};
     cfg.hardware.sensors.torque.scale = scaleNmPerV;
     cfg.hardware.sensors.torque.offset = offsetNm;
+    const registry = registryInputById('torque_main');
+    if (registry) {
+      registry.analog_zero_mv = offsetNm * 1000.0 / scaleNmPerV;
+      registry.analog_mv_per_unit = 1000.0 / scaleNmPerV;
+    }
     const msg = 'Saved: scale=' + scaleNmPerV.toFixed(2) + ' Nm/V' +
       (_torqueZeroRaw !== null ? '  zero offset=' + offsetNm.toFixed(2) + ' Nm' : '');
     document.getElementById('torque-status').textContent = msg;
@@ -2083,6 +2160,15 @@ function ffSave() {
     document.getElementById('ff-cal-status').textContent =
       '✓ Saved: 0 @ ADC ' + _ffState.zeroRaw + ',  ' + _ffState.refVal + ' @ ADC ' + _ffState.refRaw;
   });
+  const ffScale = ((_ffState.refRaw - _ffState.zeroRaw) * 3300.0 / 4095.0) / _ffState.refVal;
+  const registryPatch = registryCalibrationPatch('fuel_flow', {
+    analog_zero_mv: _ffState.zeroRaw * 3300.0 / 4095.0,
+    analog_mv_per_unit: ffScale
+  });
+  if (registryPatch) patchHardware(registryPatch, () => {
+    const registry = registryInputById('fuel_flow');
+    if (registry) { registry.analog_zero_mv = _ffState.zeroRaw * 3300.0 / 4095.0; registry.analog_mv_per_unit = ffScale; }
+  });
 }
 function ffClear() {
   patchConfig({ calibration: { fuel_flow_raw_min:0, fuel_flow_raw_max:4095, fuel_flow_val_max:10 } },
@@ -2094,10 +2180,14 @@ function ffClear() {
     document.getElementById('ff-bar-max-label').textContent = '10';
     document.getElementById('ff-cal-status').textContent = 'Reset to defaults';
   });
+  const registryPatch = registryCalibrationPatch('fuel_flow', { analog_zero_mv: 0, analog_mv_per_unit: 330 });
+  if (registryPatch) patchHardware(registryPatch, () => {
+    const registry = registryInputById('fuel_flow');
+    if (registry) { registry.analog_zero_mv = 0; registry.analog_mv_per_unit = 330; }
+  });
 }
 
 // ── Current sensor calibration (glow + igniter) ───────────────
-// Saves mVperA and zeroV to the hardware section of ecu_config.json (no reboot needed via PATCH).
 const _curState = {};
 function curCaptureZero(which) {
   const rawKeys = { glow: 'glow_current_raw', ign: 'igniter_current_raw', ign2: 'igniter2_current_raw', oilpump: 'oil_pump_current_raw' };

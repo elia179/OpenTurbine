@@ -41,7 +41,7 @@ resistor**, and the two boards **must share ground**.
 
 | Signal       | DUT S3 | Tester | Type      | Notes |
 |--------------|-------:|-------:|-----------|-------|
-| THROTTLE_OUT | 16     | 18     | servo PWM | 1000–2000 µs @ 50 Hz |
+| THROTTLE_OUT | 40     | 17     | servo PWM | 1000–2000 µs @ 50 Hz |
 | STARTER_OUT  | 17     | 19     | servo PWM | only if OT_HAS_STARTER |
 | OILPUMP_OUT  | 11     | 21     | LEDC PWM  | ~10 kHz, duty ≈ oil % |
 | FUEL_SOL     | 12     | 22     | digital   | |
@@ -57,6 +57,12 @@ swept voltage. The tester avoids input-only pins (34–39, and G36/G39 aren't
 broken out on this board), GPIO 16/17 (PSRAM on WROVER modules) and the strapping
 pins (0/2/5/12/15) so the DUT holding a line at power-on can't stop the tester
 from flashing.
+
+**Programming precaution:** the START jumper is active-low. During a tester
+reset or flash, its GPIO can briefly transition before OTBench configures it
+as released (Hi-Z). Keep the DUT in bench-safe conditions and issue STOP after
+programming; for a real installation, disconnect START or add a physical
+pull-up while flashing the tester.
 
 ---
 
@@ -92,7 +98,7 @@ python run.py --port COM6 doctor            # connectivity both sides
 python run.py --port COM6 verify-wiring     # DUT config vs pin map
 python run.py --port COM6 monitor --secs 20 # live telemetry + pin reads
 python run.py --port COM6 run               # basic suite
-python run.py --port COM6 run --advanced -v # + start-switch & bench sequence
+python run.py --port COM6 run --advanced -v # + sequence, N2 and throttle-ESC when fitted
 python run.py --port COM6 run --json out.json
 ```
 
@@ -115,8 +121,9 @@ Set `OTBENCH_PORT=COM6` to skip `--port`.
   voltage, flame threshold, STOP switch → assert DUT telemetry matches.
 - **Output paths:** fire the STANDBY actuator self-tests (IGN_TEST, OIL_PRIME,
   FUEL_SOL_TEST, STARTER_EN_TEST) → assert the tester measures the pin drive.
-- **Advanced:** START switch, and a bench-mode timed startup that confirms the
-  oil pump and igniter actually fire on their sequence pins.
+- **Advanced:** START switch, a bench-mode timed startup that confirms the oil
+  pump and igniter actually fire on their sequence pins, plus N2 and 50 Hz
+  throttle-ESC checks when the optional bench wiring/profile is fitted.
 
 ## 6. Serial protocol (PC ↔ tester)
 

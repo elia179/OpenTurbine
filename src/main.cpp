@@ -2612,8 +2612,8 @@ void setup() {
     // Re-init stop/start GPIO with runtime pins from ecu_config.json.
     {
         auto& hcfg = HardwareConfig::instance();
-        pinMode(hcfg.stopPin,  hcfg.stopPullup  ? INPUT_PULLUP : INPUT);
-        pinMode(hcfg.startPin, hcfg.startPullup ? INPUT_PULLUP : INPUT);
+        pinMode(hcfg.stopPin,  hcfg.stopPullup  ? INPUT_PULLUP : (hcfg.stopPulldown  ? INPUT_PULLDOWN : INPUT));
+        pinMode(hcfg.startPin, hcfg.startPullup ? INPUT_PULLUP : (hcfg.startPulldown ? INPUT_PULLDOWN : INPUT));
     }
 
     Config::load();

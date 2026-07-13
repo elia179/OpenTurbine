@@ -105,6 +105,31 @@ def t_n1_rpm(ctx, c):
     c.expect(near, "n1 within tolerance of commanded rpm (allowing PCNT quantization)")
 
 
+def t_n2_rpm(ctx, c):
+    """Exercise the optional second-shaft PCNT path when the bench profile fits it."""
+    hw = ctx.dut.hardware()
+    n2 = hw.get("sensors", {}).get("n2_rpm", {})
+    pm = ctx.pinmap
+    if not (hw.get("has_two_shaft") and n2.get("enabled")):
+        raise SkipTest("N2 is not enabled on the DUT")
+    if n2.get("pin") != pm.sig("N2")["dut_gpio"]:
+        raise SkipTest("N2 is configured on GPIO %s, bench wire is GPIO %d"
+                       % (n2.get("pin"), pm.sig("N2")["dut_gpio"]))
+
+    samples = []
+    for rpm in (3000, 7000):
+        ctx.tester.set("N2", pm.rpm_to_hz("N2", rpm))
+        time.sleep(0.7)
+        got = ctx.dut.data().get("n2", 0)
+        samples.append((rpm, got))
+        c.info("N2 %d rpm -> telemetry n2=%s" % (rpm, got))
+    ctx.tester.set("N2", 0)
+    c.expect(samples[0][1] > 0 and samples[0][1] < samples[1][1],
+             "n2 telemetry rises with stimulus")
+    c.expect(all(abs(got - rpm) <= max(650, 0.10 * rpm) for rpm, got in samples),
+             "n2 within tolerance of commanded rpm (allowing PCNT quantization)")
+
+
 def t_throttle_input(ctx, c):
     d0 = ctx.dut.data()
     t = d0.get("throttle_input_type")
@@ -172,6 +197,38 @@ def t_fuelsol_output(ctx, c):
 
 def t_starter_en_output(ctx, c):
     _tool_output(ctx, c, "STARTER_EN_TEST", "STARTER_EN", "starter_enabled")
+
+
+def t_throttle_output(ctx, c):
+    """Verify the registry-mirrored throttle/ESC servo output when it is benched."""
+    hw = ctx.dut.hardware()
+    pm = ctx.pinmap
+    expected_pin = pm.sig("THROTTLE_OUT")["dut_gpio"]
+    throttle = hw.get("actuators", {}).get("throttle", {})
+    main_fuel = next((x for x in hw.get("channel_registry", {}).get("outputs", [])
+                      if x.get("id") == "main_fuel"), None)
+    # The registry channel is the runtime authority when fitted, so require
+    # both the legacy mirror and the registry to identify this exact bench pin.
+    if not (throttle.get("enabled") and throttle.get("pin") == expected_pin and
+            main_fuel and main_fuel.get("pin") == expected_pin and
+            main_fuel.get("driver") == 6):
+        raise SkipTest("throttle ESC is not configured as a servo on bench GPIO %d"
+                       % expected_pin)
+
+    ctx.tester.reset()
+    ctx.dut.ensure_mode_standby()
+    code, resp = ctx.dut.command("SET_THROTTLE_PCT", fParam=50.0)
+    if code != 200:
+        raise SkipTest("SET_THROTTLE_PCT rejected (HTTP %s): %s" %
+                       (code, resp.get("error")))
+    time.sleep(0.25)
+    us, hz, duty, _level = ctx.tester.get_pwm("THROTTLE_OUT")
+    ctx.tester.reset()
+    ctx.dut.ensure_mode_standby()
+    c.info("50%% throttle -> %sus %.1fHz duty=%.3f" % (us, hz, duty))
+    c.expect(1400 <= us <= 1600, "throttle output has a centred 1.5 ms pulse")
+    c.expect(45.0 <= hz <= 55.0 and 0.06 <= duty <= 0.09,
+             "throttle output has a 50 Hz servo frame")
 
 
 # ── advanced (may move the engine state machine) ─────────────
@@ -262,6 +319,8 @@ BASIC = [
 ADVANCED = [
     t_start_switch,
     t_sequence_bench,
+    t_n2_rpm,
+    t_throttle_output,
 ]
 
 

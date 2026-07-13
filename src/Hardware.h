@@ -427,6 +427,68 @@ namespace Hardware {
         return span > 0.0f ? constrain((raw - c.minValue) / span, 0.0f, 1.0f) : raw;
     }
 
+    inline float registryAnalogPhysicalInput(float rawCounts, const ChannelRegistry::Channel& c) {
+        if (!strcmp(c.role, "generic") || !strcmp(c.role, "operator") || !strcmp(c.role, "flame"))
+            return registryMappedInput(rawCounts, c);
+        float mv = constrain(rawCounts, 0.0f, 4095.0f) * (3300.0f / 4095.0f);
+        if (!strcmp(c.role, "voltage")) {
+            float divider = c.analogDivider >= 1.0f ? c.analogDivider : 1.0f;
+            return (mv / 1000.0f) * divider;
+        }
+        float scale = c.analogMvPerUnit > 0.0f ? c.analogMvPerUnit : 1000.0f;
+        return (mv - c.analogZeroMv) / scale;
+    }
+
+    inline bool registryInputBoundTo(const ChannelRegistry::Channel& c, const char* key) {
+        auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.bindingCount; ++i)
+            if (!strcmp(reg.bindings[i].key, key) && !strcmp(reg.bindings[i].channelId, c.id)) return true;
+        return false;
+    }
+
+    inline uint8_t registryCoreInputKind(const ChannelRegistry::Channel& c) {
+        if (c.driver == ChannelRegistry::Pulse &&
+            (!strcmp(c.id, "n1_main") || !strcmp(c.id, "primary_n1") || registryInputBoundTo(c, "primary_n1"))) return 1;
+        if (c.driver == ChannelRegistry::Pulse &&
+            (!strcmp(c.id, "n2_main") || !strcmp(c.id, "primary_n2") || registryInputBoundTo(c, "primary_n2"))) return 2;
+        if (!strcmp(c.id, "fuel_flow") || !strcmp(c.id, "fuel_flow_main")) return 3;
+        return 0;
+    }
+
+    // A registry card can replace a legacy singleton sensor with a calibrated
+    // analog transmitter.  Keep the lookup deliberately exact: a second,
+    // unrelated pressure or temperature card must never silently become a
+    // primary engine input merely because it shares the same semantic role.
+    inline int8_t registryAnalogInputIndex(const char* id, const char* binding = nullptr) {
+        auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.inputCount; ++i) {
+            const auto& c = reg.inputs[i];
+            if (!c.installed || c.pin < 0 || c.driver != ChannelRegistry::Analog || c.temperatureInterface != 0) continue;
+            if ((id && !strcmp(c.id, id)) || (binding && registryInputBoundTo(c, binding)))
+                return (int8_t)i;
+        }
+        return -1;
+    }
+
+    // Non-ADC temperature interfaces are read by the dedicated temperature
+    // drivers. Keep their registry cards live by mirroring the resulting °C
+    // reading back into the same per-card telemetry path.
+    inline int8_t registrySpecialTemperatureIndex(const char* id) {
+        auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.inputCount; ++i) {
+            const auto& c = reg.inputs[i];
+            if (c.installed && !strcmp(c.id, id) && !strcmp(c.role, "temperature") &&
+                c.temperatureInterface != 0) return (int8_t)i;
+        }
+        return -1;
+    }
+
+    inline void mirrorCoreRegistryInput(uint8_t i, uint8_t kind, EngineData& ed) {
+        if (kind == 1) { ed.registryInputValue[i] = ed.n1Rpm; ed.registryInputHealthy[i] = ed.n1Healthy; }
+        else if (kind == 2) { ed.registryInputValue[i] = ed.n2Rpm; ed.registryInputHealthy[i] = ed.n2Healthy; }
+        else if (kind == 3) { ed.registryInputValue[i] = ed.fuelFlow; ed.registryInputHealthy[i] = ed.fuelFlowHealthy; }
+    }
+
     static void IRAM_ATTR registryPulseIsr(void* arg) {
         uint8_t idx = (uint8_t)(uintptr_t)arg;
         g_registryPulseCounts[idx] = g_registryPulseCounts[idx] + 1;
@@ -452,6 +514,16 @@ namespace Hardware {
         for (uint8_t i = 0; i < reg.inputCount; ++i) {
             const auto& c = reg.inputs[i];
             ed.registryInputValue[i] = 0.0f;
+            if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0) {
+                // Thermocouple, NTC and OneWire inputs are sampled by their
+                // dedicated drivers in updateSensors(), not analogRead().
+                ed.registryInputHealthy[i] = false;
+                continue;
+            }
+            if (registryCoreInputKind(c)) {
+                ed.registryInputHealthy[i] = false;
+                continue;
+            }
             ed.registryInputHealthy[i] = c.installed && c.pin >= 0 &&
                 (c.driver == ChannelRegistry::Digital || c.driver == ChannelRegistry::Analog ||
                  c.driver == ChannelRegistry::Pulse || c.driver == ChannelRegistry::RcPwm);
@@ -485,7 +557,19 @@ namespace Hardware {
             g_registryPulseCounts[i] = 0;
             interrupts();
             float hz = (float)count * 1000.0f / (float)dt;
-            ed.registryInputValue[i] = registryMappedInput(hz, c);
+            float value = hz;
+            if (!strcmp(c.role, "speed")) {
+                float ppr = c.pulsesPerUnit > 0.0f ? c.pulsesPerUnit : 1.0f;
+                value = hz * 60.0f / ppr;
+            } else if (!strcmp(c.role, "flow")) {
+                float ppl = c.pulsesPerUnit > 0.0f ? c.pulsesPerUnit : 1.0f;
+                value = hz * 60.0f / ppl;
+            }
+            if (!strcmp(c.role, "speed") || !strcmp(c.role, "flow")) {
+                ed.registryInputValue[i] = value;
+            } else {
+                ed.registryInputValue[i] = registryMappedInput(value, c);
+            }
             ed.registryInputHealthy[i] = true;
         }
     }
@@ -525,7 +609,16 @@ namespace Hardware {
         bool samplePulse = pulseDt >= 100UL;
         for (uint8_t i = 0; i < reg.inputCount; ++i) {
             const auto& c = reg.inputs[i];
+            uint8_t coreKind = registryCoreInputKind(c);
+            if (coreKind) {
+                mirrorCoreRegistryInput(i, coreKind, ed);
+                continue;
+            }
             if (!c.installed || c.pin < 0) {
+                ed.registryInputHealthy[i] = false;
+                continue;
+            }
+            if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0) {
                 ed.registryInputHealthy[i] = false;
                 continue;
             }
@@ -535,7 +628,7 @@ namespace Hardware {
                 ed.registryInputHealthy[i] = true;
             } else if (c.driver == ChannelRegistry::Analog) {
                 int raw = analogRead(c.pin);
-                ed.registryInputValue[i] = registryMappedInput((float)raw, c);
+                ed.registryInputValue[i] = registryAnalogPhysicalInput((float)raw, c);
                 ed.registryInputHealthy[i] = true;
             } else if (c.driver == ChannelRegistry::Pulse) {
                 updateRegistryPulseInput(i, c, ed, samplePulse, pulseDt);
@@ -565,7 +658,9 @@ namespace Hardware {
             float maxDuty = constrain(c.maxValue, 0.0f, 1.0f);
             if (maxDuty < minDuty) maxDuty = minDuty;
             float dutyDemand = minDuty + (maxDuty - minDuty) * driveDemand;
-            uint32_t duty = (uint32_t)(dutyDemand * 1023.0f + 0.5f);
+            const uint8_t bits = constrain(c.pwmResolution, 8, 14);
+            const uint32_t dutyMax = (1UL << bits) - 1UL;
+            uint32_t duty = (uint32_t)(dutyDemand * dutyMax + 0.5f);
             ledcWrite(c.pin, duty);
         } else if (c.driver == ChannelRegistry::Servo) {
             float minUs = (c.minValue >= 500.0f && c.minValue <= 2500.0f) ? c.minValue : 1000.0f;
@@ -587,7 +682,9 @@ namespace Hardware {
             if (c.driver == ChannelRegistry::Relay) {
                 pinMode(c.pin, OUTPUT);
             } else if (c.driver == ChannelRegistry::Pwm) {
-                ledcAttach(c.pin, 1000, 10);
+                const uint32_t freq = c.pwmTimingConfigured ? constrain(c.pwmFrequency, 1U, 100000U) : 1000U;
+                const uint8_t bits = c.pwmTimingConfigured ? constrain(c.pwmResolution, 8, 14) : 10;
+                ledcAttach(c.pin, freq, bits);
             } else if (c.driver == ChannelRegistry::Servo) {
                 ledcAttach(c.pin, 50, 14);
             }
@@ -870,10 +967,17 @@ namespace Hardware {
     // ── Sensor init ───────────────────────────────────────────
     inline void initSensors() {
         auto& hw = HardwareConfig::instance();
-        if (hw.hasN1Rpm)   g_sensorN1Rpm.begin(hw.n1RpmPin, hw.n1RpmPpr);
-        if (hw.hasN2Rpm)   g_sensorN2Rpm.begin(hw.n2RpmPin, hw.n2RpmPpr);
+        const bool n1RegistryAnalog = registryAnalogInputIndex("n1_main", "primary_n1") >= 0 ||
+                                      registryAnalogInputIndex("primary_n1") >= 0;
+        const bool n2RegistryAnalog = registryAnalogInputIndex("n2_main", "primary_n2") >= 0 ||
+                                      registryAnalogInputIndex("primary_n2") >= 0;
+        const bool totRegistryAnalog = registryAnalogInputIndex("tot_main") >= 0;
+        const bool titRegistryAnalog = registryAnalogInputIndex("tit_main") >= 0;
+        const bool oilTempRegistryAnalog = registryAnalogInputIndex("oil_temperature") >= 0;
+        if (hw.hasN1Rpm && !n1RegistryAnalog) g_sensorN1Rpm.begin(hw.n1RpmPin, hw.n1RpmPpr);
+        if (hw.hasN2Rpm && !n2RegistryAnalog) g_sensorN2Rpm.begin(hw.n2RpmPin, hw.n2RpmPpr);
         _accelLastMs = 0; _accelPrevN1 = 0.0f; _accelPrevN2 = 0.0f;   // clean RPM-accel start
-        if (hw.hasTot) {
+        if (hw.hasTot && !totRegistryAnalog) {
             if (strncmp(hw.totChip, "max31856", 8) == 0) {
                 g_sensorTot31856 = MAX31856TempSensor(hw.totClk, hw.totCs, hw.totMiso, hw.totMosi, hw.totTcType, "TOT_31856");
                 g_sensorTot31856.begin(); g_pSensorTot = &g_sensorTot31856;
@@ -885,7 +989,7 @@ namespace Hardware {
                 g_pSensorTot = &g_sensorTot;
             }
         }
-        if (hw.hasTit) {
+        if (hw.hasTit && !titRegistryAnalog) {
             if (strncmp(hw.titChip, "max31856", 8) == 0) {
                 g_sensorTit31856 = MAX31856TempSensor(hw.titClk, hw.titCs, hw.titMiso, hw.titMosi, hw.titTcType, "TIT_31856");
                 g_sensorTit31856.begin(); g_pSensorTit = &g_sensorTit31856;
@@ -897,7 +1001,7 @@ namespace Hardware {
                 g_pSensorTit = &g_sensorTit;
             }
         }
-        if (hw.hasOilTemp && hw.oilTempPin >= 0) {
+        if (hw.hasOilTemp && !oilTempRegistryAnalog && hw.oilTempPin >= 0) {
             if (strncmp(hw.oilTempChip, "max31856", 8) == 0) {
                 g_sensorOilTemp856 = MAX31856TempSensor(hw.oilTempPin, hw.oilTempCs, hw.oilTempMiso,
                                                         hw.oilTempMosi, hw.oilTempTcType, "OIL_TEMP_856");
@@ -1005,15 +1109,39 @@ namespace Hardware {
         auto& hw = HardwareConfig::instance();
         auto& ed = EngineData::instance();
         updateRegistryInputs();
+        const int8_t n1Analog = registryAnalogInputIndex("n1_main", "primary_n1") >= 0
+            ? registryAnalogInputIndex("n1_main", "primary_n1") : registryAnalogInputIndex("primary_n1");
+        const int8_t n2Analog = registryAnalogInputIndex("n2_main", "primary_n2") >= 0
+            ? registryAnalogInputIndex("n2_main", "primary_n2") : registryAnalogInputIndex("primary_n2");
+        const int8_t totAnalog = registryAnalogInputIndex("tot_main");
+        const int8_t titAnalog = registryAnalogInputIndex("tit_main");
+        const int8_t oilPressAnalog = registryAnalogInputIndex("oil_pressure_main");
+        const int8_t oilTempAnalog = registryAnalogInputIndex("oil_temperature");
+        const int8_t fuelPressAnalog = registryAnalogInputIndex("fuel_pressure");
+        const int8_t flameAnalog = registryAnalogInputIndex("flame_main");
+        const int8_t fuelFlowAnalog = registryAnalogInputIndex("fuel_flow");
+        const int8_t totSpecial = registrySpecialTemperatureIndex("tot_main");
+        const int8_t titSpecial = registrySpecialTemperatureIndex("tit_main");
+        const int8_t oilTempSpecial = registrySpecialTemperatureIndex("oil_temperature");
         if (hw.hasN1Rpm) {
-            g_sensorN1Rpm.update();
-            ed.n1Rpm     = g_sensorN1Rpm.getValue();
-            ed.n1Healthy = g_sensorN1Rpm.isHealthy();
+            if (n1Analog >= 0) {
+                ed.n1Rpm = ed.registryInputValue[n1Analog];
+                ed.n1Healthy = ed.registryInputHealthy[n1Analog];
+            } else {
+                g_sensorN1Rpm.update();
+                ed.n1Rpm     = g_sensorN1Rpm.getValue();
+                ed.n1Healthy = g_sensorN1Rpm.isHealthy();
+            }
         }
         if (hw.hasN2Rpm) {
-            g_sensorN2Rpm.update();
-            ed.n2Rpm     = g_sensorN2Rpm.getValue();
-            ed.n2Healthy = g_sensorN2Rpm.isHealthy();
+            if (n2Analog >= 0) {
+                ed.n2Rpm = ed.registryInputValue[n2Analog];
+                ed.n2Healthy = ed.registryInputHealthy[n2Analog];
+            } else {
+                g_sensorN2Rpm.update();
+                ed.n2Rpm     = g_sensorN2Rpm.getValue();
+                ed.n2Healthy = g_sensorN2Rpm.isHealthy();
+            }
         }
         // Filtered RPM acceleration (RPM/s) — one trustworthy source for the
         // predictive RPM limiter and advanced dynamic-idle. Follows the RPM read
@@ -1038,23 +1166,46 @@ namespace Hardware {
             _accelPrevN2 = ed.n2Rpm;
             _accelLastMs = anow;
         }
-        if (hw.hasTot && g_pSensorTot) {
+        if (totAnalog >= 0) {
+            ed.tot = ed.registryInputValue[totAnalog];
+            ed.totHealthy = ed.registryInputHealthy[totAnalog];
+        } else if (hw.hasTot && g_pSensorTot) {
             g_pSensorTot->update();
             ed.tot        = g_pSensorTot->getValue();
             ed.totHealthy = g_pSensorTot->isHealthy();
         }
-        if (hw.hasTit && g_pSensorTit) {
+        if (totSpecial >= 0) {
+            ed.registryInputValue[totSpecial] = ed.tot;
+            ed.registryInputHealthy[totSpecial] = ed.totHealthy;
+        }
+        if (titAnalog >= 0) {
+            ed.tit = ed.registryInputValue[titAnalog];
+            ed.titHealthy = ed.registryInputHealthy[titAnalog];
+        } else if (hw.hasTit && g_pSensorTit) {
             g_pSensorTit->update();
             ed.tit        = g_pSensorTit->getValue();
             ed.titHealthy = g_pSensorTit->isHealthy();
         }
-        if (hw.hasOilPress) {
+        if (titSpecial >= 0) {
+            ed.registryInputValue[titSpecial] = ed.tit;
+            ed.registryInputHealthy[titSpecial] = ed.titHealthy;
+        }
+        if (oilPressAnalog >= 0) {
+            ed.oilPressure = ed.registryInputValue[oilPressAnalog];
+            ed.oilPressureRaw = analogRead(HardwareConfig::channelRegistry.inputs[oilPressAnalog].pin);
+            ed.oilHealthy = ed.registryInputHealthy[oilPressAnalog];
+        } else if (hw.hasOilPress) {
             g_sensorOilPress.update();
             ed.oilPressure    = g_sensorOilPress.getValue();
             ed.oilPressureRaw = g_sensorOilPress.rawCounts();
             ed.oilHealthy     = g_sensorOilPress.isHealthy();
         }
-        if (hw.hasFlame) {
+        if (flameAnalog >= 0) {
+            const auto& c = HardwareConfig::channelRegistry.inputs[flameAnalog];
+            ed.flameSensorRaw = analogRead(c.pin);
+            ed.flameDetected = ed.flameSensorRaw > Config::flameThreshold;
+            ed.flameHealthy = ed.registryInputHealthy[flameAnalog];
+        } else if (hw.hasFlame) {
             g_sensorFlame.update();
             ed.flameSensorRaw = g_sensorFlame.rawCounts();
             ed.flameDetected  = g_sensorFlame.getValue() > 0.5f;
@@ -1090,12 +1241,21 @@ namespace Hardware {
             ed.abArmSwitchOn = pressed;
         }
         // ── New sensors ──────────────────────────────────────────
-        if (hw.hasOilTemp && g_pSensorOilTemp) {
+        if (oilTempAnalog >= 0) {
+            ed.oilTemp = ed.registryInputValue[oilTempAnalog];
+            ed.oilTempRaw = analogRead(HardwareConfig::channelRegistry.inputs[oilTempAnalog].pin);
+            ed.oilTempHealthy = ed.registryInputHealthy[oilTempAnalog];
+            if (ed.oilTempHealthy && ed.oilTemp > ed.maxOilTemp) ed.maxOilTemp = ed.oilTemp;
+        } else if (hw.hasOilTemp && g_pSensorOilTemp) {
             g_pSensorOilTemp->update();
             ed.oilTemp        = g_pSensorOilTemp->getValue();
             ed.oilTempRaw     = (strcmp(hw.oilTempChip, "ntc") == 0) ? g_sensorOilTempNtc.rawCounts() : 0;
             ed.oilTempHealthy = g_pSensorOilTemp->isHealthy();
             if (ed.oilTempHealthy && ed.oilTemp > ed.maxOilTemp) ed.maxOilTemp = ed.oilTemp;
+        }
+        if (oilTempSpecial >= 0) {
+            ed.registryInputValue[oilTempSpecial] = ed.oilTemp;
+            ed.registryInputHealthy[oilTempSpecial] = ed.oilTempHealthy;
         }
         if (hw.hasBattVoltage) {
             g_sensorBattVolt.update();
@@ -1123,7 +1283,10 @@ namespace Hardware {
                 ed.turboPower = 0.0f;
             }
         }
-        if (hw.hasFuelFlow) {
+        if (fuelFlowAnalog >= 0) {
+            ed.fuelFlow = ed.registryInputValue[fuelFlowAnalog];
+            ed.fuelFlowHealthy = ed.registryInputHealthy[fuelFlowAnalog];
+        } else if (hw.hasFuelFlow) {
             if (hw.fuelFlowType == 1) {
                 g_sensorFuelFlowPulse.update();
                 // RPM = pulses/min; divide by pulsesPerLitre → litres/min
@@ -1146,7 +1309,12 @@ namespace Hardware {
             ed.p2 = g_sensorP2.getValue();
             ed.p2Healthy = g_sensorP2.isHealthy();
         }
-        if (hw.hasFuelPress) {
+        if (fuelPressAnalog >= 0) {
+            const auto& c = HardwareConfig::channelRegistry.inputs[fuelPressAnalog];
+            ed.fuelPressure = ed.registryInputValue[fuelPressAnalog];
+            ed.fuelPressRaw = analogRead(c.pin);
+            ed.fuelPressHealthy = ed.registryInputHealthy[fuelPressAnalog];
+        } else if (hw.hasFuelPress) {
             g_sensorFuelPress.update();
             ed.fuelPressure     = g_sensorFuelPress.getValue();
             ed.fuelPressRaw     = g_sensorFuelPress.rawCounts();
@@ -1668,7 +1836,7 @@ namespace Hardware {
                 continue;
             }
 
-            const float pressureBar = constrain(ed.registryInputValue[loop.pressureInputIndex], 0.0f, 1.0f) * 20.0f;
+            const float pressureBar = constrain(ed.registryInputValue[loop.pressureInputIndex], 0.0f, 20.0f);
             const float targetBar = loop.targetCentiBar / 100.0f;
             const float deadband = loop.deadbandCentiBar / 100.0f;
             const float error = targetBar - pressureBar;

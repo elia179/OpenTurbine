@@ -2258,6 +2258,28 @@ void WebServer::_setupRoutes() {
                             break;
                         }
                     }
+                } else if (strcmp(topKey, "channel_registry_calibration") == 0 && top.value().is<JsonObject>()) {
+                    // Calibration-only updates for registry inputs. Topology
+                    // (pins, roles and drivers) remains protected by the full
+                    // Hardware Save path; this endpoint only accepts numeric
+                    // calibration fields for an existing input card.
+                    bool hasId = false;
+                    for (JsonPair field : top.value().as<JsonObject>()) {
+                        const char* key = field.key().c_str();
+                        if (strcmp(key, "id") == 0) hasId = true;
+                        else if (strcmp(key, "analog_zero_mv") != 0 &&
+                                 strcmp(key, "analog_mv_per_unit") != 0 &&
+                                 strcmp(key, "analog_divider") != 0 &&
+                                 strcmp(key, "pulses_per_unit") != 0 &&
+                                 strcmp(key, "ntc_beta") != 0 &&
+                                 strcmp(key, "ntc_r0") != 0 &&
+                                 strcmp(key, "ntc_r_fixed") != 0 &&
+                                 strcmp(key, "temp_resolution") != 0) {
+                            calibrationOnly = false;
+                            break;
+                        }
+                    }
+                    if (!hasId) calibrationOnly = false;
                 } else {
                     calibrationOnly = false;
                 }
@@ -2281,6 +2303,26 @@ void WebServer::_setupRoutes() {
             }
             JsonDocument previous;
             previous.set(current);
+            if (patch["channel_registry_calibration"].is<JsonObject>()) {
+                JsonObjectConst cal = patch["channel_registry_calibration"].as<JsonObjectConst>();
+                const char* id = cal["id"] | "";
+                bool applied = false;
+                JsonArray inputs = current["channel_registry"]["inputs"].as<JsonArray>();
+                for (JsonObject ch : inputs) {
+                    if (strcmp(ch["id"] | "", id) != 0) continue;
+                    for (JsonPairConst field : cal) {
+                        if (strcmp(field.key().c_str(), "id") != 0)
+                            ch[field.key()] = field.value();
+                    }
+                    applied = true;
+                    break;
+                }
+                if (!applied) {
+                    req->send(400, "application/json", "{\"error\":\"registry calibration channel not found\"}");
+                    return;
+                }
+                patch.remove("channel_registry_calibration");
+            }
             _mergeJsonObject(current.as<JsonObject>(), patch.as<JsonObjectConst>());
             size_t merged = serializeJson(current, g_webTxBuf, sizeof(g_webTxBuf));
             if (merged >= sizeof(g_webTxBuf)) {
