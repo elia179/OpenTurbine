@@ -361,7 +361,7 @@ const BLOCKS = {
     label:'Starter Spin', type:'while', badgeClass:'badge-while',
     condition: hw => `N1 < ${hw.pre_ign_rpm ?? 5000} rpm`,
     timeout_action:'fault',
-    desc:'Asserts starter enable relay (if fitted), then ramps starter demand from 0 to target %. Waits for N1 to reach pre-ignition RPM. Starter enable delay (hardware config) is applied before the starter spins. On timeout -> FAULT SHUTDOWN. Outputs: starterEnabled=true, starterDemand ramping to target.',
+    desc:'Asserts starter enable output (if fitted), then ramps starter demand from 0 to target %. Waits for N1 to reach pre-ignition RPM. Starter enable delay (hardware config) is applied before the starter spins. On timeout -> FAULT SHUTDOWN. Outputs: starterEnabled=true, starterDemand ramping to target.',
     hwWarnings:[
       { check: hw => !!hw.actuators?.starter?.enabled,
         msg: 'Warning: No starter actuator configured - starter output will have no physical effect. Add a starter in Hardware Config -> Actuators.',
@@ -468,7 +468,7 @@ const BLOCKS = {
     label:'Spool', type:'while', badgeClass:'badge-while',
     condition: hw => `N1 < ${hw.rpm_target ?? 32000} rpm`,
     timeout_action:'fault',
-    desc:'Sets throttleDemand to the calibrated Fuel Pump Minimum Spin value and holds until N1 reaches target RPM. Flame monitor is active - if flame is lost the engine faults. On timeout -> FAULT SHUTDOWN. The running oil minimum is enforced from this block onward. On exit: optionally cuts starter demand and/or starter enable relay (checkboxes below).',
+    desc:'Sets throttleDemand to the calibrated Fuel Pump Minimum Spin value and holds until N1 reaches target RPM. Flame monitor is active - if flame is lost the engine faults. On timeout -> FAULT SHUTDOWN. The running oil minimum is enforced from this block onward. On exit: optionally cuts starter demand and/or starter enable output (checkboxes below).',
     hwWarnings:[
       { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
         msg: 'Warning: No N1 RPM sensor - Spool cannot verify target RPM has been reached. Block will run until timeout -> FAULT SHUTDOWN.' },
@@ -480,7 +480,7 @@ const BLOCKS = {
         visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
         desc:'Oil pressure minimum enforced from Spool start through running. Shared with SafetyHold - edit in either block or in Config -> Oil -> Running Min.'},
       {key:'spool_cut_starter_on_exit', label:'Cut starter demand on exit',            type:'bool',                                  def:true,  configKey:'spool_cut_starter_on_exit'},
-      {key:'spool_cut_starter_en_on_exit',label:'Cut starter enable relay on exit',    type:'bool',                                  def:true,  configKey:'spool_cut_starter_en_on_exit',
+      {key:'spool_cut_starter_en_on_exit',label:'Cut starter enable output on exit',   type:'bool',                                  def:true,  configKey:'spool_cut_starter_en_on_exit',
         visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
     ]
   },
@@ -488,7 +488,7 @@ const BLOCKS = {
     label:'Safety Hold', type:'check', badgeClass:'badge-check',
     condition: hw => `${hw.safety_hold_ms ?? 1000} ms hold`,
     timeout_action:'fault',
-    desc:'Holds for the configured duration and verifies N1 >= target RPM and oil pressure >= minimum. If either check fails -> FAULT SHUTDOWN. On successful exit: optionally cuts starter demand, starter enable relay, and all ignition outputs. After this block the engine enters RUNNING state.',
+    desc:'Holds for the configured duration and verifies N1 >= target RPM and oil pressure >= minimum. If either check fails -> FAULT SHUTDOWN. On successful exit: optionally cuts starter demand, starter enable output, and all ignition outputs. After this block the engine enters RUNNING state.',
     hwWarnings:[
       { check: hw => (!!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm) || !!hw.sensors?.oil_press?.enabled,
         level: 'error',
@@ -503,7 +503,7 @@ const BLOCKS = {
         visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
         desc:'Same threshold as Spool running oil min - both read Config -> Oil -> Running Min.'},
       {key:'safety_turn_off_starter',    label:'Turn off starter on exit',             type:'bool', def:false, configKey:'safety_turn_off_starter'},
-      {key:'safety_turn_off_starter_en', label:'Turn off starter enable relay on exit',type:'bool', def:false, configKey:'safety_turn_off_starter_en',
+      {key:'safety_turn_off_starter_en', label:'Turn off starter enable output on exit',type:'bool', def:false, configKey:'safety_turn_off_starter_en',
         visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
       {key:'safety_turn_off_igniter',    label:'Turn off ignition outputs on exit',    type:'bool', def:false, configKey:'safety_turn_off_igniter'},
     ]
@@ -562,14 +562,14 @@ const BLOCKS = {
     label:'Starter Enable On', type:'action', badgeClass:'badge-action',
     visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en,
     condition: null, timeout_action:null,
-    desc:'Assert the starter enable relay/gate. Required on hardware with a separate starter arm circuit.',
+    desc:'Assert the starter enable output or gate. Required on hardware with a separate starter arm circuit.',
     params:[]
   },
   StarterEnOff: {
     label:'Starter Enable Off', type:'action', badgeClass:'badge-action',
     visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en,
     condition: null, timeout_action:null,
-    desc:'De-assert the starter enable relay.',
+    desc:'De-assert the starter enable output.',
     params:[]
   },
   OilPumpOn: {
@@ -648,10 +648,10 @@ const BLOCKS = {
         visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
       {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct',
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
-      {key:'cooldown_starter_en_relay', label:'Starter enable relay asserted automatically', type:'bool', def:true,
+      {key:'cooldown_starter_en_relay', label:'Starter enable output asserted automatically', type:'bool', def:true,
         visibleIf: hw => (!!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en)
                       && !!(hw.actuators?.starter?.enabled || hw.has_starter),
-        desc:'When a dedicated starter enable relay is fitted, it is always asserted before the starter motor runs. This is handled automatically - no action needed.'},
+        desc:'When a dedicated starter enable output is fitted, it is always asserted before the starter motor runs. This is handled automatically - no action needed.'},
       {key:'cooldown_use_oil_pump',     label:'Run oil pump',                       type:'bool',                                  def:true,   configKey:'cooldown_use_oil',
         visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump)},
       {key:'cooldown_oil_pct',          label:'Oil pump %',              unit:'%',  type:'float',min:0,    max:100,    step:5,     def:30,     configKey:'cooldown_oil_pct',
@@ -862,7 +862,7 @@ const BLOCKS = {
     visibleIf: hw => !!hw.actuators?.glow_plug?.enabled,
   },
   FuelPumpRamp: {
-    label:'Pilot / Aux Fuel Pump Ramp', type:'action', badgeClass:'badge-action',
+    label:'Pilot / Auxiliary Fuel Pump Ramp', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
     desc:'Ramps pilot / auxiliary fuel pump demand linearly from startPct to endPct over rampMs. Completes when the ramp finishes. Useful for pilot fuel, turboshaft pre-metering, or staged fuel delivery.',
     params:[
@@ -873,7 +873,7 @@ const BLOCKS = {
     visibleIf: hw => actuatorHasProportionalOutput('fuel_pump2'),
   },
   FuelPump2Set: {
-    label:'Pilot / Aux Fuel Pump Set', type:'action', badgeClass:'badge-action',
+    label:'Pilot / Auxiliary Fuel Pump Set', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
     desc:'Sets pilot / auxiliary fuel pump demand to a fixed value immediately. Use for known set-points after a ramp or as a quick preset.',
     params:[
@@ -882,14 +882,14 @@ const BLOCKS = {
     visibleIf: hw => actuatorHasProportionalOutput('fuel_pump2'),
   },
   FuelPump2On: {
-    label:'Pilot / Aux Fuel Pump On', type:'action', badgeClass:'badge-action',
+    label:'Pilot / Auxiliary Fuel Pump On', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
     desc:'Switches relay-type pilot / auxiliary fuel pump on. This card is shown only when that pump is configured as an on/off output.',
     params:[],
     visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled && actuatorIsRelay('fuel_pump2'),
   },
   FuelPump2Off: {
-    label:'Pilot / Aux Fuel Pump Off', type:'action', badgeClass:'badge-action',
+    label:'Pilot / Auxiliary Fuel Pump Off', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
     desc:'Switches relay-type pilot / auxiliary fuel pump off.',
     params:[],
@@ -1792,7 +1792,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     hasAct('cool_fan') ? { label:'Cooling Fan',         val: state.coolFan } : null,
     hasAct('bleed_valve') ? { label:'Bleed Valve',      val: state.bleed } : null,
     hasAct('glow_plug') ? { label:'Glow Plug',          val: state.glow } : null,
-    hasAct('fuel_pump2') ? { label:'Pilot / Aux Fuel Pump',   val: state.fuelPump2 } : null,
+    hasAct('fuel_pump2') ? { label:'Pilot / Auxiliary Fuel Pump',   val: state.fuelPump2 } : null,
     hasAct('prop_pitch') ? { label:'Prop Pitch',         val: state.propPitch } : null,
     hwCfg.has_afterburner && hasAct('ab_sol') ? { label:'AB Solenoid', val: state.abSol } : null,
     hwCfg.has_afterburner && hasAct('ab_pump') ? { label:'AB Fuel Pump', val: state.abPump } : null,
@@ -2453,7 +2453,7 @@ function getEnabledSensors() {
   if (s.batt_voltage?.enabled)  list.push({key:'batt_voltage', label:'Battery Voltage',  unit:'V',    def:10,   step:0.1});
   if (s.flame?.enabled)         list.push({key:'flame',        label:'Flame Detected',   unit:'',     def:1,    bool:true});
   if (s.throttle_input?.enabled)list.push({key:'throttle_in',  source:'operator_throttle', label:'Throttle Input', unit:'%', def:0, step:1});
-  if (s.idle_input?.enabled)    list.push({key:'idle_in',      source:'operator_idle',     label:'Idle Pot',       unit:'%', def:0, step:1});
+  if (s.idle_input?.enabled)    list.push({key:'idle_in',      source:'operator_idle',     label:'Idle Input',     unit:'%', def:0, step:1});
   if (s.p1?.enabled)            list.push({key:'p1',           label:'P1 Pressure',      unit:'bar',  def:0,    step:0.1});
   if (s.p2?.enabled)            list.push({key:'p2',           label:'P2 Pressure',      unit:'bar',  def:0,    step:0.1});
   if (s.fuel_flow?.enabled)     list.push({key:'fuel_flow',    label:'Fuel Flow',        unit:'',     def:0,    step:1});
@@ -2499,7 +2499,7 @@ function getEnabledActuators() {
   // Always-present outputs (if hardware enabled)
   if (a.throttle?.enabled)       list.push({key:'throttle',       label:demandLabel(a.throttle, 'Throttle %', 'Throttle Relay'), mode: isOnOff(a.throttle) ? 'relay':'pct'});
   if (a.starter?.enabled)        list.push({key:'starter',        label:demandLabel(a.starter, 'Starter Demand %', 'Starter Relay'), mode: isOnOff(a.starter) ? 'relay':'pct'});
-  if (a.starter_en?.enabled)     list.push({key:'starter_en',     label:'Starter Enable Relay',         mode:'relay'});
+  if (a.starter_en?.enabled)     list.push({key:'starter_en',     label:'Starter Enable Output',        mode:'relay'});
   if (a.oil_pump?.enabled)       list.push({key:'oil_pump',       label:demandLabel(a.oil_pump, 'Oil Pump %', 'Oil Pump Relay'), mode: isOnOff(a.oil_pump) ? 'relay':'pct'});
   if (a.fuel_sol?.enabled)       list.push({key:'fuel_sol',       label:'Fuel Solenoid',                mode:'relay'});
   if (a.igniter?.enabled)        list.push({key:'igniter',        label:'Igniter 1',                    mode:'relay'});
@@ -2509,7 +2509,7 @@ function getEnabledActuators() {
   if (a.oil_scavenge_pump?.enabled) list.push({key:'oil_scavenge_pump', label:'Oil Scavenge Pump',      mode:'relay'});
   if (a.bleed_valve?.enabled)    list.push({key:'bleed_valve',    label:'Bleed Valve',                  mode:'relay'});
   if (a.glow_plug?.enabled)      list.push({key:'glow_plug',      label:actuatorIsRelay('glow_plug') ? 'Glow Plug Relay' : 'Glow Plug %', mode:actuatorIsRelay('glow_plug') ? 'relay':'pct'});
-  if (a.fuel_pump2?.enabled)     list.push({key:'fuel_pump2',     label:demandLabel(a.fuel_pump2, 'Pilot / Aux Fuel Pump %', 'Pilot / Aux Fuel Pump Relay'), mode: isOnOff(a.fuel_pump2) ? 'relay':'pct'});
+  if (a.fuel_pump2?.enabled)     list.push({key:'fuel_pump2',     label:demandLabel(a.fuel_pump2, 'Pilot / Auxiliary Fuel Pump %', 'Pilot / Auxiliary Fuel Pump Relay'), mode: isOnOff(a.fuel_pump2) ? 'relay':'pct'});
   if (a.prop_pitch?.enabled)     list.push({key:'prop_pitch',     label:demandLabel(a.prop_pitch, 'Prop Pitch %', 'Prop Pitch Relay'), mode: isOnOff(a.prop_pitch) ? 'relay':'pct'});
   // AB outputs
   if (hasAB && a.ab_sol?.enabled)list.push({key:'ab_sol',         label:'AB Fuel Solenoid',          mode:'relay'});

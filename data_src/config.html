@@ -198,9 +198,9 @@ const SCHEMA = [
     { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:100, basic:true },
     { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Airstarter Test ms', desc:'Airstarter solenoid pulse duration.',      step:50,  min:50, basic:true },
     { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:50, basic:true },
-    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Pilot / Aux Fuel Pump Test ms', desc:'Pilot / auxiliary fuel pump test duration.',     step:100, min:100, basic:true },
-    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Pilot / Aux Fuel Pump Test %', desc:'Pilot / auxiliary fuel pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
-    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable ms',  desc:'Starter enable relay pulse duration.',     step:50,  min:50, basic:true },
+    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Pilot / Auxiliary Fuel Pump Test ms', desc:'Pilot / auxiliary fuel pump test duration.',     step:100, min:100, basic:true },
+    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Pilot / Auxiliary Fuel Pump Test %', desc:'Pilot / auxiliary fuel pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
+    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable Test ms',  desc:'Starter enable output test duration.',     step:50,  min:50, basic:true },
     { key:'tl_pp', path:['tools','prop_pitch_test_ms'],label:'Prop Pitch Test ms', desc:'Prop pitch test duration.',                step:100, min:100, basic:true },
     { key:'tl_pq', path:['tools','prop_pitch_test_pct'],label:'Prop Pitch Test %', desc:'Prop pitch test position/demand for proportional outputs.', step:5, min:0, max:100, basic:true },
   ]},
@@ -1630,11 +1630,11 @@ function applyHwConditions() {
   ghostField('tl_cf', hasCoolFan, 'Fan Test duration requires a cooling fan output.');
   ghostField('tl_as', hasAirstarter, 'Airstarter Test duration requires an airstarter solenoid output.');
   ghostField('tl_bv', hasBleedValve, 'Bleed Test duration requires a bleed valve output.');
-  ghostField('tl_f2', hasFuelPump2, 'Pilot / Aux Fuel Pump Test duration requires Pilot / Auxiliary Fuel Pump in Hardware.');
+  ghostField('tl_f2', hasFuelPump2, 'Pilot / Auxiliary Fuel Pump Test duration requires Pilot / Auxiliary Fuel Pump in Hardware.');
   ghostField('tl_f2p', hasFuelPump2 && !isOnOffType('fuel_pump2'), isOnOffType('fuel_pump2')
     ? 'Pilot / Auxiliary Fuel Pump is configured as relay/on-off. Test % is ignored; use test duration to control pulse length.'
-    : 'Pilot / Aux Fuel Pump Test demand requires Pilot / Auxiliary Fuel Pump in Hardware.');
-  ghostField('tl_se', hasStarterEn, 'Starter Enable Test duration requires a starter enable relay output.');
+    : 'Pilot / Auxiliary Fuel Pump Test demand requires Pilot / Auxiliary Fuel Pump in Hardware.');
+  ghostField('tl_se', hasStarterEn, 'Starter Enable Test duration requires a starter enable output.');
   ghostField('tl_pp', hasPropPitch, 'Prop Pitch Test duration requires a prop-pitch actuator.');
   ghostField('tl_pq', hasPropPitch && !isOnOffType('prop_pitch'), isOnOffType('prop_pitch')
     ? 'Prop pitch is configured as relay/on-off. Prop Pitch Test % is ignored; use Prop Pitch Test ms to control pulse length.'

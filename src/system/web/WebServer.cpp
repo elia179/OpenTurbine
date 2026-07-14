@@ -224,7 +224,7 @@ static const char* _missingHardwareForCommand(const OTPacket& pkt) {
             return (HardwareConfig::hasAfterburner && HardwareConfig::hasAbSol) ? nullptr : "Afterburner solenoid is not configured";
         case OTCommand::AB_PUMP_TEST:
             return (HardwareConfig::hasAfterburner && HardwareConfig::hasAbPump) ? nullptr : "Afterburner pump is not configured";
-        case OTCommand::STARTER_EN_TEST: return HardwareConfig::hasStarterEn ? nullptr : "Starter enable relay is not configured";
+        case OTCommand::STARTER_EN_TEST: return HardwareConfig::hasStarterEn ? nullptr : "Starter enable output is not configured";
         case OTCommand::PROP_PITCH_TEST: return HardwareConfig::hasPropPitch ? nullptr : "Prop pitch actuator is not configured";
         case OTCommand::REGISTRY_OUTPUT_TEST: {
             if (pkt.iParam < 0 || pkt.iParam >= HardwareConfig::channelRegistry.outputCount)

@@ -926,11 +926,11 @@
       </div>
     </div>
 
-    <!-- Starter Enable Relay -->
+    <!-- Starter Enable Output -->
     <div class="hw-item-card">
       <div class="hw-toggle" style="margin-bottom:.5rem">
         <input type="checkbox" id="en-starteren" onchange="setActEnabled('starter_en','starteren',this.checked)">
-        <b>Starter Enable Relay</b> <span style="font-size:.65rem;color:var(--dim)">(switches main power to starter)</span>
+        <b>Starter Enable Output</b> <span style="font-size:.65rem;color:var(--dim)">(arms or gates starter power before the starter command)</span>
       </div>
       <div class="hw-grid" id="grp-starteren">
         <div class="hw-field"><span class="hw-label">GPIO pin</span>
@@ -3372,7 +3372,7 @@ const ACT_DEPENDENCIES = {
   ab_sol: { name:'AB solenoid', rules:[11], blocks:['ABSolOpen','ABSolClose'], functions:['AB solenoid sequence blocks','rules driving AB solenoid'] },
   ab_pump: { name:'AB pump', logs:['ab'], rules:[12], blocks:['ABPumpOn','ABPumpOff'], functions:['AB pump sequence blocks','AB logging','rules driving AB pump'] },
   airstarter_sol: { name:'Airstarter solenoid', rules:[15], blocks:['AirstarterOn','AirstarterOff'], functions:['Airstarter sequence blocks','rules driving airstarter'] },
-  starter_en: { name:'Starter enable relay', rules:[6], blocks:['StarterEnOn','StarterEnOff'], functions:['Starter enable sequence blocks','rules driving starter enable'] },
+  starter_en: { name:'Starter enable output', rules:[6], blocks:['StarterEnOn','StarterEnOff'], functions:['Starter enable sequence blocks','rules driving starter enable'] },
   status_led: { name:'Status LED', functions:['mode blink indication','rapid fault flash','bench-test visual status'] },
 };
 
@@ -3677,7 +3677,7 @@ const REGISTRY_OUTPUT_ROLES=[
   ['generic','Generic output'],['fuel','Fuel metering'],['fuel_shutoff','Fuel shutoff'],['starter','Starter'],
   ['starter_en','Starter enable'],['oil_pump','Oil pump'],['coolant_pump','Coolant pump'],['scavenge_pump','Scavenge pump'],['cooling_fan','Cooling fan'],
   ['valve','Valve / solenoid'],['igniter','Igniter'],['ab_igniter','AB igniter'],['glow_plug','Glow plug'],
-  ['fuel_pump','Aux fuel pump'],['ab_pump','AB pump'],['prop_pitch','Prop pitch']
+  ['fuel_pump','Pilot / auxiliary fuel pump'],['ab_pump','AB pump'],['prop_pitch','Prop pitch']
 ];
 const REGISTRY_INPUT_PURPOSES=[
   {value:'n1_speed',label:'N1 speed',role:'speed',drivers:[2,1],group:'Engine sensors'},
@@ -3720,7 +3720,7 @@ const REGISTRY_OUTPUT_PURPOSES=[
   {value:'coolant_pump',label:'Coolant pump',role:'coolant_pump',drivers:[4,5,6],group:'Pumps and cooling'},
   {value:'scavenge_pump',label:'Oil scavenge pump',role:'scavenge_pump',drivers:[4,5,6],group:'Pumps and cooling'},
   {value:'cooling_fan',label:'Cooling fan',role:'cooling_fan',drivers:[4,5,6],group:'Pumps and cooling'},
-  {value:'fuel_pump',label:'Auxiliary fuel pump',role:'fuel_pump',drivers:[4,5,6],group:'Pumps and cooling'},
+  {value:'fuel_pump',label:'Pilot / auxiliary fuel pump',role:'fuel_pump',drivers:[4,5,6],group:'Pumps and cooling'},
   {value:'igniter',label:'Igniter',role:'igniter',drivers:[4,5],group:'Ignition'},
   {value:'ab_igniter',label:'Afterburner igniter',role:'ab_igniter',drivers:[4,5],group:'Ignition'},
   {value:'glow_plug',label:'Glow plug',role:'glow_plug',drivers:[4,5],group:'Ignition'},
@@ -4204,9 +4204,9 @@ function registryCurrentEditor(direction, c, index) {
       <label class="hw-toggle"><input type="checkbox" ${enabled ? 'checked' : ''} onchange="${setEnabled}"><span></span> Enable</label>
     </div>
     ${enabled ? `<div class="registry-card-editor" style="display:block"><div class="hw-grid">
-      <div class="hw-field"><span class="hw-label">Current sensor ADC GPIO</span><select onchange="${fieldSet('pin','+this.value')}">${buildPinOptions(pin, 'adc')}</select></div>
-      <div class="hw-field"><span class="hw-label">Sensor sensitivity (mV/A)</span><input type="number" min="1" max="10000" step="1" value="${registryFormatValue(mvA)}" oninput="${fieldSet('mv_a','+this.value')}"></div>
-      <div class="hw-field"><span class="hw-label">Zero-current voltage (V)</span><input type="number" min="0" max="3.3" step="0.01" value="${registryFormatValue(zeroV)}" oninput="${fieldSet('zero_v','+this.value')}"></div>
+      <div class="hw-field"><span class="hw-label">Current sensor ADC GPIO</span><span class="hw-desc">ADC-capable GPIO connected to the current sensor output.</span><select onchange="${fieldSet('pin','+this.value')}">${buildPinOptions(pin, 'adc')}</select></div>
+      <div class="hw-field"><span class="hw-label">Sensor sensitivity (mV/A)</span><span class="hw-desc">Datasheet sensitivity at the ECU ADC pin. Example: ACS712-20A = 100 mV/A.</span><input type="number" min="1" max="10000" step="1" value="${registryFormatValue(mvA)}" oninput="${fieldSet('mv_a','+this.value')}"></div>
+      <div class="hw-field"><span class="hw-label">Zero-current voltage (V)</span><span class="hw-desc">Sensor output voltage when no current flows.</span><input type="number" min="0" max="3.3" step="0.01" value="${registryFormatValue(zeroV)}" oninput="${fieldSet('zero_v','+this.value')}"></div>
        ${actKey === 'glow_plug' ? `<div class="hw-field"><span class="hw-label">Ready current (A)</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_ready_a ?? 3)}" oninput="${fieldSet('ready_a','+this.value')}"></div>` : ''}
        ${actKey === 'oil_pump' ? `<div class="hw-field"><span class="hw-label">Overcurrent trip (A)</span><span class="hw-desc">0 disables the oil-pump overcurrent trip.</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_max_a ?? 0)}" oninput="${fieldSet('current_max_a','+this.value')}"></div>` : ''}
     </div></div>` : ''}
@@ -4471,8 +4471,8 @@ function registryBlockLabel(block) {
     SafetyHold:'Safety Hold', OilPumpOn:'Oil Pump On', OilPumpOff:'Oil Pump Off',
     OilScavengeOn:'Scavenge On', OilScavengeOff:'Scavenge Off', StarterOff:'Starter Off',
     Cooldown:'Cooldown', FinalStop:'Final Stop', ThrottleSet:'Throttle Set',
-    GlowPreheat:'Glow Preheat', FuelPumpRamp:'Pilot / Aux Fuel Pump Ramp', FuelPump2Set:'Pilot / Aux Fuel Pump Set',
-    FuelPump2On:'Pilot / Aux Fuel Pump On', FuelPump2Off:'Pilot / Aux Fuel Pump Off',
+    GlowPreheat:'Glow Preheat', FuelPumpRamp:'Pilot / Auxiliary Fuel Pump Ramp', FuelPump2Set:'Pilot / Auxiliary Fuel Pump Set',
+    FuelPump2On:'Pilot / Auxiliary Fuel Pump On', FuelPump2Off:'Pilot / Auxiliary Fuel Pump Off',
     CoolFanOn:'Cooling Fan On', CoolFanOff:'Cooling Fan Off',
     BleedOpen:'Bleed Valve Open', BleedClose:'Bleed Valve Close',
     AirstarterOn:'Airstarter On', AirstarterOff:'Airstarter Off',
@@ -5854,7 +5854,7 @@ const PIN_SELECT_LABELS = {
   'f-fsol-pin':       'Fuel Solenoid',
   'f-ign-pin':        'Igniter',
   'f-ign2-pin':       'AB / Pilot Igniter',
-  'f-sen-pin':        'Starter Enable Relay',
+  'f-sen-pin':        'Starter Enable Output',
   'f-abs-pin':        'AB Fuel Solenoid',
   'f-abp-pin':        'AB Fuel Pump',
   'f-airs-pin':       'Airstarter Solenoid',

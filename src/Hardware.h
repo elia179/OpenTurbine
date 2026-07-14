@@ -1802,7 +1802,7 @@ namespace Hardware {
             if (demand > 0.001f) ed.fuelEverOpened = true;
         }
 
-        // Starter enable relay
+        // Starter enable output
         if (hw.hasStarterEn) {
             const auto* starterEnable = registryStarterEnableOutput();
             if (!starterEnable || starterEnable->driver == ChannelRegistry::Relay)

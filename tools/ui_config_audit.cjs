@@ -187,9 +187,9 @@ async function goto(page, route, waitSelector) {
     assert.equal(hardwareDeps.twinShaft.governorDisabled, false);
     assert.equal(hardwareDeps.twinShaft.idleDisabled, false);
     assert.equal(hardwareDeps.noAb.abVisible, false);
-    assert.equal(hardwareDeps.noAb.ign2Label, 'Igniter 2');
+    assert.equal(hardwareDeps.noAb.ign2Label, 'AB / Pilot Igniter');
     assert.equal(hardwareDeps.withAb.abVisible, true);
-    assert.match(hardwareDeps.withAb.ign2Label, /AB Igniter/);
+    assert.match(hardwareDeps.withAb.ign2Label, /Afterburner Igniter/);
     results.push('hardware master feature flags gate N2, governor, dynamic idle, and afterburner children');
 
     const typeGroups = await page.evaluate(() => {

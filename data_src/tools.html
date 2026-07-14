@@ -79,7 +79,7 @@ const TOOLS = [
   { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse - audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, configKey:'tools.idle_test_ms', desc:'Moves the throttle/fuel ESC output to the calibrated Fuel Pump Minimum Spin value - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
   // ── Conditionally visible actuator tests (shown only when hardware is fitted) ──
-  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, configKey:'tools.starter_en_test_ms', desc:'Energises starter enable relay for configured duration.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
+  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, configKey:'tools.starter_en_test_ms', desc:'Drives the starter enable output for the configured duration.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
   { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, configKey:'tools.oil_scav_test_ms', desc:'Runs oil scavenge pump for configured duration.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
   { id:'COOL_FAN_TEST',    name:'Cool Fan Test',        durationMs:3000, configKey:'tools.cool_fan_test_ms', desc:'Runs cooling fan for configured duration.', visibleIf: hw => !!hw?.actuators?.cool_fan?.enabled },
   { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, configKey:'tools.airstarter_test_ms', desc:'Opens airstarter solenoid for configured duration.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
@@ -794,7 +794,7 @@ function syncDynamicToolText() {
   setDesc('START_TEST', `Output: starter ${outputText('starter', tools.start_test_pct ?? 30)} for ${sec(tools.start_test_ms ?? 2000)} s.`);
   setDesc('FUEL_SOL_TEST', `Output: fuel solenoid ON for ${sec(tools.fuel_sol_test_ms ?? 1000)} s.`);
   setDesc('IDLE_TEST', `Output: throttle/fuel to calibrated Fuel Pump Minimum Spin for ${sec(tools.idle_test_ms ?? 3000)} s.`);
-  setDesc('STARTER_EN_TEST', `Output: starter enable relay ON for ${sec(tools.starter_en_test_ms ?? 1000)} s.`);
+  setDesc('STARTER_EN_TEST', `Output: starter enable command ON for ${sec(tools.starter_en_test_ms ?? 1000)} s.`);
   // These accessories can be configured as PWM/servo outputs, but their
   // bench tests set a boolean → the actuator drives to FULL output. Say so
   // instead of implying a partial-demand test.
