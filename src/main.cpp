@@ -223,7 +223,7 @@ static bool ignitionTargetAvailable(uint8_t target) {
 
 static const char* ignitionTargetName(uint8_t target) {
     switch (target) {
-        case 1: return "Igniter 2";
+        case 1: return "AB / Pilot Igniter";
         case 2: return "Glow/Wet Glow";
         default: return "Igniter 1";
     }
@@ -618,7 +618,7 @@ static void validateSequences() {
         if (!hasFuelDelivery) {
             addIssue("FuelOpen", hasFuelPulseOnly
                 ? "Only FuelPulse is present. FuelPulse is a pre-prime pulse and does not count as sustained fuel delivery or trigger hot cooldown."
-                : "No sustained fuel delivery block (FuelOpen/FuelPumpIdle/FuelPump2*) in startup - engine will spin without fuel",
+                : "No sustained fuel delivery block (FuelOpen/FuelPumpIdle or pilot/aux fuel pump block) in startup - engine will spin without fuel",
                 false);
         }
 
@@ -785,7 +785,7 @@ static void validateSequences() {
             if (!torchActive && !g_blkABIgnite.useIgniter)
                 addIssue(nm, "No active ignition method - enable AB igniter or set Torch EGT Cut above 0 so torch can run", false);
             if (g_blkABIgnite.useIgniter && !hw.hasIgniter2)
-                addIssue(nm, "AB igniter is enabled but no igniter2 actuator is configured", false);
+                addIssue(nm, "AB igniter is enabled but no AB / pilot igniter actuator is configured", false);
             // Torch is silently skipped at runtime when torchTotLimit == 0.
             // Warn so the user knows to set abTorchTotLimit in config.
             if (g_blkABIgnite.useTorch && g_blkABIgnite.torchTotLimit == 0.0f)
@@ -865,9 +865,21 @@ static void validateSequences() {
         else if (Config::primaryEgtLimitC() <= 0.0f)
             addIssue("Overtemp", "Selected EGT hard limit is 0 - overtemperature shutdown is disabled", false);
     }
-    if ((hw.safetyLowOil || hw.safetyOilZero) && !hw.hasOilPress)
-        addIssue("Oil Safety", "Oil pressure safety is enabled but no oil pressure sensor is configured", true);
-    else if (hw.safetyLowOil && Config::oilRunningMin <= 0.0f)
+    auto hasOilSafetySwitch = [&](const char* role) {
+        for (int i = 0; i < HardwareConfig::MAX_DI; ++i) {
+            if (hw.diCh[i].pin >= 0 && strcmp(hw.diCh[i].role, role) == 0) return true;
+        }
+        for (uint8_t i = 0; i < hw.channelRegistry.inputCount; ++i) {
+            const auto& c = hw.channelRegistry.inputs[i];
+            if (c.installed && (strcmp(c.role, role) == 0 || strcmp(c.purpose, role) == 0)) return true;
+        }
+        return false;
+    };
+    if (hw.safetyLowOil && !hw.hasOilPress && !hasOilSafetySwitch("low_oil_switch"))
+        addIssue("Oil Safety", "Low-oil safety is enabled but no oil pressure sensor or low-oil switch is configured", true);
+    if (hw.safetyOilZero && !hw.hasOilPress && !hasOilSafetySwitch("oil_zero_switch"))
+        addIssue("Oil Safety", "Zero-oil safety is enabled but no oil pressure sensor or zero-oil switch is configured", true);
+    if (hw.safetyLowOil && hw.hasOilPress && Config::oilRunningMin <= 0.0f)
         addIssue("Oil Safety", "Running oil minimum is 0 - low-oil shutdown is disabled", false);
     if (hw.safetyFlameout) {
         int flameoutSrc = Config::flameoutSource;
@@ -907,12 +919,6 @@ static void validateSequences() {
             addIssue("Governor", "Prop pitch is configured as on/off; governor will ignore it and use throttle only if throttle is fitted", false);
         else if (hw.hasPropPitch && Config::governorPitchKp <= 0.0f)
             addIssue("Governor", "Prop pitch actuator is configured but Pitch Gain is 0 - governor will use throttle only", false);
-    }
-    if (hw.safetyTitOvertemp) {
-        if (!hw.hasTit)
-            addIssue("TIT Safety", "TIT overtemp safety is enabled but no TIT sensor is configured", true);
-        else if (Config::titLimit <= 0.0f)
-            addIssue("TIT Safety", "TIT limit is 0 - TIT overtemp shutdown is disabled", false);
     }
     if (hw.safetyOilTempHigh) {
         if (!hw.hasOilTemp)
@@ -1344,9 +1350,11 @@ static void checkGeneralDI() {
         // lockout). Triggering changes mode, so this fires once per event.
         const bool isFaultRole = strcmp(roleForLevel, "fault") == 0;
         const bool isEstopRole = strcmp(roleForLevel, "estop") == 0;
-        if ((isFaultRole || isEstopRole) && ed.diState[i] && activeInMode
+        const bool isLowOilSwitch = strcmp(roleForLevel, "low_oil_switch") == 0 && hw.safetyLowOil;
+        const bool isOilZeroSwitch = strcmp(roleForLevel, "oil_zero_switch") == 0 && hw.safetyOilZero;
+        if ((isFaultRole || isEstopRole || isLowOilSwitch || isOilZeroSwitch) && ed.diState[i] && activeInMode
             && (ed.mode == SysMode::STARTUP || ed.mode == SysMode::RUNNING)) {
-            if (isFaultRole) {
+            if (isFaultRole || isLowOilSwitch || isOilZeroSwitch) {
                 // Replicate SafetyMonitor fault path:
                 // set faultDescription with user message, then trigger shutdown
                 if (hw.diCh[i].faultMsg[0]) {
@@ -1364,7 +1372,9 @@ static void checkGeneralDI() {
                 // enterFaultShutdown() reads the correct string via lastFault().
                 // Without this, lastFault() returns null (or a stale code from a
                 // previous safety fault), corrupting the event log and lastEvent.
-                const char* diCode = hw.diCh[i].faultCode[0] ? hw.diCh[i].faultCode : "DI_FAULT";
+                const char* diCode = isLowOilSwitch ? "LOW_OIL" :
+                                     isOilZeroSwitch ? "OIL_ZERO" :
+                                     (hw.diCh[i].faultCode[0] ? hw.diCh[i].faultCode : "DI_FAULT");
                 g_safety.setExternalFault(diCode);
                 Serial.printf("[DI] ch%d fault role triggered: %s\n", i, diCode);
                 enterFaultShutdown();
@@ -2263,7 +2273,14 @@ static void handleCommand(const OTPacket& pkt) {
             if (HardwareConfig::hasStarter && standbyLike && !anyToolTimerActive()) {
                 ed.starterEnabled  = true;
                 ed.starterDemand   = constrain(Config::toolStartTestPct / 100.0f, 0.0f, 1.0f);
-                _startTestUntilMs  = millis() + Config::toolStartTestMs;
+                // If a starter-enable output is configured, the starter motor
+                // is intentionally gated until starterEnDelayMs has elapsed.
+                // Keep the test active long enough that "starter test" always
+                // produces a visible starter output after that hardware delay.
+                _startTestUntilMs  = millis() + Config::toolStartTestMs +
+                                     (HardwareConfig::hasStarterEn
+                                          ? (unsigned long)HardwareConfig::starterEnDelayMs
+                                          : 0UL);
             }
             break;
 
@@ -2464,7 +2481,7 @@ static void handleCommand(const OTPacket& pkt) {
             if (standbyLike && !anyToolTimerActive()) {
                 uint8_t idx = (uint8_t)constrain(pkt.iParam, 0, (int)ChannelRegistry::MAX_OUTPUT_CHANNELS - 1);
                 if (idx < HardwareConfig::channelRegistry.outputCount &&
-                    !ChannelRegistry::isCoreManagedOutput(HardwareConfig::channelRegistry.outputs[idx]) &&
+                    !HardwareConfig::channelRegistry.ownsCoreOutput(HardwareConfig::channelRegistry.outputs[idx]) &&
                     !HardwareConfig::channelRegistry.boundToCoreOutput(HardwareConfig::channelRegistry.outputs[idx])) {
                     ed.registryOutputDemand[idx] = constrain(pkt.fParam, 0.0f, 1.0f);
                     _registryOutputTestIndex = idx;
@@ -2584,7 +2601,7 @@ static void checkStartSwitch() {
 // ── Web server task (Core 0) ──────────────────────────────────
 
 static void webTask(void*) {
-    WebServer::begin();
+    static bool firstWebTick = true;
     for (;;) {
         WebServer::tick();
         // Give web more CPU in STANDBY; engine is priority when active.
@@ -2674,6 +2691,13 @@ void setup() {
         Serial.println("[OT] FATAL: command queue allocation failed; controls unavailable");
     }
 
+    // Bring the AP up before runtime sensor/peripheral init.  Some field
+    // profiles can use aggressive GPIO/peripheral combinations; the repair UI
+    // must still come up deterministically so the user can fix hardware config.
+    Serial.println("[OT] Starting web server");
+    WebServer::begin();
+    Serial.println("[OT] Web server ready");
+
     Hardware::initSensors();
     Hardware::initActuators();
     Hardware::initStatusLED();
@@ -2734,7 +2758,7 @@ void setup() {
         commandIgnitionTarget((uint8_t)Config::relightIgnitionTarget, true);
     });
 
-    // Web server on Core 0 — independent FreeRTOS task
+    // Web maintenance tick on Core 0 — independent FreeRTOS task
     // Stack needs to hold char buf[5120] + ArduinoJson + call frames from webTask tick
     // Priority 8: high enough to time-share Core 0 with async_tcp (prio 10)
     // instead of being fully preempted during file serving. Keeps WS updates
@@ -2768,7 +2792,6 @@ void loop() {
     static uint32_t loopWindowStartMs = 0;
     static uint32_t loopWindowMaxUs = 0;
     static float loopExecAvgUs = 0.0f;
-
     Watchdog::feed();
 
     checkStopSwitch();

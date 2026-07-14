@@ -184,7 +184,7 @@ private:
             const auto& out = HardwareConfig::channelRegistry.outputs[idx];
             return out.installed &&
                    out.pin >= 0 &&
-                   !ChannelRegistry::isCoreManagedOutput(out) &&
+                   !HardwareConfig::channelRegistry.ownsCoreOutput(out) &&
                    !HardwareConfig::channelRegistry.boundToCoreOutput(out);
         }
         switch (act) {

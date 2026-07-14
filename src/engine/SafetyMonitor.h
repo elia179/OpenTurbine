@@ -237,14 +237,6 @@ public:
             }
         }
 
-        // ── TIT overtemp ─────────────────────────────────────
-        if (HardwareConfig::safetyTitOvertemp && HardwareConfig::hasTit && titLimit > 0.0f
-            && ed.titHealthy && ed.tit > titLimit)
-        {
-            _trigger("TIT_OVERTEMP");
-            return;
-        }
-
         // ── Oil temperature high ──────────────────────────────
         if (HardwareConfig::safetyOilTempHigh && HardwareConfig::hasOilTemp && oilTempLimit > 0.0f
             && ed.oilTempHealthy && ed.oilTemp > oilTempLimit)

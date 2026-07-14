@@ -102,9 +102,9 @@
           <label class="slog-chk"><input type="checkbox" data-bit="wet_glow">Wet glow fuel output</label>
           <label class="slog-chk"><input type="checkbox" data-bit="glow_current">Glow current A</label>
           <label class="slog-chk"><input type="checkbox" data-bit="ign_current">Igniter 1 current A</label>
-          <label class="slog-chk"><input type="checkbox" data-bit="ign2_current">Igniter 2 current A</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="ign2_current">AB / pilot igniter current A</label>
           <label class="slog-chk"><input type="checkbox" data-bit="oil_current">Oil current A</label>
-          <label class="slog-chk"><input type="checkbox" data-bit="fp2">Fuel pump 2 %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="fp2">Pilot / aux fuel pump %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="ab">Afterburner state/fuel</label>
           <label class="slog-chk"><input type="checkbox" data-bit="prop">Prop pitch %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
@@ -153,9 +153,9 @@
           <label id="chart-lbl-wetg" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-wetg"        onchange="redrawChart()"> <span style="color:#e05f8a">Wet glow fuel output</span></label>
           <label id="chart-lbl-gcur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-gcur"        onchange="redrawChart()"> <span style="color:#ff8b8b">Glow current</span></label>
           <label id="chart-lbl-icur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-icur"        onchange="redrawChart()"> <span style="color:#ffb15c">Igniter 1 current</span></label>
-          <label id="chart-lbl-i2cur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-i2cur"      onchange="redrawChart()"> <span style="color:#ffce6b">Igniter 2 current</span></label>
+          <label id="chart-lbl-i2cur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-i2cur"      onchange="redrawChart()"> <span style="color:#ffce6b">AB / pilot igniter current</span></label>
           <label id="chart-lbl-ocur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ocur"        onchange="redrawChart()"> <span style="color:#c7d96a">Oil current</span></label>
-          <label id="chart-lbl-fp2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp2"         onchange="redrawChart()"> <span style="color:#68c97a">Fuel pump 2 %</span></label>
+          <label id="chart-lbl-fp2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp2"         onchange="redrawChart()"> <span style="color:#68c97a">Pilot / aux fuel pump %</span></label>
           <label id="chart-lbl-prop" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-prop"        onchange="redrawChart()"> <span style="color:#7ab3f0">Prop pitch %</span></label>
           <label id="chart-lbl-ff"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ff"          onchange="redrawChart()"> <span style="color:#f5c842">Fuel flow</span></label>
           <label id="chart-lbl-abm"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abm"         onchange="redrawChart()"> <span style="color:#e84040">AB mode</span></label>
@@ -636,9 +636,9 @@ function _applyLogHwVisibility(hw) {
     wet_glow: 'Wet Glow fuel output',
     glow_current: 'Glow current sensor',
     ign_current: 'Igniter 1 current sensor',
-    ign2_current: 'Igniter 2 current sensor',
+    ign2_current: 'AB / pilot igniter current sensor',
     oil_current: 'Oil pump current sensor',
-    fp2: 'Fuel Pump 2', ab: 'Afterburner', prop: 'Prop Pitch',
+    fp2: 'Pilot / Aux Fuel Pump', ab: 'Afterburner', prop: 'Prop Pitch',
   };
 
   SLOG_BITS.forEach(bit => {

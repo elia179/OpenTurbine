@@ -79,6 +79,13 @@ async function hasOption(page, selector, value) {
       cfg.actuators.status_led = { enabled: true, pin: 4 };
       cfg.mavlink = { enabled: true, tx_pin: 4, baud: 115200, interval_ms: 200 };
       cfg.cluster_serial = { enabled: true, tx_pin: 5, rx_pin: -1, baud: 115200, interval_ms: 100 };
+      const optionState = (html, value) => {
+        const select = document.createElement('select');
+        select.innerHTML = html;
+        const option = select.querySelector(`option[value="${value}"]`);
+        return option ? { exists: true, disabled: option.disabled, text: option.textContent } : { exists: false, disabled: null, text: '' };
+      };
+      const usedOutputPin = optionState(buildPinOptions(-1, 'out'), 4);
       const statusLedMav = _checkGpioConflicts().some(c =>
         c.pin === 4 && c.names.includes('Status LED') && c.names.includes('MAVLink TX'));
 
@@ -87,6 +94,8 @@ async function hasOption(page, selector, value) {
       cfg.sensors.tit = { enabled: true, chip: 'max31856', clk: 40, cs: 38, miso: 41, mosi: 42 };
       cfg.sensors.oil_temp = { enabled: true, chip: 'max31856', clk: 40, cs: 39, miso: 41, mosi: 42 };
       const sharedSpiBusOk = !_checkGpioConflicts().some(c => [40, 41, 42].includes(c.pin));
+      const spiClkAsSpi = optionState(buildPinOptions(-1, 'spi-clk'), 40);
+      const spiClkAsOrdinaryOutput = optionState(buildPinOptions(-1, 'out'), 40);
 
       cfg.sensors.tit.cs = 37;
       const sharedCsBlocked = _checkGpioConflicts().some(c =>
@@ -98,14 +107,24 @@ async function hasOption(page, selector, value) {
       const released = _releaseInactivePinConflicts();
       const statusLedReleased = cfg.actuators.status_led.pin === -1 && released;
 
-      return { statusLedMav, sharedSpiBusOk, sharedCsBlocked, statusLedReleased };
+      return { statusLedMav, sharedSpiBusOk, sharedCsBlocked, statusLedReleased, usedOutputPin, spiClkAsSpi, spiClkAsOrdinaryOutput };
     });
-    assert.deepEqual(conflictMatrix, {
+    assert.deepEqual({
+      statusLedMav: conflictMatrix.statusLedMav,
+      sharedSpiBusOk: conflictMatrix.sharedSpiBusOk,
+      sharedCsBlocked: conflictMatrix.sharedCsBlocked,
+      statusLedReleased: conflictMatrix.statusLedReleased
+    }, {
       statusLedMav: true,
       sharedSpiBusOk: true,
       sharedCsBlocked: true,
       statusLedReleased: true
     });
+    assert.equal(conflictMatrix.usedOutputPin.disabled, true, 'ordinary used output pin must be disabled in selectors');
+    assert.match(conflictMatrix.usedOutputPin.text, /used by Status LED/i);
+    assert.equal(conflictMatrix.spiClkAsSpi.disabled, false, 'SPI CLK pin must remain selectable by another SPI CLK field');
+    assert.match(conflictMatrix.spiClkAsSpi.text, /shared SPI CLK/i);
+    assert.equal(conflictMatrix.spiClkAsOrdinaryOutput.disabled, true, 'SPI CLK pin must not be selectable by an unrelated output');
     results.push('hardware conflict logic covers status LED, serial pins, SPI bus sharing and hidden inactive pins');
 
     const txOnlyCluster = await page.evaluate(() => {

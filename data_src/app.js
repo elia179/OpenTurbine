@@ -8,6 +8,39 @@ const _labels = {
   stop:'Stop', start:'Start', ab_arm:'AB Arm'
 };
 function lbl(key) { return _labels[key] || key; }
+function plainRegistryName(raw, fallback = '') {
+  const text = String(raw || '').trim();
+  const key = text.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const direct = {
+    user_throttle:'Throttle Input', operator_throttle:'Throttle Input', operator_thrott:'Throttle Input', throttle_input:'Throttle Input',
+    user_idle:'Idle Input', operator_idle:'Idle Input', idle_input:'Idle Input',
+    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Fuel Pump', main_fuel:'Main Fuel Pump',
+    fuel_shutoff:'Fuel Shutoff', fuel_sol:'Fuel Shutoff', flame:'Flame Sensor', flame_main:'Flame Sensor',
+    coolant_pump:'Coolant Pump', coolant_temperature:'Coolant Temperature',
+    pilot_fuel:'Pilot Gas', purge_valve:'Purge Valve', air_starter:'Air Starter',
+    ab_pump:'AB Pump', ab_solenoid:'AB Solenoid', ab_igniter:'AB Igniter',
+    prop_pitch:'Prop Pitch', nozzle_actuator:'Nozzle Actuator'
+  };
+  if (direct[key]) return direct[key];
+  if (key.includes('throttle') || key.includes('thrott')) return 'Throttle Input';
+  if (key.includes('idle')) return 'Idle Input';
+  if (key.includes('flame')) return 'Flame Sensor';
+  if (key.includes('oil') && key.includes('pump')) return 'Oil Pump';
+  if (key.includes('fuel') && key.includes('pump')) return 'Fuel Pump';
+  const out = key.split('_').filter(Boolean).map(part => {
+    const upper = {n1:'N1', n2:'N2', tot:'TOT', tit:'TIT', egt:'EGT', ab:'AB', rc:'RC', pwm:'PWM', adc:'ADC', esc:'ESC', gpio:'GPIO', rpm:'RPM'};
+    return upper[part] || part.charAt(0).toUpperCase() + part.slice(1);
+  }).join(' ');
+  return out || fallback || text;
+}
+function registryDisplayName(c, fallback = 'Output') {
+  const name = (c?.name && String(c.name).trim()) || c?.id || fallback;
+  return String(name || '').includes('_') ? plainRegistryName(name, fallback) : name;
+}
+function selectedEgtKey(d) {
+  return d?.egt_source === 2 ? 'tit'
+    : (d?.egt_source === 1 ? 'tot' : (d?.has_tot ? 'tot' : (d?.has_tit ? 'tit' : null)));
+}
 
 // ── Unit preferences (persisted in localStorage) ─────────────
 const _unitPrefs = (() => { try { return JSON.parse(localStorage.getItem('ot_units') || '{}'); } catch { return {}; } })();
@@ -92,15 +125,55 @@ function resolveCssColor(color) {
 }
 
 const SPARK_LEN = 60;
-const _sparkN1       = new Array(SPARK_LEN).fill(0);
-const _sparkTot      = new Array(SPARK_LEN).fill(0);
-const _sparkOilTemp  = new Array(SPARK_LEN).fill(0);
-const _sparkBattVolt = new Array(SPARK_LEN).fill(0);
-const _sparkTorque   = new Array(SPARK_LEN).fill(0);
+const SPARK_STORAGE_KEY = 'ot_dashboard_sparklines_v1';
+const SPARK_MAX_AGE_MS = 15 * 60 * 1000;
+const _storedSparks = (() => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SPARK_STORAGE_KEY) || '{}');
+    return saved.saved_at && Date.now() - Number(saved.saved_at) <= SPARK_MAX_AGE_MS
+      ? (saved.series || {}) : {};
+  } catch { return {}; }
+})();
+function sparkSeries(key) {
+  const values = Array.isArray(_storedSparks[key]) ? _storedSparks[key] : [];
+  return values.map(Number).filter(Number.isFinite).slice(-SPARK_LEN);
+}
+const _sparkN1       = sparkSeries('n1');
+const _sparkN2       = sparkSeries('n2');
+const _sparkTot      = sparkSeries('tot');
+const _sparkTit      = sparkSeries('tit');
+const _sparkOilTemp  = sparkSeries('oil_temp');
+const _sparkBattVolt = sparkSeries('battery');
+const _sparkTorque   = sparkSeries('torque');
+const _sparkRegistryInputs = new Map();
+let _lastSparkPersistMs = 0;
+
+function registryInputSparkSeries(id) {
+  const key = 'regin:' + String(id || '');
+  if (!_sparkRegistryInputs.has(key)) _sparkRegistryInputs.set(key, sparkSeries(key));
+  return _sparkRegistryInputs.get(key);
+}
+
+function persistSparklineHistory(force = false) {
+  const now = Date.now();
+  if (!force && now - _lastSparkPersistMs < 1000) return;
+  _lastSparkPersistMs = now;
+  const series = {
+    n1:_sparkN1,n2:_sparkN2,tot:_sparkTot,tit:_sparkTit,oil_temp:_sparkOilTemp,
+    battery:_sparkBattVolt,torque:_sparkTorque
+  };
+  _sparkRegistryInputs.forEach((values, key) => { series[key] = values; });
+  try {
+    localStorage.setItem(SPARK_STORAGE_KEY, JSON.stringify({saved_at:now,series}));
+  } catch {}
+}
+window.addEventListener('pagehide', () => persistSparklineHistory(true));
 
 function pushSparkline(arr, val) {
-  arr.shift();
-  arr.push(val);
+  const n = Number(val);
+  if (!Number.isFinite(n)) return;
+  arr.push(n);
+  while (arr.length > SPARK_LEN) arr.shift();
 }
 
 function drawSparkline(canvasId, data, color) {
@@ -110,14 +183,15 @@ function drawSparkline(canvasId, data, color) {
   const w = c.width = c.offsetWidth || 200;
   const h = c.height = 36;
   ctx.clearRect(0, 0, w, h);
+  if (!data.length) return;
   const max = Math.max(...data, 1);
-  const min = 0;
+  const min = Math.min(...data, 0);
   const range = max - min || 1;
   ctx.strokeStyle = resolveCssColor(color);
   ctx.lineWidth = 2.2;
   ctx.beginPath();
   data.forEach((v, i) => {
-    const x = (i / (data.length - 1)) * w;
+    const x = (i / Math.max(1, data.length - 1)) * w;
     const y = h - ((v - min) / range) * h;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });
@@ -338,6 +412,12 @@ function applyData(d) {
   // label/role fields from the /api/data snapshot survive fast WS frames.
   if (d && Array.isArray(d.di_channels) && Array.isArray(_lastData.di_channels)) {
     d.di_channels = d.di_channels.map((ch, i) => Object.assign({}, _lastData.di_channels[i], ch));
+  }
+  if (d && Array.isArray(d.registry_inputs)) {
+    d.registry_inputs = mergeTelemetryChannels(_lastData.registry_inputs, d.registry_inputs);
+  }
+  if (d && Array.isArray(d.registry_outputs)) {
+    d.registry_outputs = mergeTelemetryChannels(_lastData.registry_outputs, d.registry_outputs);
   }
   Object.assign(_lastData, d);
   d = _lastData;
@@ -738,10 +818,12 @@ function applyData(d) {
   }
 
   // ── EGT rate of rise ──────────────────────────────────────
-  if (d.tot_rise_rate !== undefined) {
-    const rate = Number(d.tot_rise_rate);
-    const rateEl = document.getElementById('tot-rise-rate-val');
-    if (rateEl) rateEl.textContent = toDispTempDelta(rate).toFixed(1) + ' ' + dispTempUnit() + '/s';
+  if (d.egt_rise_rate !== undefined || d.tot_rise_rate !== undefined) {
+    const rate = Number(d.egt_rise_rate ?? d.tot_rise_rate);
+    const rateText = toDispTempDelta(rate).toFixed(1) + ' ' + dispTempUnit() + '/s';
+    const primary = selectedEgtKey(d);
+    setText('tot-rise-rate-val', primary === 'tot' ? rateText : '—');
+    setText('tit-rise-rate-val', primary === 'tit' ? rateText : '—');
   }
 
   // ── Color gauges + approach-to-limit warnings ────────────
@@ -758,8 +840,7 @@ function applyData(d) {
     const absLbl = document.getElementById('n1-abs-label');
     if (absLbl) absLbl.textContent = fmtInt(d.n1) + ' / ' + fmtInt(d.rpm_limit) + ' RPM';
   }
-  const selectedEgtSource = d.egt_source === 2 ? 'tit'
-    : (d.egt_source === 1 ? 'tot' : (d.has_tot ? 'tot' : (d.has_tit ? 'tit' : null)));
+  const selectedEgtSource = selectedEgtKey(d);
   const isPrimaryTot = selectedEgtSource === 'tot';
   const isPrimaryTit = selectedEgtSource === 'tit';
 
@@ -831,9 +912,17 @@ function applyData(d) {
     pushSparkline(_sparkN1, Number(d.n1));
     drawSparkline('n1-sparkline', _sparkN1, 'var(--accent)');
   }
+  if (d.n2 !== undefined) {
+    pushSparkline(_sparkN2, Number(d.n2));
+    drawSparkline('n2-sparkline', _sparkN2, 'var(--accent)');
+  }
   if (d.tot !== undefined) {
     pushSparkline(_sparkTot, Number(d.tot));
     drawSparkline('tot-sparkline', _sparkTot, 'var(--accent)');
+  }
+  if (d.tit !== undefined) {
+    pushSparkline(_sparkTit, Number(d.tit));
+    drawSparkline('tit-sparkline', _sparkTit, 'var(--accent)');
   }
   if (d.has_oil_temp && d.oil_temp !== undefined) {
     pushSparkline(_sparkOilTemp, Number(d.oil_temp));
@@ -847,13 +936,20 @@ function applyData(d) {
     pushSparkline(_sparkTorque, Number(d.torque));
     drawSparkline('torque-sparkline', _sparkTorque, 'var(--accent)');
   }
+  if (d.oil_pct !== undefined) {
+    const oilPct = Number(d.oil_pct);
+    setGaugeBar('oil-output-gauge-bar', Math.max(0, Math.min(100, oilPct)));
+  }
+  renderRegistryOutputCards(d);
+  const registryInputCount = renderRegistryInputCards(d);
+  persistSparklineHistory();
 
   // ── Extended sensors (oil temp, battery, torque, current sensors) ──
   const extSection = document.getElementById('ext-sensors-section');
   if (extSection) {
     const anyExt = d.has_batt_voltage || d.has_torque ||
                    d.has_glow_current || d.has_igniter_current ||
-                   d.has_igniter2_current;
+                   d.has_igniter2_current || registryInputCount > 0;
     extSection.style.display = anyExt ? '' : 'none';
   }
 
@@ -877,8 +973,8 @@ function applyData(d) {
   if (titCard) {
     titCard.style.display = d.has_tit ? '' : 'none';
     if (d.has_tit) {
-      setText('tit', d.tit !== undefined ? toDispTemp(Number(d.tit)).toFixed(0) : '—');
-      setText('max-tit', d.max_tit !== undefined ? toDispTemp(Number(d.max_tit)).toFixed(0) : '—');
+      setText('tit', d.tit !== undefined ? toDispTemp(Number(d.tit)).toFixed(1) : '—');
+      setText('max-tit', d.max_tit !== undefined ? toDispTemp(Number(d.max_tit)).toFixed(1) : '—');
       setDot('tit-health', d.tit_healthy, lbl('tit'));
       if (d.tit !== undefined) {
         const titLimit = Number(d.tit_limit || 0);
@@ -1001,7 +1097,7 @@ function applyData(d) {
     }
   }
 
-  // Igniter 2 / AB coil current card
+  // AB / pilot igniter coil current card
   const ign2CurCard = document.getElementById('igniter2-current-card');
   if (ign2CurCard) {
     ign2CurCard.style.display = d.has_igniter2_current ? '' : 'none';
@@ -1094,7 +1190,7 @@ function applyData(d) {
     }
   }
 
-  // ── Advanced actuators section (glow, bleed, prop pitch, fuel pump 2, fan, airstarter, scavenge)
+  // ── Advanced actuators section (glow, bleed, prop pitch, pilot / auxiliary fuel pump, fan, airstarter, scavenge)
   const advActSection = document.getElementById('adv-act-section');
   if (advActSection) {
     const anyAdv = d.has_starter   || d.has_starter_en || d.has_fuel_sol  || d.has_igniter
@@ -1569,6 +1665,168 @@ function startTelemetryBoot() {
       .then(d => { try { applyData(d); } catch(e) {} })
       .catch(() => {});
   }
+}
+
+function mergeTelemetryChannels(previousRows, nextRows) {
+  if (!Array.isArray(nextRows)) return nextRows;
+  const prevById = new Map((Array.isArray(previousRows) ? previousRows : [])
+    .filter(row => row && row.id)
+    .map(row => [String(row.id), row]));
+  return nextRows.map((row, index) => {
+    if (!row) return row;
+    const prev = row.id ? prevById.get(String(row.id)) : (Array.isArray(previousRows) ? previousRows[index] : null);
+    return prev ? Object.assign({}, prev, row) : row;
+  });
+}
+
+const DASHBOARD_CORE_OUTPUT_PURPOSES = new Set([
+  'main_fuel','fuel_shutoff','starter','starter_enable','oil_pump','scavenge_pump',
+  'cooling_fan','fuel_pump','igniter','ab_igniter','glow_plug','ab_pump','prop_pitch',
+  'air_starter'
+]);
+const DASHBOARD_CORE_OUTPUT_IDS = new Set([
+  'main_fuel_output','main_fuel','throttle','main_starter','starter','starter_main',
+  'starter_enable','starter_enable_main','oil_pump','oil_pump_main','fuel_shutoff',
+  'main_fuel_shutoff','fuel_sol','igniter','igniter_main','ab_igniter','igniter2',
+  'glow_plug','glow_plug_main','ab_pump','ab_pump_main','prop_pitch','prop_pitch_main',
+  'fuel_pump','fuel_pump2','cooling_fan','cool_fan','air_starter','airstarter_sol',
+  'scavenge_pump','oil_scavenge_pump'
+]);
+function registryOutputAlreadyHasCoreCard(ch) {
+  const id = String(ch?.id || '');
+  const purpose = String(ch?.purpose || '');
+  return DASHBOARD_CORE_OUTPUT_IDS.has(id) || DASHBOARD_CORE_OUTPUT_PURPOSES.has(purpose);
+}
+const DASHBOARD_CORE_INPUT_PURPOSES = new Set([
+  'n1_speed','n2_speed','tot','tit','oil_pressure','oil_temperature','fuel_pressure',
+  'fuel_flow','p1_pressure','p2_pressure','flame','torque','battery_voltage','throttle','idle'
+]);
+const DASHBOARD_CORE_INPUT_IDS = new Set([
+  'n1_main','primary_n1','n2_main','primary_n2','tot_main','primary_egt','tit_main',
+  'oil_pressure_main','oil_temperature','fuel_pressure','fuel_flow','p1_main','p1',
+  'p2_main','p2','flame_main','torque_main','battery_voltage','batt_voltage_main',
+  'operator_throttle','operator_idle','throttle_input','idle_input'
+]);
+function registryInputAlreadyHasCoreCard(ch) {
+  const id = String(ch?.id || '');
+  const purpose = String(ch?.purpose || '');
+  return DASHBOARD_CORE_INPUT_IDS.has(id) || DASHBOARD_CORE_INPUT_PURPOSES.has(purpose);
+}
+function registryInputIsBinary(ch) {
+  const role = String(ch?.role || '');
+  return Number(ch?.driver) === 0 || ['digital_switch','fault','estop','inhibit_start','low_oil_switch','oil_zero_switch','sequence_gate','ab_arm','ab_fire','limp_mode','flame'].includes(role);
+}
+function registryInputDisplay(ch) {
+  const value = Number(ch?.value);
+  if (!Number.isFinite(value)) return {value:'—', unit:'', numeric:null};
+  const role = String(ch?.role || '');
+  const purpose = String(ch?.purpose || '');
+  if (registryInputIsBinary(ch)) return {value:value >= 0.5 ? 'ON' : 'OFF', unit:'', numeric:value};
+  if (role === 'temperature') return {value:toDispTemp(value).toFixed(1), unit:dispTempUnit(), numeric:value};
+  if (role === 'pressure') return {value:toDispPress(value).toFixed(2), unit:dispPressUnit(), numeric:value};
+  if (role === 'speed') return {value:fmtInt(value), unit:'RPM', numeric:value};
+  if (role === 'voltage') return {value:value.toFixed(2), unit:'V', numeric:value};
+  if (role === 'flow') return {value:value.toFixed(2), unit:'L/min', numeric:value};
+  if (role === 'torque') return {value:value.toFixed(1), unit:'Nm', numeric:value};
+  if (role === 'operator') return {value:(value * 100).toFixed(1), unit:'%', numeric:value};
+  if (purpose === 'generic' || role === 'generic') return {value:value.toFixed(3), unit:'0-1', numeric:value};
+  return {value:value.toFixed(2), unit:'', numeric:value};
+}
+function registryInputRangeText(ch) {
+  const role = String(ch?.role || '');
+  const purpose = String(ch?.purpose || '');
+  if (registryInputIsBinary(ch)) return 'digital 0/1 input';
+  if (role === 'temperature') return purpose === 'coolant_temp' ? 'coolant temperature' : 'temperature input';
+  if (role === 'pressure') return 'pressure input';
+  if (role === 'speed') return 'speed input';
+  if (role === 'voltage') return 'voltage input';
+  if (role === 'flow') return 'flow input';
+  if (purpose === 'generic' || role === 'generic') return 'normalized automation input';
+  return 'registry input';
+}
+function renderRegistryInputCards(d) {
+  const hostParent = document.getElementById('electrical-cards');
+  if (!hostParent) return 0;
+  let host = document.getElementById('registry-input-cards');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'registry-input-cards';
+    host.style.display = 'contents';
+    hostParent.appendChild(host);
+  }
+  const rows = (Array.isArray(d.registry_inputs) ? d.registry_inputs : [])
+    .filter(ch => ch && ch.id && !registryInputAlreadyHasCoreCard(ch));
+  if (!rows.length) {
+    host.innerHTML = '';
+    return 0;
+  }
+  host.innerHTML = rows.map((ch, i) => {
+    const safeId = String(ch.id || `input_${i}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const name = registryDisplayName(ch, 'Input');
+    const display = registryInputDisplay(ch);
+    const range = registryInputRangeText(ch);
+    const health = ch.healthy === false ? ' bad' : '';
+    return `<div class="card small registry-input-card" data-registry-input-id="${escapeHtmlText(safeId)}" title="${escapeHtmlText(name)} live value. ${escapeHtmlText(range)}.">
+      <div class="label">${escapeHtmlText(name)} <span class="dot${health}" title="${ch.healthy === false ? 'Unhealthy' : 'Healthy'}"></span></div>
+      <div class="value small">${escapeHtmlText(display.value)}</div>
+      <div class="peak-val">${escapeHtmlText(display.unit || range)}</div>
+      <canvas class="sparkline" id="regin-spark-${escapeHtmlText(safeId)}"></canvas>
+    </div>`;
+  }).join('');
+  rows.forEach((ch, i) => {
+    const safeId = String(ch.id || `input_${i}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const display = registryInputDisplay(ch);
+    if (display.numeric !== null) {
+      const arr = registryInputSparkSeries(ch.id);
+      pushSparkline(arr, display.numeric);
+      drawSparkline('regin-spark-' + safeId, arr, 'var(--accent)');
+    }
+  });
+  return rows.length;
+}
+function registryOutputRangeText(ch) {
+  const driver = Number(ch?.driver);
+  if (driver === 4) return 'relay output';
+  if (driver === 5) return `${Math.round(Number(ch?.min || 0) * 100)}–${Math.round(Number(ch?.max ?? 1) * 100)}% PWM range`;
+  if (driver === 6) return `${Math.round(Number(ch?.min || 1000))}–${Math.round(Number(ch?.max || 2000))} us servo range`;
+  return 'output range';
+}
+function renderRegistryOutputCards(d) {
+  const outputCards = document.getElementById('actuator-output-cards');
+  if (!outputCards) return;
+  let host = document.getElementById('registry-output-cards');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'registry-output-cards';
+    host.style.display = 'contents';
+    outputCards.appendChild(host);
+  }
+  const rows = (Array.isArray(d.registry_outputs) ? d.registry_outputs : [])
+    .filter(ch => ch && ch.id && !registryOutputAlreadyHasCoreCard(ch));
+  if (!rows.length) {
+    host.innerHTML = '';
+    return;
+  }
+  host.innerHTML = rows.map((ch, i) => {
+    const driver = Number(ch.driver);
+    const relay = driver === 4;
+    const demand = Math.max(0, Math.min(1, Number(ch.demand || 0)));
+    const pct = demand * 100;
+    const id = String(ch.id || `output_${i}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const value = relay ? (demand >= 0.5 ? 'ON' : 'OFF') : `${pct.toFixed(1)}%`;
+    const name = registryDisplayName(ch);
+    const range = registryOutputRangeText(ch);
+    const current = ch.has_current
+      ? `<div class="oil-sub">current: ${Number.isFinite(Number(ch.current_amps)) ? Number(ch.current_amps).toFixed(2) + ' A' : '—'}${ch.current_healthy === false ? ' ⚠' : ''}</div>`
+      : '';
+    return `<div class="card small registry-output-card" data-registry-output-id="${escapeHtmlText(id)}" title="${escapeHtmlText(name)} current command. ${escapeHtmlText(range)}.">
+      <div class="label">${escapeHtmlText(name)}</div>
+      <div class="value small">${value}</div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:${relay ? (demand >= 0.5 ? 100 : 0) : pct}%"></div></div>
+      <div class="oil-sub">${escapeHtmlText(range)}</div>
+      ${current}
+    </div>`;
+  }).join('');
 }
 window.startTelemetryBoot = startTelemetryBoot;
 function scheduleTelemetryBoot() {

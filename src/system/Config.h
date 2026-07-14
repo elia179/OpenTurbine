@@ -114,7 +114,7 @@ public:
     static float flameoutN1MinRpm;
     static float flameoutTotDropC;
     static float totRiseRateLimitDegPerSec;  // °C/s — 0 = disabled
-    static float titLimit;                   // °C TIT overtemp limit (0 = disabled)
+    static float titLimit;                   // °C TIT hard limit when TIT is the selected EGT source (0 = disabled)
     static float oilTempLimit;              // °C oil temp limit (0 = disabled)
     static float fuelPressMin;             // bar minimum fuel pressure (0 = disabled)
     static float battVoltMin;              // V minimum battery voltage (0 = disabled)
@@ -123,7 +123,7 @@ public:
     // ── Relight ───────────────────────────────────────────────
     static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
     static float    relightMinRpm;       // min N1 to attempt relight (falls below → fault)
-    static int      relightIgnitionTarget; // 0=Igniter 1, 1=Igniter 2, 2=Glow/Wet Glow
+    static int      relightIgnitionTarget; // 0=Igniter 1, 1=AB / Pilot Igniter, 2=Glow/Wet Glow
     static int      relightConfirmSource; // 0=auto, 1=flame, 2=N1 recovered, 3=selected EGT rise
     static float    relightConfirmRpm;
     static float    relightTotRiseC;
@@ -184,7 +184,7 @@ public:
 
     // ── Misc ──────────────────────────────────────────────────
     static bool  igniterOnStart;         // fire igniter while START held during RUNNING
-    static int   manualRelightIgnitionTarget; // 0=Igniter 1, 1=Igniter 2, 2=Glow/Wet Glow
+    static int   manualRelightIgnitionTarget; // 0=Igniter 1, 1=AB / Pilot Igniter, 2=Glow/Wet Glow
 
     // ── Cooldown hardware selection ───────────────────────────
     static bool  cooldownUseStarter;          // spin starter motor during CooldownSpin block

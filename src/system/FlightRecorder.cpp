@@ -378,6 +378,7 @@ static int _copyTailLocked(int dropFirst) {
     int seen = 0;
     int kept = 0;
     bool writeOk = true;
+    int yielded = 0;
     while (fr.available()) {
         String line = fr.readStringUntil('\n');
         line.trim();
@@ -389,6 +390,10 @@ static int _copyTailLocked(int dropFirst) {
                 break;
             }
             kept++;
+        }
+        if (++yielded >= 32) {
+            yielded = 0;
+            delay(0);
         }
     }
     fr.close();
@@ -451,10 +456,15 @@ static void _drainRingLocked() {
         s_lineCount = 0;
         File fc = LittleFS.open(FlightRecorder::PATH, "r");
         if (fc) {
+            int yielded = 0;
             while (fc.available()) {
                 String line = fc.readStringUntil('\n');
                 line.trim();
                 if (line.length() > 0 && line[0] == '{') s_lineCount++;
+                if (++yielded >= 64) {
+                    yielded = 0;
+                    delay(0);
+                }
             }
             fc.close();
         }
@@ -481,6 +491,7 @@ static void _drainRingLocked() {
             s_lineCount++;
         }
 
+        int writtenSinceYield = 0;
         while (s_ringTail != s_ringHead && s_lineCount < FlightRecorder::MAX_RECORDS) {
             if (fa.println(s_ring[s_ringTail]) == 0) {
                 fa.close();
@@ -488,6 +499,10 @@ static void _drainRingLocked() {
             }
             s_lineCount++;
             s_ringTail = (uint8_t)((s_ringTail + 1) % RING_SLOTS);
+            if (++writtenSinceYield >= 4) {
+                writtenSinceYield = 0;
+                delay(0);
+            }
         }
         fa.close();
     }

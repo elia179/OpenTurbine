@@ -124,7 +124,7 @@ int8_t ruleTargetHandle(const char* id) {
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;
-        if (!ChannelRegistry::isCoreManagedOutput(out) &&
+        if (!HardwareConfig::channelRegistry.ownsCoreOutput(out) &&
             !HardwareConfig::channelRegistry.boundToCoreOutput(out))
             return (int8_t)(ChannelRegistry::OUTPUT_ACTUATOR_BASE + i);
         return -1;
@@ -485,7 +485,7 @@ bool ruleActuatorAvailable(uint8_t a) {
         const auto& out = HardwareConfig::channelRegistry.outputs[idx];
         return out.installed &&
                out.pin >= 0 &&
-               !ChannelRegistry::isCoreManagedOutput(out) &&
+               !HardwareConfig::channelRegistry.ownsCoreOutput(out) &&
                !HardwareConfig::channelRegistry.boundToCoreOutput(out);
     }
     switch (a) {
@@ -1068,7 +1068,7 @@ void Config::autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
             thr = def;
         }
     };
-    fill(prevTit,       HardwareConfig::safetyTitOvertemp,  titLimit,               900.0f,    "autofill:tit_limit_c");
+    fill(prevTit,       HardwareConfig::safetyOvertemp && HardwareConfig::hasTit, titLimit, 900.0f, "autofill:tit_limit_c");
     fill(prevOilTemp,   HardwareConfig::safetyOilTempHigh,  oilTempLimit,           120.0f,    "autofill:oil_temp_limit_c");
     fill(prevFuelPress, HardwareConfig::safetyFuelPressLow, fuelPressMin,           0.5f,      "autofill:fuel_press_min_bar");
     fill(prevBatt,      HardwareConfig::safetyBattLow,      battVoltMin,            10.5f,     "autofill:batt_volt_min_v");

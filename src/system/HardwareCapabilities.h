@@ -7,6 +7,8 @@ class HardwareCapabilities {
 public:
     static bool hasInputRole(const char* role) { return hasRole(ChannelRegistry::Input, role); }
     static bool hasOutputRole(const char* role) { return hasRole(ChannelRegistry::Output, role); }
+    static bool hasInputPurpose(const char* purpose) { return hasPurpose(ChannelRegistry::Input, purpose); }
+    static bool hasOutputPurpose(const char* purpose) { return hasPurpose(ChannelRegistry::Output, purpose); }
     static bool available(const char* feature) {
         if (!strcmp(feature, "oil_loop"))
             return (hasInputRole("pressure") && hasOutputRole("oil_pump")) ||
@@ -38,16 +40,17 @@ public:
             return "Overspeed/surge safety requires N1 RPM feedback";
         if ((HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart) && !available("egt_safety"))
             return "Temperature safety requires a selected EGT/TIT input";
-        if ((HardwareConfig::safetyLowOil || HardwareConfig::safetyOilZero) &&
-            !(hasInputRole("pressure") || HardwareConfig::hasOilPress))
-            return "Oil pressure safety requires an oil pressure input";
-        if (HardwareConfig::safetyTitOvertemp && !(hasInputRole("temperature") || HardwareConfig::hasTit))
+        if (HardwareConfig::safetyLowOil && !hasOilSafetyInput("low_oil_switch"))
+            return "Low-oil safety requires an oil pressure input or low-oil switch";
+        if (HardwareConfig::safetyOilZero && !hasOilSafetyInput("oil_zero_switch"))
+            return "Zero-oil safety requires an oil pressure input or zero-oil switch";
+        if (HardwareConfig::safetyTitOvertemp && !(hasInputPurpose("tit") || hasInputRole("temperature") || HardwareConfig::hasTit))
             return "TIT safety requires a TIT/temperature input";
-        if (HardwareConfig::safetyOilTempHigh && !(hasInputRole("oil_temperature") || HardwareConfig::hasOilTemp))
+        if (HardwareConfig::safetyOilTempHigh && !(hasInputPurpose("oil_temperature") || HardwareConfig::hasOilTemp))
             return "Oil temperature safety requires an oil temperature input";
-        if (HardwareConfig::safetyFuelPressLow && !(hasInputRole("fuel_pressure") || HardwareConfig::hasFuelPress))
+        if (HardwareConfig::safetyFuelPressLow && !(hasInputPurpose("fuel_pressure") || HardwareConfig::hasFuelPress))
             return "Fuel pressure safety requires a fuel pressure input";
-        if (HardwareConfig::safetyBattLow && !(hasInputRole("voltage") || HardwareConfig::hasBattVoltage))
+        if (HardwareConfig::safetyBattLow && !(hasInputPurpose("battery_voltage") || hasInputRole("voltage") || HardwareConfig::hasBattVoltage))
             return "Battery safety requires a voltage input";
         return nullptr;
     }
@@ -81,11 +84,26 @@ private:
     }
     static bool hasPressureInput() { return hasInputRole("pressure") || HardwareConfig::hasOilPress; }
     static bool hasOilPumpOutput() { return hasOutputRole("oil_pump") || HardwareConfig::hasOilPump; }
+    static bool hasOilSafetyInput(const char* switchRole) {
+        return hasPressureInput() || hasInputPurpose(switchRole) || hasInputRole(switchRole) || hasDiRole(switchRole);
+    }
+    static bool hasDiRole(const char* role) {
+        for (int i = 0; i < HardwareConfig::MAX_DI; ++i)
+            if (HardwareConfig::diCh[i].pin >= 0 && !strcmp(HardwareConfig::diCh[i].role, role)) return true;
+        return false;
+    }
     static bool hasRole(ChannelRegistry::Direction direction, const char* role) {
         const ChannelRegistry& r = HardwareConfig::channelRegistry;
         const ChannelRegistry::Channel* list = direction == ChannelRegistry::Input ? r.inputs : r.outputs;
         uint8_t n = direction == ChannelRegistry::Input ? r.inputCount : r.outputCount;
         for (uint8_t i=0;i<n;i++) if (list[i].installed && !strcmp(list[i].role, role)) return true;
+        return false;
+    }
+    static bool hasPurpose(ChannelRegistry::Direction direction, const char* purpose) {
+        const ChannelRegistry& r = HardwareConfig::channelRegistry;
+        const ChannelRegistry::Channel* list = direction == ChannelRegistry::Input ? r.inputs : r.outputs;
+        uint8_t n = direction == ChannelRegistry::Input ? r.inputCount : r.outputCount;
+        for (uint8_t i=0;i<n;i++) if (list[i].installed && !strcmp(list[i].purpose, purpose)) return true;
         return false;
     }
     static bool hasBindingOrRole(const char* key, const char* role) {

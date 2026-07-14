@@ -4,8 +4,12 @@ Configuration version 4 introduces the bounded `channel_registry` section.
 It contains separate input and output inventories, each keyed by a stable,
 machine-safe ID. Labels are presentation-only and must never be persisted as
 references. IDs are bounded to 19 visible characters plus the null terminator.
-The classic ESP32 registry has fixed capacities of 6 inputs, 6 outputs, and 5
-bindings; these bounds protect the existing static-RAM budget.
+Each card also persists a user-selectable `purpose`, independently of the
+internal driver-family `role`. The current 16-input, 16-output and 8-binding
+registry targets the ESP32-S3 build; the classic ESP32 remains a compatibility
+build rather than the registry sizing constraint. The classic target exposes
+8 inputs, 8 outputs, and 4 bindings and allocates its live registry from the
+heap to preserve linker DRAM; the ESP32-S3 exposes the full 16/16/8 inventory.
 
 The hardware section also accepts up to two fixed-capacity `oil_loops`
 definitions. Each loop persists a stable loop ID plus `pressure_input` and
@@ -24,36 +28,54 @@ configured oil failsafe demand; the primary compatibility loop keeps the
 existing delayed failsafe behavior.
 
 Output demand is normalized to `0.0..1.0`. Relay drivers quantize at `0.5` at
-the physical boundary; PWM and servo drivers preserve intermediate values.
-Every output has explicit boot-safe and fault-safe demands.
+the physical boundary; PWM and servo drivers map it across their configured
+electrical endpoints. Every output has an explicit boot-safe demand. Fault
+shutdown is deliberately non-configurable and drives every output fully off.
+Proportional pumps may also define `min_run_demand`; it clamps a nonzero
+operational demand before electrical mapping but leaves zero fully off. It does
+not rewrite the PWM-duty or servo-pulse endpoints.
 
 The parser rejects duplicate or illegal IDs, direction/driver mismatches,
 invalid demand ranges, conflicting input/output pins, overflowing capacities,
 bindings to nonexistent channels, and wrong-direction standard bindings such
 as an output bound to `primary_n1`.
 
-Digital, analog, pulse/frequency, and RC-PWM registry inputs are sampled by
-bounded runtime dispatch. Digital inputs publish `0.0` or `1.0`; analog and
-pulse inputs map raw ADC counts or frequency through the channel `min`/`max`
-range; RC-PWM inputs map pulse width through microsecond endpoints when
-`min`/`max` look like `500..2500 us`, otherwise they default to `1000..2000 us`.
+Digital, analog, pulse/frequency, RC-PWM, and PWM-duty registry inputs are
+sampled by bounded runtime dispatch. Digital inputs publish `0.0` or `1.0`;
+analog and pulse inputs map raw ADC counts or frequency through the channel
+`min`/`max` range; RC-PWM inputs map pulse width through microsecond endpoints;
+and PWM-duty maps the measured high/period ratio. Optional inversion happens
+after normalization. Generic inputs remain normalized automation sources and
+cannot satisfy engine-controller bindings.
 
-Registry digital inputs may also use the existing switch behavior roles
+Purpose-specific drivers may expose engineering values. N1, N2, and auxiliary
+shaft inputs support hardware pulse counting or an analog RPM transmitter. The
+analog path stores its zero point and millivolts-per-RPM factor. Temperature
+purposes support their relevant transmitter, thermocouple, NTC-divider, or
+DS18B20 interfaces; coolant temperature intentionally excludes exhaust
+thermocouple chips. Intake/ambient temperature uses the same bounded
+low-temperature interfaces. P1, P2, oil, fuel, and coolant pressure purposes
+use analog transmitter calibration. NTC divider orientation is explicit and
+separate from GPIO pull-up/down configuration.
+
+Registry digital inputs may also use the existing switch behavior purposes
 `fault`, `estop`, `inhibit_start`, `sequence_gate`, `ab_arm`, `ab_fire`, or
 `limp_mode`. At load, those channels are bridged into the fixed four-slot DI
 runtime adapter when a slot is available, using the channel name for UI/telemetry
-labels. The compatibility bridge currently defaults these registry-driven DI
-actions to active-low with pull-up and 20 ms debounce because the compact
-channel record does not yet persist switch polarity, debounce, or fault-message
-metadata. Legacy `di_channels` remain readable and are migrated into
+labels. Pull-up, pull-down, active polarity, and debounce are persisted on the
+channel. Legacy `di_channels` remain readable and are migrated into
 `digital_switch`/behavior-role registry inputs when capacity permits.
 
 Generic registry outputs are initialized to boot-safe demand, driven through
 the same normalized relay/PWM/servo path as specialized outputs, and driven to
 fault-safe demand during `allOff()` / fault shutdown. Core singleton ownership
-is determined by standard core IDs or explicit core bindings, not by role, so a
-second `oil_pump` or `cooling_fan` role remains a normal repeatable output
-unless it is intentionally bound to a singleton subsystem.
+is determined by standard core IDs, selected purpose, or explicit core binding.
+The first card for a controller-owned purpose is driven by that controller;
+additional repeatable pumps or fans remain registry outputs for rules and
+sequences. Generic output purposes never become controller-owned implicitly.
+Air starter is an explicit turbine actuator purpose. Pilot/start-fuel,
+purge-valve, and variable-nozzle purposes are also explicit, but intentionally
+remain automation outputs unless a future controller is added.
 
 Control rules, sequence side actions, and custom sequence blocks now serialize
 stable `source` / `target` IDs and resolve them once at load to compact runtime

@@ -600,14 +600,14 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 input.field-changed,
 select.field-changed,
 textarea.field-changed {
-  border-color: color-mix(in srgb, var(--accent) 75%, transparent) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--yellow) 75%, transparent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 18%, transparent);
   transition: border-color .15s, box-shadow .15s;
 }
 /* Card-level highlight for sensor/actuator enable-toggle changes */
 .hw-item-card.field-changed {
-  border-color: color-mix(in srgb, var(--accent) 70%, transparent) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--yellow) 70%, transparent) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 14%, transparent);
   transition: border-color .15s, box-shadow .15s;
 }
 .field-error,
@@ -1132,6 +1132,7 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
 .hw-label { font-size: 0.67rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.07em; font-family: var(--font-ui); }
 .hw-desc  { font-size: 0.72rem; color: var(--dim); line-height: 1.4; min-height: 1.5rem; font-family: var(--font-ui); }
 .hw-toggle { display: flex; align-items: center; gap: 0.5rem; font-size: 0.82rem; }
+.hw-toggle-row { display: flex; gap: 1.1rem; align-items: center; flex-wrap: wrap; }
 
 .act-subgroup {
   margin-top: 0.55rem;

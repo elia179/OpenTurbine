@@ -17,7 +17,7 @@ enum class OTCommand : uint8_t {
     FUEL_PRIME,
     OIL_PRIME,
     IGN_TEST,
-    IGN2_TEST,      // fire igniter 2 briefly (STANDBY only)
+    IGN2_TEST,      // fire AB / pilot igniter briefly (STANDBY only)
     START_TEST,
     FUEL_SOL_TEST,
     IDLE_TEST,

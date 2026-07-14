@@ -73,6 +73,11 @@ function installedBrowser() {
       ['tot-card', 'tit-card', 'n1-card', 'n2-card'].every(id =>
         document.querySelector('#temperature-cards').contains(document.getElementById(id)))), true);
     assert.equal(await page.evaluate(() =>
+      ['tot-card', 'tit-card', 'n1-card', 'n2-card'].every(id =>
+        document.getElementById(id)?.classList.contains('big')) &&
+      ['tot-sparkline', 'tit-sparkline', 'n1-sparkline', 'n2-sparkline'].every(id =>
+        document.getElementById(id) instanceof HTMLCanvasElement)), true);
+    assert.equal(await page.evaluate(() =>
       ['oil-card', 'oil-temp-card', 'oilpump-current-card'].every(id =>
         document.querySelector('#speed-cards').contains(document.getElementById(id)))), true);
     assert.equal(await page.evaluate(() => {
@@ -96,10 +101,30 @@ function installedBrowser() {
       has_n1: true, n1_healthy: true
     } });
     await page.waitForFunction(() => getComputedStyle(document.getElementById('throttle-feedback-inhibit-note')).display !== 'none');
+    await page.waitForFunction(() => document.getElementById('tit-rise-rate-val')?.textContent?.includes('2.5'));
+    assert.equal(await text(page, '#tot-rise-rate-val'), '—');
     await page.request.post(`${base}/__sim/data`, { data: { tit_healthy: true, egt_source: 1 } });
     await page.waitForFunction(() => getComputedStyle(document.getElementById('throttle-feedback-inhibit-note')).display === 'none');
+    await page.waitForFunction(() => document.getElementById('tot-rise-rate-val')?.textContent?.includes('2.5'));
+    assert.equal(await text(page, '#tit-rise-rate-val'), '—');
     results.push('dashboard throttle inhibit warning follows selected EGT source, including TIT-primary setups');
     await scenario(page, 'full');
+
+    await scenario(page, 'startup');
+    await page.waitForFunction(() => document.getElementById('tot')?.textContent?.includes('175'));
+    await page.waitForTimeout(450);
+    await scenario(page, 'full');
+    await page.waitForFunction(() => document.getElementById('tot')?.textContent?.includes('640'));
+    await page.waitForTimeout(450);
+    await page.goto(`${base}/config.html`);
+    await page.waitForSelector('#cf-tot_limit');
+    await page.goto(base);
+    await waitShown(page, '#n1-card', true);
+    const retainedTrend = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('ot_dashboard_sparklines_v1') || '{}').series?.tot || []);
+    assert.equal(retainedTrend.some(v => Number(v) === 175), true);
+    assert.equal(retainedTrend.some(v => Number(v) === 640), true);
+    results.push('equivalent EGT/speed cards expose trends and dashboard history survives page navigation');
 
     await page.locator('#unit-temp-btn').click();
     await page.locator('#unit-press-btn').click();
@@ -234,6 +259,83 @@ function installedBrowser() {
     assert.equal(await page.locator('#f-thinput-type').inputValue(), 'servo');
     assert.equal(await page.locator('#f-wifi-tx-power').inputValue(), '8');
     results.push('hardware page restores servo-input source from saved hardware state');
+    await page.evaluate(() => addRegistryChannel('input'));
+    const inputCatalog = await text(page, '#registry-add-catalog');
+    for (const label of ['Compressor inlet pressure (P1)', 'Compressor discharge pressure (P2)',
+      'Coolant pressure', 'Coolant temperature', 'Intake / ambient temperature',
+      'Low oil pressure switch', 'Zero oil pressure switch', 'Generic PWM duty input']) {
+      assert.match(inputCatalog, new RegExp(label.replace(/[()]/g, '\\$&')));
+    }
+    await page.evaluate(() => closeRegistryAddDialog());
+    await page.evaluate(() => addRegistryChannel('output'));
+    const outputCatalog = await text(page, '#registry-add-catalog');
+    for (const label of ['Coolant pump', 'Air starter', 'Pilot gas / start-fuel solenoid',
+      'Air / fuel purge valve', 'Variable nozzle actuator']) {
+      assert.match(outputCatalog, new RegExp(label.replace(/[()]/g, '\\$&')));
+    }
+    assert.doesNotMatch(outputCatalog, /Contactor/);
+    await page.evaluate(() => closeRegistryAddDialog());
+    assert.equal(await page.locator('body').textContent().then(t => /Fault demand/i.test(t)), false);
+    const oilSwitchSafety = await page.evaluate(() => {
+      const savedSensors = structuredClone(cfg.sensors);
+      const savedSafety = structuredClone(cfg.safety);
+      const savedRegistry = structuredClone(cfg.channel_registry);
+      cfg.sensors.oil_press.enabled = false;
+      cfg.safety.low_oil = true;
+      cfg.channel_registry.inputs = [{
+        installed: true, id: 'low_oil_switch', name: 'Low Oil Switch',
+        role: 'low_oil_switch', purpose: 'low_oil_switch',
+        driver: 0, pin: 12, active_high: false, pullup: true
+      }];
+      updateSafetyPrerequisites(true);
+      const result = {
+        disabled: document.getElementById('f-saf-lowoil')?.disabled === true,
+        enabled: cfg.safety.low_oil === true
+      };
+      cfg.sensors = savedSensors;
+      cfg.safety = savedSafety;
+      cfg.channel_registry = savedRegistry;
+      updateSafetyPrerequisites(false);
+      return result;
+    });
+    assert.equal(oilSwitchSafety.disabled, false);
+    assert.equal(oilSwitchSafety.enabled, true);
+    const precisePurposeDeps = await page.evaluate(() => {
+      const savedSensors = structuredClone(cfg.sensors);
+      const savedSafety = structuredClone(cfg.safety);
+      const savedControllers = structuredClone(cfg.controllers);
+      const savedRegistry = structuredClone(cfg.channel_registry);
+      cfg.sensors.tot.enabled = false;
+      cfg.sensors.tit.enabled = false;
+      cfg.sensors.oil_press.enabled = false;
+      cfg.safety.overtemp = true;
+      cfg.controllers.oil_loop = true;
+      cfg.channel_registry.inputs = [
+        { installed: true, id: 'coolant_temperature', name: 'Coolant Temp', role: 'temperature', purpose: 'coolant_temp', driver: 1, pin: 15, min: 0, max: 4095 },
+        { installed: true, id: 'p1_main', name: 'P1 Pressure', role: 'pressure', purpose: 'p1_pressure', driver: 1, pin: 32, min: 0, max: 4095 }
+      ];
+      cfg.channel_registry.outputs = [{ installed: true, id: 'oil_pump_main', name: 'Oil Pump', role: 'oil_pump', purpose: 'oil_pump', driver: 5, pin: 23, min: 0, max: 1 }];
+      updateSafetyPrerequisites(true);
+      updateHardwarePrerequisites(true);
+      const result = {
+        overtempDisabled: document.getElementById('f-saf-overtemp')?.disabled === true,
+        overtempCleared: cfg.safety.overtemp === false,
+        oilLoopDisabled: document.getElementById('f-ctrl-oil')?.disabled === true,
+        oilLoopCleared: cfg.controllers.oil_loop === false
+      };
+      cfg.sensors = savedSensors;
+      cfg.safety = savedSafety;
+      cfg.controllers = savedControllers;
+      cfg.channel_registry = savedRegistry;
+      updateSafetyPrerequisites(false);
+      updateHardwarePrerequisites(false);
+      return result;
+    });
+    assert.equal(precisePurposeDeps.overtempDisabled, true);
+    assert.equal(precisePurposeDeps.overtempCleared, true);
+    assert.equal(precisePurposeDeps.oilLoopDisabled, true);
+    assert.equal(precisePurposeDeps.oilLoopCleared, true);
+    results.push('hardware picker exposes bounded turbine I/O roles and switch-based oil safety stays available');
     await page.evaluate(() => {
       cfg.sensors.p1.enabled = false;
       cfg.sensors.p1.pin = cfg.sensors.oil_press.pin;

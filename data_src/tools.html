@@ -33,7 +33,7 @@
   <div id="test-settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)closeTestSettings()">
     <div style="width:min(760px,96vw);max-height:88vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><div><b>Bench-test settings</b><div style="font-size:.72rem;color:var(--dim)">Only fitted testable hardware is shown. Settings do not run an actuator.</div></div><button onclick="closeTestSettings()" title="Close">✕</button></div>
-      <div id="test-settings-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.65rem;margin-top:.8rem"></div>
+      <div id="test-settings-body" style="display:grid;grid-template-columns:minmax(0,1fr);gap:.65rem;margin-top:.8rem"></div>
       <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem"><button onclick="closeTestSettings()">Cancel</button><button class="primary" onclick="saveTestSettings()">Save settings</button></div>
       <div id="test-settings-status" style="font-size:.75rem;color:var(--dim);margin-top:.4rem"></div>
     </div>
@@ -74,7 +74,7 @@ const TOOLS = [
   { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid - primes fuel lines.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100% - primes oil circuit. This is a direct bench command, not the controller minimum duty.', visibleIf: hw => !!hw?.actuators?.oil_pump?.enabled },
   { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 - verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter?.enabled },
-  { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign2_test_ms',     desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
+  { id:'IGN2_TEST',           name:'AB Igniter Test',    durationMs:2000, configKey:'tools.ign2_test_ms',     desc:'Fires the afterburner / pilot igniter output — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
   { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at configured demand - verify motor turns.', visibleIf: hw => !!hw?.actuators?.starter?.enabled },
   { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse - audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, configKey:'tools.idle_test_ms', desc:'Moves the throttle/fuel ESC output to the calibrated Fuel Pump Minimum Spin value - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
@@ -85,7 +85,7 @@ const TOOLS = [
   { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, configKey:'tools.airstarter_test_ms', desc:'Opens airstarter solenoid for configured duration.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
   { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, configKey:'tools.bleed_valve_test_ms', desc:'Opens bleed valve for configured duration.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
   { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:10000, configKey:'tools.glow_test_ms', desc:'Runs glow plug at configured demand — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
-  { id:'FUEL_PUMP2_TEST',  name:'Auxiliary Fuel Pump 2 Test', durationMs:3000, configKey:'tools.fuel_pump2_test_ms', desc:'Runs the independent auxiliary fuel pump at configured demand.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
+  { id:'FUEL_PUMP2_TEST',  name:'Pilot / Auxiliary Fuel Pump Test', durationMs:3000, configKey:'tools.fuel_pump2_test_ms', desc:'Runs the independent pilot/auxiliary fuel pump at configured demand.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
   { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, configKey:'tools.ab_sol_test_ms', desc:'Opens AB fuel solenoid for configured duration.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_sol?.enabled) },
   { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, configKey:'tools.ab_pump_test_ms', desc:'Runs AB pump at configured demand.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_pump?.enabled) },
   { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, configKey:'tools.prop_pitch_test_ms', desc:'Moves prop pitch output to configured position.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
@@ -107,6 +107,10 @@ let liveData    = {};
 let hwCfg       = {};
 let cfgData     = {};
 let toolsTelemetryTimer = null;
+function escHtml(value){
+  return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function escAttr(value){return escHtml(value);}
 
 function extraCooldownDescription() {
   const sd = cfgData?.sequence?.shutdown || {};
@@ -150,6 +154,32 @@ const CORE_REGISTRY_OUTPUT_IDS=new Set([
   'ab_pump','ab_pump_main','prop_pitch','prop_pitch_main','glow_plug','glow_plug_main'
 ]);
 const CORE_REGISTRY_BINDING_KEYS=new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
+function plainRegistryToolName(raw,fallback='Output'){
+  const text=String(raw||'').trim();
+  const key=text.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  const direct={
+    user_throttle:'Throttle Input',operator_throttle:'Throttle Input',operator_thrott:'Throttle Input',throttle_input:'Throttle Input',
+    user_idle:'Idle Input',operator_idle:'Idle Input',idle_input:'Idle Input',
+    main_fuel:'Main Fuel Pump',main_fuel_output:'Main Fuel Pump',fuel_shutoff:'Fuel Shutoff',main_fuel_shutoff:'Fuel Shutoff',
+    oil_pump:'Oil Pump',oil_pump_main:'Oil Pump',fuel_pump:'Fuel Pump',starter_enable:'Starter Enable',
+    flame:'Flame Sensor',flame_main:'Flame Sensor',coolant_pump:'Coolant Pump',coolant_temperature:'Coolant Temperature',
+    pilot_fuel:'Pilot Gas',purge_valve:'Purge Valve',air_starter:'Air Starter',
+    ab_pump:'AB Pump',ab_solenoid:'AB Solenoid',ab_igniter:'AB Igniter',
+    prop_pitch:'Prop Pitch',nozzle_actuator:'Nozzle Actuator',generic_pwm_output:'PWM Output',generic_servo_output:'Servo Output',generic_relay_output:'Relay Output'
+  };
+  if(direct[key]) return direct[key];
+  if(key.includes('throttle')||key.includes('thrott')) return 'Throttle Input';
+  if(key.includes('idle')) return 'Idle Input';
+  if(key.includes('flame')) return 'Flame Sensor';
+  if(key.includes('oil')&&key.includes('pump')) return 'Oil Pump';
+  if(key.includes('fuel')&&key.includes('pump')) return 'Fuel Pump';
+  const out=key.split('_').filter(Boolean).map(part=>({n1:'N1',n2:'N2',tot:'TOT',tit:'TIT',egt:'EGT',ab:'AB',rc:'RC',pwm:'PWM',adc:'ADC',esc:'ESC',gpio:'GPIO',rpm:'RPM'}[part]||part.charAt(0).toUpperCase()+part.slice(1))).join(' ');
+  return out||fallback;
+}
+function registryToolDisplayName(c,i){
+  const raw=(c?.name&&String(c.name).trim())||c?.id||('Output '+(i+1));
+  return (raw.includes('_')||/^[a-z0-9_-]+$/.test(raw))?plainRegistryToolName(raw,'Output '+(i+1)):raw;
+}
 function syncRegistryOutputTools(){
   for(let i=TOOLS.length-1;i>=0;i--) if(TOOLS[i].registryOutput) TOOLS.splice(i,1);
   const outs=hwCfg?.channel_registry?.outputs||[];
@@ -160,12 +190,13 @@ function syncRegistryOutputTools(){
     if(!c||c.pin==null||Number(c.pin)<0) return;
     if(CORE_REGISTRY_OUTPUT_IDS.has(String(c.id||''))||coreBound.has(String(c.id||''))) return;
     const relay=Number(c.driver)===4;
+    const displayName=registryToolDisplayName(c,i);
     TOOLS.push({
       id:'REGISTRY_OUTPUT_TEST_'+i,
       cmd:'REGISTRY_OUTPUT_TEST',
-      name:(c.name||c.id||('Output '+(i+1)))+' Test',
+      name:displayName+' Test',
       durationMs:3000,
-      desc:'Bench-test registry output '+(c.id||i)+' at '+(relay?'ON':'100%')+' for 3 s.',
+      desc:'Bench-test '+displayName+' at '+(relay?'ON':'100%')+' for 3 s.',
       registryOutput:true,
       iParam:i,
       fParam:1.0,
@@ -180,7 +211,7 @@ function openTestSettings(){
     const durationKey=t.configKey?.split('.')[1]; if(!durationKey)return;
     const ms=Number(cfgData?.tools?.[durationKey]??t.durationMs);
     const outKey=TEST_OUTPUT_KEYS[t.id], out=outKey?Number(cfgData?.tools?.[outKey]??100):null;
-    html+=`<div class="tool-card" style="margin:0"><div class="tool-name">${t.name}</div><label class="tool-desc">Duration (seconds)<input class="test-setting" data-key="${durationKey}" data-kind="seconds" type="number" min="0.05" step="0.05" value="${ms/1000}" title="How long this test command remains active."></label>${outKey?`<label class="tool-desc">Output (%)<input class="test-setting" data-key="${outKey}" data-kind="percent" type="number" min="0" max="100" step="1" value="${out}" title="Proportional output used by this test. Relay outputs ignore percentage."></label>`:''}</div>`;
+    html+=`<div class="tool-card" style="margin:0"><div class="tool-name">${escHtml(t.name)}</div><label class="tool-desc">Duration (seconds)<input class="test-setting" data-key="${durationKey}" data-kind="seconds" type="number" min="0.05" step="0.05" value="${ms/1000}" title="How long this test command remains active."></label>${outKey?`<label class="tool-desc">Output (%)<input class="test-setting" data-key="${outKey}" data-kind="percent" type="number" min="0" max="100" step="1" value="${out}" title="Proportional output used by this test. Relay outputs ignore percentage."></label>`:''}</div>`;
   });
   body.innerHTML=html||'<div style="color:var(--dim)">No configurable actuator tests match the fitted hardware.</div>';
   document.getElementById('test-settings-status').textContent='';
@@ -208,15 +239,18 @@ function renderTools() {
     if (t.visibleIf && !t.visibleIf(hwCfg)) return;
     const isToggle = t.durationMs === 0;
     if (isToggle && !dividerDone) { html += '<hr class="tool-divider">'; dividerDone = true; }
+    const safeName = escHtml(t.name);
+    const safeDesc = escHtml(t.desc);
+    const safeTitle = escAttr(t.desc);
     html += `
-    <div class="tool-card" id="card-${t.id}" title="${t.desc.replace(/"/g, '&quot;')}">
+    <div class="tool-card" id="card-${t.id}" title="${safeTitle}">
       <div class="tool-header">
-        <div class="tool-name">${t.name}</div>
+        <div class="tool-name">${safeName}</div>
         <div class="tool-state" id="state-${t.id}">${isToggle ? 'OFF' : 'Ready'}</div>
       </div>
       ${!isToggle ? `<div class="prog-track"><div class="prog-fill" id="prog-${t.id}"></div></div>` : ''}
       <div class="tool-footer">
-        <div class="tool-desc">${t.desc}${t.id === 'TOGGLE_LIMP_MODE' ? ' <span id="limp-cap-inline" style="color:var(--yellow)"></span>' : ''}</div>
+        <div class="tool-desc">${safeDesc}${t.id === 'TOGGLE_LIMP_MODE' ? ' <span id="limp-cap-inline" style="color:var(--yellow)"></span>' : ''}</div>
         ${!isToggle ? `<div class="tool-time" id="time-${t.id}">${Number((t.durationMs/1000).toFixed(2))} s</div>` : ''}
         <button id="btn-${t.id}" onclick="runTool('${t.id}')" disabled>
           ${isToggle ? 'Toggle' : 'Run'}
@@ -769,7 +803,7 @@ function syncDynamicToolText() {
   setDesc('COOL_FAN_TEST', `Output: cooling fan ${fullOut('cool_fan')} for ${sec(tools.cool_fan_test_ms ?? 3000)} s.`);
   setDesc('AIRSTARTER_TEST', `Output: airstarter solenoid ON for ${sec(tools.airstarter_test_ms ?? 1000)} s.`);
   setDesc('BLEED_VALVE_TEST', `Output: bleed valve ${fullOut('bleed_valve')} for ${sec(tools.bleed_valve_test_ms ?? 1000)} s.`);
-  setDesc('FUEL_PUMP2_TEST', `Output: auxiliary fuel pump 2 ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
+  setDesc('FUEL_PUMP2_TEST', `Output: pilot/auxiliary fuel pump ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
   setDesc('AB_SOL_TEST', `Output: AB fuel solenoid ON for ${sec(tools.ab_sol_test_ms ?? 1000)} s.`);
   setDesc('AB_PUMP_TEST', `Output: AB pump ${outputText('ab_pump', tools.ab_pump_test_pct ?? 30)} for ${sec(tools.ab_pump_test_ms ?? 2000)} s.`);
   setDesc('PROP_PITCH_TEST', `Output: prop pitch ${outputText('prop_pitch', tools.prop_pitch_test_pct ?? 50)} for ${sec(tools.prop_pitch_test_ms ?? 3000)} s.`);

@@ -599,9 +599,9 @@
     </div>
   </div>
 
-  <!-- Igniter 2 Current Sensor -->
+  <!-- AB / Pilot Igniter Current Sensor -->
   <div class="sensor-row" id="igniter2-current-cal-row" style="display:none">
-    <div class="sensor-name">Igniter 2 Current Sensor</div>
+    <div class="sensor-name">AB / Pilot Igniter Current Sensor</div>
     <div class="sensor-vals">
       <div class="sv-item"><div class="sv-label">Current (A)</div><div class="sv-val" id="cal-ign2-a">—</div></div>
       <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-ign2-raw">—</div></div>
@@ -609,9 +609,9 @@
     <div class="bar-track"><div class="bar-fill" id="bar-ign2-cur" style="width:0%"></div></div>
     <div class="bar-range"><span>0 A</span><span>50 A</span></div>
     <div class="wizard">
-      <div class="wizard-title">Igniter 2 Current Two-Point Calibration</div>
+      <div class="wizard-title">AB / Pilot Igniter Current Two-Point Calibration</div>
       <div class="wizard-steps">
-        <b>Step 1 — Zero:</b> Ensure no current through the sensor (igniter 2 off).<br>
+        <b>Step 1 — Zero:</b> Ensure no current through the sensor (AB / pilot igniter off).<br>
         <button onclick="curCaptureZero('ign2')">Capture Zero</button>
         <span id="ign2-cur-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
         <b>Step 2 — Known current:</b> Apply a known current.<br>
@@ -2239,7 +2239,7 @@ function curSave(which) {
       statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';
     });
   } else if (which === 'ign2') {
-    // Igniter 2 current stored inside actuators.igniter2
+    // AB / pilot igniter current stored inside actuators.igniter2
     patchHardware({ actuators: { igniter2: { current_zero_v: +zeroV.toFixed(4), current_mv_a: +mvPerA.toFixed(4) } } }, () => {
       statusEl.textContent = '✓ Saved: zero=' + zeroV.toFixed(3) + ' V,  sensitivity=' + mvPerA.toFixed(2) + ' mV/A';
     });
@@ -2261,7 +2261,7 @@ function curClear(which) {
       statusEl.textContent = 'Reset to defaults (1.65 V zero, 185 mV/A)';
     });
   } else if (which === 'ign2') {
-    // Igniter 2 current
+    // AB / pilot igniter current
     patchHardware({ actuators: { igniter2: { current_zero_v: 1.65, current_mv_a: 100 } } }, () => {
       statusEl.textContent = 'Reset to defaults (1.65 V zero, 100 mV/A)';
     });
@@ -2286,7 +2286,7 @@ function curSaveDatasheet(which) {
 }
 
 function installCurrentDatasheetPanels() {
-  const labels={glow:'Glow plug',oilpump:'Oil pump',ign:'Igniter 1',ign2:'Igniter 2'};
+  const labels={glow:'Glow plug',oilpump:'Oil pump',ign:'Igniter 1',ign2:'AB / Pilot Igniter'};
   for (const [which,label] of Object.entries(labels)) {
     const status=document.getElementById(which+'-cur-status');
     const wizard=status?.closest('.wizard'), buttons=wizard?.querySelector('.wiz-buttons');

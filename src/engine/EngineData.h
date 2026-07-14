@@ -114,7 +114,7 @@ struct EngineData {
     volatile float    glowCurrentAmps    = 0.0f;   // glow plug current (A), 0 if no sensor
     volatile bool     glowPlugHot        = false;   // true when current dropped below ready threshold
     volatile float    igniterCurrentAmps  = 0.0f;   // igniter 1 coil current (A), 0 if no sensor
-    volatile float    igniter2CurrentAmps = 0.0f;   // igniter 2 coil current (A), 0 if no sensor
+    volatile float    igniter2CurrentAmps = 0.0f;   // AB / pilot igniter coil current (A), 0 if no sensor
     volatile float    oilPumpCurrentAmps = 0.0f;   // oil pump current (A), 0 if no sensor
     volatile bool     oilPumpOvercurrent = false;  // true when oil pump current exceeds max threshold
 

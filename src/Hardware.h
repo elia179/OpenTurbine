@@ -165,7 +165,7 @@
     LEDCActuator   g_actIgniterLedc(OT_IGNITER_PIN, 1000/(OT_IGNITER_DWELL_MS+OT_IGNITER_REST_MS), 8, "IGNITER_LEDC"); \
     RelayActuator  g_actIgniterRelay(OT_IGNITER_PIN, OT_IGNITER_ACTIVE_H, "IGNITER_RELAY"); \
     IActuator*     g_actIgniter = nullptr;                                        \
-    /* Igniter 2 */                                                                \
+    /* AB / pilot igniter */                                                       \
     LEDCActuator   g_actIgniter2Ledc(-1, 111, 8, "IGNITER2_LEDC");               \
     RelayActuator  g_actIgniter2Relay(-1, true, "IGNITER2_RELAY");                \
     IActuator*     g_actIgniter2 = nullptr;                                       \
@@ -418,8 +418,27 @@ namespace Hardware {
     inline volatile uint16_t g_registryRcPulseUs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
     inline volatile uint8_t  g_registryRcFlags[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
     inline uint16_t          g_registryRcLastMs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline volatile uint32_t g_registryPwmRiseUs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline volatile uint32_t g_registryPwmPeriodUs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline volatile uint32_t g_registryPwmHighUs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline volatile uint8_t  g_registryPwmFlags[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline uint32_t          g_registryPwmLastMs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    inline uint32_t          g_registryAnalogLastMs[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    static constexpr uint8_t MAX_REGISTRY_PCNT = 2;
+    inline PCNTRpmSensor     g_registryPcnt[MAX_REGISTRY_PCNT] = {
+        PCNTRpmSensor(-1, 1.0f, "REG_PCNT_1"), PCNTRpmSensor(-1, 1.0f, "REG_PCNT_2")
+    };
+    inline int8_t            g_registryPcntSlot[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    static constexpr uint8_t MAX_REGISTRY_ONEWIRE = 4;
+    inline DS18B20TempSensor g_registryDs18[MAX_REGISTRY_ONEWIRE] = {
+        DS18B20TempSensor("REG_DS18_1"), DS18B20TempSensor("REG_DS18_2"),
+        DS18B20TempSensor("REG_DS18_3"), DS18B20TempSensor("REG_DS18_4")
+    };
+    inline int8_t            g_registryDs18Slot[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
     static constexpr uint8_t REG_RC_FRESH = 0x01;
     static constexpr uint8_t REG_RC_VALID = 0x02;
+    static constexpr uint8_t REG_PWM_FRESH = 0x01;
+    static constexpr uint8_t REG_PWM_VALID = 0x02;
     inline float             g_registryOilLoopPct[HardwareConfig::MAX_OIL_LOOPS] = {};
 
     inline float registryMappedInput(float raw, const ChannelRegistry::Channel& c) {
@@ -429,7 +448,16 @@ namespace Hardware {
 
     inline float registryAnalogPhysicalInput(float rawCounts, const ChannelRegistry::Channel& c) {
         if (!strcmp(c.role, "generic") || !strcmp(c.role, "operator") || !strcmp(c.role, "flame"))
-            return registryMappedInput(rawCounts, c);
+            return c.inverted ? 1.0f - registryMappedInput(rawCounts, c) : registryMappedInput(rawCounts, c);
+        if (!strcmp(c.role, "temperature") && c.temperatureInterface == 4) {
+            if (rawCounts <= 0.0f || rawCounts >= 4095.0f || c.thermistorRFixed <= 0.0f ||
+                c.thermistorR0 <= 0.0f || c.thermistorBeta <= 0.0f) return NAN;
+            float resistance = c.thermistorPullup
+                ? c.thermistorRFixed * rawCounts / (4095.0f - rawCounts)
+                : c.thermistorRFixed * (4095.0f - rawCounts) / rawCounts;
+            float invT = (1.0f / 298.15f) + logf(resistance / c.thermistorR0) / c.thermistorBeta;
+            return (1.0f / invT) - 273.15f;
+        }
         float mv = constrain(rawCounts, 0.0f, 4095.0f) * (3300.0f / 4095.0f);
         if (!strcmp(c.role, "voltage")) {
             float divider = c.analogDivider >= 1.0f ? c.analogDivider : 1.0f;
@@ -441,17 +469,27 @@ namespace Hardware {
 
     inline bool registryInputBoundTo(const ChannelRegistry::Channel& c, const char* key) {
         auto& reg = HardwareConfig::channelRegistry;
-        for (uint8_t i = 0; i < reg.bindingCount; ++i)
+        const uint8_t count = min(reg.bindingCount, ChannelRegistry::MAX_BINDINGS);
+        for (uint8_t i = 0; i < count; ++i)
             if (!strcmp(reg.bindings[i].key, key) && !strcmp(reg.bindings[i].channelId, c.id)) return true;
         return false;
     }
 
     inline uint8_t registryCoreInputKind(const ChannelRegistry::Channel& c) {
         if (c.driver == ChannelRegistry::Pulse &&
-            (!strcmp(c.id, "n1_main") || !strcmp(c.id, "primary_n1") || registryInputBoundTo(c, "primary_n1"))) return 1;
+            (!strcmp(c.purpose, "n1_speed") || !strcmp(c.id, "n1_main") || !strcmp(c.id, "primary_n1") || registryInputBoundTo(c, "primary_n1"))) return 1;
         if (c.driver == ChannelRegistry::Pulse &&
-            (!strcmp(c.id, "n2_main") || !strcmp(c.id, "primary_n2") || registryInputBoundTo(c, "primary_n2"))) return 2;
-        if (!strcmp(c.id, "fuel_flow") || !strcmp(c.id, "fuel_flow_main")) return 3;
+            (!strcmp(c.purpose, "n2_speed") || !strcmp(c.id, "n2_main") || !strcmp(c.id, "primary_n2") || registryInputBoundTo(c, "primary_n2"))) return 2;
+        if (c.driver == ChannelRegistry::Pulse &&
+            (!strcmp(c.purpose, "fuel_flow") || !strcmp(c.id, "fuel_flow") || !strcmp(c.id, "fuel_flow_main"))) return 3;
+        // RC operator inputs are owned by the existing failsafe-aware RCInput
+        // implementation. Mirror them into the registry instead of attaching a
+        // second GPIO interrupt handler to the same pin.
+        if (c.driver == ChannelRegistry::RcPwm &&
+            (!strcmp(c.purpose, "throttle") || registryInputBoundTo(c, "operator_throttle"))) return 4;
+        if (c.driver == ChannelRegistry::RcPwm && !strcmp(c.purpose, "idle")) return 5;
+        if (c.driver == ChannelRegistry::Analog &&
+            (!strcmp(c.purpose, "oil_pressure") || !strcmp(c.id, "oil_pressure_main"))) return 6;
         return 0;
     }
 
@@ -459,12 +497,13 @@ namespace Hardware {
     // analog transmitter.  Keep the lookup deliberately exact: a second,
     // unrelated pressure or temperature card must never silently become a
     // primary engine input merely because it shares the same semantic role.
-    inline int8_t registryAnalogInputIndex(const char* id, const char* binding = nullptr) {
+    inline int8_t registryAnalogInputIndex(const char* id, const char* binding = nullptr, const char* purpose = nullptr) {
         auto& reg = HardwareConfig::channelRegistry;
         for (uint8_t i = 0; i < reg.inputCount; ++i) {
             const auto& c = reg.inputs[i];
             if (!c.installed || c.pin < 0 || c.driver != ChannelRegistry::Analog || c.temperatureInterface != 0) continue;
-            if ((id && !strcmp(c.id, id)) || (binding && registryInputBoundTo(c, binding)))
+            if ((id && !strcmp(c.id, id)) || (binding && registryInputBoundTo(c, binding)) ||
+                (purpose && !strcmp(c.purpose, purpose)))
                 return (int8_t)i;
         }
         return -1;
@@ -473,12 +512,23 @@ namespace Hardware {
     // Non-ADC temperature interfaces are read by the dedicated temperature
     // drivers. Keep their registry cards live by mirroring the resulting °C
     // reading back into the same per-card telemetry path.
-    inline int8_t registrySpecialTemperatureIndex(const char* id) {
+    inline int8_t registrySpecialTemperatureIndex(const char* id, const char* purpose = nullptr) {
         auto& reg = HardwareConfig::channelRegistry;
         for (uint8_t i = 0; i < reg.inputCount; ++i) {
             const auto& c = reg.inputs[i];
-            if (c.installed && !strcmp(c.id, id) && !strcmp(c.role, "temperature") &&
+            if (c.installed && ((!strcmp(c.id, id)) || (purpose && !strcmp(c.purpose, purpose))) && !strcmp(c.role, "temperature") &&
                 c.temperatureInterface != 0) return (int8_t)i;
+        }
+        return -1;
+    }
+
+    inline int8_t registryPurposeInputIndex(const char* purpose, const char* binding = nullptr) {
+        auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.inputCount; ++i) {
+            const auto& c = reg.inputs[i];
+            if (!c.installed || c.pin < 0) continue;
+            if ((purpose && !strcmp(c.purpose, purpose)) || (binding && registryInputBoundTo(c, binding)))
+                return (int8_t)i;
         }
         return -1;
     }
@@ -487,6 +537,18 @@ namespace Hardware {
         if (kind == 1) { ed.registryInputValue[i] = ed.n1Rpm; ed.registryInputHealthy[i] = ed.n1Healthy; }
         else if (kind == 2) { ed.registryInputValue[i] = ed.n2Rpm; ed.registryInputHealthy[i] = ed.n2Healthy; }
         else if (kind == 3) { ed.registryInputValue[i] = ed.fuelFlow; ed.registryInputHealthy[i] = ed.fuelFlowHealthy; }
+        else if (kind == 4) {
+            const auto& c = HardwareConfig::channelRegistry.inputs[i];
+            ed.registryInputValue[i] = c.inverted ? 1.0f - ed.rcThrottleNorm : ed.rcThrottleNorm;
+            ed.registryInputHealthy[i] = ed.rcThrottleValid;
+        } else if (kind == 5) {
+            const auto& c = HardwareConfig::channelRegistry.inputs[i];
+            ed.registryInputValue[i] = c.inverted ? 1.0f - ed.rcIdleNorm : ed.rcIdleNorm;
+            ed.registryInputHealthy[i] = ed.rcIdleValid;
+        } else if (kind == 6) {
+            ed.registryInputValue[i] = ed.oilPressure;
+            ed.registryInputHealthy[i] = ed.oilHealthy;
+        }
     }
 
     static void IRAM_ATTR registryPulseIsr(void* arg) {
@@ -508,13 +570,48 @@ namespace Hardware {
         }
     }
 
+    static void IRAM_ATTR registryPwmDutyIsr(void* arg) {
+        uint8_t idx = (uint8_t)(uintptr_t)arg;
+        int pin = HardwareConfig::channelRegistry.inputs[idx].pin;
+        uint32_t now = micros();
+        if (digitalRead(pin) == HIGH) {
+            uint32_t previous = g_registryPwmRiseUs[idx];
+            if (previous) g_registryPwmPeriodUs[idx] = now - previous;
+            g_registryPwmRiseUs[idx] = now;
+        } else {
+            uint32_t rise = g_registryPwmRiseUs[idx];
+            uint32_t period = g_registryPwmPeriodUs[idx];
+            if (rise && period) {
+                uint32_t high = now - rise;
+                if (high <= period) {
+                    g_registryPwmHighUs[idx] = high;
+                    g_registryPwmFlags[idx] |= REG_PWM_FRESH;
+                }
+            }
+        }
+    }
+
     inline void initRegistryInputs() {
         auto& reg = HardwareConfig::channelRegistry;
         auto& ed = EngineData::instance();
+        uint8_t ds18Count = 0;
+        uint8_t pcntCount = 0;
         for (uint8_t i = 0; i < reg.inputCount; ++i) {
             const auto& c = reg.inputs[i];
             ed.registryInputValue[i] = 0.0f;
-            if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0) {
+            g_registryDs18Slot[i] = -1;
+            g_registryPcntSlot[i] = -1;
+            const bool legacyOilTemperature = !strcmp(c.id, "oil_temperature") || !strcmp(c.purpose, "oil_temperature");
+            if (!strcmp(c.role, "temperature") && c.temperatureInterface == 5 && !legacyOilTemperature) {
+                if (c.installed && c.pin >= 0 && ds18Count < MAX_REGISTRY_ONEWIRE) {
+                    g_registryDs18Slot[i] = (int8_t)ds18Count;
+                    g_registryDs18[ds18Count++].begin(c.pin, c.temperatureResolution);
+                }
+                ed.registryInputHealthy[i] = false;
+                continue;
+            }
+            if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0 &&
+                (c.temperatureInterface != 4 || legacyOilTemperature)) {
                 // Thermocouple, NTC and OneWire inputs are sampled by their
                 // dedicated drivers in updateSensors(), not analogRead().
                 ed.registryInputHealthy[i] = false;
@@ -524,9 +621,21 @@ namespace Hardware {
                 ed.registryInputHealthy[i] = false;
                 continue;
             }
+            if (c.installed && c.pin >= 0 && c.driver == ChannelRegistry::Pulse &&
+                !strcmp(c.role, "speed")) {
+                if (pcntCount < MAX_REGISTRY_PCNT) {
+                    g_registryPcntSlot[i] = (int8_t)pcntCount;
+                    g_registryPcnt[pcntCount].rpmLimit = c.maxValue > 0.0f ? c.maxValue : 60000.0f;
+                    g_registryPcnt[pcntCount++].begin(c.pin, c.pulsesPerUnit);
+                }
+                ed.registryInputHealthy[i] = false;
+                continue;
+            }
             ed.registryInputHealthy[i] = c.installed && c.pin >= 0 &&
                 (c.driver == ChannelRegistry::Digital || c.driver == ChannelRegistry::Analog ||
-                 c.driver == ChannelRegistry::Pulse || c.driver == ChannelRegistry::RcPwm);
+                 c.driver == ChannelRegistry::Pulse || c.driver == ChannelRegistry::RcPwm ||
+                 c.driver == ChannelRegistry::PwmDuty);
+            if (c.driver == ChannelRegistry::Analog) g_registryAnalogLastMs[i] = 0;
             if (!ed.registryInputHealthy[i]) continue;
             uint8_t inputMode = c.pullup ? INPUT_PULLUP : (c.pulldown ? INPUT_PULLDOWN : INPUT);
             if (c.driver == ChannelRegistry::Digital) {
@@ -544,6 +653,15 @@ namespace Hardware {
                 g_registryRcLastMs[i] = 0;
                 pinMode(c.pin, inputMode);
                 attachInterruptArg(digitalPinToInterrupt(c.pin), registryRcIsr, (void*)(uintptr_t)i, CHANGE);
+                ed.registryInputHealthy[i] = false;
+            } else if (c.driver == ChannelRegistry::PwmDuty) {
+                g_registryPwmRiseUs[i] = 0;
+                g_registryPwmPeriodUs[i] = 0;
+                g_registryPwmHighUs[i] = 0;
+                g_registryPwmFlags[i] = 0;
+                g_registryPwmLastMs[i] = 0;
+                pinMode(c.pin, inputMode);
+                attachInterruptArg(digitalPinToInterrupt(c.pin), registryPwmDutyIsr, (void*)(uintptr_t)i, CHANGE);
                 ed.registryInputHealthy[i] = false;
             }
         }
@@ -568,7 +686,8 @@ namespace Hardware {
             if (!strcmp(c.role, "speed") || !strcmp(c.role, "flow")) {
                 ed.registryInputValue[i] = value;
             } else {
-                ed.registryInputValue[i] = registryMappedInput(value, c);
+                float normalized = registryMappedInput(value, c);
+                ed.registryInputValue[i] = c.inverted ? 1.0f - normalized : normalized;
             }
             ed.registryInputHealthy[i] = true;
         }
@@ -598,7 +717,32 @@ namespace Hardware {
         float maxUs = (c.maxValue >= 500.0f && c.maxValue <= 2500.0f && c.maxValue > minUs) ? c.maxValue : 2000.0f;
         float span = maxUs - minUs;
         ed.registryInputValue[i] = (flags & REG_RC_VALID) ? constrain(((float)pulseUs - minUs) / span, 0.0f, 1.0f) : 0.0f;
+        if ((flags & REG_RC_VALID) && c.inverted) ed.registryInputValue[i] = 1.0f - ed.registryInputValue[i];
         ed.registryInputHealthy[i] = flags & REG_RC_VALID;
+    }
+
+    inline void updateRegistryPwmDutyInput(uint8_t i, const ChannelRegistry::Channel& c, EngineData& ed) {
+        unsigned long now = millis();
+        uint8_t flags;
+        uint32_t highUs, periodUs;
+        noInterrupts();
+        flags = g_registryPwmFlags[i];
+        highUs = g_registryPwmHighUs[i];
+        periodUs = g_registryPwmPeriodUs[i];
+        g_registryPwmFlags[i] = flags & ~REG_PWM_FRESH;
+        interrupts();
+        if ((flags & REG_PWM_FRESH) && periodUs > 0) {
+            g_registryPwmLastMs[i] = now;
+            flags |= REG_PWM_VALID;
+            g_registryPwmFlags[i] |= REG_PWM_VALID;
+        } else if ((flags & REG_PWM_VALID) && now - g_registryPwmLastMs[i] > (unsigned long)Config::rcFailsafeMs) {
+            flags &= ~REG_PWM_VALID;
+            g_registryPwmFlags[i] &= ~REG_PWM_VALID;
+        }
+        float duty = periodUs > 0 ? constrain((float)highUs / (float)periodUs, 0.0f, 1.0f) : 0.0f;
+        float normalized = registryMappedInput(duty, c);
+        ed.registryInputValue[i] = (flags & REG_PWM_VALID) ? (c.inverted ? 1.0f - normalized : normalized) : 0.0f;
+        ed.registryInputHealthy[i] = flags & REG_PWM_VALID;
     }
 
     inline void updateRegistryInputs() {
@@ -607,7 +751,8 @@ namespace Hardware {
         unsigned long now = millis();
         unsigned long pulseDt = now - g_registryPulseLastMs;
         bool samplePulse = pulseDt >= 100UL;
-        for (uint8_t i = 0; i < reg.inputCount; ++i) {
+        const uint8_t inputCount = min(reg.inputCount, ChannelRegistry::MAX_INPUT_CHANNELS);
+        for (uint8_t i = 0; i < inputCount; ++i) {
             const auto& c = reg.inputs[i];
             uint8_t coreKind = registryCoreInputKind(c);
             if (coreKind) {
@@ -618,7 +763,23 @@ namespace Hardware {
                 ed.registryInputHealthy[i] = false;
                 continue;
             }
-            if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0) {
+            if (!strcmp(c.role, "temperature") && c.temperatureInterface == 5 && g_registryDs18Slot[i] >= 0) {
+                auto& sensor = g_registryDs18[(uint8_t)g_registryDs18Slot[i]];
+                sensor.update();
+                ed.registryInputValue[i] = sensor.getValue();
+                ed.registryInputHealthy[i] = sensor.isHealthy();
+                continue;
+            }
+            if (c.driver == ChannelRegistry::Pulse && g_registryPcntSlot[i] >= 0) {
+                auto& sensor = g_registryPcnt[(uint8_t)g_registryPcntSlot[i]];
+                sensor.update();
+                ed.registryInputValue[i] = sensor.getValue();
+                ed.registryInputHealthy[i] = sensor.isHealthy();
+                continue;
+            }
+            const bool legacyOilTemperature = !strcmp(c.id, "oil_temperature") || !strcmp(c.purpose, "oil_temperature");
+            if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0 &&
+                (c.temperatureInterface != 4 || legacyOilTemperature)) {
                 ed.registryInputHealthy[i] = false;
                 continue;
             }
@@ -627,13 +788,19 @@ namespace Hardware {
                 ed.registryInputValue[i] = (c.activeHigh ? high : !high) ? 1.0f : 0.0f;
                 ed.registryInputHealthy[i] = true;
             } else if (c.driver == ChannelRegistry::Analog) {
+                if (now - g_registryAnalogLastMs[i] < 10UL) continue;
+                g_registryAnalogLastMs[i] = now;
+                delay(0);
                 int raw = analogRead(c.pin);
+                delay(0);
                 ed.registryInputValue[i] = registryAnalogPhysicalInput((float)raw, c);
-                ed.registryInputHealthy[i] = true;
+                ed.registryInputHealthy[i] = isfinite(ed.registryInputValue[i]);
             } else if (c.driver == ChannelRegistry::Pulse) {
                 updateRegistryPulseInput(i, c, ed, samplePulse, pulseDt);
             } else if (c.driver == ChannelRegistry::RcPwm) {
                 updateRegistryRcInput(i, c, ed);
+            } else if (c.driver == ChannelRegistry::PwmDuty) {
+                updateRegistryPwmDutyInput(i, c, ed);
             } else {
                 ed.registryInputHealthy[i] = false;
             }
@@ -641,15 +808,42 @@ namespace Hardware {
         if (samplePulse) g_registryPulseLastMs = now;
     }
 
+    inline bool registryOutputOwnsCorePurpose(const ChannelRegistry::Channel& c) {
+        return HardwareConfig::channelRegistry.ownsCoreOutput(c);
+    }
+
+    inline const ChannelRegistry::Channel* registryStarterEnableOutput() {
+        const auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.outputCount; ++i)
+            if (reg.outputs[i].installed && !strcmp(reg.outputs[i].purpose, "starter_enable"))
+                return &reg.outputs[i];
+        return nullptr;
+    }
+
     inline bool registryOutputManaged(const ChannelRegistry::Channel& c) {
+        const bool proportionalStarterEnable = !strcmp(c.purpose, "starter_enable") && c.driver != ChannelRegistry::Relay;
         return c.installed && c.pin >= 0 &&
-               !ChannelRegistry::isCoreManagedOutput(c) &&
-               !HardwareConfig::channelRegistry.boundToCoreOutput(c);
+               (proportionalStarterEnable ||
+               !ChannelRegistry::isCoreManagedOutputId(c.id) &&
+               !registryOutputOwnsCorePurpose(c) &&
+               !HardwareConfig::channelRegistry.boundToCoreOutput(c));
+    }
+
+    inline float registryPurposeMinimum(const char* purpose, float demand) {
+        if (demand <= 0.0f) return 0.0f;
+        auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.outputCount; ++i) {
+            const auto& c = reg.outputs[i];
+            if (c.installed && !strcmp(c.purpose, purpose))
+                return fmaxf(demand, constrain(c.minimumRunDemand, 0.0f, 1.0f));
+        }
+        return demand;
     }
 
     inline void writeRegistryOutput(const ChannelRegistry::Channel& c, float demand) {
         if (!registryOutputManaged(c)) return;
         demand = constrain(demand, 0.0f, 1.0f);
+        if (demand > 0.0f) demand = fmaxf(demand, constrain(c.minimumRunDemand, 0.0f, 1.0f));
         float driveDemand = c.inverted ? 1.0f - demand : demand;
         if (c.driver == ChannelRegistry::Relay) {
             digitalWrite(c.pin, driveDemand >= 0.5f ? HIGH : LOW);
@@ -682,7 +876,7 @@ namespace Hardware {
             if (c.driver == ChannelRegistry::Relay) {
                 pinMode(c.pin, OUTPUT);
             } else if (c.driver == ChannelRegistry::Pwm) {
-                const uint32_t freq = c.pwmTimingConfigured ? constrain(c.pwmFrequency, 1U, 100000U) : 1000U;
+                const uint32_t freq = c.pwmTimingConfigured ? constrain(c.pwmFrequency, 1U, 100000U) : 5000U;
                 const uint8_t bits = c.pwmTimingConfigured ? constrain(c.pwmResolution, 8, 14) : 10;
                 ledcAttach(c.pin, freq, bits);
             } else if (c.driver == ChannelRegistry::Servo) {
@@ -697,6 +891,8 @@ namespace Hardware {
         auto& ed = EngineData::instance();
         for (uint8_t i = 0; i < reg.outputCount; ++i) {
             const auto& c = reg.outputs[i];
+            if (!strcmp(c.purpose, "starter_enable") && c.driver != ChannelRegistry::Relay)
+                ed.registryOutputDemand[i] = ed.starterEnabled ? 1.0f : 0.0f;
             writeRegistryOutput(c, ed.registryOutputDemand[i]);
             if (c.hasCurrent && c.currentPin >= 0) {
                 int raw = analogRead(c.currentPin);
@@ -716,7 +912,9 @@ namespace Hardware {
         auto& ed = EngineData::instance();
         for (uint8_t i = 0; i < reg.outputCount; ++i) {
             if (!registryOutputManaged(reg.outputs[i])) continue;
-            ed.registryOutputDemand[i] = constrain(reg.outputs[i].faultDemand, 0.0f, 1.0f);
+            // Fault shutdown is deliberately non-configurable: every
+            // registry output is commanded fully off.
+            ed.registryOutputDemand[i] = 0.0f;
             writeRegistryOutput(reg.outputs[i], ed.registryOutputDemand[i]);
         }
     }
@@ -967,13 +1165,15 @@ namespace Hardware {
     // ── Sensor init ───────────────────────────────────────────
     inline void initSensors() {
         auto& hw = HardwareConfig::instance();
-        const bool n1RegistryAnalog = registryAnalogInputIndex("n1_main", "primary_n1") >= 0 ||
-                                      registryAnalogInputIndex("primary_n1") >= 0;
-        const bool n2RegistryAnalog = registryAnalogInputIndex("n2_main", "primary_n2") >= 0 ||
-                                      registryAnalogInputIndex("primary_n2") >= 0;
-        const bool totRegistryAnalog = registryAnalogInputIndex("tot_main") >= 0;
-        const bool titRegistryAnalog = registryAnalogInputIndex("tit_main") >= 0;
-        const bool oilTempRegistryAnalog = registryAnalogInputIndex("oil_temperature") >= 0;
+        const bool n1RegistryAnalog = registryAnalogInputIndex("n1_main", "primary_n1", "n1_speed") >= 0;
+        const bool n2RegistryAnalog = registryAnalogInputIndex("n2_main", "primary_n2", "n2_speed") >= 0;
+        const bool totRegistryAnalog = registryAnalogInputIndex("tot_main", nullptr, "tot") >= 0;
+        const bool titRegistryAnalog = registryAnalogInputIndex("tit_main", nullptr, "tit") >= 0;
+        const bool oilTempRegistryAnalog = registryAnalogInputIndex("oil_temperature", nullptr, "oil_temperature") >= 0;
+        const bool p1RegistryAnalog = registryAnalogInputIndex("p1_main", nullptr, "p1_pressure") >= 0;
+        const bool p2RegistryAnalog = registryAnalogInputIndex("p2_main", nullptr, "p2_pressure") >= 0;
+        const bool idleRegistryInput = registryPurposeInputIndex("idle") >= 0;
+        const bool throttleRegistryInput = registryPurposeInputIndex("throttle", "operator_throttle") >= 0;
         if (hw.hasN1Rpm && !n1RegistryAnalog) g_sensorN1Rpm.begin(hw.n1RpmPin, hw.n1RpmPpr);
         if (hw.hasN2Rpm && !n2RegistryAnalog) g_sensorN2Rpm.begin(hw.n2RpmPin, hw.n2RpmPpr);
         _accelLastMs = 0; _accelPrevN1 = 0.0f; _accelPrevN2 = 0.0f;   // clean RPM-accel start
@@ -1042,9 +1242,9 @@ namespace Hardware {
         }
         if (hw.hasOilPress) g_sensorOilPress.begin(hw.oilPressPin);
         if (hw.hasFlame)   g_sensorFlame.begin(hw.flamePin);
-        if (hw.hasIdleInput && !hw.idleInputRcPwm)
+        if (hw.hasIdleInput && !hw.idleInputRcPwm && !idleRegistryInput)
             g_sensorIdleInput.begin(hw.idleInputPin);
-        if (hw.hasThrottleInput && !hw.throttleInputRcPwm)
+        if (hw.hasThrottleInput && !hw.throttleInputRcPwm && !throttleRegistryInput)
             g_sensorThrottleInput.begin(hw.throttleInputPin);
         if (hw.hasFuelFlow) {
             if (hw.fuelFlowType == 1) {
@@ -1064,12 +1264,12 @@ namespace Hardware {
                                        (float)Config::fuelPressRawMax,
                                        0.0f, Config::fuelPressValMax });
         }
-        if (hw.hasP1) {
+        if (hw.hasP1 && !p1RegistryAnalog) {
             g_sensorP1.begin(hw.p1Pin);
             g_sensorP1.setCal({ (float)Config::p1RawMin, (float)Config::p1RawMax,
                                  0.0f, Config::p1ValMax });
         }
-        if (hw.hasP2) {
+        if (hw.hasP2 && !p2RegistryAnalog) {
             g_sensorP2.begin(hw.p2Pin);
             g_sensorP2.setCal({ (float)Config::p2RawMin, (float)Config::p2RawMax,
                                  0.0f, Config::p2ValMax });
@@ -1109,20 +1309,36 @@ namespace Hardware {
         auto& hw = HardwareConfig::instance();
         auto& ed = EngineData::instance();
         updateRegistryInputs();
-        const int8_t n1Analog = registryAnalogInputIndex("n1_main", "primary_n1") >= 0
-            ? registryAnalogInputIndex("n1_main", "primary_n1") : registryAnalogInputIndex("primary_n1");
-        const int8_t n2Analog = registryAnalogInputIndex("n2_main", "primary_n2") >= 0
-            ? registryAnalogInputIndex("n2_main", "primary_n2") : registryAnalogInputIndex("primary_n2");
-        const int8_t totAnalog = registryAnalogInputIndex("tot_main");
-        const int8_t titAnalog = registryAnalogInputIndex("tit_main");
-        const int8_t oilPressAnalog = registryAnalogInputIndex("oil_pressure_main");
-        const int8_t oilTempAnalog = registryAnalogInputIndex("oil_temperature");
-        const int8_t fuelPressAnalog = registryAnalogInputIndex("fuel_pressure");
-        const int8_t flameAnalog = registryAnalogInputIndex("flame_main");
-        const int8_t fuelFlowAnalog = registryAnalogInputIndex("fuel_flow");
-        const int8_t totSpecial = registrySpecialTemperatureIndex("tot_main");
-        const int8_t titSpecial = registrySpecialTemperatureIndex("tit_main");
-        const int8_t oilTempSpecial = registrySpecialTemperatureIndex("oil_temperature");
+        const int8_t idleRegistry = registryPurposeInputIndex("idle");
+        const int8_t throttleRegistry = registryPurposeInputIndex("throttle", "operator_throttle");
+        // Preserve the existing idle/throttle consumers and telemetry without
+        // making them apply a second calibration layer. Registry endpoints
+        // already produce 0..1, so synthesize the legacy raw value that maps
+        // straight back to the same normalized demand.
+        if (idleRegistry >= 0 && ed.registryInputHealthy[idleRegistry]) {
+            float norm = constrain(ed.registryInputValue[idleRegistry], 0.0f, 1.0f);
+            ed.idleInputRaw = (int)(Config::idleMinRaw + norm * (Config::idleMaxRaw - Config::idleMinRaw));
+        }
+        if (throttleRegistry >= 0 && ed.registryInputHealthy[throttleRegistry]) {
+            float norm = constrain(ed.registryInputValue[throttleRegistry], 0.0f, 1.0f);
+            ed.throttleInputRaw = (int)(Config::throttleMinRaw + norm * (Config::throttleMaxRaw - Config::throttleMinRaw));
+        }
+        const int8_t n1Analog = registryAnalogInputIndex("n1_main", "primary_n1", "n1_speed") >= 0
+            ? registryAnalogInputIndex("n1_main", "primary_n1", "n1_speed") : registryAnalogInputIndex("primary_n1", nullptr, "n1_speed");
+        const int8_t n2Analog = registryAnalogInputIndex("n2_main", "primary_n2", "n2_speed") >= 0
+            ? registryAnalogInputIndex("n2_main", "primary_n2", "n2_speed") : registryAnalogInputIndex("primary_n2", nullptr, "n2_speed");
+        const int8_t totAnalog = registryAnalogInputIndex("tot_main", nullptr, "tot");
+        const int8_t titAnalog = registryAnalogInputIndex("tit_main", nullptr, "tit");
+        const int8_t oilPressAnalog = registryAnalogInputIndex("oil_pressure_main", nullptr, "oil_pressure");
+        const int8_t oilTempAnalog = registryAnalogInputIndex("oil_temperature", nullptr, "oil_temperature");
+        const int8_t fuelPressAnalog = registryAnalogInputIndex("fuel_pressure", nullptr, "fuel_pressure");
+        const int8_t p1Analog = registryAnalogInputIndex("p1_main", nullptr, "p1_pressure");
+        const int8_t p2Analog = registryAnalogInputIndex("p2_main", nullptr, "p2_pressure");
+        const int8_t flameAnalog = registryAnalogInputIndex("flame_main", nullptr, "flame");
+        const int8_t fuelFlowAnalog = registryAnalogInputIndex("fuel_flow", nullptr, "fuel_flow");
+        const int8_t totSpecial = registrySpecialTemperatureIndex("tot_main", "tot");
+        const int8_t titSpecial = registrySpecialTemperatureIndex("tit_main", "tit");
+        const int8_t oilTempSpecial = registrySpecialTemperatureIndex("oil_temperature", "oil_temperature");
         if (hw.hasN1Rpm) {
             if (n1Analog >= 0) {
                 ed.n1Rpm = ed.registryInputValue[n1Analog];
@@ -1190,15 +1406,18 @@ namespace Hardware {
             ed.registryInputValue[titSpecial] = ed.tit;
             ed.registryInputHealthy[titSpecial] = ed.titHealthy;
         }
-        if (oilPressAnalog >= 0) {
-            ed.oilPressure = ed.registryInputValue[oilPressAnalog];
-            ed.oilPressureRaw = analogRead(HardwareConfig::channelRegistry.inputs[oilPressAnalog].pin);
-            ed.oilHealthy = ed.registryInputHealthy[oilPressAnalog];
-        } else if (hw.hasOilPress) {
+        if (hw.hasOilPress) {
             g_sensorOilPress.update();
             ed.oilPressure    = g_sensorOilPress.getValue();
             ed.oilPressureRaw = g_sensorOilPress.rawCounts();
             ed.oilHealthy     = g_sensorOilPress.isHealthy();
+            if (oilPressAnalog >= 0) {
+                ed.registryInputValue[oilPressAnalog] = ed.oilPressure;
+                ed.registryInputHealthy[oilPressAnalog] = ed.oilHealthy;
+            }
+        } else if (oilPressAnalog >= 0) {
+            ed.oilPressure = ed.registryInputValue[oilPressAnalog];
+            ed.oilHealthy = ed.registryInputHealthy[oilPressAnalog];
         }
         if (flameAnalog >= 0) {
             const auto& c = HardwareConfig::channelRegistry.inputs[flameAnalog];
@@ -1212,12 +1431,12 @@ namespace Hardware {
             // Wiring hint only — never gates flameDetected (see EngineData.h)
             ed.flameHealthy   = g_sensorFlame.railHealthy();
         }
-        if (hw.hasIdleInput && !hw.idleInputRcPwm) {
+        if (hw.hasIdleInput && !hw.idleInputRcPwm && idleRegistry < 0) {
             g_sensorIdleInput.update();
             ed.idleInputRaw = g_sensorIdleInput.rawCounts();
         }
         // Throttle input — ADC path; RC PWM path writes throttleInputRaw via RCInput::tick()
-        if (hw.hasThrottleInput && !hw.throttleInputRcPwm) {
+        if (hw.hasThrottleInput && !hw.throttleInputRcPwm && throttleRegistry < 0) {
             g_sensorThrottleInput.update();
             ed.throttleInputRaw = g_sensorThrottleInput.rawCounts();
         }
@@ -1299,12 +1518,18 @@ namespace Hardware {
                 ed.fuelFlowHealthy = g_sensorFuelFlow.isHealthy();
             }
         }
-        if (hw.hasP1) {
+        if (p1Analog >= 0) {
+            ed.p1 = ed.registryInputValue[p1Analog];
+            ed.p1Healthy = ed.registryInputHealthy[p1Analog];
+        } else if (hw.hasP1) {
             g_sensorP1.update();
             ed.p1 = g_sensorP1.getValue();
             ed.p1Healthy = g_sensorP1.isHealthy();
         }
-        if (hw.hasP2) {
+        if (p2Analog >= 0) {
+            ed.p2 = ed.registryInputValue[p2Analog];
+            ed.p2Healthy = ed.registryInputHealthy[p2Analog];
+        } else if (hw.hasP2) {
             g_sensorP2.update();
             ed.p2 = g_sensorP2.getValue();
             ed.p2Healthy = g_sensorP2.isHealthy();
@@ -1443,8 +1668,11 @@ namespace Hardware {
                 g_actIgniter2 = &g_actIgniter2Relay;
             }
         }
-        if (hw.hasStarterEn)
-            g_actStarterEn.begin(hw.starterEnPin, hw.starterEnActiveH);
+        if (hw.hasStarterEn) {
+            const auto* starterEnable = registryStarterEnableOutput();
+            if (!starterEnable || starterEnable->driver == ChannelRegistry::Relay)
+                g_actStarterEn.begin(hw.starterEnPin, hw.starterEnActiveH);
+        }
         if (hw.hasAbSol && hw.abSolPin >= 0)
             g_actAbSol.begin(hw.abSolPin, hw.abSolActiveH);
         if (hw.hasAirstarterSol && hw.airstarterSolPin >= 0)
@@ -1576,7 +1804,9 @@ namespace Hardware {
 
         // Starter enable relay
         if (hw.hasStarterEn) {
-            g_actStarterEn.set(ed.starterEnabled ? 1.0f : 0.0f);
+            const auto* starterEnable = registryStarterEnableOutput();
+            if (!starterEnable || starterEnable->driver == ChannelRegistry::Relay)
+                g_actStarterEn.set(ed.starterEnabled ? 1.0f : 0.0f);
         }
         // Only allow starter to spin once the enable relay is on and its
         // delay has elapsed — with the relay off, the demand must not reach
@@ -1594,9 +1824,9 @@ namespace Hardware {
         if (hw.hasAbPump      && g_actAbPump)      g_actAbPump->set(ed.abPumpDemand);
         if (hw.hasAbSol)         g_actAbSol.set(ed.abSolOpen ? 1.0f : 0.0f);
         if (hw.hasAirstarterSol) g_actAirstarterSol.set(ed.airstarterOpen ? 1.0f : 0.0f);
-        if (hw.hasCoolFan && g_pActCoolFan)  g_pActCoolFan->set(constrain(ed.coolFanDemand, 0.0f, 1.0f));
+        if (hw.hasCoolFan && g_pActCoolFan)  g_pActCoolFan->set(registryPurposeMinimum("cooling_fan", constrain(ed.coolFanDemand, 0.0f, 1.0f)));
         if (hw.hasOilScavengePump && g_actOilScavPump)
-            g_actOilScavPump->set(constrain(ed.oilScavengeDemand, 0.0f, 1.0f));
+            g_actOilScavPump->set(registryPurposeMinimum("scavenge_pump", constrain(ed.oilScavengeDemand, 0.0f, 1.0f)));
         if (hw.hasOilPump && g_actOilPump) {
             float demand = (hw.oilPumpType == 2)
                          ? (ed.oilPumpPct > 0.0f ? 1.0f : 0.0f)
@@ -1691,7 +1921,7 @@ namespace Hardware {
             }
         }
         if (hw.hasFuelPump2 && g_actFuelPump2)
-            g_actFuelPump2->set(ed.fuelPump2Demand);
+            g_actFuelPump2->set(registryPurposeMinimum("fuel_pump", constrain(ed.fuelPump2Demand, 0.0f, 1.0f)));
         if (hw.hasBleedValve && g_actBleedValve)
             g_actBleedValve->set(constrain(ed.bleedValveDemand, 0.0f, 1.0f));
         if (hw.hasPropPitch && g_actPropPitch)
@@ -1871,9 +2101,12 @@ namespace Hardware {
         const bool governorOwnsThrottle = hw.hasGovernor && hw.hasN2Rpm &&
                                           Config::governorTargetRpm > 0.0f &&
                                           !g_ctrlGovernor.usePropPitch;
-        if (hw.hasThrottleInput && mode == SysMode::RUNNING && !governorOwnsThrottle) {
+        const int8_t registryThrottle = registryPurposeInputIndex("throttle", "operator_throttle");
+        if ((hw.hasThrottleInput || registryThrottle >= 0) && mode == SysMode::RUNNING && !governorOwnsThrottle) {
             float norm;
-            if (hw.throttleInputRcPwm) {
+            if (registryThrottle >= 0) {
+                norm = ed.registryInputHealthy[registryThrottle] ? ed.registryInputValue[registryThrottle] : 0.0f;
+            } else if (hw.throttleInputRcPwm) {
                 norm = (ed.rcThrottleValid) ? ed.rcThrottleNorm : 0.0f;
             } else {
                 int range = Config::throttleMaxRaw - Config::throttleMinRaw;

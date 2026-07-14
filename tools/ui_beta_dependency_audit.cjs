@@ -128,7 +128,7 @@ async function optionDisabled(page, selector, value) {
       }
       cfg.safety.overspeed = cfg.safety.surge = cfg.safety.overtemp = cfg.safety.hot_start = true;
       cfg.safety.low_oil = cfg.safety.oil_zero = cfg.safety.flameout = true;
-      cfg.safety.tit_overtemp = cfg.safety.oil_temp_high = cfg.safety.fuel_press_low = cfg.safety.batt_low = true;
+      cfg.safety.oil_temp_high = cfg.safety.fuel_press_low = cfg.safety.batt_low = true;
       for (const key of ['n1_rpm', 'tot', 'oil_press', 'flame', 'tit', 'oil_temp', 'fuel_press', 'batt_voltage']) {
         cfg.sensors[key].enabled = false;
       }
@@ -145,7 +145,7 @@ async function optionDisabled(page, selector, value) {
         safety: {
           overspeed: st('f-saf-overspeed'), surge: st('f-saf-surge'), overtemp: st('f-saf-overtemp'),
           hotStart: st('f-saf-hotstart'), lowOil: st('f-saf-lowoil'), oilZero: st('f-saf-oilzero'),
-          flameout: st('f-saf-flameout'), tit: st('f-saf-titovertemp'), oilTemp: st('f-saf-oiltemphi'),
+          flameout: st('f-saf-flameout'), oilTemp: st('f-saf-oiltemphi'),
           fuelPress: st('f-saf-fuelpresslo'), batt: st('f-saf-battlo')
         },
         controllers: { oil: st('f-ctrl-oil'), slew: st('f-ctrl-slew'), idle: st('f-ctrl-idle'), gov: st('f-ctrl-gov') },
@@ -156,6 +156,7 @@ async function optionDisabled(page, selector, value) {
         n2Visible: getComputedStyle(document.getElementById('section-n2rpm')).display !== 'none'
       };
     });
+    assert.equal(await page.locator('#f-saf-titovertemp').count(), 0);
     for (const state of Object.values(hwPrereq.safety)) assert.deepEqual(state, { disabled: true, checked: false });
     for (const state of Object.values(hwPrereq.controllers)) assert.deepEqual(state, { disabled: true, checked: false });
     assert.deepEqual(hwPrereq.currentGroups.oil, { disabled: true, checked: false });
@@ -714,7 +715,12 @@ async function optionDisabled(page, selector, value) {
       actuators: getEnabledActuators().map(a => a.key),
       ruleN2: document.querySelector('#rule-sensor-0 option[value="6"]')?.disabled,
       ruleAbInput: document.querySelector('#rule-sensor-0 option[value="24"]')?.disabled,
-      ruleAbSol: document.querySelector('#rule-act-0 option[value="11"]')?.disabled
+      ruleAbSol: document.querySelector('#rule-act-0 option[value="11"]')?.disabled,
+      presets: Array.from(document.querySelectorAll('#rule-presets button')).map(btn => ({
+        kind: btn.dataset.rulePreset,
+        ghosted: btn.getAttribute('aria-disabled') === 'true',
+        title: btn.title
+      }))
     }));
     assert.ok(sequenceHidden.startup.some(o => o.value === 'PreHeat' && !o.disabled), 'PreHeat should remain available when Igniter 2 is fitted');
     for (const absent of ['FuelPulse', 'WaitForInput', 'OilScavengeOn', 'AirstarterOn', 'CoolFanOn', 'BleedOpen', 'GlowPreheat', 'FuelPumpRamp', 'FuelPump2Set', 'GovernorHold']) {
@@ -727,6 +733,11 @@ async function optionDisabled(page, selector, value) {
     assert.notEqual(sequenceHidden.ruleN2, false);
     assert.notEqual(sequenceHidden.ruleAbInput, false);
     assert.notEqual(sequenceHidden.ruleAbSol, false);
+    for (const kind of ['di_fault', 'di_shutdown', 'oil_temp_fan']) {
+      const preset = sequenceHidden.presets.find(p => p.kind === kind);
+      assert.equal(preset?.ghosted, true, `${kind} preset should be ghosted when its hardware is missing`);
+      assert.match(preset?.title || '', /missing/i, `${kind} preset should explain missing hardware`);
+    }
     results.push('sequence editor filters blocks, sensors, actuators, and rules by fitted hardware and master features');
 
     await reset(page);

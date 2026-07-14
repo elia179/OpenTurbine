@@ -115,7 +115,6 @@ async function goto(page, route, waitSelector) {
       setSensor('fuel_press', false);
       cfg.safety.batt_low = true;
       setSensor('batt_voltage', false);
-      cfg.safety.tit_overtemp = true;
       setSensor('tit', false);
       cfg.safety.oil_temp_high = true;
       setSensor('oil_temp', false);
@@ -123,11 +122,11 @@ async function goto(page, route, waitSelector) {
       const optionalOff = {
         fuelPress: st('f-saf-fuelpresslo'),
         batt: st('f-saf-battlo'),
-        tit: st('f-saf-titovertemp'),
         oilTemp: st('f-saf-oiltemphi')
       };
       return { n1Off, totOff, combustionOff, oilOff, optionalOff };
     });
+    assert.equal(await page.locator('#f-saf-titovertemp').count(), 0);
     for (const group of Object.values(safetyMatrix)) {
       for (const state of Object.values(group)) {
         assert.equal(state.disabled, true);

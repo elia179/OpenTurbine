@@ -174,7 +174,7 @@ const SCHEMA = [
   ]},
   { title: 'Auto-Relight', id:'relight-section', sectionNote:'After a flameout during RUNNING, the ECU can fire the igniter briefly to attempt a hot restart without stopping. N1 RPM feedback is required for automatic relight attempts so the ECU can prove the engine is still windmilling; flame, N1, or selected EGT can then be used to confirm the relight succeeded. Disable if false-relight attempts would be hazardous on your installation.', fields: [
     { key:'rl_en', path:['relight','enabled'],      label:'Auto-Relight Enabled',  desc:'When ON: if combustion is lost while RUNNING and N1 remains above the relight minimum, the igniter fires again automatically before the ECU commits to shutdown.', type:'checkbox', basic:true },
-    { key:'rl_it', path:['relight','ignition_target'], label:'Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'Igniter 2'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on during an automatic relight attempt.', basic:true },
+    { key:'rl_it', path:['relight','ignition_target'], label:'Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'AB / Pilot Igniter'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on during an automatic relight attempt.', basic:true },
     { key:'rl_cs', path:['relight','confirm_source'], label:'Relight Confirm Source', type:'select', options:[{v:0,l:'Auto match flameout source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 recovered'},{v:3,l:'EGT recovered'}], desc:'Which fitted signal confirms that relight succeeded and lets the igniter turn off. This does not remove the N1 windmill requirement for starting the relight attempt.', basic:true },
     { key:'rl_cr', path:['relight','confirm_rpm'],         label:'N1 Recovery RPM', desc:'For N1 relight confirmation: igniter stays on until N1 recovers to this RPM. 0 uses Min RPM + 5%.', step:1000, min:0, basic:true },
     { key:'rl_tr', path:['relight','tot_rise_c'],          label:'EGT Recovery Rise', unitType:'temp_delta', desc:'For EGT relight confirmation: igniter stays on until selected EGT rises this much above the temperature at relight start. 0 prevents EGT-rise confirmation. Set too low and EGT noise/throttle changes can false-confirm; too high can reject a real relight. Verify on a real start.', step:5, min:0, basic:true },
@@ -186,7 +186,7 @@ const SCHEMA = [
     { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief fuel-solenoid click-test pulse.',     step:50,  min:50, basic:true },
     { key:'tl_op', path:['tools','oil_prime_ms'],      label:'Oil Prime ms',       desc:'Oil pump run time for Oil Prime.',          step:100, min:100, basic:true },
     { key:'tl_ig', path:['tools','ign_test_ms'],       label:'Igniter 1 Test ms',  desc:'Spark/igniter on time for Igniter 1 Test.', step:100, min:100, basic:true },
-    { key:'tl_i2', path:['tools','ign2_test_ms'],      label:'Igniter 2 Test ms',  desc:'Spark/igniter on time for Igniter 2 Test.', step:100, min:100 },
+    { key:'tl_i2', path:['tools','ign2_test_ms'],      label:'AB / Pilot Igniter Test ms',  desc:'Spark/igniter on time for AB / Pilot Igniter Test.', step:100, min:100 },
     { key:'tl_gl', path:['tools','glow_test_ms'],      label:'Glow Test ms',       desc:'Glow plug test duration. For wet glow, set this longer than the configured pilot-fuel delay if you want fuel to start during the test.', step:100, min:100, basic:true },
     { key:'tl_gp', path:['tools','glow_test_pct'],     label:'Glow Test Command',  desc:'Glow plug test command. PWM glow uses this as percent output; relay glow turns ON for any nonzero value. Use 100 for a full-power heat test.', step:5, min:0, max:100, basic:true },
     { key:'tl_st', path:['tools','start_test_ms'],     label:'Starter Test ms',    desc:'Starter spin time for Starter Test.',       step:100, min:100, basic:true },
@@ -198,8 +198,8 @@ const SCHEMA = [
     { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:100, basic:true },
     { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Airstarter Test ms', desc:'Airstarter solenoid pulse duration.',      step:50,  min:50, basic:true },
     { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:50, basic:true },
-    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Aux Pump 2 Test ms', desc:'Auxiliary fuel pump 2 test duration.',     step:100, min:100, basic:true },
-    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Aux Pump 2 Test %', desc:'Auxiliary fuel pump 2 demand for proportional outputs.', step:5, min:0, max:100, basic:true },
+    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Pilot / Aux Fuel Pump Test ms', desc:'Pilot / auxiliary fuel pump test duration.',     step:100, min:100, basic:true },
+    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Pilot / Aux Fuel Pump Test %', desc:'Pilot / auxiliary fuel pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
     { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable ms',  desc:'Starter enable relay pulse duration.',     step:50,  min:50, basic:true },
     { key:'tl_pp', path:['tools','prop_pitch_test_ms'],label:'Prop Pitch Test ms', desc:'Prop pitch test duration.',                step:100, min:100, basic:true },
     { key:'tl_pq', path:['tools','prop_pitch_test_pct'],label:'Prop Pitch Test %', desc:'Prop pitch test position/demand for proportional outputs.', step:5, min:0, max:100, basic:true },
@@ -232,9 +232,9 @@ const SCHEMA = [
     { key:'sl_wg', path:['session_log','wet_glow'],  label:'Log Wet Glow Fuel Output', type:'checkbox', desc:'Include wet-glow fuel solenoid/pump output column in session CSV.' },
     { key:'sl_gc', path:['session_log','glow_current'], label:'Log Glow Current', type:'checkbox', desc:'Include glow plug current sensor column in session CSV.' },
     { key:'sl_ic', path:['session_log','ign_current'],  label:'Log Igniter 1 Current', type:'checkbox', desc:'Include igniter 1 current sensor column in session CSV.' },
-    { key:'sl_i2', path:['session_log','ign2_current'], label:'Log Igniter 2 Current', type:'checkbox', desc:'Include igniter 2 current sensor column in session CSV.' },
+    { key:'sl_i2', path:['session_log','ign2_current'], label:'Log AB / Pilot Igniter Current', type:'checkbox', desc:'Include AB / pilot igniter current sensor column in session CSV.' },
     { key:'sl_oc', path:['session_log','oil_current'],  label:'Log Oil Pump Current', type:'checkbox', desc:'Include oil pump current sensor column in session CSV.' },
-    { key:'sl_f2', path:['session_log','fp2'],       label:'Log Auxiliary Fuel Pump 2', type:'checkbox', desc:'Include independent sequence/rule-commanded auxiliary fuel pump demand (%) column in session CSV. This channel does not automatically follow the main throttle input.' },
+    { key:'sl_f2', path:['session_log','fp2'],       label:'Log Pilot / Auxiliary Fuel Pump', type:'checkbox', desc:'Include independent sequence/rule-commanded pilot / auxiliary fuel pump demand (%) column in session CSV. This channel does not automatically follow the main throttle input.' },
     { key:'sl_ab', path:['session_log','ab'],        label:'Log AB State/Fuel', type:'checkbox', desc:'Include afterburner mode, flame, AB pump demand, and main-fuel offset columns in session CSV.' },
     { key:'sl_pp', path:['session_log','prop'],      label:'Log Prop Pitch',  type:'checkbox', desc:'Include propeller pitch demand (%) column in session CSV.' },
     { key:'sl_op', path:['session_log','oil_pct'],   label:'Log Oil Pump %',  type:'checkbox', desc:'Include oil pump duty cycle (%) column in session CSV.' },
@@ -259,7 +259,7 @@ const SCHEMA = [
   ]},
   { title: 'Misc', fields: [
     { key:'ms_cs', path:['misc','cooldown_skip_hold_ms'], label:'Cooldown Skip Hold ms', desc:'Hold START+STOP simultaneously for this long during SHUTDOWN to force-skip the cooldown and go to STANDBY, even if selected EGT is still above the cooldown target.', step:500, min:500 },
-    { key:'ms_it', path:['misc','igniter_on_start_target'], label:'START Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'Igniter 2'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on while START is held during RUNNING.' },
+    { key:'ms_it', path:['misc','igniter_on_start_target'], label:'START Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'AB / Pilot Igniter'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on while START is held during RUNNING.' },
     { key:'ms_is', path:['misc','igniter_on_start'],      label:'Igniter on START (running)', desc:'Fire igniter while START button is held during RUNNING — manual relight aid. Disable if accidental button presses are a concern.', type:'checkbox' },
   ]},
   { title: 'RPM Health', fields: [
@@ -1609,16 +1609,16 @@ function applyHwConditions() {
     ghostField(k, hasThrottleSlew, slewMsg));
   ghostField('lm_mt', hasThrottleOut, 'Limp Mode throttle cap requires a throttle/fuel output.');
   const hasAnyIgnitionOutput = hasIgniter || hasIgniter2 || hasGlowPlug;
-  ghostField('ms_is', hasAnyIgnitionOutput, 'Igniter-on-START requires Igniter 1, Igniter 2, or Glow/Wet Glow to be configured in Hardware.');
-  ghostField('ms_it', hasAnyIgnitionOutput, 'START relight output requires Igniter 1, Igniter 2, or Glow/Wet Glow to be configured in Hardware.');
+  ghostField('ms_is', hasAnyIgnitionOutput, 'Igniter-on-START requires Igniter 1, AB / Pilot Igniter, or Glow/Wet Glow to be configured in Hardware.');
+  ghostField('ms_it', hasAnyIgnitionOutput, 'START relight output requires Igniter 1, AB / Pilot Igniter, or Glow/Wet Glow to be configured in Hardware.');
   ghostSelectOption('ms_it', 0, hasIgniter, 'Igniter 1 is not configured in Hardware.');
-  ghostSelectOption('ms_it', 1, hasIgniter2, 'Igniter 2 is not configured in Hardware.');
+  ghostSelectOption('ms_it', 1, hasIgniter2, 'AB / Pilot Igniter is not configured in Hardware.');
   ghostSelectOption('ms_it', 2, hasGlowPlug, 'Glow/Wet Glow is not configured in Hardware.');
   ghostField('tl_fp', hasFuelSol, 'Fuel Prime duration requires a fuel solenoid output.');
   ghostField('tl_fs', hasFuelSol, 'Solenoid Click duration requires a fuel solenoid output.');
   ghostField('tl_op', hasOilPump, 'Oil Prime duration requires an oil pump output.');
   ghostField('tl_ig', hasIgniter, 'Igniter 1 Test duration requires Igniter 1 to be configured in Hardware.');
-  ghostField('tl_i2', hasIgniter2, 'Igniter 2 Test duration requires Igniter 2 to be configured in Hardware.');
+  ghostField('tl_i2', hasIgniter2, 'AB / Pilot Igniter Test duration requires AB / Pilot Igniter to be configured in Hardware.');
   ghostField('tl_gl', hasGlowPlug, 'Glow Test duration requires a glow plug output.');
   ghostField('tl_gp', hasGlowPlug, 'Glow Test demand requires a glow plug output.');
   ghostField('tl_st', hasStarter, 'Starter Test duration requires a starter output.');
@@ -1630,10 +1630,10 @@ function applyHwConditions() {
   ghostField('tl_cf', hasCoolFan, 'Fan Test duration requires a cooling fan output.');
   ghostField('tl_as', hasAirstarter, 'Airstarter Test duration requires an airstarter solenoid output.');
   ghostField('tl_bv', hasBleedValve, 'Bleed Test duration requires a bleed valve output.');
-  ghostField('tl_f2', hasFuelPump2, 'Aux Pump 2 Test duration requires Auxiliary Fuel Pump 2 in Hardware.');
+  ghostField('tl_f2', hasFuelPump2, 'Pilot / Aux Fuel Pump Test duration requires Pilot / Auxiliary Fuel Pump in Hardware.');
   ghostField('tl_f2p', hasFuelPump2 && !isOnOffType('fuel_pump2'), isOnOffType('fuel_pump2')
-    ? 'Auxiliary Fuel Pump 2 is configured as relay/on-off. Aux Pump 2 Test % is ignored; use Aux Pump 2 Test ms to control pulse length.'
-    : 'Aux Pump 2 Test demand requires Auxiliary Fuel Pump 2 in Hardware.');
+    ? 'Pilot / Auxiliary Fuel Pump is configured as relay/on-off. Test % is ignored; use test duration to control pulse length.'
+    : 'Pilot / Aux Fuel Pump Test demand requires Pilot / Auxiliary Fuel Pump in Hardware.');
   ghostField('tl_se', hasStarterEn, 'Starter Enable Test duration requires a starter enable relay output.');
   ghostField('tl_pp', hasPropPitch, 'Prop Pitch Test duration requires a prop-pitch actuator.');
   ghostField('tl_pq', hasPropPitch && !isOnOffType('prop_pitch'), isOnOffType('prop_pitch')
@@ -1651,7 +1651,7 @@ function applyHwConditions() {
   ghostField('sl_ic', hasIgniter && !!a.igniter?.has_current,
     'Igniter 1 current logging requires an igniter current sensor in Hardware.');
   ghostField('sl_i2', hasIgniter2 && !!a.igniter2?.has_current,
-    'Igniter 2 current logging requires an igniter 2 current sensor in Hardware.');
+    'AB / Pilot Igniter current logging requires an AB / pilot igniter current sensor in Hardware.');
   ghostField('sl_oc', hasOilPump && !!a.oil_pump?.has_current,
     'Oil pump current logging requires an oil pump current sensor in Hardware.');
 
@@ -1701,7 +1701,7 @@ function applyHwConditions() {
   ghostSelectOption('rl_cs', 2, hasN1, 'N1 RPM sensor is not configured in Hardware.');
   ghostSelectOption('rl_cs', 3, hasEgt, 'No primary EGT source is configured in Hardware.');
   ghostSelectOption('rl_it', 0, hasIgniter, 'Igniter 1 is not configured in Hardware.');
-  ghostSelectOption('rl_it', 1, hasIgniter2, 'Igniter 2 is not configured in Hardware.');
+  ghostSelectOption('rl_it', 1, hasIgniter2, 'AB / Pilot Igniter is not configured in Hardware.');
   ghostSelectOption('rl_it', 2, hasGlowPlug, 'Glow/Wet Glow is not configured in Hardware.');
   const relightTarget = Number((document.getElementById('cf-rl_it') || {}).value || 0);
   const hasRelightIgnition = relightTarget === 1 ? hasIgniter2 : relightTarget === 2 ? hasGlowPlug : hasIgniter;
@@ -1709,7 +1709,7 @@ function applyHwConditions() {
   ghostField('rl_it', hasN1 && hasAnyIgnitionOutput,
     !hasN1
       ? 'Auto-relight requires N1 RPM feedback so the ECU can prove the engine is still windmilling.'
-      : 'Auto-relight requires Igniter 1, Igniter 2, or Glow/Wet Glow to be configured in Hardware.');
+      : 'Auto-relight requires Igniter 1, AB / Pilot Igniter, or Glow/Wet Glow to be configured in Hardware.');
   ['rl_en','rl_mr','rl_cs','rl_cr','rl_tr','rl_to'].forEach(k =>
     ghostField(k, hasAutoRelightHardware,
       !hasN1
@@ -1784,9 +1784,9 @@ function applyHwConditions() {
   ghostSlogField('sl_wg', hasGlowPlug && Number(a.glow_plug?.type || 0) === 2, 'Wet Glow fuel output');
   ghostSlogField('sl_gc', hasGlowPlug && !!a.glow_plug?.has_current, 'Glow current sensor');
   ghostSlogField('sl_ic', hasIgniter && !!a.igniter?.has_current, 'Igniter 1 current sensor');
-  ghostSlogField('sl_i2', hasIgniter2 && !!a.igniter2?.has_current, 'Igniter 2 current sensor');
+  ghostSlogField('sl_i2', hasIgniter2 && !!a.igniter2?.has_current, 'AB / Pilot Igniter current sensor');
   ghostSlogField('sl_oc', hasOilPump && !!a.oil_pump?.has_current, 'Oil pump current sensor');
-  ghostSlogField('sl_f2', hasFuelPump2,   'Fuel Pump 2');
+  ghostSlogField('sl_f2', hasFuelPump2,   'Pilot / Auxiliary Fuel Pump');
   ghostSlogField('sl_ab', hasAB,          'Afterburner');
   ghostSlogField('sl_pp', hasPropPitch,   'Prop pitch');
 
@@ -1852,7 +1852,7 @@ async function fetchJsonWithRetry(url, attempts = 3) {
     cfg   = c;
     hwCfg = hw;
     renderForm();
-    _snapshotFields();   // baseline for orange-border tracking
+    _snapshotFields();   // baseline for changed-field tracking
     _applyAllVisibility();
     hookValidation();
     runValidation();

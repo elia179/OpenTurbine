@@ -211,7 +211,7 @@ static const char* _missingHardwareForCommand(const OTPacket& pkt) {
         case OTCommand::SET_OIL_DEMAND: return HardwareConfig::hasOilPump ? nullptr : "Oil pump is not configured";
         case OTCommand::SET_THROTTLE_PCT: return HardwareConfig::hasThrottle ? nullptr : "Throttle output is not configured";
         case OTCommand::IGN_TEST: return HardwareConfig::hasIgniter ? nullptr : "Igniter 1 is not configured";
-        case OTCommand::IGN2_TEST: return HardwareConfig::hasIgniter2 ? nullptr : "Igniter 2 is not configured";
+        case OTCommand::IGN2_TEST: return HardwareConfig::hasIgniter2 ? nullptr : "AB / pilot igniter is not configured";
         case OTCommand::START_TEST: return HardwareConfig::hasStarter ? nullptr : "Starter is not configured";
         case OTCommand::IDLE_TEST: return HardwareConfig::hasThrottle ? nullptr : "Throttle output is not configured";
         case OTCommand::OIL_SCAV_TEST: return HardwareConfig::hasOilScavengePump ? nullptr : "Oil scavenge pump is not configured";
@@ -219,7 +219,7 @@ static const char* _missingHardwareForCommand(const OTPacket& pkt) {
         case OTCommand::AIRSTARTER_TEST: return HardwareConfig::hasAirstarterSol ? nullptr : "Airstarter solenoid is not configured";
         case OTCommand::BLEED_VALVE_TEST: return HardwareConfig::hasBleedValve ? nullptr : "Bleed valve is not configured";
         case OTCommand::GLOW_TEST: return HardwareConfig::hasGlowPlug ? nullptr : "Glow plug is not configured";
-        case OTCommand::FUEL_PUMP2_TEST: return HardwareConfig::hasFuelPump2 ? nullptr : "Fuel pump 2 is not configured";
+        case OTCommand::FUEL_PUMP2_TEST: return HardwareConfig::hasFuelPump2 ? nullptr : "Pilot / auxiliary fuel pump is not configured";
         case OTCommand::AB_SOL_TEST:
             return (HardwareConfig::hasAfterburner && HardwareConfig::hasAbSol) ? nullptr : "Afterburner solenoid is not configured";
         case OTCommand::AB_PUMP_TEST:
@@ -231,7 +231,7 @@ static const char* _missingHardwareForCommand(const OTPacket& pkt) {
                 return "Registry output is not configured";
             const auto& c = HardwareConfig::channelRegistry.outputs[pkt.iParam];
             if (!c.installed || c.pin < 0 ||
-                ChannelRegistry::isCoreManagedOutput(c) ||
+                HardwareConfig::channelRegistry.ownsCoreOutput(c) ||
                 HardwareConfig::channelRegistry.boundToCoreOutput(c))
                 return "Registry output is not testable";
             return nullptr;
@@ -803,6 +803,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["max_n2"]                = (int)ed.maxN2;
     doc["max_tot"]               = (float)(int)(ed.maxTot * 10) / 10.0f;
     doc["tot_rise_rate"]         = (float)(int)(ed.totRiseRate * 10) / 10.0f;
+    doc["egt_rise_rate"]         = (float)(int)(ed.totRiseRate * 10) / 10.0f;
     doc["surge_detected"]        = ed.surgeDetected;
     // ── Afterburner runtime state ──────────────────────────────────────────
     {
@@ -1060,6 +1061,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["id"] = c.id;
             ch["name"] = c.name;
             ch["role"] = c.role;
+            ch["purpose"] = c.purpose;
             ch["driver"] = (uint8_t)c.driver;
             ch["pin"] = c.pin;
             ch["min"] = c.minValue;
@@ -1067,6 +1069,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["active_high"] = c.activeHigh;
             ch["pullup"] = c.pullup;
             ch["pulldown"] = c.pulldown;
+            ch["invert"] = c.inverted;
             ch["value"] = (float)(int)(ed.registryInputValue[i] * 1000) / 1000.0f;
             ch["healthy"] = ed.registryInputHealthy[i];
         }
@@ -1078,12 +1081,13 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["id"] = c.id;
             ch["name"] = c.name;
             ch["role"] = c.role;
+            ch["purpose"] = c.purpose;
             ch["driver"] = (uint8_t)c.driver;
             ch["pin"] = c.pin;
             ch["min"] = c.minValue;
             ch["max"] = c.maxValue;
             ch["safe_demand"] = c.safeDemand;
-            ch["fault_demand"] = c.faultDemand;
+            ch["min_run_demand"] = c.minimumRunDemand;
             ch["invert"] = c.inverted;
             ch["has_current"] = c.hasCurrent;
             ch["current_pin"] = c.currentPin;
@@ -2696,7 +2700,9 @@ void WebServer::tick() {
     // Purge stale WebSocket clients every 2 s (handles page navigations that leave
     // ghost connections).  Keep at most 1 — multiple stale connections cause
     // canSend() to return false and silently drop the live client's frames.
-    if (WiFi.softAPgetStationNum() == 0) return;
+    if (WiFi.softAPgetStationNum() == 0) {
+        return;
+    }
     unsigned long now = millis();
     static unsigned long _lastCleanMs = 0;
     if (now - _lastCleanMs >= 2000) {

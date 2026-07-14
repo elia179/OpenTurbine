@@ -163,7 +163,7 @@
     <div class="grid-2" id="pressure-cards"></div>
   </section>
   <section class="telemetry-group" id="ext-sensors-section" style="display:none">
-    <div class="telemetry-group-title">Electrical And Load</div>
+    <div class="telemetry-group-title">Electrical, Load And Auxiliary Sensors</div>
     <div class="grid-3" id="electrical-cards"></div>
   </section>
 
@@ -191,10 +191,11 @@
 
   <!-- N2 + Oil + Flame row -->
   <section class="grid-3 telemetry-card-bin">
-    <div class="card" id="n2-card" style="display:none" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
+    <div class="card big" id="n2-card" style="display:none" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
       <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
-      <div class="value small" id="n2">—</div>
+      <div class="value" id="n2">—</div>
       <div class="peak-val">max <span id="max-n2">—</span></div>
+      <canvas class="sparkline" id="n2-sparkline"></canvas>
     </div>
     <div class="card" id="oil-card" style="display:none" title="Bearing oil pressure. 'demand' is the ECU target pressure; output pump speed is adjusted to maintain it. Low oil pressure during RUNNING triggers an immediate fault shutdown.">
       <div class="label"><span id="lbl-oil">Oil Press</span> (<span data-unit="press">bar</span>) <span id="oil-health" class="dot"></span></div>
@@ -269,7 +270,7 @@
       <div class="peak-val">A</div>
     </div>
     <div class="card" id="igniter2-current-card" style="display:none">
-      <div class="label">Igniter 2 / AB Coil Current</div>
+      <div class="label">AB / Pilot Igniter Current</div>
       <div class="value small" id="igniter2-current-val">—</div>
       <div class="peak-val">A</div>
     </div>
@@ -283,13 +284,14 @@
       <div class="value small" id="fuel-flow-val">—</div>
       <div class="peak-val">units/min</div>
     </div>
-    <div class="card" id="tit-card" style="display:none">
+    <div class="card big" id="tit-card" style="display:none" title="Turbine Inlet Temperature — hot-gas temperature measured upstream of the turbine wheel. It is the primary thermal limit when Engine Temp Source selects TIT.">
       <div class="label"><span id="lbl-tit">TIT</span> <span data-unit="temp">°C</span> <span id="tit-health" class="dot"></span></div>
-      <div class="value small" id="tit">—</div>
-      <div class="peak-val">max <span id="max-tit">—</span></div>
+      <div class="value" id="tit">—</div>
+      <div class="peak-val">max <span id="max-tit">—</span> · rate <span id="tit-rise-rate-val">—</span></div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="tit-gauge-bar" style="width:0%"></div></div>
       <span class="gauge-abs-label" id="tit-abs-label">— / — °C</span>
-      <span id="tit-approach-warn" class="gauge-approach-warn" style="display:none">Approaching limit</span>
+      <span id="tit-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+      <canvas class="sparkline" id="tit-sparkline"></canvas>
     </div>
     <div class="card" id="fuel-press-card" style="display:none">
       <div class="label"><span id="lbl-fuel-press">Fuel Press</span> <span data-unit="press">bar</span> <span id="fuel-press-health" class="dot"></span></div>
@@ -337,7 +339,7 @@
           Igniter 1 <span id="igniter-state" style="font-weight:600">OFF</span>
         </div>
         <div id="adv-igniter2" style="display:none">
-          Igniter 2 <span id="igniter2-state" style="font-weight:600">OFF</span>
+          AB / Pilot Igniter <span id="igniter2-state" style="font-weight:600">OFF</span>
         </div>
         <div id="adv-glow" style="display:none">
           Glow plug <span id="glow-pct" style="color:var(--text);font-weight:600">0</span><span id="glow-unit">%</span>
@@ -356,7 +358,7 @@
           </div>
         </div>
         <div id="adv-fp2" style="display:none">
-          Auxiliary fuel pump 2 <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span><span id="fp2-unit">%</span>
+          Pilot / auxiliary fuel pump <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span><span id="fp2-unit">%</span>
           <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
             <div class="gauge-bar" id="fp2-gauge-bar" style="width:0%"></div>
           </div>
@@ -421,8 +423,9 @@
       <div class="oil-sub" id="throttle-effective-note" style="display:none">base demand: <span id="throttle-base-demand">—</span>% + AB offset</div>
     </div>
     <div class="card small" id="oil-output-card" title="Actual oil-pump PWM output. Controller Minimum Duty is a closed-loop floor, not a maximum; sequence steps such as Oil Pump On may command 100%.">
-      <div class="label">Oil Pump Output %</div>
+      <div class="label">Oil Pump Output</div>
       <div class="value small" id="oil-pct">—</div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="oil-output-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="oil-startup-setting-note" style="display:none">startup OilPumpOn setting: <span id="oil-startup-setting">—</span>% (Sequence)</div>
       <div class="oil-sub" id="oil-failsafe-note" style="display:none;color:var(--red)">⚠ sensor failsafe</div>
       <div class="oil-sub" id="standby-oil-feed-note" style="display:none;color:var(--accent)" title="Pre-lubrication: oil pump primes the bearings during standby. Triggered automatically before startup or on a timed schedule.">● standby feed active</div>

@@ -6,7 +6,9 @@ actuator demands, sequence progress, health flags, bench/dev mode, ...).
 """
 
 import json
+import os
 import socket
+import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -16,6 +18,21 @@ class DUT:
     def __init__(self, base="http://192.168.4.1", timeout=4.0):
         self.base = base.rstrip("/")
         self.timeout = timeout
+
+    def _reconnect_wifi(self):
+        if os.name != "nt":
+            return
+        try:
+            subprocess.run(
+                ["netsh", "wlan", "connect", "name=OpenTurbine", "ssid=OpenTurbine", "interface=Wi-Fi"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=8,
+                check=False,
+            )
+            time.sleep(2.0)
+        except Exception:
+            pass
 
     # ── low-level ────────────────────────────────────────────
     def _open_retry(self, req, tries=4):
@@ -30,7 +47,10 @@ class DUT:
                 raise
             except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError) as e:
                 last = e
-                time.sleep(0.4)
+                if i >= 1:
+                    self._reconnect_wifi()
+                else:
+                    time.sleep(0.4)
         raise last
 
     def _get(self, path):
