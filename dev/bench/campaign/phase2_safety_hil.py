@@ -300,7 +300,7 @@ def main():
             print("RESTORE ERROR:", exc)
     result = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "firmware": "1.9.1",
+        "firmware": "1.9.2",
         "rows": qualification.rows,
         "restored": restored,
         "error": error,

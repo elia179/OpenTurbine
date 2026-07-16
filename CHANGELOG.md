@@ -10,6 +10,12 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-07-16
+
+### Changed
+- The Windows setup tool now labels destructive and update gates as **Confirmation required** and declares Per-Monitor-V2 DPI awareness for clearer Windows 10/11 scaling.
+- Versioned `v*` tags now build and publish a matched firmware, web-assets, signed-driver, and setup-tool release bundle. Publication stops if the firmware version does not match the tag or any release input fails its pinned checksum.
+
 ## [1.9.1] — 2026-07-16
 
 ### Added
