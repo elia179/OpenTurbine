@@ -10,6 +10,8 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-07-16
+
 ### Added
 - Guided calibration for fuel-pump and oil-pump minimum output, pressure-sensor model fitting, one-second throttle/idle endpoint capture, known-point oil-temperature curves, and current-sensor known-point/datasheet modes.
 - A hardware-aware Setup view, advanced manual controls, hover help, a first-run workflow, responsive mobile layout fixes, and configurable bench-test durations in Tools.
@@ -44,6 +46,8 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Multiple narrow-screen overflow, inactive-hardware dependency, single-shaft, and first-run navigation inconsistencies found by the release audits.
 - Registry bindings now reject missing channels, invalid directions for standard binding keys, duplicate IDs, invalid drivers, invalid safe demands, and cross-direction GPIO conflicts.
 - Control Rules now persist through save and reboot as part of the unified engine file.
+- Complete engine-file restore now preserves registry channel identities, ordering, drivers, and GPIO assignments exactly through reboot.
+- Configuration PATCH requests now replace array values correctly, including clearing all Control Rules with an empty array.
 - Dashboard setup-status text, page headings, unit labels, empty configuration groups, and narrow-screen editor layouts are visually consistent across the web interface.
 
 ## [1.7.0] — 2026-07-09

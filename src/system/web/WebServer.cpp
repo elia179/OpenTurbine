@@ -88,6 +88,13 @@ static void _mergeJsonObject(JsonObject dst, JsonObjectConst patch) {
                 ? nestedVariant.as<JsonObject>()
                 : nestedVariant.to<JsonObject>();
             _mergeJsonObject(nested, src.as<JsonObjectConst>());
+        } else if (src.is<JsonArrayConst>()) {
+            // Arrays are replacement values, including an explicitly empty
+            // array. Assigning a collection variant over an existing array can
+            // retain the old collection in ArduinoJson; remove the destination
+            // member first so PATCH {"rules":[]} reliably clears all rules.
+            dst.remove(kv.key());
+            dst[kv.key()].set(src);
         } else {
             dst[kv.key()] = src;
         }
@@ -2497,9 +2504,13 @@ void WebServer::_setupRoutes() {
                 return;
             }
             Config::sanitizeForHardware();
-            hwDoc.clear();
+            // Keep the validated hardware section semantically identical to
+            // the uploaded engine file. Rebuilding it from the temporary
+            // runtime adapters is unsafe: those adapters intentionally expose
+            // legacy singleton fields and can change registry identity/order
+            // while canonicalising an otherwise valid registry. The normal
+            // boot load is the authoritative hardware apply.
             settingsDoc.clear();
-            HardwareConfig::toJson(hwDoc, false);
             Config::toJson(settingsDoc);
             // Rules have already passed Config::validateJson() above. Preserve
             // their validated definitions from the upload: the temporary
@@ -2513,9 +2524,7 @@ void WebServer::_setupRoutes() {
             } else {
                 settingsDoc.remove("rules");
             }
-            fullDoc[HardwareConfig::SECTION].set(hwDoc);
             fullDoc[Config::SECTION].set(settingsDoc);
-            hwDoc.clear();
             settingsDoc.clear();
             HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
             Config::applyJsonRuntimeOnly(previousSettings);
