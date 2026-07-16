@@ -1,5 +1,5 @@
 title: OpenTurbine
-description: Open-source ESP32 turbine ECU with guided Windows setup and a browser-based dashboard.
+description: Open-source ESP32 turbine ECU with guided Windows setup, hardware-aware configuration, control rules, calibration, monitoring, and logs.
 url: https://elia179.github.io
 baseurl: /OpenTurbine
 repository: elia179/OpenTurbine

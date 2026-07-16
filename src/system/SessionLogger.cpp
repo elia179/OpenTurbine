@@ -1,4 +1,5 @@
 #include "SessionLogger.h"
+#include "SessionFiles.h"
 #include "Config.h"
 #include "HardwareConfig.h"
 #include "../engine/EngineData.h"
@@ -189,12 +190,8 @@ static void _evictOldSessions() {
         File entry = dir.openNextFile();
         while (entry) {
             int num = -1;
-            // entry.name() may return the full path (/logs/session_N.csv) or just the
-            // basename — strip the directory prefix so sscanf works either way.
-            const char* ename = entry.name();
-            const char* fname = strrchr(ename, '/');
-            fname = fname ? fname + 1 : ename;
-            if (sscanf(fname, "session_%d.csv", &num) == 1) {
+            // entry.name() may return the full path or just the basename.
+            if (SessionFiles::parseRunNumber(entry.name(), num)) {
                 char candidate[40];
                 snprintf(candidate, sizeof(candidate), "/logs/session_%d.csv", num);
                 if (_open && strcmp(candidate, _currentPath) == 0) {

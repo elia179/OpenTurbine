@@ -115,6 +115,18 @@ func TestFindCP210xINFRootFindsNestedUniversalDriver(t *testing.T) {
 	}
 }
 
+func TestConfirmationBadgeOnlyAppearsAtDecisionGates(t *testing.T) {
+	if !requiresConfirmationBadge("My engine is safe — continue update") {
+		t.Fatal("a safety decision must show the confirmation badge")
+	}
+	if requiresConfirmationBadge("Back to start") {
+		t.Fatal("a completed workflow must not show the confirmation badge")
+	}
+	if requiresConfirmationBadge("") {
+		t.Fatal("a screen without a primary action must not show the confirmation badge")
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

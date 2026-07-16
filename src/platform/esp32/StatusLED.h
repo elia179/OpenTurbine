@@ -215,9 +215,15 @@ inline void off() {
         else { pinMode(pin, OUTPUT); digitalWrite(pin, LOW); }
     }
 #if defined(OT_PLATFORM_ESP32S3)
-    // Clear the onboard addressable LED (GPIO48) explicitly even if the config
-    // pin was cleared to -1/AUTO on disable — it would otherwise hold its colour.
-    rgbLedWrite(48, 0, 0, 0);
+    // Only clear the onboard addressable LED when the configured status LED
+    // actually points at it.  Some S3 boards expose GPIO48 differently; forcing
+    // a NeoPixel write with statusLedPin=-1 can wedge boot before the UI comes
+    // up.  Disabled + no configured pin means "leave hardware alone".
+    if (HardwareConfig::statusLedPin == AUTO_S3_RGB_STATUS_LED_PIN ||
+        HardwareConfig::statusLedPin == 38 ||
+        HardwareConfig::statusLedPin == 48) {
+        rgbLedWrite(48, 0, 0, 0);
+    }
 #endif
     _ledOn           = false;
     _blinksRemaining = 0;

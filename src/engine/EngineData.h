@@ -1,5 +1,6 @@
 #pragma once
 #include "Types.h"
+#include "../system/ChannelRegistry.h"
 #include <stdint.h>
 
 // ── Afterburner state machine mode ────────────────────────────
@@ -79,6 +80,8 @@ struct EngineData {
     // strong flame can legitimately saturate the sensor while RUNNING).
     volatile bool     flameHealthy    = true;
     volatile bool     flameDetected   = false;
+    volatile float    registryInputValue[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
+    volatile bool     registryInputHealthy[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
 
     // ── Actuator demands (written by controllers/sequencer) ───
     volatile float    throttleDemand  = 0;      // 0.0–1.0  main fuel/throttle ESC
@@ -92,6 +95,9 @@ struct EngineData {
     volatile float    coolFanDemand  = 0;      // 0.0–1.0
     volatile float    oilScavengeDemand = 0;   // 0.0–1.0
     volatile float    bleedValveDemand = 0;    // 0.0–1.0
+    volatile float    registryOutputDemand[ChannelRegistry::MAX_OUTPUT_CHANNELS] = {};
+    volatile float    registryOutputCurrentAmps[ChannelRegistry::MAX_OUTPUT_CHANNELS] = {};
+    volatile bool     registryOutputCurrentHealthy[ChannelRegistry::MAX_OUTPUT_CHANNELS] = {};
     volatile bool     fuelSolOpen     = false;
     volatile bool     igniterOn       = false;
     volatile bool     igniter2On      = false;
@@ -108,7 +114,7 @@ struct EngineData {
     volatile float    glowCurrentAmps    = 0.0f;   // glow plug current (A), 0 if no sensor
     volatile bool     glowPlugHot        = false;   // true when current dropped below ready threshold
     volatile float    igniterCurrentAmps  = 0.0f;   // igniter 1 coil current (A), 0 if no sensor
-    volatile float    igniter2CurrentAmps = 0.0f;   // igniter 2 coil current (A), 0 if no sensor
+    volatile float    igniter2CurrentAmps = 0.0f;   // AB / pilot igniter coil current (A), 0 if no sensor
     volatile float    oilPumpCurrentAmps = 0.0f;   // oil pump current (A), 0 if no sensor
     volatile bool     oilPumpOvercurrent = false;  // true when oil pump current exceeds max threshold
 
@@ -128,6 +134,7 @@ struct EngineData {
 
     // ── Engine state ──────────────────────────────────────────
     volatile SysMode  mode               = SysMode::STANDBY;
+    volatile bool     faultShutdownActive = false; // keeps selected output overrides latched through the fault sequence
     volatile bool     flameMonitorActive = false;
     volatile bool     relightArmed       = false;
     volatile bool     devMode            = false;
@@ -142,7 +149,7 @@ struct EngineData {
     volatile bool     limpMode           = false;
     volatile bool     stopSwitchActive   = false;
     volatile bool     startSwitchActive  = false;  // hardware start button currently pressed
-    volatile bool     starterAssistActive = false; // starter assist enabled for this run
+    volatile bool     starterLowRpmSupportActive = false; // optional starter support armed for this run
     volatile bool     manualRelightActive = false; // operator holding START while running
 
     // ── Last mode-change reason (best-effort display, no mutex) ──
@@ -162,7 +169,7 @@ struct EngineData {
         char reason[192];
         bool isError;   // true = blocks START, false = warning only
     };
-    static constexpr int MAX_SEQ_ISSUES = 10;
+    static constexpr int MAX_SEQ_ISSUES = 9;
     SeqIssue         seqIssues[MAX_SEQ_ISSUES] = {};
     uint8_t          seqIssueCount  = 0;
     bool             seqHasErrors   = false;

@@ -12,7 +12,7 @@ public:
     float         targetRpm       = 5000.0f;
     unsigned long timeoutMs       = 8000;
     float         oilStartupMinBar = 1.5f;
-    float         rampPctPerSec   = 10.0f;  // % per second ramp rate (0 = instant) — matches Config::starterRampPctPerSec default
+    float         rampPctPerSec   = 10.0f;  // % per second (0 = instant); loaded from starterStartupRampPctPerSec
 
     const char* name() override { return "StarterSpin"; }
 

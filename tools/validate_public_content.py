@@ -25,7 +25,8 @@ PUBLIC_ROUTES = [
 ]
 MARKDOWN_SOURCES = [ROOT / "README.md", ROOT / "docs/README.md", ROOT / "docs/USER_GUIDE.md"]
 REQUIRED_IMAGES = [
-    "hero-dashboard.png", "hardware-page.png", "calibration-page.png", "sequence-page.png",
+    "hero-dashboard.png", "hardware-page.png", "config-page.png", "calibration-page.png",
+    "sequence-page.png", "control-rules-page.png", "tools-page.png",
     "social-preview.png", "system-overview.svg",
 ]
 

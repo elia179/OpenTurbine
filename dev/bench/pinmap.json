@@ -44,7 +44,7 @@
       "idle_input":     { "enabled": true, "pin": 5, "type": "adc", "note": "driven digital or tied to GND" }
     },
     "actuators": {
-      "throttle":   { "enabled": true, "pin": 16, "type": "servo" },
+      "throttle":   { "enabled": true, "pin": 40, "type": "servo" },
       "oil_pump":   { "enabled": true, "pin": 11, "type": "ledc" },
       "fuel_sol":   { "enabled": true, "pin": 12, "active_high": true },
       "igniter":    { "enabled": true, "pin": 21, "active_high": true },

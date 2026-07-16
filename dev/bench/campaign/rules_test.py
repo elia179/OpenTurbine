@@ -1,6 +1,6 @@
 """Command rules engine (non-bench real start; rules skip in bench mode).
-  A. N1_RPM > 45000 -> IGNITER on: drive N1 across threshold, observe igniter pin.
-  B. hysteresis latching on rule A (hyst 3000): on@48k, still-on@43k, off@41k.
+  A. TOT > 450 C -> IGNITER on: drive temperature across threshold, observe igniter pin.
+  B. hysteresis latching on rule A (hyst 30 C): on@480, still-on@430, off@410.
   C. TOT > 600 -> REQUEST_SHUTDOWN: drive TOT across threshold -> engine shuts down.
 Sensor idx: TOT=1 N1_RPM=2.  Op: GT=0.  Actuator: IGNITER=9 REQUEST_SHUTDOWN=13.
 mode_mask RUNNING=4.
@@ -33,28 +33,28 @@ def reach_running():
         time.sleep(2)
     return dut.poll_until(lambda x: x.get("mode") == "RUNNING", timeout=20)
 
-def igniter_after(n1, secs=2.0):
+def igniter_after_tot(tot, secs=2.0):
     end = time.time() + secs; lvl = 0
     while time.time() < end:
-        t.set("N1", hz(n1)); t.set("OILP", 2.5); t.set("FLAME", 1); t.set_tot(120)
+        t.set("N1", hz(40000)); t.set("OILP", 2.5); t.set("FLAME", 1); t.set_tot(tot)
         lvl = t.get("IGNITER").get("level", 0)
         time.sleep(0.15)
     return lvl, dut.data().get("mode")
 
 # ── A + B: igniter rule with hysteresis ─────────────────────────────
-print("-- rule: N1>45000 -> IGNITER (hyst 3000) --")
-setup([{"enabled": True, "sensor": 2, "op": 0, "threshold": 45000, "actuator": 9,
-        "on_value": 1.0, "off_value": 0.0, "hysteresis": 3000, "mode_mask": 4, "name": "ign_on_n1"}])
+print("-- rule: TOT>450 -> IGNITER (hyst 30) --")
+setup([{"enabled": True, "kind": 0, "source": "tot_main", "target": "igniter_main", "op": 0, "threshold": 450,
+        "on_value": 1.0, "off_value": 0.0, "hysteresis": 30, "mode_mask": 4, "name": "ign_on_tot"}])
 r, _ = reach_running(); print("  reached RUNNING:", r)
-lvl_lo, _ = igniter_after(40000);  rec("igniter OFF below threshold (N1=40k)", lvl_lo == 0, "lvl=%s" % lvl_lo)
-lvl_hi, _ = igniter_after(48000);  rec("igniter ON above threshold (N1=48k)", lvl_hi == 1, "lvl=%s" % lvl_hi)
-lvl_h1, _ = igniter_after(43000);  rec("hysteresis holds ON at 43k (>42k)", lvl_h1 == 1, "lvl=%s" % lvl_h1)
-lvl_h0, _ = igniter_after(41000);  rec("releases below 42k (N1=41k)", lvl_h0 == 0, "lvl=%s" % lvl_h0)
+lvl_lo, _ = igniter_after_tot(400); rec("igniter OFF below threshold (TOT=400)", lvl_lo == 0, "lvl=%s" % lvl_lo)
+lvl_hi, _ = igniter_after_tot(480); rec("igniter ON above threshold (TOT=480)", lvl_hi == 1, "lvl=%s" % lvl_hi)
+lvl_h1, _ = igniter_after_tot(430); rec("hysteresis holds ON at 430 (>420)", lvl_h1 == 1, "lvl=%s" % lvl_h1)
+lvl_h0, _ = igniter_after_tot(410); rec("releases below 420 (TOT=410)", lvl_h0 == 0, "lvl=%s" % lvl_h0)
 dut.stop(); dut.ensure_mode_standby()
 
 # ── C: REQUEST_SHUTDOWN rule ────────────────────────────────────────
 print("\n-- rule: TOT>600 -> REQUEST_SHUTDOWN --")
-setup([{"enabled": True, "sensor": 1, "op": 0, "threshold": 600, "actuator": 13,
+setup([{"enabled": True, "kind": 0, "source": "tot_main", "target": "request_shutdown", "op": 0, "threshold": 600,
         "on_value": 1.0, "off_value": 0.0, "hysteresis": 0, "mode_mask": 4, "name": "shutdown_hot"}])
 r, _ = reach_running(); print("  reached RUNNING:", r)
 # safe TOT first
@@ -77,3 +77,4 @@ print("\n=== Rules: %d/%d passed ===" % (npass, len(results)))
 for n,ok in results:
     if not ok: print("  FAIL:", n)
 rig.close()
+raise SystemExit(0 if npass == len(results) else 1)

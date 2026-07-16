@@ -12,7 +12,11 @@ class Rig:
         self.t = Tester("COM3").open()
         self.rows = []
     def baseline(self):
-        self.t.set("N1", 0); self.t.set_tot(120); self.t.set("OILP", 2.5); self.t.set("FLAME", 1)
+        self.t.set("N1", hz(40000)); self.t.set_tot(120); self.t.set("OILP", 2.5); self.t.set("FLAME", 1)
+        # The thermocouple emulator and filtered ADC channels settle
+        # asynchronously. Do not begin the next start on the previous fault
+        # stimulus (especially the 300 C hot-start point).
+        time.sleep(2.0)
     def start_active(self, want=("STARTUP", "RUNNING"), timeout=25):
         self.dut.ensure_mode_standby()
         code = None
@@ -45,7 +49,7 @@ class Rig:
         d = self.dut.data()
         return dict(tripped=False, matched=False, mode=d.get("mode"), elapsed=None, fault="", event=str(d.get("last_event") or ""))
     def recover(self):
-        self.baseline(); self.dut.stop(); self.dut.ensure_mode_standby()
+        self.baseline(); self.dut.stop(); self.dut.ensure_mode_standby(); time.sleep(0.5)
     def rec(self, name, neg_ok, pos):
         ok = neg_ok and pos["tripped"] and pos["matched"]
         self.rows.append((name, ok, neg_ok, pos))
@@ -62,6 +66,9 @@ def arm(hw):
         hw["safety"][k] = True
     for s in ("n1_rpm", "tot", "oil_press", "flame"):
         hw["sensors"][s]["enabled"] = True
+    if not any(name in ("OilPrime", "StarterSpin", "Spool", "SafetyHold") for name in hw.get("startup_seq", [])):
+        hw["startup_seq"].append("SafetyHold")
+        hw["startup_delay_ms"].append(0)
     hw["shutdown_delay_ms"] = [800 if d and d > 800 else d for d in hw.get("shutdown_delay_ms", [])]
 
 print("arming safeties (overspeed/overtemp/low_oil/hot_start) + fast cooldown ...")
@@ -95,6 +102,9 @@ else:
 # negative for hot start = the other tests all start fine with TOT=120
 rig.rec("HOT_START", True, hs)
 rig.recover()
+# Isolate the remaining protections: their safe-side temperature points are
+# intentionally above the hot-start threshold used by the first test.
+rig.dcfg.patch_cfg({"sequence": {"startup": {"hot_start_tot_threshold": 1000}}})
 
 # ── OVERSPEED ───────────────────────────────────────────────────
 rig.baseline(); rig.start_active()
@@ -110,7 +120,7 @@ rig.rec("OVERTEMP", neg, pos); rig.recover()
 
 # ── LOW_OIL ─────────────────────────────────────────────────────
 rig.baseline(); rig.start_active()
-neg = rig.stays_active(lambda: rig.t.set("OILP", 0.9), 4)     # ~2.2 bar > 1.5
+neg = rig.stays_active(lambda: rig.t.set("OILP", 1.3), 4)     # ~3.3 bar > 2.8 running minimum
 pos = rig.detect_trip(lambda: rig.t.set("OILP", 0.2), "oil")  # ~0.5 bar < 1.5
 rig.rec("LOW_OIL", neg, pos); rig.recover()
 

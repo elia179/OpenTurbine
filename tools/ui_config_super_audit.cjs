@@ -22,7 +22,41 @@ async function reset(page) {
 }
 
 async function patchHardware(page, patch) {
-  const response = await page.request.patch(`${base}/api/hardware`, { data: patch });
+  const current = await (await page.request.get(`${base}/api/hardware`)).json();
+  const registry = structuredClone(current.channel_registry || { version: 1, inputs: [], outputs: [], bindings: [] });
+  const sensorPurpose = {
+    n1_rpm: 'n1_speed', n2_rpm: 'n2_speed', tot: 'tot', tit: 'tit', flame: 'flame',
+    oil_press: 'oil_pressure', oil_temp: 'oil_temperature', fuel_press: 'fuel_pressure',
+    batt_voltage: 'battery_voltage', fuel_flow: 'fuel_flow', p1: 'p1_pressure', p2: 'p2_pressure',
+    throttle_input: 'throttle', idle_input: 'idle'
+  };
+  const actuatorPurpose = {
+    throttle: 'main_fuel', starter: 'starter', oil_pump: 'oil_pump', fuel_sol: 'fuel_shutoff',
+    igniter: 'igniter', igniter2: 'ab_igniter', ab_pump: 'ab_pump', ab_sol: 'ab_valve',
+    glow_plug: 'glow_plug', oil_scavenge_pump: 'scavenge_pump', fuel_pump2: 'fuel_pump',
+    prop_pitch: 'prop_pitch', cool_fan: 'cooling_fan', airstarter_sol: 'air_starter',
+    bleed_valve: 'bleed_valve', starter_en: 'starter_enable'
+  };
+  for (const [key, change] of Object.entries(patch.sensors || {})) {
+    if (change?.enabled === undefined) continue;
+    for (const channel of registry.inputs || []) {
+      if (channel.purpose === sensorPurpose[key]) channel.installed = !!change.enabled;
+    }
+  }
+  if (patch.ab_flame?.enabled !== undefined) {
+    for (const channel of registry.inputs || []) {
+      if (channel.purpose === 'ab_flame') channel.installed = !!patch.ab_flame.enabled;
+    }
+  }
+  for (const [key, change] of Object.entries(patch.actuators || {})) {
+    if (change?.enabled === undefined) continue;
+    for (const channel of registry.outputs || []) {
+      if (channel.purpose === actuatorPurpose[key]) channel.installed = !!change.enabled;
+    }
+  }
+  const response = await page.request.patch(`${base}/api/hardware`, {
+    data: { ...patch, channel_registry: registry }
+  });
   assert.equal(response.ok(), true);
 }
 
@@ -34,6 +68,7 @@ async function patchConfig(page, patch) {
 async function gotoConfig(page) {
   await page.goto(`${base}/config.html`);
   await page.waitForSelector('#cf-eg_src', { state: 'attached' });
+  await page.evaluate(() => document.querySelectorAll('.config-group').forEach(group => { group.open = true; }));
 }
 
 async function shown(page, selector) {
@@ -106,6 +141,7 @@ async function sectionVisible(page, title) {
         oil_scavenge_pump: { enabled: false },
         fuel_pump2: { enabled: false },
         prop_pitch: { enabled: false },
+        ab_sol: { enabled: false },
         ab_pump: { enabled: false },
         igniter2: { enabled: false }
       },
@@ -126,6 +162,8 @@ async function sectionVisible(page, title) {
     }
     assert.equal(await sectionVisible(page, 'Cluster'), false);
     assert.equal(await shown(page, '#ab-cfg-section'), false);
+    assert.equal(await shown(page, '[data-group="power"]'), false,
+      'Power System must not remain as an empty expandable group without governor or afterburner hardware');
     results.push('minimal hardware locks unavailable temperature, flameout, throttle, logging, cluster, and AB config');
 
     await reset(page);
@@ -190,14 +228,14 @@ async function sectionVisible(page, title) {
     });
     await gotoConfig(page);
     await page.locator('#btn-view-expert').click();
-    assert.equal(await shown(page, '#starter-assist-section'), false, 'starter section should hide without starter hardware');
+    assert.equal(await shown(page, '#starter-support-section'), false, 'starter support section should hide without starter hardware');
     assert.equal(await shown(page, '#glow-cfg-section'), false, 'glow section should hide without glow plug hardware');
     assert.equal(await shown(page, '#rc-pwm-section'), false, 'RC PWM section should hide without servo PWM inputs');
 
     await patchHardware(page, {
       has_starter: true,
       actuators: {
-        starter: { assist_enabled: true },
+        starter: { low_rpm_support_enabled: true },
         glow_plug: { enabled: true }
       },
       sensors: {
@@ -207,7 +245,7 @@ async function sectionVisible(page, title) {
     });
     await gotoConfig(page);
     await page.locator('#btn-view-expert').click();
-    assert.equal(await shown(page, '#starter-assist-section'), true, 'starter assist settings should show when starter assist and N1 are available');
+    assert.equal(await shown(page, '#starter-support-section'), true, 'starter support settings should show when support and N1 are available');
     assert.equal(await shown(page, '#glow-cfg-section'), true, 'glow section should show with glow plug hardware');
     assert.equal(await shown(page, '#rc-pwm-section'), true, 'RC PWM section should show with servo PWM throttle input');
     await patchHardware(page, {
@@ -215,8 +253,8 @@ async function sectionVisible(page, title) {
     });
     await gotoConfig(page);
     await page.locator('#btn-view-expert').click();
-    assert.equal(await shown(page, '#starter-assist-section'), false, 'starter assist settings should hide without N1 feedback');
-    results.push('optional Starter Assist, Glow, and RC PWM sections follow fitted hardware and feedback prerequisites');
+    assert.equal(await shown(page, '#starter-support-section'), false, 'starter support settings should hide without N1 feedback');
+    results.push('optional low-RPM starter support, glow, and RC PWM sections follow fitted hardware and feedback prerequisites');
 
     await reset(page);
     console.log('super-audit: cluster toggle');
@@ -375,14 +413,14 @@ async function sectionVisible(page, title) {
     await patchHardware(page, {
       has_afterburner: true,
       sensors: { tot: { enabled: false }, tit: { enabled: false }, flame: { enabled: false }, n1_rpm: { enabled: false } },
-      actuators: { throttle: { enabled: false }, ab_pump: { enabled: false }, igniter2: { enabled: false } },
+      actuators: { throttle: { enabled: false }, ab_sol: { enabled: false }, ab_pump: { enabled: false }, igniter2: { enabled: false } },
       ab_flame: { enabled: false },
       ab_trigger: { input_pin: -1 }
     });
     await gotoConfig(page);
     assert.equal(await shown(page, '#ab-cfg-section'), false, 'Setup hides an afterburner feature with no usable hardware path');
     await page.locator('#btn-view-expert').click();
-    assert.equal(await shown(page, '#ab-cfg-section'), true, 'Advanced keeps unavailable afterburner settings visible as reference');
+    assert.equal(await shown(page, '#ab-cfg-section'), false, 'stale afterburner flags must not reveal settings without canonical AB hardware');
     assert.equal(await disabled(page, '#cf-ab_mn'), true);
     assert.equal(await disabled(page, '#cf-ab_mx'), true);
     assert.equal(await disabled(page, '#cf-ab_tt'), true);
@@ -391,15 +429,15 @@ async function sectionVisible(page, title) {
     assert.equal(await disabled(page, '#cf-ab_ui'), true);
     assert.equal(await disabled(page, '#cf-ab_ut'), true);
     assert.equal(await disabled(page, '#cf-ab_mt'), true);
-    assert.equal(await shown(page, '#cf-ab_tr'), true);
+    assert.equal(await shown(page, '#cf-ab_tr'), false);
     assert.equal(await disabled(page, '#cf-ab_tr'), true);
-    assert.equal(await shown(page, '#cf-ab_tw'), true);
+    assert.equal(await shown(page, '#cf-ab_tw'), false);
     assert.equal(await disabled(page, '#cf-ab_tw'), true);
     assert.equal(await disabled(page, '#cf-ab_pcm'), true);
     assert.equal(await optionDisabled(page, '#cf-ab_fm', '0'), true);
     assert.equal(await optionDisabled(page, '#cf-ab_fm', '1'), true);
     assert.equal(await optionDisabled(page, '#cf-ab_pcm', '2'), true);
-    results.push('Setup hides unusable afterburner config while Advanced ghosts and locks every missing hardware path');
+    results.push('stale afterburner flags cannot reveal settings without canonical AB hardware');
 
     await reset(page);
     await patchHardware(page, {

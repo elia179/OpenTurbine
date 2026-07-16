@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260711f">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <script src="/theme.js?v=20260711f"></script>
+<script src="/ui_dialog.js?v=20260715a"></script>
 </head>
 <body data-page="dashboard">
 <nav>
@@ -39,14 +40,15 @@
   <div id="getting-started-banner" class="gs-banner" style="display:none">
     <div class="gs-header">
       <span class="gs-title">Getting Started</span>
-      <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Dismiss">×</button>
+      <button class="gs-dismiss" onclick="dismissGettingStarted()" title="Hide this setup guide">Hide guide</button>
     </div>
+    <div id="gs-progress" class="gs-progress">0 of 5 setup steps completed on this browser.</div>
     <ol class="gs-steps">
-      <li><a href="/hardware.html">Describe fitted hardware and assign pins</a></li>
-      <li><a href="/config.html">Enter and verify engine safety limits</a></li>
-      <li><a href="/calibration.html">Calibrate fitted sensors and actuators</a></li>
-      <li><a href="/sequence.html">Review startup and shutdown sequences</a></li>
-      <li><a href="/tools.html">Test outputs safely, then run a dry sequence</a></li>
+      <li data-setup-step="hardware"><a href="/hardware.html">Describe fitted hardware and assign pins</a><span class="gs-step-state">Not confirmed on this browser</span></li>
+      <li data-setup-step="config"><a href="/config.html">Enter and verify engine safety limits</a><span class="gs-step-state">Not confirmed on this browser</span></li>
+      <li data-setup-step="calibration"><a href="/calibration.html">Calibrate fitted sensors and actuators</a><span class="gs-step-state">Not confirmed on this browser</span></li>
+      <li data-setup-step="sequence"><a href="/sequence.html">Review startup and shutdown sequences</a><span class="gs-step-state">Not confirmed on this browser</span></li>
+      <li data-setup-step="tools"><a href="/tools.html">Run a safe actuator or dry-sequence test</a><span class="gs-step-state">Not confirmed on this browser</span></li>
     </ol>
     <div class="gs-step-text" style="margin-top:.55rem">Keep fuel and ignition physically disconnected until every step is verified.</div>
   </div>
@@ -139,9 +141,9 @@
   <div style="display:flex;justify-content:flex-end;align-items:center;gap:.4rem;font-size:.7rem;color:var(--dim);margin-bottom:.5rem">
     Units:
     <button id="unit-temp-btn"  onclick="setTempUnit(tempUnit()==='C'?'F':'C')"
-      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">°F</button>
+      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">°C</button>
     <button id="unit-press-btn" onclick="setPressUnit(pressUnit()==='bar'?'psi':'bar')"
-      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
+      style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">bar</button>
     <button id="reset-peaks-btn" onclick="resetPeaks()" title="Clear session max values (after a bench spike or sensor glitch)"
       style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">Reset peaks</button>
   </div>
@@ -163,7 +165,7 @@
     <div class="grid-2" id="pressure-cards"></div>
   </section>
   <section class="telemetry-group" id="ext-sensors-section" style="display:none">
-    <div class="telemetry-group-title">Electrical And Load</div>
+    <div class="telemetry-group-title">Electrical, Load And Auxiliary Sensors</div>
     <div class="grid-3" id="electrical-cards"></div>
   </section>
 
@@ -191,10 +193,14 @@
 
   <!-- N2 + Oil + Flame row -->
   <section class="grid-3 telemetry-card-bin">
-    <div class="card" id="n2-card" style="display:none" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
+    <div class="card big" id="n2-card" style="display:none" title="Power-turbine/output-shaft speed. The gauge limit is the independent hard N2 shutdown setting, not the gradual governor or pullback target.">
       <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
-      <div class="value small" id="n2">—</div>
+      <div class="value" id="n2">—</div>
       <div class="peak-val">max <span id="max-n2">—</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="n2-gauge-bar" style="width:0%"></div></div>
+      <span id="n2-abs-label" class="gauge-abs-label">— / — RPM</span>
+      <span id="n2-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching hard limit</span>
+      <canvas class="sparkline" id="n2-sparkline"></canvas>
     </div>
     <div class="card" id="oil-card" style="display:none" title="Bearing oil pressure. 'demand' is the ECU target pressure; output pump speed is adjusted to maintain it. Low oil pressure during RUNNING triggers an immediate fault shutdown.">
       <div class="label"><span id="lbl-oil">Oil Press</span> (<span data-unit="press">bar</span>) <span id="oil-health" class="dot"></span></div>
@@ -225,12 +231,12 @@
   <!-- P1 / P2 pressure sensors (shown only when fitted in Hardware) -->
   <section id="pressure-card-bin" class="grid-2 telemetry-card-bin" style="display:none">
     <div class="card" id="p1-card" style="display:none">
-      <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span></div>
+      <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span> <span id="p1-health" class="dot"></span></div>
       <div class="value small" id="p1">—</div>
       <div class="peak-val">max <span id="max-p1">—</span></div>
     </div>
     <div class="card" id="p2-card" style="display:none">
-      <div class="label"><span id="lbl-p2">P2</span> <span data-unit="press">bar</span></div>
+      <div class="label"><span id="lbl-p2">P2</span> <span data-unit="press">bar</span> <span id="p2-health" class="dot"></span></div>
       <div class="value small" id="p2">—</div>
       <div class="peak-val">max <span id="max-p2">—</span></div>
     </div>
@@ -269,7 +275,7 @@
       <div class="peak-val">A</div>
     </div>
     <div class="card" id="igniter2-current-card" style="display:none">
-      <div class="label">Igniter 2 / AB Coil Current</div>
+      <div class="label">AB / Pilot Igniter Current</div>
       <div class="value small" id="igniter2-current-val">—</div>
       <div class="peak-val">A</div>
     </div>
@@ -279,17 +285,18 @@
       <div class="peak-val">A &nbsp;·&nbsp; <span id="oilpump-oc-label" style="color:var(--dim)">—</span></div>
     </div>
     <div class="card" id="fuel-flow-card" style="display:none">
-      <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span></div>
+      <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span> <span id="fuel-flow-health" class="dot"></span></div>
       <div class="value small" id="fuel-flow-val">—</div>
-      <div class="peak-val">units/min</div>
+      <div class="peak-val">L/min</div>
     </div>
-    <div class="card" id="tit-card" style="display:none">
+    <div class="card big" id="tit-card" style="display:none" title="Turbine Inlet Temperature — hot-gas temperature measured upstream of the turbine wheel. It is the primary thermal limit when Engine Temp Source selects TIT.">
       <div class="label"><span id="lbl-tit">TIT</span> <span data-unit="temp">°C</span> <span id="tit-health" class="dot"></span></div>
-      <div class="value small" id="tit">—</div>
-      <div class="peak-val">max <span id="max-tit">—</span></div>
+      <div class="value" id="tit">—</div>
+      <div class="peak-val">max <span id="max-tit">—</span> · rate <span id="tit-rise-rate-val">—</span></div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="tit-gauge-bar" style="width:0%"></div></div>
       <span class="gauge-abs-label" id="tit-abs-label">— / — °C</span>
-      <span id="tit-approach-warn" class="gauge-approach-warn" style="display:none">Approaching limit</span>
+      <span id="tit-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching limit</span>
+      <canvas class="sparkline" id="tit-sparkline"></canvas>
     </div>
     <div class="card" id="fuel-press-card" style="display:none">
       <div class="label"><span id="lbl-fuel-press">Fuel Press</span> <span data-unit="press">bar</span> <span id="fuel-press-health" class="dot"></span></div>
@@ -311,7 +318,7 @@
   <!-- Governor status (shown only when governor enabled) -->
   <section id="governor-section" style="display:none;margin-bottom:.5rem">
     <div class="card small">
-      <div class="label">Power Turbine Governor <span id="gov-mode" style="display:none;font-size:.6rem;padding:.05rem .4rem;border-radius:999px;border:1px solid var(--border);color:var(--dim);vertical-align:middle;letter-spacing:.03em"></span></div>
+      <div class="label">Automatic N2 Speed Control <span id="gov-mode" style="display:none;font-size:.6rem;padding:.05rem .4rem;border-radius:999px;border:1px solid var(--border);color:var(--dim);vertical-align:middle;letter-spacing:.03em"></span></div>
       <div class="oil-sub">N2 target: <span id="gov-target-rpm">—</span> RPM &nbsp;|&nbsp; N2 actual: <span id="gov-n2-actual">—</span> RPM</div>
     </div>
   </section>
@@ -337,7 +344,7 @@
           Igniter 1 <span id="igniter-state" style="font-weight:600">OFF</span>
         </div>
         <div id="adv-igniter2" style="display:none">
-          Igniter 2 <span id="igniter2-state" style="font-weight:600">OFF</span>
+          AB / Pilot Igniter <span id="igniter2-state" style="font-weight:600">OFF</span>
         </div>
         <div id="adv-glow" style="display:none">
           Glow plug <span id="glow-pct" style="color:var(--text);font-weight:600">0</span><span id="glow-unit">%</span>
@@ -356,7 +363,7 @@
           </div>
         </div>
         <div id="adv-fp2" style="display:none">
-          Auxiliary fuel pump 2 <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span><span id="fp2-unit">%</span>
+          Pilot / auxiliary fuel pump <span id="fp2-pct" style="color:var(--text);font-weight:600">0</span><span id="fp2-unit">%</span>
           <div class="gauge-bar-wrap" style="width:80px;display:inline-block;vertical-align:middle;margin-left:.3rem">
             <div class="gauge-bar" id="fp2-gauge-bar" style="width:0%"></div>
           </div>
@@ -368,7 +375,7 @@
           Airstarter <span id="airstarter-state" style="font-weight:600">CLOSED</span>
         </div>
         <div id="adv-scavenge" style="display:none">
-          Scavenge <span id="scavenge-state" style="font-weight:600">OFF</span>
+          Scavenge pump <span id="scavenge-state" style="font-weight:600">OFF</span>
         </div>
       </div>
     </div>
@@ -408,24 +415,25 @@
 
   <!-- Telemetry cards -->
   <section class="grid-2 telemetry">
-    <div class="card small" id="throttle-output-card" title="Actual commanded throttle or fuel-ESC output after the fuel-pump minimum-spin deadband. During startup the idle-input command range starts at the calibrated minimum.">
+    <div class="card small" id="throttle-output-card" title="Actual commanded fuel/throttle output after applying the calibrated minimum reliable fuel-pump output. During startup the idle-input command range starts at this minimum.">
       <div class="label">Main Fuel / Throttle Output</div>
       <div class="value small" id="throttle-demand">—</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="throttle-input-row" style="display:none">throttle input: <span id="throttle-input-pct">—</span>%</div>
       <div class="oil-sub" id="throttle-feedback-inhibit-note" style="display:none;color:var(--yellow)">Throttle increase limited: fitted RPM/EGT feedback is unhealthy. Fix the sensor/calibration before live running; Bench Mode is only for dry actuator tests.</div>
-      <div class="oil-sub" id="throttle-floor-row" title="Fuel-pump minimum-spin calibration. Outside standby calibration/tools, nonzero commands below this value are forced to zero. 0 = not calibrated / no deadband.">fuel min spin: <span id="throttle-idle-floor">—</span>%
-        <span id="throttle-di-wrap" style="display:none"> · Dynamic Idle target <span id="throttle-di-rpm">—</span> rpm</span>
+      <div class="oil-sub" id="throttle-floor-row" title="Minimum reliable fuel-pump output. Outside standby calibration/tools, nonzero commands below this value are forced to zero. 0 = no minimum configured.">minimum pump output: <span id="throttle-idle-floor">—</span>%
+        <span id="throttle-di-wrap" style="display:none"> · automatic idle target <span id="throttle-di-rpm">—</span> rpm</span>
       </div>
       <div class="oil-sub" id="throttle-startup-range-row" style="display:none">startup idle-input command range: <span id="throttle-startup-range">—</span>%</div>
       <div class="oil-sub" id="throttle-effective-note" style="display:none">base demand: <span id="throttle-base-demand">—</span>% + AB offset</div>
     </div>
     <div class="card small" id="oil-output-card" title="Actual oil-pump PWM output. Controller Minimum Duty is a closed-loop floor, not a maximum; sequence steps such as Oil Pump On may command 100%.">
-      <div class="label">Oil Pump Output %</div>
+      <div class="label">Oil Pump Output</div>
       <div class="value small" id="oil-pct">—</div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="oil-output-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="oil-startup-setting-note" style="display:none">startup OilPumpOn setting: <span id="oil-startup-setting">—</span>% (Sequence)</div>
       <div class="oil-sub" id="oil-failsafe-note" style="display:none;color:var(--red)">⚠ sensor failsafe</div>
-      <div class="oil-sub" id="standby-oil-feed-note" style="display:none;color:var(--accent)" title="Pre-lubrication: oil pump primes the bearings during standby. Triggered automatically before startup or on a timed schedule.">● standby feed active</div>
+      <div class="oil-sub" id="standby-oil-feed-note" style="display:none;color:var(--accent)" title="Windmilling protection is running the oil pump because a shaft is still turning while the engine is in standby.">● windmilling oil protection active</div>
     </div>
     <div class="card small" style="grid-column:1/-1" title="Most recent state transition or ECU event. Full event history with timestamps is available on the Log page.">
       <div class="label">Last Event</div>
@@ -644,6 +652,22 @@ document.getElementById('start-confirm-overlay').addEventListener('click', funct
       const banner = document.getElementById('getting-started-banner');
       if (banner) banner.style.display = '';
     }
+    const progress = window.OTSetup ? OTSetup.state() : {};
+    const rows = Array.from(document.querySelectorAll('[data-setup-step]'));
+    let complete = 0;
+    rows.forEach(row => {
+      const done = !!progress[row.dataset.setupStep];
+      row.classList.toggle('done', done);
+      if (done) {
+        complete++;
+        const status = row.querySelector('.gs-step-state');
+        if (status) status.textContent = 'Completed on this browser';
+      }
+    });
+    const label = document.getElementById('gs-progress');
+    if (label) label.textContent = complete === rows.length
+      ? 'Setup checklist complete on this browser. Re-verify after hardware or engine changes.'
+      : complete + ' of ' + rows.length + ' setup steps completed on this browser.';
   } catch(e) {}
 })();
 
@@ -680,6 +704,6 @@ function dismissCaptiveBanner() {
 })();
 </script>
 
-<script src="/app.js?v=20260711f"></script>
+<script src="/app.js?v=20260716b"></script>
 </body>
 </html>

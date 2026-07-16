@@ -52,10 +52,16 @@ public:
         // 2^bits <= clk/freq. The ESP32-S3 selects a lower LEDC clock than the
         // classic ESP32, so e.g. 10 kHz @ 12-bit (needs a >4096 divider) fails
         // there with "div_param=0" while the classic's 80 MHz clock succeeds.
-        // Retry at progressively lower resolution so the output still works
-        // with slightly coarser duty steps instead of not attaching at all.
-        // _maxDuty tracks the resolution actually used, so duty scaling
-        // stays correct.
+        // Pre-limit the requested resolution before the first ledcAttach()
+        // call so normal boot does not print an ESP-IDF error for a known
+        // impossible pair. Keep the retry loop as a final safety net for
+        // future chips/clock-source differences.
+        uint32_t maxTicks = (_freqHz > 0) ? (LEDC_SAFE_CLK_HZ / _freqHz) : 0;
+        while (_resBits > MIN_RES_BITS && maxTicks > 0 && ((1UL << _resBits) > maxTicks)) {
+            _resBits--;
+            _maxDuty = (1u << _resBits) - 1;
+        }
+
         bool ok = ledcAttach(_pin, _freqHz, _resBits);
         while (!ok && _resBits > MIN_RES_BITS) {
             _resBits--;
@@ -89,6 +95,11 @@ public:
 
 private:
     static constexpr uint32_t NO_DUTY = UINT32_MAX;
+#if defined(OT_PLATFORM_ESP32S3)
+    static constexpr uint32_t LEDC_SAFE_CLK_HZ = 40000000UL;
+#else
+    static constexpr uint32_t LEDC_SAFE_CLK_HZ = 80000000UL;
+#endif
     // Floor for the attach-retry: 8-bit (256 steps) still gives usable motor
     // control; below this a PWM output isn't worth keeping.
     static constexpr uint8_t  MIN_RES_BITS = 8;

@@ -1,41 +1,100 @@
-name: Signed Windows setup tool release
+name: Publish matched OpenTurbine release
 
 on:
   push:
     tags:
-      - "setup-tool-v*"
+      - "v*"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  signed-windows-installer:
+  build-test-publish:
     runs-on: windows-latest
     env:
       WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
       WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
-    defaults:
-      run:
-        working-directory: tools/setup_tool
+      DRIVER_BOOTSTRAP_URL: https://github.com/elia179/OpenTurbine/releases/download/setup-tool-v0.5.24/OpenTurbine_Recommended.zip
+      DRIVER_BOOTSTRAP_SHA256: 802fb3ae7dbeb2400e6849c5c69f5f4acd1a387dee41ea2296510f41ba2a4642
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
       - uses: actions/setup-go@v6
         with:
           go-version-file: tools/setup_tool/go.mod
           cache-dependency-path: tools/setup_tool/go.mod
-      - name: Format Go files
+
+      - name: Require release tag to match firmware version
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
+          $text = Get-Content .\src\system\version.h -Raw
+          if ($text -notmatch '#define\s+OT_VERSION\s+"([^"]+)"') {
+            throw "Could not read OT_VERSION"
+          }
+          $expected = "v$($Matches[1])"
+          if ($env:GITHUB_REF_NAME -ne $expected) {
+            throw "Release tag $env:GITHUB_REF_NAME does not match firmware $expected"
+          }
+
+      - name: Run web-interface audits
+        shell: pwsh
+        run: |
+          npm.cmd ci
+          npx.cmd playwright install chromium
+          python tools/gzip_data.py
+          git diff --exit-code -- data
+          npm.cmd run audit:ui
+
+      - name: Build and check both firmware targets
+        shell: pwsh
+        run: |
+          python -m pip install platformio==6.1.19
+          pio run -e esp32dev
+          pio run -e esp32dev -t buildfs
+          python tools/check_firmware_budget.py --partitions partitions.csv --firmware .pio3/esp32dev/firmware.bin --filesystem .pio3/esp32dev/littlefs.bin --app-reserve 0x10000
+          pio run -e esp32s3dev
+          pio run -e esp32s3dev -t buildfs
+          python tools/check_firmware_budget.py --partitions partitions_16mb.csv --firmware .pio3/esp32s3dev/firmware.bin --filesystem .pio3/esp32s3dev/littlefs.bin --app-reserve 0x20000
+
+      - name: Run setup-tool and package tests
+        shell: pwsh
+        run: |
+          python -m unittest tools/test_build_setup_package.py
+          Push-Location tools/setup_tool
+          go test ./...
           $files = Get-ChildItem -Filter *.go | ForEach-Object { $_.FullName }
           gofmt -w $files
-      - name: Require committed Go formatting
-        working-directory: .
-        run: git diff --exit-code -- tools/setup_tool
-      - run: go test ./...
-      - name: Generate Windows icon and manifest resources
-        run: go run github.com/akavel/rsrc@v0.10.2 -ico OpenTurbineSetupTool.ico -manifest OpenTurbineSetupTool.manifest -o rsrc_windows_amd64.syso
-      - run: go build -ldflags="-H windowsgui -s -w" -o OpenTurbineSetupTool.exe .
+          Pop-Location
+          git diff --exit-code -- tools/setup_tool
+
+      - name: Download pinned signed-driver bootstrap
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "driver-bootstrap.zip"
+          Invoke-WebRequest -Uri $env:DRIVER_BOOTSTRAP_URL -OutFile $zip
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:DRIVER_BOOTSTRAP_SHA256) {
+            throw "Driver bootstrap checksum mismatch: $actual"
+          }
+          $root = Join-Path $env:RUNNER_TEMP "driver-bootstrap"
+          Expand-Archive -LiteralPath $zip -DestinationPath $root
+          "BOOTSTRAP_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build Windows setup tool
+        working-directory: tools/setup_tool
+        shell: pwsh
+        run: |
+          go run github.com/akavel/rsrc@v0.10.2 -ico OpenTurbineSetupTool.ico -manifest OpenTurbineSetupTool.manifest -o rsrc_windows_amd64.syso
+          go build -ldflags="-H windowsgui -s -w" -o OpenTurbineSetupTool.exe .
+
       - name: Sign setup tool
         if: env.WINDOWS_SIGNING_CERT_BASE64 != ''
         shell: pwsh
@@ -43,35 +102,56 @@ jobs:
           $certPath = Join-Path $env:RUNNER_TEMP "OpenTurbineCodeSigning.pfx"
           [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
           try {
-            & ..\sign_windows_setup_tool.ps1 `
-              -ExePath .\OpenTurbineSetupTool.exe `
-              -CertificatePath $certPath `
-              -CertificatePassword $env:WINDOWS_SIGNING_CERT_PASSWORD
+            .\tools\sign_windows_setup_tool.ps1 -ExePath .\tools\setup_tool\OpenTurbineSetupTool.exe -CertificatePath $certPath -CertificatePassword $env:WINDOWS_SIGNING_CERT_PASSWORD
+            $sig = Get-AuthenticodeSignature .\tools\setup_tool\OpenTurbineSetupTool.exe
+            if ($sig.Status -ne "Valid") { throw "Authenticode signature is not valid: $($sig.Status)" }
           } finally {
             Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
           }
-      - name: Verify signature
-        if: env.WINDOWS_SIGNING_CERT_BASE64 != ''
+
+      - name: Build matched recommended package
         shell: pwsh
         run: |
-          $sig = Get-AuthenticodeSignature .\OpenTurbineSetupTool.exe
-          $sig | Format-List
-          if ($sig.Status -ne "Valid") {
-            throw "Authenticode signature is not valid: $($sig.Status) $($sig.StatusMessage)"
+          New-Item -ItemType Directory -Force -Path dist\release | Out-Null
+          python tools/build_setup_package.py `
+            --esptool "$env:BOOTSTRAP_ROOT\tools\esptool.exe" `
+            --cp210x-driver "$env:BOOTSTRAP_ROOT\drivers\cp210x" `
+            --ch340-driver "$env:BOOTSTRAP_ROOT\drivers\wch" `
+            --output "dist\release\OpenTurbine_Recommended.zip"
+          Copy-Item tools\setup_tool\OpenTurbineSetupTool.exe dist\release\OpenTurbineSetupTool.exe
+
+      - name: Verify release asset versions and checksums
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "release-verify"
+          Expand-Archive -LiteralPath dist\release\OpenTurbine_Recommended.zip -DestinationPath $stage
+          $manifest = Get-Content (Join-Path $stage "manifest.json") -Raw | ConvertFrom-Json
+          $text = Get-Content .\src\system\version.h -Raw
+          $text -match '#define\s+OT_VERSION\s+"([^"]+)"' | Out-Null
+          if ($manifest.version -ne $Matches[1]) { throw "Package firmware version mismatch" }
+          $toolSource = Get-Content .\tools\setup_tool\main.go -Raw
+          $toolSource -match 'appVersion\s+=\s+"([^"]+)"' | Out-Null
+          if ($manifest.setup_tool_version -ne $Matches[1]) { throw "Package/setup-tool version mismatch" }
+          foreach ($name in @("OpenTurbineSetupTool.exe", "OpenTurbine_Recommended.zip")) {
+            $hash = (Get-FileHash (Join-Path "dist\release" $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $name" | Set-Content -Encoding ascii (Join-Path "dist\release" "$name.sha256")
           }
-      - name: Record unsigned release build
-        if: env.WINDOWS_SIGNING_CERT_BASE64 == ''
-        shell: pwsh
-        run: Write-Host "No signing certificate is configured; this release build is unsigned."
-      - name: Write setup tool SHA-256
-        shell: pwsh
-        run: |
-          $hash = (Get-FileHash .\OpenTurbineSetupTool.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  OpenTurbineSetupTool.exe" | Set-Content -Encoding ascii .\OpenTurbineSetupTool.exe.sha256
-      - name: Upload signed setup tool artifact
+
+      - name: Upload matched release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: OpenTurbineSetupTool-signed
-          path: |
-            tools/setup_tool/OpenTurbineSetupTool.exe
-            tools/setup_tool/OpenTurbineSetupTool.exe.sha256
+          name: OpenTurbine-release-${{ github.ref_name }}
+          path: dist/release/*
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME `
+            dist/release/OpenTurbineSetupTool.exe `
+            dist/release/OpenTurbineSetupTool.exe.sha256 `
+            dist/release/OpenTurbine_Recommended.zip `
+            dist/release/OpenTurbine_Recommended.zip.sha256 `
+            --verify-tag --generate-notes --title "OpenTurbine $env:GITHUB_REF_NAME" --latest

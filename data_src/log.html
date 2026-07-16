@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
+<script src="/ui_dialog.js?v=20260715a"></script>
 <title>OpenTurbine — Log</title>
-<link rel="stylesheet" href="/style.css?v=20260711f">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 </head>
 <body>
@@ -20,12 +21,14 @@
   <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.9rem;flex-wrap:wrap">
-    <h2 style="font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin:0">Event Log</h2>
-    <span id="log-count" style="font-size:.72rem;color:var(--dim);margin-left:.3rem"></span>
-    <div style="display:flex;gap:.4rem;margin-left:auto;flex-wrap:wrap">
+  <div class="page-heading">
+    <div class="page-heading-main">
+      <h1 class="page-title">Logs <span id="log-count" style="font-size:.72rem;color:var(--dim);margin-left:.3rem;font-weight:400"></span></h1>
+      <p class="page-subtitle">Review event history, fault snapshots and detailed per-run session data.</p>
+    </div>
+    <div class="page-heading-actions">
       <button onclick="loadLog()">Refresh</button>
-      <button onclick="downloadLog('raw')" title="Download the black-box event log as newline-delimited JSON: one detailed event object per line for diagnostics and scripts.">NDJSON</button>
+      <button onclick="downloadLog('raw')" title="Download newline-delimited JSON: one detailed event object per line for diagnostics and scripts.">Detailed JSON</button>
       <button onclick="downloadLog('csv')" title="Download the recent event window as a small spreadsheet-friendly CSV. Use NDJSON for the complete black-box event log.">CSV</button>
       <button onclick="askClear('flightlog')" class="danger">Clear</button>
     </div>
@@ -102,9 +105,9 @@
           <label class="slog-chk"><input type="checkbox" data-bit="wet_glow">Wet glow fuel output</label>
           <label class="slog-chk"><input type="checkbox" data-bit="glow_current">Glow current A</label>
           <label class="slog-chk"><input type="checkbox" data-bit="ign_current">Igniter 1 current A</label>
-          <label class="slog-chk"><input type="checkbox" data-bit="ign2_current">Igniter 2 current A</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="ign2_current">AB / pilot igniter current A</label>
           <label class="slog-chk"><input type="checkbox" data-bit="oil_current">Oil current A</label>
-          <label class="slog-chk"><input type="checkbox" data-bit="fp2">Fuel pump 2 %</label>
+          <label class="slog-chk"><input type="checkbox" data-bit="fp2">Pilot / aux fuel pump %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="ab">Afterburner state/fuel</label>
           <label class="slog-chk"><input type="checkbox" data-bit="prop">Prop pitch %</label>
           <label class="slog-chk"><input type="checkbox" data-bit="mode">Mode</label>
@@ -153,9 +156,9 @@
           <label id="chart-lbl-wetg" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-wetg"        onchange="redrawChart()"> <span style="color:#e05f8a">Wet glow fuel output</span></label>
           <label id="chart-lbl-gcur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-gcur"        onchange="redrawChart()"> <span style="color:#ff8b8b">Glow current</span></label>
           <label id="chart-lbl-icur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-icur"        onchange="redrawChart()"> <span style="color:#ffb15c">Igniter 1 current</span></label>
-          <label id="chart-lbl-i2cur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-i2cur"      onchange="redrawChart()"> <span style="color:#ffce6b">Igniter 2 current</span></label>
+          <label id="chart-lbl-i2cur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-i2cur"      onchange="redrawChart()"> <span style="color:#ffce6b">AB / pilot igniter current</span></label>
           <label id="chart-lbl-ocur" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ocur"        onchange="redrawChart()"> <span style="color:#c7d96a">Oil current</span></label>
-          <label id="chart-lbl-fp2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp2"         onchange="redrawChart()"> <span style="color:#68c97a">Fuel pump 2 %</span></label>
+          <label id="chart-lbl-fp2"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-fp2"         onchange="redrawChart()"> <span style="color:#68c97a">Pilot / aux fuel pump %</span></label>
           <label id="chart-lbl-prop" style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-prop"        onchange="redrawChart()"> <span style="color:#7ab3f0">Prop pitch %</span></label>
           <label id="chart-lbl-ff"   style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-ff"          onchange="redrawChart()"> <span style="color:#f5c842">Fuel flow</span></label>
           <label id="chart-lbl-abm"  style="cursor:pointer;display:none"><input type="checkbox" id="chart-cb-abm"         onchange="redrawChart()"> <span style="color:#e84040">AB mode</span></label>
@@ -190,7 +193,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260711f"></script>
+<script src="/app.js?v=20260716b"></script>
 <script>
 // ── Tab switching ─────────────────────────────────────────────
 function showTab(tab) {
@@ -307,10 +310,13 @@ function parseRuns(events) {
 }
 
 // ── Render run cards ──────────────────────────────────────────
-function renderSummary(runs) {
+function renderSummary(runs, eventCount = 0) {
   const c = document.getElementById('runs-container');
   if (!runs.length) {
-    c.innerHTML = '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">No engine runs recorded yet</div>';
+    const detail = eventCount
+      ? ` ${eventCount} diagnostic event${eventCount === 1 ? '' : 's'} are still available under All Events.`
+      : '';
+    c.innerHTML = '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">No engine runs recorded yet.' + detail + '</div>';
     return;
   }
 
@@ -456,7 +462,7 @@ function loadLog() {
       } else {
         countEl.textContent = events.length ? events.length + ' events' : '';
       }
-      renderSummary(parseRuns(events));
+      renderSummary(parseRuns(events), events.length);
       renderEvents(events);
     })
     .catch(e => {
@@ -618,7 +624,10 @@ function _applyLogHwVisibility(hw) {
       case 'ign2_current': return !!(a.igniter2 && a.igniter2.enabled && a.igniter2.has_current);
       case 'oil_current':  return !!(a.oil_pump && a.oil_pump.enabled && a.oil_pump.has_current);
       case 'fp2':        return a.fuel_pump2   ? !!a.fuel_pump2.enabled   : hwOn('has_fuel_pump2');
-      case 'ab':         return !!(hw && hw.has_afterburner);
+      case 'ab':         return !!(hw && (hw.actuators?.ab_sol?.enabled || hw.actuators?.ab_pump?.enabled ||
+        hw.ab_flame?.enabled || (hw.ab_trigger?.input_pin ?? -1) >= 0 ||
+        (hw.channel_registry?.inputs || []).some(c => c?.installed !== false && c?.purpose === 'ab_flame') ||
+        (hw.channel_registry?.outputs || []).some(c => c?.installed !== false && c?.purpose === 'ab_igniter')));
       case 'prop':       return a.prop_pitch   ? !!a.prop_pitch.enabled   : hwOn('has_prop_pitch');
       default:           return true; // throttle, mode — always present
     }
@@ -636,9 +645,9 @@ function _applyLogHwVisibility(hw) {
     wet_glow: 'Wet Glow fuel output',
     glow_current: 'Glow current sensor',
     ign_current: 'Igniter 1 current sensor',
-    ign2_current: 'Igniter 2 current sensor',
+    ign2_current: 'AB / pilot igniter current sensor',
     oil_current: 'Oil pump current sensor',
-    fp2: 'Fuel Pump 2', ab: 'Afterburner', prop: 'Prop Pitch',
+    fp2: 'Pilot / Auxiliary Fuel Pump', ab: 'Afterburner', prop: 'Prop Pitch',
   };
 
   SLOG_BITS.forEach(bit => {

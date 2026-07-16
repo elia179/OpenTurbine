@@ -28,6 +28,11 @@ async function scenario(page, name) {
   assert.equal(response.ok(), true, `scenario ${name} request failed`);
 }
 
+async function openConfigWorkspace(page) {
+  await page.waitForSelector('.config-group', { state: 'attached' });
+  await page.evaluate(() => document.querySelectorAll('.config-group').forEach(group => { group.open = true; }));
+}
+
 function installedBrowser() {
   const candidates = [
     process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -73,6 +78,21 @@ function installedBrowser() {
       ['tot-card', 'tit-card', 'n1-card', 'n2-card'].every(id =>
         document.querySelector('#temperature-cards').contains(document.getElementById(id)))), true);
     assert.equal(await page.evaluate(() =>
+      ['tot-card', 'tit-card', 'n1-card', 'n2-card'].every(id =>
+        document.getElementById(id)?.classList.contains('big')) &&
+      ['tot-sparkline', 'tit-sparkline', 'n1-sparkline', 'n2-sparkline'].every(id =>
+        document.getElementById(id) instanceof HTMLCanvasElement)), true);
+    assert.equal(await page.evaluate(() =>
+      ['gauge-bar', 'abs-label', 'approach-warn'].every(suffix =>
+        document.getElementById(`n1-${suffix}`) && document.getElementById(`n2-${suffix}`))), true);
+    assert.equal(await text(page, '#n2-abs-label'), '24,200 / 30,000 RPM');
+    await page.evaluate(() => _showRunSummary({
+      mode: 'STANDBY', has_n1: true, max_n1: 67100,
+      has_n2: true, max_n2: 24900
+    }, 65000));
+    assert.match(await text(page, '#run-summary-stats'), /Peak N2:\s+24,900 RPM/);
+    await page.locator('#run-summary-card button').click();
+    assert.equal(await page.evaluate(() =>
       ['oil-card', 'oil-temp-card', 'oilpump-current-card'].every(id =>
         document.querySelector('#speed-cards').contains(document.getElementById(id)))), true);
     assert.equal(await page.evaluate(() => {
@@ -96,10 +116,31 @@ function installedBrowser() {
       has_n1: true, n1_healthy: true
     } });
     await page.waitForFunction(() => getComputedStyle(document.getElementById('throttle-feedback-inhibit-note')).display !== 'none');
+    await page.waitForFunction(() => document.getElementById('tit-rise-rate-val')?.textContent?.includes('2.5'));
+    assert.equal(await text(page, '#tot-rise-rate-val'), '—');
     await page.request.post(`${base}/__sim/data`, { data: { tit_healthy: true, egt_source: 1 } });
     await page.waitForFunction(() => getComputedStyle(document.getElementById('throttle-feedback-inhibit-note')).display === 'none');
+    await page.waitForFunction(() => document.getElementById('tot-rise-rate-val')?.textContent?.includes('2.5'));
+    assert.equal(await text(page, '#tit-rise-rate-val'), '—');
     results.push('dashboard throttle inhibit warning follows selected EGT source, including TIT-primary setups');
     await scenario(page, 'full');
+
+    await scenario(page, 'startup');
+    await page.waitForFunction(() => document.getElementById('tot')?.textContent?.includes('175'));
+    await page.waitForTimeout(450);
+    await scenario(page, 'full');
+    await page.waitForFunction(() => document.getElementById('tot')?.textContent?.includes('640'));
+    await page.waitForTimeout(450);
+    await page.goto(`${base}/config.html`);
+    await page.waitForSelector('#cf-tot_limit');
+    await openConfigWorkspace(page);
+    await page.goto(base);
+    await waitShown(page, '#n1-card', true);
+    const retainedTrend = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('ot_dashboard_sparklines_v1') || '{}').series?.tot || []);
+    assert.equal(retainedTrend.some(v => Number(v) === 175), true);
+    assert.equal(retainedTrend.some(v => Number(v) === 640), true);
+    results.push('equivalent EGT/speed cards expose trends and dashboard history survives page navigation');
 
     await page.locator('#unit-temp-btn').click();
     await page.locator('#unit-press-btn').click();
@@ -111,6 +152,7 @@ function installedBrowser() {
 
     await page.request.post(`${base}/__sim/data`, { data: {
       mode: 'RUNNING',
+      n2_limit: 0,
       oil_running_min: 0,
       fuel_press_min: 0,
       batt_volt_min: 0,
@@ -124,6 +166,7 @@ function installedBrowser() {
     assert.match(await text(page, '#fuel-press-abs-label'), /\/ OFF$/);
     assert.equal(await text(page, '#batt-volt-min'), 'OFF');
     assert.match(await text(page, '#tit-abs-label'), /\/ OFF$/);
+    assert.match(await text(page, '#n2-abs-label'), /RPM \/ OFF$/);
     results.push('dashboard zero-disabled thresholds clear stale gauge limits instead of retaining old values');
     await scenario(page, 'full');
     await page.locator('#unit-temp-btn').click();
@@ -171,12 +214,17 @@ function installedBrowser() {
     await scenario(page, 'full');
     await page.goto(`${base}/config.html`);
     await page.waitForSelector('#cf-tot_limit');
+    await openConfigWorkspace(page);
     assert.equal(await page.locator('#cf-tot_limit').inputValue(), '1328');
     assert.equal(await page.locator('#cf-tot_safe_margin').inputValue(), '72');
     // tot_limit is zeroOff ("0 = disabled"): the raw 0 sentinel must remain
     // enterable in every display unit, so min stays 0 even in °F mode.
     assert.equal(await page.locator('#cf-tot_limit').getAttribute('min'), '0');
     assert.equal(await page.locator('text=Automation Rules').count(), 0);
+    assert.equal(await page.locator('#unit-temp-btn').textContent(),
+      (await page.locator('#cf-tot_limit').evaluate(el => el.closest('.cfg-field').querySelector('.cfg-label').textContent.includes('°F'))) ? '°F' : '°C');
+    assert.equal(await page.locator('#unit-press-btn').textContent(),
+      (await page.locator('#cf-oil_rm').evaluate(el => el.closest('.cfg-field').querySelector('.cfg-label').textContent.includes('PSI'))) ? 'PSI' : 'bar');
     results.push('config loads converted values without duplicating control-rule editing');
 
     await page.locator('#unit-temp-btn').click();
@@ -191,8 +239,11 @@ function installedBrowser() {
     await page.locator('#cf-tot_limit').fill('1220');
     await page.locator('#cf-tot_safe_margin').fill('90');
     await page.locator('#cf-oil_rm').fill('29.008');
-    page.once('dialog', dialog => dialog.accept());
+    assert.equal(await page.locator('#cf-tot_limit').evaluate(el =>
+      el.closest('.config-group').classList.contains('group-changed')), true,
+      'A configuration group containing an edited field should have a yellow changed border');
     await page.locator('#btn-save').click();
+    await page.locator('#ot-dialog-confirm').click();
     await page.locator('#save-recap-confirm-btn').click();
     await page.waitForFunction(() => document.querySelector('#save-msg').textContent.includes('Saved'));
     let saved = await state(page);
@@ -230,10 +281,87 @@ function installedBrowser() {
     results.push('servo throttle calibration averages endpoints and persists the 2%/1% safety margins');
 
     await page.goto(`${base}/hardware.html`);
-    await page.waitForSelector('#f-thinput-type');
-    assert.equal(await page.locator('#f-thinput-type').inputValue(), 'servo');
+    await page.waitForFunction(() => /Loaded|Converted/i.test(document.querySelector('#save-msg')?.textContent || ''));
+    assert.equal(await page.evaluate(() => cfg.sensors.throttle_input.rc_pwm), true);
     assert.equal(await page.locator('#f-wifi-tx-power').inputValue(), '8');
     results.push('hardware page restores servo-input source from saved hardware state');
+    await page.evaluate(() => addRegistryChannel('input'));
+    const inputCatalog = await text(page, '#registry-add-catalog');
+    for (const label of ['Compressor inlet pressure (P1)', 'Compressor discharge pressure (P2)',
+      'Coolant pressure', 'Coolant temperature', 'Intake / ambient temperature',
+      'Low oil pressure switch', 'Zero oil pressure switch', 'Generic PWM duty input']) {
+      assert.match(inputCatalog, new RegExp(label.replace(/[()]/g, '\\$&')));
+    }
+    await page.evaluate(() => closeRegistryAddDialog());
+    await page.evaluate(() => addRegistryChannel('output'));
+    const outputCatalog = await text(page, '#registry-add-catalog');
+    for (const label of ['Coolant pump', 'Air starter', 'Pilot gas / start-fuel solenoid',
+      'Air / fuel purge valve', 'Variable nozzle actuator']) {
+      assert.match(outputCatalog, new RegExp(label.replace(/[()]/g, '\\$&')));
+    }
+    assert.doesNotMatch(outputCatalog, /Contactor/);
+    await page.evaluate(() => closeRegistryAddDialog());
+    assert.equal(await page.locator('body').textContent().then(t => /Fault demand/i.test(t)), false);
+    const oilSwitchSafety = await page.evaluate(() => {
+      const savedSensors = structuredClone(cfg.sensors);
+      const savedSafety = structuredClone(cfg.safety);
+      const savedRegistry = structuredClone(cfg.channel_registry);
+      cfg.sensors.oil_press.enabled = false;
+      cfg.safety.low_oil = true;
+      cfg.channel_registry.inputs = [{
+        installed: true, id: 'low_oil_switch', name: 'Low Oil Switch',
+        role: 'low_oil_switch', purpose: 'low_oil_switch',
+        driver: 0, pin: 12, active_high: false, pullup: true
+      }];
+      updateSafetyPrerequisites(true);
+      const result = {
+        disabled: !safetyAvailability('low_oil').ok,
+        enabled: cfg.safety.low_oil === true
+      };
+      cfg.sensors = savedSensors;
+      cfg.safety = savedSafety;
+      cfg.channel_registry = savedRegistry;
+      updateSafetyPrerequisites(false);
+      return result;
+    });
+    assert.equal(oilSwitchSafety.disabled, false);
+    assert.equal(oilSwitchSafety.enabled, true);
+    const precisePurposeDeps = await page.evaluate(() => {
+      const savedSensors = structuredClone(cfg.sensors);
+      const savedSafety = structuredClone(cfg.safety);
+      const savedControllers = structuredClone(cfg.controllers);
+      const savedRegistry = structuredClone(cfg.channel_registry);
+      cfg.sensors.tot.enabled = false;
+      cfg.sensors.tit.enabled = false;
+      cfg.sensors.oil_press.enabled = false;
+      cfg.safety.overtemp = true;
+      cfg.controllers.oil_loop = true;
+      cfg.channel_registry.inputs = [
+        { installed: true, id: 'coolant_temperature', name: 'Coolant Temp', role: 'temperature', purpose: 'coolant_temp', driver: 1, pin: 15, min: 0, max: 4095 },
+        { installed: true, id: 'p1_main', name: 'P1 Pressure', role: 'pressure', purpose: 'p1_pressure', driver: 1, pin: 32, min: 0, max: 4095 }
+      ];
+      cfg.channel_registry.outputs = [{ installed: true, id: 'oil_pump_main', name: 'Oil Pump', role: 'oil_pump', purpose: 'oil_pump', driver: 5, pin: 23, min: 0, max: 1 }];
+      updateSafetyPrerequisites(true);
+      updateHardwarePrerequisites(true);
+      const result = {
+        overtempDisabled: !safetyAvailability('overtemp').ok,
+        overtempCleared: cfg.safety.overtemp === false,
+        oilLoopDisabled: !controllerAvailability('oil_loop').ok,
+        oilLoopCleared: cfg.controllers.oil_loop === false
+      };
+      cfg.sensors = savedSensors;
+      cfg.safety = savedSafety;
+      cfg.controllers = savedControllers;
+      cfg.channel_registry = savedRegistry;
+      updateSafetyPrerequisites(false);
+      updateHardwarePrerequisites(false);
+      return result;
+    });
+    assert.equal(precisePurposeDeps.overtempDisabled, true);
+    assert.equal(precisePurposeDeps.overtempCleared, true);
+    assert.equal(precisePurposeDeps.oilLoopDisabled, true);
+    assert.equal(precisePurposeDeps.oilLoopCleared, true);
+    results.push('hardware picker exposes bounded turbine I/O roles and switch-based oil safety stays available');
     await page.evaluate(() => {
       cfg.sensors.p1.enabled = false;
       cfg.sensors.p1.pin = cfg.sensors.oil_press.pin;
@@ -241,27 +369,37 @@ function installedBrowser() {
     });
     assert.equal(await page.evaluate(() => cfg.sensors.p1.pin), -1);
     results.push('inactive hardware releases a pin when an enabled device uses it');
-    await page.evaluate(() => {
-      cfg.sensors.tit.clk = 16;
-      cfg.sensors.tit.miso = 17;
-      refreshAllPins();
-      setSensorEnabled('tit', 'tit', false);
-      setSensorEnabled('tit', 'tit', true);
+    const sharedSpi = await page.evaluate(() => {
+      Object.values(cfg.sensors || {}).forEach(sensor => { sensor.enabled = false; });
+      Object.values(cfg.actuators || {}).forEach(actuator => { actuator.enabled = false; });
+      cfg.cluster_serial.enabled = false;
+      cfg.mavlink.enabled = false;
+      cfg.di_channels = [];
+      cfg.channel_registry.inputs.forEach(channel => { channel.installed = false; });
+      cfg.channel_registry.outputs.forEach(channel => { channel.installed = false; });
+      const purposes = ['tot', 'tit', 'oil_temperature'];
+      const channels = purposes.map(purpose => cfg.channel_registry.inputs.find(channel =>
+        registryDerivedPurpose('input', channel) === purpose));
+      channels.forEach((channel, index) => Object.assign(channel, {
+        installed:true, driver:1, pin:-1, temp_interface:2,
+        spi_clk:18, spi_cs:[5,17,16][index], spi_miso:19, spi_mosi:-1
+      }));
+      return {
+        allConfigured: channels.every(channel => channel && channel.spi_clk === 18 && channel.spi_miso === 19),
+        busConflict: _checkGpioConflicts().some(c => [18,19].includes(c.pin))
+      };
     });
-    assert.equal(await page.locator('#f-tit-clk').inputValue(), await page.locator('#f-tot-clk').inputValue());
-    assert.equal(await page.locator('#f-tit-miso').inputValue(), await page.locator('#f-tot-miso').inputValue());
-    assert.equal(await page.evaluate(() => _checkGpioConflicts().some(c =>
-      c.names.length === 2 && c.names.every(n => /^(TOT|TIT)/.test(n)))), false);
-    await page.selectOption('#f-oiltemp-chip', 'max31855');
-    assert.equal(await page.locator('#f-oiltemp-clk').inputValue(), await page.locator('#f-tot-clk').inputValue());
-    assert.equal(await page.locator('#f-oiltemp-miso').inputValue(), await page.locator('#f-tot-miso').inputValue());
-    results.push('hardware page automatically shares SPI bus lines across configured SPI sensors');
+    assert.deepEqual(sharedSpi, { allConfigured:true, busConflict:false });
+    results.push('hardware page allows configured SPI bus sharing across temperature sensors');
 
     await page.request.patch(`${base}/api/hardware`, { data: { platform: 'esp32s3' } });
     await page.reload();
-    await page.waitForFunction(() => document.querySelector('#f-thr-pin option[value="16"]'));
-    assert.equal(await page.locator('#f-thr-pin option[value="22"]').count(), 0);
-    assert.equal(await page.locator('#f-oilpress-pin option[value="1"]').count(), 1);
+    await page.waitForFunction(() => /Loaded|Converted/i.test(document.querySelector('#save-msg')?.textContent || ''));
+    assert.deepEqual(await page.evaluate(() => ({
+      output16: buildPinOptions(-1, 'out').includes('value="16"'),
+      output22: buildPinOptions(-1, 'out').includes('value="22"'),
+      adc1: buildPinOptions(-1, 'adc').includes('value="1"')
+    })), { output16:true, output22:false, adc1:true });
     results.push('hardware page selects ESP32-S3 output and ADC pin choices from firmware platform');
     saved = await state(page);
     const renamedHardware = structuredClone(saved.hardware);
@@ -289,10 +427,14 @@ function installedBrowser() {
     assert.equal(await page.locator('#card-TOGGLE_DYNAMIC_IDLE').count(), 0);
     assert.equal(await page.locator('#btn-test-settings').count(), 1);
     assert.equal(await page.locator('.tool-card button[title*="bench-test timing"]').count(), 0);
+    assert.match(await text(page, '#card-IDLE_TEST'), /minimum reliable fuel-pump output \(10%\)/i);
     await page.request.post(`${base}/__sim/data`, { data: { dev_mode: true } });
     await waitShown(page, '#card-TOGGLE_BENCH_MODE', true);
     assert.match(await text(page, '#card-WEB-ASSETS'), /without erasing config or logs/);
     await page.locator('#btn-OIL_PRIME').click();
+    await page.waitForSelector('#ot-app-dialog.show');
+    assert.match(await page.locator('#ot-dialog-message').textContent(), /energize.*5 s[\s\S]*safe test state[\s\S]*moving hardware is clear/i);
+    await page.locator('#ot-dialog-confirm').click();
     await page.waitForTimeout(100);
     saved = await state(page);
     assert.equal(saved.commands.at(-1).cmd, 'OIL_PRIME');
@@ -317,8 +459,8 @@ function installedBrowser() {
     await page.locator('#list-startup .block-card[data-block="TimedDelay"] .block-header').nth(2).click();
     await delayInputs.nth(2).fill('6000');
     await delayInputs.nth(2).dispatchEvent('input');
-    page.once('dialog', dialog => dialog.accept());
     await page.locator('#save-btn').click();
+    await page.locator('#ot-dialog-confirm').click();
     await page.waitForFunction(() => document.querySelector('#reboot-overlay')?.classList.contains('show'));
     assert.match(await page.locator('body').textContent(), /Igniter On/);
     assert.match(await page.locator('body').textContent(), /Fuel Pump/);
@@ -337,8 +479,8 @@ function installedBrowser() {
     assert.equal(await page.evaluate(() => cfg.afterburner.min_n1), 50000);
     results.push('sequence editor keeps independent timed delays and edits AB input/gate thresholds in friendly units');
     await page.goto(`${base}/hardware.html`);
-    await page.waitForFunction(() => document.querySelector('#f-ab-inp-type')?.value === 'pwm');
-    assert.equal(await page.locator('#f-ab-inp-type').inputValue(), 'pwm');
+    await page.waitForFunction(() => /Loaded|Converted/i.test(document.querySelector('#save-msg')?.textContent || ''));
+    assert.equal(await page.evaluate(() => cfg.ab_trigger.input_rc_pwm), true);
     results.push('hardware editor preserves dedicated AB servo-PWM command input type');
     await page.evaluate(() => {
       cfg.actuators.oil_pump.enabled = false;
@@ -346,35 +488,50 @@ function installedBrowser() {
       cfg.controllers.oil_loop = true;
       cfg.actuators.throttle.enabled = false;
       cfg.controllers.throttle_slew = true;
+      cfg.channel_registry.outputs.forEach(channel => {
+        if (channel.purpose === 'oil_pump' || channel.purpose === 'main_fuel') channel.installed = false;
+      });
       updateHardwarePrerequisites(true);
     });
-    assert.equal(await page.locator('#en-oilpumpcurrent').isDisabled(), true);
-    assert.equal(await page.locator('#en-oilpumpcurrent').isChecked(), false);
-    assert.equal(await page.locator('#f-ctrl-oil').isDisabled(), true);
-    assert.equal(await page.locator('#f-ctrl-oil').isChecked(), false);
-    assert.equal(await page.locator('#f-ctrl-slew').isDisabled(), true);
-    assert.equal(await page.locator('#f-ctrl-slew').isChecked(), false);
+    assert.deepEqual(await page.evaluate(() => ({
+      currentDisabled: !registryHasPurpose('output', 'oil_pump'),
+      oilDisabled: !controllerAvailability('oil_loop').ok,
+      oilChecked: !!cfg.controllers.oil_loop,
+      slewDisabled: !controllerAvailability('throttle_slew').ok,
+      slewChecked: !!cfg.controllers.throttle_slew
+    })), { currentDisabled:true, oilDisabled:true, oilChecked:false, slewDisabled:true, slewChecked:false });
     results.push('hardware editor ghosts current sensing and controllers when required hardware is absent');
     await page.evaluate(() => {
       cfg.has_two_shaft = false;
       cfg.sensors.n2_rpm.enabled = true;
+      cfg.channel_registry.inputs.find(channel => channel.purpose === 'n2_speed').installed = true;
+      cfg.channel_registry.outputs.find(channel => channel.purpose === 'main_fuel').installed = true;
       cfg.controllers.governor = true;
       updateFeaturesUI();
       updateHardwarePrerequisites(true);
     });
-    assert.equal(await page.locator('#section-n2rpm').isVisible(), false);
-    assert.equal(await page.locator('#f-ctrl-gov').isDisabled(), true);
-    assert.equal(await page.locator('#f-ctrl-gov').isChecked(), false);
-    results.push('single-shaft topology cannot leave hidden N2 governor dependencies enabled');
+    assert.equal(await page.evaluate(() => registryHasPurpose('input', 'n2_speed')), true);
+    assert.equal(await page.evaluate(() => controllerAvailability('governor').ok && cfg.controllers.governor), true);
+    results.push('fitted N2 and registry fuel output enable the governor without a legacy two-shaft master');
     await page.goto(`${base}/config.html`);
+    await openConfigWorkspace(page);
     assert.equal(await page.locator('#cf-ab_pcm').inputValue(), '1');
     assert.equal(await page.locator('#cf-ab_fm option[value="0"]').isDisabled(), false);
     assert.equal(await page.locator('#cf-ab_pcm option[value="2"]').isDisabled(), false);
+    const hardwareBeforeAbRemoval = await (await page.request.get(`${base}/api/hardware`)).json();
     await page.request.patch(`${base}/api/hardware`, { data: {
       sensors: { tot: { enabled: false } },
       actuators: { igniter2: { enabled: false }, ab_pump: { enabled: false } },
       ab_flame: { enabled: false },
-      ab_trigger: { input_pin: -1 }
+      ab_trigger: { input_pin: -1 },
+      channel_registry: {
+        ...hardwareBeforeAbRemoval.channel_registry,
+        inputs: hardwareBeforeAbRemoval.channel_registry.inputs.map(channel =>
+          ['ab_flame', 'p1_pressure'].includes(channel.purpose) ? { ...channel, installed: false } : channel),
+        outputs: hardwareBeforeAbRemoval.channel_registry.outputs.map(channel =>
+          ['ab_igniter', 'ab_pump'].includes(channel.purpose) || channel.id === 'bleed_valve'
+            ? { ...channel, installed: false } : channel)
+      }
     } });
     await page.reload();
     assert.equal(await page.locator('#cf-ab_fm option[value="0"]').isDisabled(), true);
@@ -392,28 +549,56 @@ function installedBrowser() {
       has_two_shaft: false,
       sensors: { n2_rpm: { enabled: true } },
       actuators: { ab_sol: { enabled: true }, ab_pump: { enabled: true } },
-      ab_trigger: { input_pin: 32 }
+      ab_trigger: { input_pin: 32 },
+      channel_registry: hardwareBeforeAbRemoval.channel_registry
     } });
     await page.reload();
-    assert.equal(await page.locator('#add-afterburner-sel option[value="ABPumpOn"]').count(), 0);
-    assert.equal(await page.locator('#add-afterburner-sel option[value="ABSolOpen"]').count(), 0);
+    assert.equal(await page.locator('#add-afterburner-sel option[value="ABPumpOn"]').count(), 1);
+    assert.equal(await page.locator('#add-afterburner-sel option[value="ABSolOpen"]').count(), 1);
     await page.locator('.seq-tab', { hasText: 'Control Rules' }).click();
-    assert.equal(await page.locator('#rule-sensor-0 option[value="6"]').isDisabled(), true);
-    assert.equal(await page.locator('#rule-sensor-0 option[value="24"]').isDisabled(), true);
-    assert.equal(await page.locator('#rule-act-0 option[value="11"]').isDisabled(), true);
-    assert.deepEqual(await page.evaluate(() => getEnabledActuators()
-      .filter(a => a.key === 'ab_sol' || a.key === 'ab_pump').map(a => a.key)), []);
-    results.push('sequence dependencies ignore hidden N2 and afterburner children when master features are off');
-    await page.locator('#btn-add-rule').click();
-    assert.equal(await page.locator('#rules-list .rules-row').count(), 2);
-    page.once('dialog', dialog => dialog.accept());
+    assert.equal(await page.locator('#rule-sensor-0 option[value="6"]').isDisabled(), false);
+    assert.equal(await page.locator('#rule-sensor-0 option[value="24"]').isDisabled(), false);
+    assert.equal(await page.locator('#rule-act-0 option[value="11"]').isDisabled(), false);
+    results.push('sequence derives N2 and afterburner choices from fitted devices, ignoring legacy master flags');
+
+    const automationState = await state(page);
+    await page.request.patch(`${base}/api/hardware`, { data: { channel_registry: {
+      ...automationState.hardware.channel_registry,
+      inputs: automationState.hardware.channel_registry.inputs.map(channel => channel.id === 'torque_main'
+        ? { id: 'lamp_dimmer_knob', name: 'Lamp Dimmer', purpose: 'generic', role: 'generic', driver: 1, pin: 37, min: 400, max: 3600, installed: true }
+        : channel),
+      outputs: automationState.hardware.channel_registry.outputs.concat([
+        { id: 'warning_lamp_pwm', name: 'Warning Lamp', purpose: 'generic', role: 'generic', driver: 5, pin: 38, min: 0, max: 1, installed: true }
+      ])
+    } } });
+    await page.reload();
+    await page.locator('.seq-tab', { hasText: 'Control Rules' }).click();
+    const dimmerPreset = page.locator('[data-rule-preset="adc_pwm_dimmer"]');
+    assert.equal(await dimmerPreset.getAttribute('aria-disabled'), 'false');
+    await dimmerPreset.click();
+    assert.equal(await page.locator('#rules-list .automation-card').count(), 2);
+    assert.equal(await page.locator('#rule-kind-1').inputValue(), '1');
+    assert.match(await page.locator('#rule-sensor-1 option:checked').textContent(), /Lamp Dimmer/);
+    assert.match(await page.locator('#rule-act-1 option:checked').textContent(), /Warning Lamp/);
+    assert.equal(await page.locator('#rule-mode-all-1').isChecked(), true);
+    await page.locator('#rule-in-min-1').fill('10');
+    await page.locator('#rule-in-max-1').fill('90');
+    await page.locator('#rule-out-min-1').fill('15');
+    await page.locator('#rule-out-max-1').fill('65');
     await page.locator('#save-btn').click();
+    await page.locator('#ot-dialog-confirm').click();
     await page.waitForFunction(() => document.querySelector('#reboot-overlay')?.classList.contains('show'));
     saved = await state(page);
     assert.equal(saved.hardware.profile_id, saved.settings.profile_id);
     assert.equal(saved.hardware.startup_delay_ms[6], 6000);
     assert.equal(saved.settings.rules.length, 2);
-    results.push('sequence editor owns control rules, ghosts unavailable hardware, and saves one engine file');
+    assert.equal(saved.settings.rules[1].kind, 1);
+    assert.equal(saved.settings.rules[1].mode_mask, 15);
+    assert.equal(saved.settings.rules[1].input_min, 0.1);
+    assert.equal(saved.settings.rules[1].input_max, 0.9);
+    assert.equal(saved.settings.rules[1].output_min, 0.15);
+    assert.equal(saved.settings.rules[1].output_max, 0.65);
+    results.push('control rules provide a useful generic ADC-to-PWM example, all-state selection, and canonical percentage saves');
 
     const unified = await (await page.request.get(`${base}/api/ecu_config`)).json();
     unified.hardware.profile_id = 'second-bench-engine';
@@ -444,6 +629,12 @@ function installedBrowser() {
     await page.waitForFunction(() => document.body.textContent.includes('Run #'));
     assert.match(await page.locator('body').textContent(), /TIT 1544/);
     results.push('event log renders firmware event keys, TIT peaks, and follows the unit preference');
+
+    await page.evaluate(() => renderSummary([], 8));
+    assert.match(await page.locator('#runs-container').textContent(), /No engine runs recorded yet\. 8 diagnostic events are still available under All Events\./);
+    await page.evaluate(() => renderSummary([], 0));
+    assert.equal((await page.locator('#runs-container').textContent()).trim(), 'No engine runs recorded yet.');
+    results.push('empty run summary distinguishes diagnostic events from engine runs');
 
     console.log(`UI smoke test passed (${results.length} checks):`);
     results.forEach(result => console.log(`- ${result}`));

@@ -17,7 +17,7 @@ enum class OTCommand : uint8_t {
     FUEL_PRIME,
     OIL_PRIME,
     IGN_TEST,
-    IGN2_TEST,      // fire igniter 2 briefly (STANDBY only)
+    IGN2_TEST,      // fire AB / pilot igniter briefly (STANDBY only)
     START_TEST,
     FUEL_SOL_TEST,
     IDLE_TEST,
@@ -30,7 +30,7 @@ enum class OTCommand : uint8_t {
     TOGGLE_DEV_MODE,      // standby-only toggle; enables live Config edits and bench diagnostics
     TOGGLE_BENCH_MODE,    // bench/debug: all sequencer waits proceed on timer, safety skipped
     EXTRA_COOLDOWN,       // toggle: run configured cooldown actuators in standby until timeout
-    STARTER_ASSIST,       // iParam: 1=enable, 0=disable — low-RPM starter torque assist
+    STARTER_LOW_RPM_SUPPORT, // iParam: 1=arm, 0=disarm — optional starter support while RUNNING
     CLEAR_LOG,
     AB_FIRE,              // manual afterburner ignition (from web UI)
     AB_STOP,              // manual afterburner shutdown (from web UI)
@@ -46,6 +46,7 @@ enum class OTCommand : uint8_t {
     AB_PUMP_TEST,         // run AB pump using configured test demand
     STARTER_EN_TEST,      // energise starter enable relay briefly
     PROP_PITCH_TEST,      // move prop pitch servo to mid-travel briefly
+    REGISTRY_OUTPUT_TEST, // iParam = registry output index, fParam = normalized demand
     RESET_PEAKS,          // clear session peak values (maxN1, maxN2, maxTot, maxP1, maxP2)
 };
 

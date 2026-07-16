@@ -35,7 +35,7 @@
 #include "soc/gpio_reg.h"  // GPIO_OUT_W1TS_REG / GPIO_IN1_REG for fast ISR pin access
 #include "driver/ledc.h"   // raw ESP-IDF LEDC: explicit per-timer control so N1/N2 are independent
 
-static const char* OTBENCH_VER = "0.3";
+static const char* OTBENCH_VER = "0.5";
 
 // ── Signal kinds ─────────────────────────────────────────────
 enum Kind {
@@ -109,6 +109,7 @@ static const float VREF = 3.3f;
 // and N2 clobbered each other. Assigning an explicit LEDC timer per signal (via
 // ledc_timer_config with distinct timer_num) makes them fully independent.
 static int8_t sigLedcChan[NUM_SIGNALS];   // LEDC channel (== timer) for this signal, or -1
+static ledc_timer_bit_t sigFreqResolution[NUM_SIGNALS];
 
 static inline int sigIndex(const Signal& s) { return (int)(&s - SIGNALS); }
 
@@ -132,6 +133,7 @@ static void ledcSetupSignal(int idx, const Signal& s, int chan) {
     tc.freq_hz         = servo ? 50 : 1000;
     tc.clk_cfg         = LEDC_AUTO_CLK;
     ledc_timer_config(&tc);
+    if (!servo) sigFreqResolution[chan] = LEDC_TIMER_10_BIT;
     ledc_channel_config_t cc = {};
     cc.gpio_num   = s.gpio;
     cc.speed_mode = LEDC_LOW_SPEED_MODE;
@@ -146,6 +148,31 @@ static void ledcSetupSignal(int idx, const Signal& s, int chan) {
 static inline void ledcSetDuty(int chan, uint32_t duty) {
     ledc_set_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)chan, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, (ledc_channel_t)chan);
+}
+
+// A fixed 10-bit LEDC timer cannot divide the classic ESP32 clock far enough
+// for low-RPM simulation: a requested 33 Hz signal was quantised to about
+// 150 Hz.  Keep high frequencies available, but use a finer timer resolution
+// below that range so every requested bench RPM is physically generated.
+static ledc_timer_bit_t freqResolutionFor(float hz) {
+    // 16-bit reaches the sub-20 Hz range; 14-bit keeps useful resolution up
+    // to roughly 4.8 kHz; 12-bit covers the 500,000 RPM / 1 PPR test case.
+    if (hz < 20.0f) return LEDC_TIMER_16_BIT;
+    if (hz <= 4000.0f) return LEDC_TIMER_14_BIT;
+    return LEDC_TIMER_12_BIT;
+}
+
+static bool ledcConfigureFrequencyTimer(int chan, float hz) {
+    const ledc_timer_bit_t resolution = freqResolutionFor(hz);
+    ledc_timer_config_t tc = {};
+    tc.speed_mode      = LEDC_LOW_SPEED_MODE;
+    tc.duty_resolution = resolution;
+    tc.timer_num       = (ledc_timer_t)chan;
+    tc.freq_hz         = (uint32_t)(hz + 0.5f);
+    tc.clk_cfg         = LEDC_AUTO_CLK;
+    if (ledc_timer_config(&tc) != ESP_OK) return false;
+    sigFreqResolution[chan] = resolution;
+    return true;
 }
 
 #if !defined(OTBENCH_S3)   // MAX6675 emulator uses classic-ESP32 register layout; the S3
@@ -262,7 +289,10 @@ static void safeState(const Signal& s) {
 static void initSignals() {
     // Each FREQ_OUT / SERVO_OUT gets its own LEDC timer+channel (timer_num == channel), so
     // N1 and N2 are fully independent — changing one timer's frequency never touches the other.
-    for (int i = 0; i < NUM_SIGNALS; i++) sigLedcChan[i] = -1;
+    for (int i = 0; i < NUM_SIGNALS; i++) {
+        sigLedcChan[i] = -1;
+        sigFreqResolution[i] = LEDC_TIMER_10_BIT;
+    }
     int nextCh = 0;
     for (int i = 0; i < NUM_SIGNALS; i++) {
         Signal& s = SIGNALS[i];
@@ -290,14 +320,19 @@ static bool applyOutput(const Signal& s, const char* valStr, String& err) {
         }
         case FREQ_OUT: {
             // Change only THIS signal's timer frequency (its own timer), so N1 and N2 are
-            // independent. 50% duty (512 of 10-bit) gives a clean square wave.
+            // independent. Reconfigure resolution too: low RPM needs a much
+            // larger divider than a fixed 10-bit LEDC timer permits.
             int ch = sigLedcChan[sigIndex(s)];
             float hz = atof(valStr);
             if (hz < 1.0f) {
                 ledcSetDuty(ch, 0);                                    // stop -> line low
             } else {
-                ledc_set_freq(LEDC_LOW_SPEED_MODE, (ledc_timer_t)ch, (uint32_t)(hz + 0.5f));
-                ledcSetDuty(ch, 512);                                  // 50% duty at 10-bit
+                if (!ledcConfigureFrequencyTimer(ch, hz)) {
+                    err = "frequency outside LEDC timer range";
+                    return false;
+                }
+                const uint8_t bits = (uint8_t)sigFreqResolution[ch];
+                ledcSetDuty(ch, 1UL << (bits - 1));                     // 50% duty
             }
             return true;
         }
@@ -327,9 +362,36 @@ static bool applyOutput(const Signal& s, const char* valStr, String& err) {
 }
 
 // ── Measurement ──────────────────────────────────────────────
+// Capture a complete HIGH + LOW frame with explicit edge waits.  pulseIn()
+// occasionally returned a zero low phase on the classic tester's servo input,
+// which made a valid 50 Hz, 1.5 ms pulse look like a 667 Hz full-duty signal.
+static bool capturePwm(const Signal& s, unsigned long timeoutUs,
+                       unsigned long& high, unsigned long& low) {
+    // Each phase receives the advertised timeout. A single shared budget can
+    // legitimately exceed 30 ms for a 50 Hz frame when sampling begins during
+    // HIGH, then waits for the following LOW and next HIGH phases.
+    auto waitFor = [&](int level) {
+        const uint32_t started = micros();
+        while (digitalRead(s.gpio) == level)
+            if ((uint32_t)(micros() - started) >= timeoutUs) return false;
+        return true;
+    };
+    if (!waitFor(HIGH)) return false;
+    if (!waitFor(LOW)) return false;
+    const uint32_t highStart = micros();
+    while (digitalRead(s.gpio) == HIGH)
+        if ((uint32_t)(micros() - highStart) >= timeoutUs) return false;
+    high = (uint32_t)(micros() - highStart);
+    const uint32_t lowStart = micros();
+    while (digitalRead(s.gpio) == LOW)
+        if ((uint32_t)(micros() - lowStart) >= timeoutUs) return false;
+    low = (uint32_t)(micros() - lowStart);
+    return true;
+}
+
 static void measurePwm(const Signal& s, unsigned long timeoutUs, char* out, size_t outLen) {
-    unsigned long high = pulseIn(s.gpio, HIGH, timeoutUs);
-    unsigned long low  = pulseIn(s.gpio, LOW,  timeoutUs);
+    unsigned long high = 0, low = 0;
+    capturePwm(s, timeoutUs, high, low);
     int level = digitalRead(s.gpio);
     unsigned long period = high + low;
     float hz   = period > 0 ? 1000000.0f / (float)period : 0.0f;
@@ -361,8 +423,8 @@ static void readField(const Signal& s, char* out, size_t outLen) {
         snprintf(out, outLen, "%s=%d", s.name, digitalRead(s.gpio));
     } else {
         unsigned long timeoutUs = (s.kind == PWM_IN_LEDC) ? 2500UL : 30000UL;
-        unsigned long high = pulseIn(s.gpio, HIGH, timeoutUs);
-        unsigned long low  = pulseIn(s.gpio, LOW,  timeoutUs);
+        unsigned long high = 0, low = 0;
+        capturePwm(s, timeoutUs, high, low);
         int level = digitalRead(s.gpio);
         unsigned long period = high + low;
         float duty = period > 0 ? (float)high / (float)period : (level ? 1.0f : 0.0f);

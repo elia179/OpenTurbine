@@ -58,11 +58,12 @@
 // the two chips.
 //
 // ESP32-S3 IMPORTANT: GPIO 19 and 20 are USB D−/D+ — never use them.
+// GPIO1-10 are ADC1-capable on ESP32-S3 and can be used while WiFi is active.
 // The default SPI MISO moves to GPIO 37 on S3. GPIO48 is kept free for
 // the YD-ESP32-S3 / YD-ESP32-23 onboard NeoPixel/RGB status LED.
 //
 #ifdef OT_PLATFORM_ESP32S3
-  //  ADC1-capable: GPIO 1–10.  GPIO 4 left free (oil pump PWM default).
+  //  ADC1-capable used by this profile: GPIO 2–10.
   #define OT_ADC_1    1     // ADC1 CH0
   #define OT_ADC_2    2     // ADC1 CH1
   #define OT_ADC_3    3     // ADC1 CH2
@@ -191,7 +192,7 @@
 //
 //  MODE A — PWM BLDC (default, closed-loop capable via OT_HAS_OIL_LOOP)
 //    10 kHz LEDC output, 12-bit duty, proportional pressure control.
-#define OT_OIL_PUMP_FREQ_HZ   10000
+#define OT_OIL_PUMP_FREQ_HZ   5000
 #define OT_OIL_PUMP_RES_BITS  12
 //
 //  MODE B — On/Off relay or MOSFET (no P-loop, no OT_HAS_OIL_LOOP)

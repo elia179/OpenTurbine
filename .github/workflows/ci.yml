@@ -38,10 +38,20 @@ jobs:
         run: |
           pio run -e esp32dev
           pio run -e esp32dev -t buildfs
+          python tools/check_firmware_budget.py \
+            --partitions partitions.csv \
+            --firmware .pio3/esp32dev/firmware.bin \
+            --filesystem .pio3/esp32dev/littlefs.bin \
+            --app-reserve 0x10000
       - name: Build ESP32-S3 firmware and filesystem
         run: |
           pio run -e esp32s3dev
           pio run -e esp32s3dev -t buildfs
+          python tools/check_firmware_budget.py \
+            --partitions partitions_16mb.csv \
+            --firmware .pio3/esp32s3dev/firmware.bin \
+            --filesystem .pio3/esp32s3dev/littlefs.bin \
+            --app-reserve 0x20000
 
   package-builder:
     runs-on: ubuntu-latest

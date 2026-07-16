@@ -16,7 +16,9 @@ nav a[aria-current="page"] { color:var(--accent); box-shadow:inset 0 -2px var(--
 .button.secondary { background:transparent; color:var(--text); }
 .menu-button { display:none; padding:.55rem; border:1px solid var(--line); background:none; color:var(--text); }
 .hero { padding:5rem 0 3rem; }
-.hero-grid,.split { display:grid; grid-template-columns:1fr 1.05fr; align-items:center; gap:3rem; }
+.hero-grid,.split { display:grid; align-items:center; gap:3rem; }
+.hero-grid { grid-template-columns:.82fr 1.28fr; }
+.split { grid-template-columns:1fr 1.05fr; }
 .eyebrow { color:var(--accent); font-size:.82rem; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
 .hero h1,.document h1 { margin:.2rem 0 1rem; font-size:clamp(2.3rem,6vw,4.5rem); line-height:1.03; }
 .lede { max-width:62ch; color:var(--muted); font-size:1.25rem; }
@@ -31,7 +33,7 @@ h3 { line-height:1.25; }
 .card-grid,.image-grid { display:grid; gap:1rem; }
 .card-grid.three { grid-template-columns:repeat(3,1fr); }
 .card-grid.four { grid-template-columns:repeat(2,1fr); }
-.image-grid { grid-template-columns:repeat(3,1fr); }
+.image-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:2rem 1.4rem; }
 .image-grid figure { margin:0; }
 .image-grid figcaption { margin-top:.6rem; color:var(--muted); font-size:.92rem; }
 .card { display:block; padding:1.3rem; border:1px solid var(--line); border-radius:.75rem; background:color-mix(in srgb,var(--surface) 84%,var(--bg)); text-decoration:none; }

@@ -4,11 +4,20 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260711f">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <script src="/theme.js?v=20260711f"></script>
+<script src="/ui_dialog.js?v=20260715a"></script>
+<style>
+.test-settings-card{width:min(760px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+.test-settings-head,.test-settings-foot{flex:0 0 auto;padding:1rem}
+.test-settings-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;border-bottom:1px solid var(--border)}
+.test-settings-scroll{min-height:0;overflow-y:auto;padding:0 1rem;scrollbar-width:thin;scrollbar-color:var(--border-light) transparent}
+.test-settings-scroll::-webkit-scrollbar{width:8px}.test-settings-scroll::-webkit-scrollbar-track{background:transparent}.test-settings-scroll::-webkit-scrollbar-thumb{background:var(--border-light);border:2px solid var(--surface);border-radius:999px}
+.test-settings-foot{border-top:1px solid var(--border)}
+</style>
 </head>
-<body>
+<body data-page="tools">
 <nav>
   <a href="/" title="Live dashboard, start/stop controls, mode, faults, and fitted sensor cards.">Dashboard</a>
   <a href="/hardware.html" title="Choose fitted sensors, actuators, GPIO pins, Wi-Fi, and hardware safety enables.">Hardware</a>
@@ -20,9 +29,14 @@
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-  <div id="tools-page-head" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.6rem">
-    <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Tools</h2>
-    <button id="btn-test-settings" onclick="openTestSettings()" title="Edit durations and proportional output levels for fitted bench-test hardware.">Test settings</button>
+  <div id="tools-page-head" class="page-heading">
+    <div class="page-heading-main">
+      <h1 class="page-title">Tools</h1>
+      <p class="page-subtitle">Standby-only tests, diagnostics, backups, software updates and device maintenance.</p>
+    </div>
+    <div class="page-heading-actions">
+      <button id="btn-test-settings" onclick="openTestSettings()" title="Edit durations and proportional output levels for fitted bench-test hardware.">Test settings</button>
+    </div>
   </div>
   <div id="tools-status-row" style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.1rem">
     <span style="font-size:.78rem;color:var(--dim)">Engine:</span>
@@ -31,17 +45,17 @@
   </div>
 
   <div id="test-settings-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;align-items:center;justify-content:center;padding:1rem" onclick="if(event.target===this)closeTestSettings()">
-    <div style="width:min(760px,96vw);max-height:88vh;overflow:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1rem">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><div><b>Bench-test settings</b><div style="font-size:.72rem;color:var(--dim)">Only fitted testable hardware is shown. Settings do not run an actuator.</div></div><button onclick="closeTestSettings()" title="Close">✕</button></div>
-      <div id="test-settings-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.65rem;margin-top:.8rem"></div>
-      <div style="display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem"><button onclick="closeTestSettings()">Cancel</button><button class="primary" onclick="saveTestSettings()">Save settings</button></div>
-      <div id="test-settings-status" style="font-size:.75rem;color:var(--dim);margin-top:.4rem"></div>
+    <div class="test-settings-card">
+      <div class="test-settings-head"><div><b>Bench-test settings</b><div style="font-size:.72rem;color:var(--dim)">Only fitted testable hardware is shown. Settings do not run an actuator.</div></div><button onclick="closeTestSettings()" title="Close">✕</button></div>
+      <div class="test-settings-scroll"><div id="test-settings-body" style="display:grid;grid-template-columns:minmax(0,1fr);gap:.65rem;padding:.8rem 0"></div></div>
+      <div class="test-settings-foot"><div style="display:flex;gap:.6rem;justify-content:flex-end"><button onclick="closeTestSettings()">Cancel</button><button class="primary" onclick="saveTestSettings()">Save settings</button></div>
+      <div id="test-settings-status" style="font-size:.75rem;color:var(--dim);margin-top:.4rem"></div></div>
     </div>
   </div>
 
   <div id="tool-area"></div>
 
-  <div class="tool-card" id="loop-diag-card" title="Main ECU loop speed and execution timing. Enable ECU loop timing in session logging only when you want these values written to CSV." style="margin-top:1rem">
+  <div class="tool-card tools-wide-card" id="loop-diag-card" title="Main ECU loop speed and execution timing. Enable ECU loop timing in session logging only when you want these values written to CSV." style="margin-top:1rem">
     <div class="tool-header">
       <div class="tool-name">ECU Loop Timing</div>
       <div class="tool-state off" id="loop-diag-state">Live</div>
@@ -62,9 +76,14 @@
       <div><div class="tool-desc">Status LED</div><div style="font-family:monospace;font-weight:700" id="diag-loop-led">-</div></div>
     </div>
   </div>
+
+  <div class="appearance-card">
+    <div id="appearance-picker"></div>
+    <div class="appearance-note">Interface theme for this device — applies instantly.</div>
+  </div>
 </main>
 
-<script src="/app.js?v=20260711f"></script>
+<script src="/app.js?v=20260716b"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -74,29 +93,29 @@ const TOOLS = [
   { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid - primes fuel lines.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100% - primes oil circuit. This is a direct bench command, not the controller minimum duty.', visibleIf: hw => !!hw?.actuators?.oil_pump?.enabled },
   { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 - verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter?.enabled },
-  { id:'IGN2_TEST',           name:'Igniter 2 Test',     durationMs:2000, configKey:'tools.ign2_test_ms',     desc:'Fires igniter 2 (AB igniter / coil) — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
+  { id:'IGN2_TEST',           name:'AB Igniter Test',    durationMs:2000, configKey:'tools.ign2_test_ms',     desc:'Fires the afterburner / pilot igniter output — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
   { id:'START_TEST',          name:'Starter Test',       durationMs:2000, configKey:'tools.start_test_ms',    desc:'Spins starter at configured demand - verify motor turns.', visibleIf: hw => !!hw?.actuators?.starter?.enabled },
   { id:'FUEL_SOL_TEST',       name:'Solenoid Click',     durationMs:1000, configKey:'tools.fuel_sol_test_ms', desc:'Brief solenoid pulse - audible click to confirm valve.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
-  { id:'IDLE_TEST',           name:'Idle Throttle',      durationMs:3000, configKey:'tools.idle_test_ms', desc:'Moves the throttle/fuel ESC output to the calibrated Fuel Pump Minimum Spin value - verify travel.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
+  { id:'IDLE_TEST',           name:'Minimum Fuel Output Test', durationMs:3000, configKey:'tools.idle_test_ms', desc:'Moves the fuel/throttle output to the calibrated minimum reliable fuel-pump output so you can verify pump operation.', visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
   // ── Conditionally visible actuator tests (shown only when hardware is fitted) ──
-  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, configKey:'tools.starter_en_test_ms', desc:'Energises starter enable relay for configured duration.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
+  { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, configKey:'tools.starter_en_test_ms', desc:'Drives the starter enable output for the configured duration.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
   { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, configKey:'tools.oil_scav_test_ms', desc:'Runs oil scavenge pump for configured duration.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
   { id:'COOL_FAN_TEST',    name:'Cool Fan Test',        durationMs:3000, configKey:'tools.cool_fan_test_ms', desc:'Runs cooling fan for configured duration.', visibleIf: hw => !!hw?.actuators?.cool_fan?.enabled },
   { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, configKey:'tools.airstarter_test_ms', desc:'Opens airstarter solenoid for configured duration.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
   { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, configKey:'tools.bleed_valve_test_ms', desc:'Opens bleed valve for configured duration.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
   { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:10000, configKey:'tools.glow_test_ms', desc:'Runs glow plug at configured demand — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
-  { id:'FUEL_PUMP2_TEST',  name:'Auxiliary Fuel Pump 2 Test', durationMs:3000, configKey:'tools.fuel_pump2_test_ms', desc:'Runs the independent auxiliary fuel pump at configured demand.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
-  { id:'AB_SOL_TEST',      name:'AB Solenoid Test',    durationMs:1000, configKey:'tools.ab_sol_test_ms', desc:'Opens AB fuel solenoid for configured duration.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_sol?.enabled) },
-  { id:'AB_PUMP_TEST',     name:'AB Pump Test',         durationMs:2000, configKey:'tools.ab_pump_test_ms', desc:'Runs AB pump at configured demand.', visibleIf: hw => !!(hw?.has_afterburner && hw?.actuators?.ab_pump?.enabled) },
+  { id:'FUEL_PUMP2_TEST',  name:'Pilot / Auxiliary Fuel Pump Test', durationMs:3000, configKey:'tools.fuel_pump2_test_ms', desc:'Runs the independent pilot/auxiliary fuel pump at configured demand.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
+  { id:'AB_SOL_TEST',      name:'AB Fuel Valve Test',   durationMs:1000, configKey:'tools.ab_sol_test_ms', desc:'Opens the afterburner fuel shutoff valve for the configured duration.', visibleIf: hw => !!hw?.actuators?.ab_sol?.enabled },
+  { id:'AB_PUMP_TEST',     name:'AB Fuel Pump Test',    durationMs:2000, configKey:'tools.ab_pump_test_ms', desc:'Runs the afterburner fuel pump at the configured demand.', visibleIf: hw => !!hw?.actuators?.ab_pump?.enabled },
   { id:'PROP_PITCH_TEST',  name:'Prop Pitch Test',      durationMs:3000, configKey:'tools.prop_pitch_test_ms', desc:'Moves prop pitch output to configured position.', visibleIf: hw => !!hw?.actuators?.prop_pitch?.enabled },
   // ── Toggle tools ─────────────────────────────────────────────
-  { id:'TOGGLE_DYNAMIC_IDLE', name:'Dynamic Idle',      durationMs:0, modes:['STANDBY','RUNNING'], desc:'Turns closed-loop idle RPM hold on or off for the next/current run. Available only when it is enabled in Hardware and has throttle output plus RPM feedback.', toggleKey:'dynamic_idle_enabled',
+  { id:'TOGGLE_DYNAMIC_IDLE', name:'Automatic Idle Speed Control', durationMs:0, modes:['STANDBY','RUNNING'], desc:'Turns automatic idle-speed holding on or off for the next or current run. Available only when enabled in Hardware with fuel output and RPM feedback.', toggleKey:'dynamic_idle_enabled',
     visibleIf: hw => !!(hw?.controllers?.dynamic_idle && hw?.actuators?.throttle?.enabled &&
-      (hw?.sensors?.n1_rpm?.enabled || (hw?.has_two_shaft && hw?.sensors?.n2_rpm?.enabled))) },
-  { id:'TOGGLE_LIMP_MODE',    name:'Limp Mode',          durationMs:0, modes:['STANDBY','RUNNING'], desc:'Restricts throttle range for the next/current run — limp-home safety envelope.', toggleKey:'limp_mode',
+      (hw?.sensors?.n1_rpm?.enabled || hw?.sensors?.n2_rpm?.enabled)) },
+  { id:'TOGGLE_LIMP_MODE',    name:'Reduced-Power Mode', durationMs:0, modes:['STANDBY','RUNNING'], desc:'Restricts maximum fuel/throttle output for the next or current run.', toggleKey:'limp_mode',
     visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
-  { id:'STARTER_ASSIST',      name:'Starter Idle Assist', durationMs:0, modes:['RUNNING'], desc:'Arms idle-stall assist for the current run: while RUNNING, the starter engages at the configured duty whenever N1 falls below the exit RPM (Config > Starter Assist). Can only be armed while RUNNING; disarms automatically on shutdown.', toggleKey:'starter_assist_active',
-    visibleIf: hw => !!(hw?.actuators?.starter?.enabled && hw?.actuators?.starter?.assist_enabled && hw?.sensors?.n1_rpm?.enabled) },
+  { id:'STARTER_LOW_RPM_SUPPORT', name:'Low-RPM Starter Support', durationMs:0, modes:['RUNNING'], desc:'Arm optional starter support for this run. The starter engages at the configured output when N1 is low, turns off above the configured disengage speed, and disarms automatically at shutdown. Configure it under Config > Low-RPM Starter Support.', toggleKey:'starter_low_rpm_support_active',
+    visibleIf: hw => !!(hw?.actuators?.starter?.enabled && hw?.actuators?.starter?.low_rpm_support_enabled && hw?.sensors?.n1_rpm?.enabled) },
 ];
 
 let activeId    = null;
@@ -107,6 +126,10 @@ let liveData    = {};
 let hwCfg       = {};
 let cfgData     = {};
 let toolsTelemetryTimer = null;
+function escHtml(value){
+  return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function escAttr(value){return escHtml(value);}
 
 function extraCooldownDescription() {
   const sd = cfgData?.sequence?.shutdown || {};
@@ -134,6 +157,72 @@ function extraCooldownAvailable() {
 }
 
 const TEST_OUTPUT_KEYS={START_TEST:'start_test_pct',GLOW_TEST:'glow_test_pct',FUEL_PUMP2_TEST:'fuel_pump2_test_pct',AB_PUMP_TEST:'ab_pump_test_pct',PROP_PITCH_TEST:'prop_pitch_test_pct'};
+const CORE_REGISTRY_OUTPUT_IDS=new Set([
+  'main_fuel_output','main_fuel','throttle',
+  'main_starter','starter','starter_main',
+  'starter_enable','starter_enable_main',
+  'oil_pump','oil_pump_main',
+  'cooling_fan','cooling_fan_main','cool_fan',
+  'oil_scavenge_main','oil_scavenge_pump','scavenge_pump',
+  'bleed_valve','bleed_valve_main',
+  'igniter','igniter_main','ab_igniter','igniter2','igniter2_main',
+  'main_fuel_shutoff','fuel_shutoff','fuel_sol','fuel_solenoid_main',
+  'ab_solenoid','ab_solenoid_main','ab_sol',
+  'air_starter','airstarter_main','airstarter_sol',
+  'fuel_pump','fuel_pump2','fuel_pump2_main',
+  'ab_pump','ab_pump_main','prop_pitch','prop_pitch_main','glow_plug','glow_plug_main'
+]);
+const CORE_REGISTRY_BINDING_KEYS=new Set(['main_fuel_output','main_fuel_shutoff','main_starter']);
+function plainRegistryToolName(raw,fallback='Output'){
+  const text=String(raw||'').trim();
+  const key=text.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  const direct={
+    user_throttle:'Throttle Input',operator_throttle:'Throttle Input',operator_thrott:'Throttle Input',throttle_input:'Throttle Input',
+    user_idle:'Idle Input',operator_idle:'Idle Input',idle_input:'Idle Input',
+    main_fuel:'Main Fuel Pump',main_fuel_output:'Main Fuel Pump',fuel_shutoff:'Fuel Shutoff',main_fuel_shutoff:'Fuel Shutoff',
+    oil_pump:'Oil Pump',oil_pump_main:'Oil Pump',fuel_pump:'Fuel Pump',starter_enable:'Starter Enable',
+    flame:'Flame Sensor',flame_main:'Flame Sensor',coolant_pump:'Coolant Pump',coolant_temperature:'Coolant Temperature',
+    pilot_fuel:'Pilot Gas',purge_valve:'Purge Valve',air_starter:'Air Starter',
+    ab_pump:'AB Fuel Pump',ab_solenoid:'AB Fuel Valve',ab_igniter:'AB Igniter',
+    prop_pitch:'Prop Pitch',nozzle_actuator:'Nozzle Actuator',generic_pwm_output:'PWM Output',generic_servo_output:'Servo Output',generic_relay_output:'Relay Output'
+  };
+  if(direct[key]) return direct[key];
+  if(key.includes('throttle')||key.includes('thrott')) return 'Throttle Input';
+  if(key.includes('idle')) return 'Idle Input';
+  if(key.includes('flame')) return 'Flame Sensor';
+  if(key.includes('oil')&&key.includes('pump')) return 'Oil Pump';
+  if(key.includes('fuel')&&key.includes('pump')) return 'Fuel Pump';
+  const out=key.split('_').filter(Boolean).map(part=>({n1:'N1',n2:'N2',tot:'TOT',tit:'TIT',egt:'EGT',ab:'AB',rc:'RC',pwm:'PWM',adc:'ADC',esc:'ESC',gpio:'GPIO',rpm:'RPM'}[part]||part.charAt(0).toUpperCase()+part.slice(1))).join(' ');
+  return out||fallback;
+}
+function registryToolDisplayName(c,i){
+  const raw=(c?.name&&String(c.name).trim())||c?.id||('Output '+(i+1));
+  return (raw.includes('_')||/^[a-z0-9_-]+$/.test(raw))?plainRegistryToolName(raw,'Output '+(i+1)):raw;
+}
+function syncRegistryOutputTools(){
+  for(let i=TOOLS.length-1;i>=0;i--) if(TOOLS[i].registryOutput) TOOLS.splice(i,1);
+  const outs=hwCfg?.channel_registry?.outputs||[];
+  const coreBound=new Set((hwCfg?.channel_registry?.bindings||[])
+    .filter(b=>CORE_REGISTRY_BINDING_KEYS.has(String(b?.key||'')))
+    .map(b=>String(b?.channel||'')));
+  outs.forEach((c,i)=>{
+    if(!c||c.pin==null||Number(c.pin)<0) return;
+    if(CORE_REGISTRY_OUTPUT_IDS.has(String(c.id||''))||coreBound.has(String(c.id||''))) return;
+    const relay=Number(c.driver)===4;
+    const displayName=registryToolDisplayName(c,i);
+    TOOLS.push({
+      id:'REGISTRY_OUTPUT_TEST_'+i,
+      cmd:'REGISTRY_OUTPUT_TEST',
+      name:displayName+' Test',
+      durationMs:3000,
+      desc:'Bench-test '+displayName+' at '+(relay?'ON':'100%')+' for 3 s.',
+      registryOutput:true,
+      iParam:i,
+      fParam:1.0,
+      visibleIf:()=>true
+    });
+  });
+}
 function openTestSettings(){
   if(engineMode!=='STANDBY'&&engineMode!=='FAULT'){alert('Bench-test settings can only be changed in STANDBY or FAULT.');return;}
   const body=document.getElementById('test-settings-body'); let html='';
@@ -141,7 +230,7 @@ function openTestSettings(){
     const durationKey=t.configKey?.split('.')[1]; if(!durationKey)return;
     const ms=Number(cfgData?.tools?.[durationKey]??t.durationMs);
     const outKey=TEST_OUTPUT_KEYS[t.id], out=outKey?Number(cfgData?.tools?.[outKey]??100):null;
-    html+=`<div class="tool-card" style="margin:0"><div class="tool-name">${t.name}</div><label class="tool-desc">Duration (seconds)<input class="test-setting" data-key="${durationKey}" data-kind="seconds" type="number" min="0.05" step="0.05" value="${ms/1000}" title="How long this test command remains active."></label>${outKey?`<label class="tool-desc">Output (%)<input class="test-setting" data-key="${outKey}" data-kind="percent" type="number" min="0" max="100" step="1" value="${out}" title="Proportional output used by this test. Relay outputs ignore percentage."></label>`:''}</div>`;
+    html+=`<div class="tool-card" style="margin:0"><div class="tool-name">${escHtml(t.name)}</div><label class="tool-desc">Duration (seconds)<input class="test-setting" data-key="${durationKey}" data-kind="seconds" type="number" min="0.05" step="0.05" value="${ms/1000}" title="How long this test command remains active."></label>${outKey?`<label class="tool-desc">Output (%)<input class="test-setting" data-key="${outKey}" data-kind="percent" type="number" min="0" max="100" step="1" value="${out}" title="Proportional output used by this test. Relay outputs ignore percentage."></label>`:''}</div>`;
   });
   body.innerHTML=html||'<div style="color:var(--dim)">No configurable actuator tests match the fitted hardware.</div>';
   document.getElementById('test-settings-status').textContent='';
@@ -169,15 +258,18 @@ function renderTools() {
     if (t.visibleIf && !t.visibleIf(hwCfg)) return;
     const isToggle = t.durationMs === 0;
     if (isToggle && !dividerDone) { html += '<hr class="tool-divider">'; dividerDone = true; }
+    const safeName = escHtml(t.name);
+    const safeDesc = escHtml(t.desc);
+    const safeTitle = escAttr(t.desc);
     html += `
-    <div class="tool-card" id="card-${t.id}" title="${t.desc.replace(/"/g, '&quot;')}">
+    <div class="tool-card" id="card-${t.id}" title="${safeTitle}">
       <div class="tool-header">
-        <div class="tool-name">${t.name}</div>
+        <div class="tool-name">${safeName}</div>
         <div class="tool-state" id="state-${t.id}">${isToggle ? 'OFF' : 'Ready'}</div>
       </div>
       ${!isToggle ? `<div class="prog-track"><div class="prog-fill" id="prog-${t.id}"></div></div>` : ''}
       <div class="tool-footer">
-        <div class="tool-desc">${t.desc}${t.id === 'TOGGLE_LIMP_MODE' ? ' <span id="limp-cap-inline" style="color:var(--yellow)"></span>' : ''}</div>
+        <div class="tool-desc">${safeDesc}${t.id === 'TOGGLE_LIMP_MODE' ? ' <span id="limp-cap-inline" style="color:var(--yellow)"></span>' : ''}</div>
         ${!isToggle ? `<div class="tool-time" id="time-${t.id}">${Number((t.durationMs/1000).toFixed(2))} s</div>` : ''}
         <button id="btn-${t.id}" onclick="runTool('${t.id}')" disabled>
           ${isToggle ? 'Toggle' : 'Run'}
@@ -287,7 +379,7 @@ function renderTools() {
     <div class="tool-footer" style="margin-top:.5rem">
       <div class="tool-desc" style="flex:1">
         Updates the dashboard pages without erasing config or logs.
-        First run <code>tools/gzip_data.py</code>, then select all ten generated
+        First run <code>tools/gzip_data.py</code>, then select all eleven generated
         <code>data/*.gz</code> files. Requires idle STANDBY with no active outputs.
       </div>
       <label style="cursor:pointer">
@@ -391,17 +483,29 @@ async function postToolCommand(payload) {
   if (!r.ok || body.ok === false) {
     throw new Error(body.error || body.reason || ('HTTP ' + r.status));
   }
+  if (window.OTSetup && !/^TOGGLE_/.test(String(payload.cmd || ''))) OTSetup.mark('tools');
   return body;
 }
 
-function runTool(id) {
+async function runTool(id) {
   const tool = TOOLS.find(t => t.id === id);
   if (!tool) return;
 
-  const payload = { cmd: id };
-  // STARTER_ASSIST is a stateful arm/disarm, not a firmware-side toggle:
+  if (tool.durationMs > 0) {
+    const seconds = (tool.durationMs / 1000).toFixed(tool.durationMs % 1000 ? 1 : 0);
+    const confirmed = await OTDialog.confirm(
+      `${tool.name} will energize its fitted output for ${seconds} s.\n\n${tool.desc}\n\nConfirm the engine is in a safe test state, fuel and ignition risks are controlled, and all moving hardware is clear.`,
+      { title:`Run ${tool.name}?`, confirmText:'Energize output', danger:true }
+    );
+    if (!confirmed) return;
+  }
+
+  const payload = { cmd: tool.cmd || id };
+  if (tool.iParam !== undefined) payload.iParam = tool.iParam;
+  if (tool.fParam !== undefined) payload.fParam = tool.fParam;
+  // Low-RPM starter support is a stateful arm/disarm command.
   // iParam carries the DESIRED state (1 = arm, 0 = disarm).
-  if (id === 'STARTER_ASSIST') payload.iParam = liveData?.starter_assist_active ? 0 : 1;
+  if (id === 'STARTER_LOW_RPM_SUPPORT') payload.iParam = liveData?.starter_low_rpm_support_active ? 0 : 1;
 
   postToolCommand(payload).then(d => {
     if (tool.durationMs === 0) {
@@ -651,7 +755,7 @@ window.applyData = function(d) {
 };
 
 // ── Dev mode toggle ───────────────────────────────────────────
-function toggleDevMode() {
+async function toggleDevMode() {
   const on = !!(liveData && liveData.dev_mode);
   if (liveData && !isStandbyLike(liveData.mode)) {
     alert('Developer mode can only be changed in STANDBY (or FAULT).');
@@ -660,14 +764,17 @@ function toggleDevMode() {
   const msg = on
     ? 'Disable dev mode?'
     : 'Enable dev mode?\n\nThis unlocks the safety bypass controls.\nOnly use for bench testing — never for engine operation.';
-  if (!confirm(msg)) return;
+  if (!await OTDialog.confirm(msg, {
+    title: on ? 'Disable developer mode?' : 'Enable developer mode?',
+    confirmText: on ? 'Disable' : 'Enable developer mode', danger: !on
+  })) return;
   postToolCommand({ cmd: 'TOGGLE_DEV_MODE' })
     .then(() => setTimeout(pollToolsTelemetry, 200))
     .catch(e => alert('Developer mode command failed: ' + e.message));
 }
 
 // ── Safety checks bypass (dev mode only) ─────────────────────
-function toggleSafetyChecks() {
+async function toggleSafetyChecks() {
   const on  = !!(liveData && liveData.skip_safety_checks);
   if (!(liveData && liveData.dev_mode && liveData.bench_mode && isStandbyLike(liveData.mode))) {
     alert('Safety bypass requires Developer Mode and Bench Mode while in STANDBY (or FAULT).');
@@ -676,21 +783,27 @@ function toggleSafetyChecks() {
   const msg = on
     ? 'Re-enable safety checks? (recommended)'
     : '⚠ DISABLE ALL SAFETY CHECKS?\n\nThe engine will NOT protect against:\n• Overspeed\n• Overtemperature\n• Oil pressure loss\n• Flameout\n\nFor bench testing only — NEVER with fuel flowing.\n\nAre you absolutely sure?';
-  if (!confirm(msg)) return;
+  if (!await OTDialog.confirm(msg, {
+    title: on ? 'Re-enable safety checks?' : 'Disable all safety checks?',
+    confirmText: on ? 'Re-enable safety checks' : 'Disable safety checks', danger: !on
+  })) return;
   postToolCommand({ cmd: 'TOGGLE_SAFETY_CHECKS' })
     .then(() => setTimeout(pollToolsTelemetry, 200))
     .catch(e => alert('Safety bypass command failed: ' + e.message));
 }
 
 // ── Bench mode toggle ─────────────────────────────────────────
-function toggleBenchMode() {
+async function toggleBenchMode() {
   const on   = !!(liveData && liveData.bench_mode);
   const mode = liveData && liveData.mode;
   if (!isStandbyLike(mode)) { alert('Bench mode can only be changed in STANDBY (or FAULT).'); return; }
   const msg = on
     ? 'Disable bench mode and return to normal operation?'
     : 'Enable BENCH MODE?\n\nAll sequencer blocks will complete on their configured timeout with NO sensor verification.\n\nSafety faults are bypassed. The engine will NOT protect itself.\n\nUse only to test actuator wiring and sequence timing — NEVER with fuel or a running engine.\n\nAre you sure?';
-  if (!confirm(msg)) return;
+  if (!await OTDialog.confirm(msg, {
+    title: on ? 'Disable bench mode?' : 'Enable bench mode?',
+    confirmText: on ? 'Disable bench mode' : 'Enable bench mode', danger: !on
+  })) return;
   postToolCommand({ cmd: 'TOGGLE_BENCH_MODE' })
     .then(() => setTimeout(pollToolsTelemetry, 200))
     .catch(e => alert('Bench mode command failed: ' + e.message));
@@ -718,8 +831,11 @@ function syncDynamicToolText() {
 
   setDesc('START_TEST', `Output: starter ${outputText('starter', tools.start_test_pct ?? 30)} for ${sec(tools.start_test_ms ?? 2000)} s.`);
   setDesc('FUEL_SOL_TEST', `Output: fuel solenoid ON for ${sec(tools.fuel_sol_test_ms ?? 1000)} s.`);
-  setDesc('IDLE_TEST', `Output: throttle/fuel to calibrated Fuel Pump Minimum Spin for ${sec(tools.idle_test_ms ?? 3000)} s.`);
-  setDesc('STARTER_EN_TEST', `Output: starter enable relay ON for ${sec(tools.starter_en_test_ms ?? 1000)} s.`);
+  const minSpin = Number(cfgData?.throttle?.fuel_pump_min_pct ?? 0);
+  setDesc('IDLE_TEST', minSpin > 0
+    ? `Output: throttle/fuel to the calibrated minimum reliable fuel-pump output (${pctText(minSpin)}) for ${sec(tools.idle_test_ms ?? 3000)} s.`
+    : `Output remains Off because the minimum reliable fuel-pump output is currently 0%. Calibrate it first if this pump needs a nonzero starting output.`);
+  setDesc('STARTER_EN_TEST', `Output: starter enable command ON for ${sec(tools.starter_en_test_ms ?? 1000)} s.`);
   // These accessories can be configured as PWM/servo outputs, but their
   // bench tests set a boolean → the actuator drives to FULL output. Say so
   // instead of implying a partial-demand test.
@@ -728,9 +844,9 @@ function syncDynamicToolText() {
   setDesc('COOL_FAN_TEST', `Output: cooling fan ${fullOut('cool_fan')} for ${sec(tools.cool_fan_test_ms ?? 3000)} s.`);
   setDesc('AIRSTARTER_TEST', `Output: airstarter solenoid ON for ${sec(tools.airstarter_test_ms ?? 1000)} s.`);
   setDesc('BLEED_VALVE_TEST', `Output: bleed valve ${fullOut('bleed_valve')} for ${sec(tools.bleed_valve_test_ms ?? 1000)} s.`);
-  setDesc('FUEL_PUMP2_TEST', `Output: auxiliary fuel pump 2 ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
-  setDesc('AB_SOL_TEST', `Output: AB fuel solenoid ON for ${sec(tools.ab_sol_test_ms ?? 1000)} s.`);
-  setDesc('AB_PUMP_TEST', `Output: AB pump ${outputText('ab_pump', tools.ab_pump_test_pct ?? 30)} for ${sec(tools.ab_pump_test_ms ?? 2000)} s.`);
+  setDesc('FUEL_PUMP2_TEST', `Output: pilot/auxiliary fuel pump ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
+  setDesc('AB_SOL_TEST', `Output: afterburner fuel valve OPEN for ${sec(tools.ab_sol_test_ms ?? 1000)} s.`);
+  setDesc('AB_PUMP_TEST', `Output: afterburner fuel pump ${outputText('ab_pump', tools.ab_pump_test_pct ?? 30)} for ${sec(tools.ab_pump_test_ms ?? 2000)} s.`);
   setDesc('PROP_PITCH_TEST', `Output: prop pitch ${outputText('prop_pitch', tools.prop_pitch_test_pct ?? 50)} for ${sec(tools.prop_pitch_test_ms ?? 3000)} s.`);
 
   const glowTool = tool('GLOW_TEST');
@@ -762,6 +878,7 @@ loadToolConfig().then(({cfg, hw}) => {
     const v = getNestedVal(cfg, t.configKey);
     if (v !== undefined && typeof v === 'number' && v > 0) t.durationMs = v;
   });
+  syncRegistryOutputTools();
   syncDynamicToolText();
   renderTools();
   startToolsTelemetry();
@@ -838,10 +955,11 @@ function backupConfig() {
       const ts   = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const profile = String(cfg._backup_meta.profile || 'OpenTurbine')
         .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'OpenTurbine';
+      const profilePart = /^openturbine$/i.test(profile) ? '' : profile + '_';
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href     = url;
-      a.download = 'OpenTurbine_' + profile + '_' + ts + '.json';
+      a.download = 'OpenTurbine_' + profilePart + ts + '.json';
       a.click();
       URL.revokeObjectURL(url);
       document.getElementById('cfg-backup-state').textContent = 'Downloaded';
@@ -859,9 +977,13 @@ function backupConfig() {
 }
 
 // ── Factory reset ─────────────────────────────────────────────
-function factoryReset() {
-  if (!confirm('⚠ Factory Reset\n\nThis will permanently ERASE:\n• Engine settings and sequences\n• Hardware assignments\n• All calibration\n• Wi-Fi password\n• Event and session logs\n\nDownload a complete engine file first if you may need this setup.\n\nContinue to the final confirmation?')) return;
-  const typed = prompt('Final confirmation\n\nType RESET to erase this ECU and reboot with built-in defaults.');
+async function factoryReset() {
+  if (!await OTDialog.confirm('⚠ Factory Reset\n\nThis will permanently ERASE:\n• Engine settings and sequences\n• Hardware assignments\n• All calibration\n• Wi-Fi password\n• Event and session logs\n\nDownload a complete engine file first if you may need this setup.', {
+    title: 'Factory reset this ECU?', confirmText: 'Continue', danger: true
+  })) return;
+  const typed = await OTDialog.prompt('Type RESET to erase this ECU and reboot with built-in defaults.', {
+    title: 'Final factory-reset confirmation', confirmText: 'Erase and reset', placeholder: 'RESET'
+  });
   if (typed !== 'RESET') {
     alert('Factory reset cancelled. Nothing was erased.');
     return;
@@ -891,7 +1013,7 @@ function factoryReset() {
 }
 
 // ── Config restore ────────────────────────────────────────────
-function restoreConfig(input) {
+async function restoreConfig(input) {
   const file = input.files[0];
   if (!file) return;
   const msg = document.getElementById('cfg-backup-msg');
@@ -901,7 +1023,9 @@ function restoreConfig(input) {
     input.value = '';
     return;
   }
-  if (!confirm('Restore complete engine file from "' + file.name + '"?\n\nThis replaces hardware assignments, settings, sequences, calibration, profile/Wi-Fi details, and runtime statistics, then reboots. Current event and session logs remain on this ECU.\n\nDownload the current engine file first if it may be needed.')) {
+  if (!await OTDialog.confirm('Restore complete engine file from "' + file.name + '"?\n\nThis replaces hardware assignments, settings, sequences, calibration, profile/Wi-Fi details, and runtime statistics, then reboots. Current event and session logs remain on this ECU.\n\nDownload the current engine file first if it may be needed.', {
+    title: 'Restore complete engine file?', confirmText: 'Restore and reboot', danger: true
+  })) {
     input.value = '';
     return;
   }
@@ -1010,13 +1134,13 @@ function startWebAssetsUpdate(input) {
   const required = [
     'app.js.gz', 'calibration.html.gz', 'config.html.gz', 'hardware.html.gz',
     'index.html.gz', 'log.html.gz', 'sequence.html.gz', 'style.css.gz',
-    'theme.js.gz', 'tools.html.gz'
+    'theme.js.gz', 'tools.html.gz', 'ui_dialog.js.gz'
   ];
   const names = new Set(files.map(f => f.name));
   const missing = required.filter(name => !names.has(name));
   const invalid = files.filter(file => !required.includes(file.name));
   if (missing.length || invalid.length || files.length !== required.length) {
-    alert('Choose exactly the ten generated data/*.gz web assets.\n\nMissing: ' +
+    alert('Choose exactly the eleven generated data/*.gz web assets.\n\nMissing: ' +
       (missing.join(', ') || 'none') + '\nUnexpected: ' +
       (invalid.map(file => file.name).join(', ') || 'none'));
     input.value = '';
@@ -1070,13 +1194,6 @@ function startWebAssetsUpdate(input) {
 }
 </script>
 
-<!-- Appearance / theme selector (kept minimal, at the very bottom) -->
-<div style="max-width:900px;margin:1.25rem auto 2rem;padding:0 1rem">
-  <div style="border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;background:var(--surface)">
-    <div id="appearance-picker"></div>
-    <div style="font-size:.66rem;color:var(--dim);margin-top:.55rem">Interface theme for this device — applies instantly.</div>
-  </div>
-</div>
 <script>if(window.OTTheme)OTTheme.renderPicker(document.getElementById('appearance-picker'));</script>
 
 </body>

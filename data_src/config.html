@@ -4,12 +4,29 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Config</title>
-<link rel="stylesheet" href="/style.css?v=20260711f">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <style>
 :root{--bg:#101012;--surface:#17171a;--surface-2:#1d1d20;--surface-3:#262629;--border:#313135;--border-light:#42424a;--text:#f5f5f7;--text-2:#cecdd4;--dim:#a0a0a8;--green:#33cf7a;--red:#ff4d5f;--yellow:#ffcf4d;--blue:#5ab8ca;--accent:#ee7620;--font-ui:system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'SF Mono','Menlo','Consolas',monospace}
 *,*::before,*::after{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.5}nav{height:48px;display:flex;align-items:center;padding:0 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}nav a{height:48px;line-height:48px;padding:0 .9rem;color:var(--dim);text-decoration:none;text-transform:uppercase;letter-spacing:.06em;font-size:.75rem;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}nav a.active{color:var(--text);border-bottom-color:var(--accent)}.conn-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:auto}.conn-dot.connected{background:var(--green);box-shadow:0 0 6px var(--green)}.conn-dot.disconnected{background:var(--red)}.conn-label{font-size:.63rem;color:var(--dim);margin-left:.4rem;text-transform:uppercase;letter-spacing:.05em}main{padding:1.5rem;max-width:920px;margin:0 auto}button{font-family:var(--font-ui);font-size:.78rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;min-height:44px;padding:.42rem 1.1rem;border-radius:6px;border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer}button:hover{color:var(--text);background:var(--surface-2)}button:disabled{opacity:.3;cursor:default}button.primary{background:var(--accent);border-color:var(--accent);color:#2b1405}.view-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-2)}.view-toggle button{border:0;border-radius:0;background:transparent}.view-toggle button.active{background:var(--accent);color:#2b1405}select,input{font-family:var(--font-mono);font-size:.82rem;padding:.32rem .55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}input[type=checkbox]{width:auto;accent-color:var(--accent)}.cfg-section{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:1rem 1.2rem;margin-bottom:.85rem}.cfg-title{font-size:.68rem;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.7rem}.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.75rem}.cfg-field{display:flex;flex-direction:column;gap:.22rem;min-width:0}.cfg-label{font-size:.65rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-weight:700}.cfg-desc{font-size:.72rem;color:var(--dim);line-height:1.45}.cfg-field input,.cfg-field select{width:100%;max-width:100%}.cfg-field input:focus,.cfg-field select:focus{outline:none;border-color:var(--accent)}.cfg-field input:disabled,.cfg-field select:disabled{opacity:.45}.error-banner{border-radius:9px;padding:.7rem 1rem;margin-bottom:.85rem;font-size:.82rem;background:color-mix(in srgb,var(--red) 8%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}.save-bar{position:sticky;bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:1rem;display:flex;align-items:center;gap:.75rem;margin-top:1rem}.save-bar a{color:var(--dim)}.save-msg{font-size:.78rem;color:var(--dim)}.live-val{font-size:.72rem;color:var(--accent);margin-left:.5rem}.field-changed{border-color:var(--yellow)!important;box-shadow:0 0 0 1px var(--yellow)}.save-recap-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:999}.save-recap-card{width:min(720px,92vw);max-height:82vh;background:var(--surface);border:1px solid var(--border-light);border-radius:9px;overflow:hidden}.save-recap-header,.save-recap-footer{display:flex;align-items:center;gap:.7rem;padding:.85rem 1rem;border-bottom:1px solid var(--border)}.save-recap-footer{border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end}.save-recap-body{padding:1rem;overflow:auto;max-height:55vh}.save-recap-subtitle{padding:.75rem 1rem;color:var(--dim);font-size:.78rem;border-bottom:1px solid var(--border)}@media(max-width:700px){main{padding:1rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{position:static;flex-wrap:wrap}nav{overflow-x:auto}.conn-dot{margin-left:.75rem}}
 </style>
+<style>
+/* Configuration workspace */
+main{max-width:1380px;padding:1.1rem 1.5rem 5.5rem}
+.cfg-workspace{position:sticky;top:48px;z-index:80;margin:-1.1rem 0 .8rem;padding:.9rem 0 .65rem;background:linear-gradient(180deg,var(--bg) 82%,transparent)}
+.cfg-workspace-card{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:14px;padding:.85rem 1rem;box-shadow:0 14px 38px rgba(0,0,0,.2)}
+.cfg-workspace-head{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin-bottom:.8rem}.cfg-workspace-title{margin:0;font-size:1.05rem;letter-spacing:.02em}.cfg-status{font-size:.68rem;padding:.2rem .55rem;border:1px solid var(--border);border-radius:999px;color:var(--dim);background:var(--surface)}
+.cfg-header-actions{display:flex;align-items:center;gap:.45rem;margin-left:auto;flex-wrap:wrap}.unit-controls{display:flex;align-items:center;gap:.3rem;color:var(--dim);font-size:.7rem}.unit-controls button,.compact-action{min-height:34px;padding:.28rem .65rem;font-size:.69rem}.compact-action{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:6px;background:var(--surface-3);color:var(--dim);text-decoration:none}.compact-action:hover{color:var(--text);border-color:var(--border-light)}
+.cfg-search-wrap{position:relative}.cfg-search{width:100%;height:48px;padding:.65rem 5.2rem .65rem 2.7rem!important;border-color:var(--border-light);background:var(--bg);font-family:var(--font-ui);font-size:.92rem}.cfg-search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}.cfg-search-icon{position:absolute;left:.95rem;top:50%;transform:translateY(-50%);color:var(--dim);font-size:1rem;pointer-events:none}.cfg-search-key{position:absolute;right:.75rem;top:50%;transform:translateY(-50%);font:600 .68rem var(--font-mono);color:var(--dim);border:1px solid var(--border);border-radius:4px;padding:.08rem .35rem}
+.cfg-toolbar{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.7rem}.cfg-filters{display:flex;gap:.35rem;overflow:auto}.cfg-filter{min-height:34px;padding:.28rem .72rem;border-radius:999px;font-size:.68rem;white-space:nowrap;text-transform:none;letter-spacing:.01em}.cfg-filter.active{background:var(--accent);border-color:var(--accent);color:#271306}.cfg-result-count{margin-left:auto;font-size:.72rem;color:var(--dim)}
+.preset-panel{margin:.75rem 0 1rem;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.preset-panel>summary{cursor:pointer;list-style:none;padding:.75rem 1rem;font-weight:700;color:var(--text-2)}.preset-panel>summary::-webkit-details-marker{display:none}.preset-panel>summary::after{content:'›';float:right;color:var(--dim);transform:rotate(90deg)}.preset-panel[open]>summary::after{transform:rotate(-90deg)}.preset-body{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;padding:0 1rem 1rem}.preset-body select{min-height:40px;flex:1;min-width:260px}.preset-note{font-size:.72rem;color:var(--yellow);flex-basis:100%}
+.config-group{display:block;margin-bottom:.75rem;border:1px solid var(--border);border-radius:13px;background:var(--surface);overflow:hidden}.config-group.group-changed{border-color:var(--yellow);box-shadow:0 0 0 2px color-mix(in srgb,var(--yellow) 16%,transparent)}.config-group>summary{display:flex;align-items:center;gap:.65rem;min-height:78px;padding:.85rem 1rem;cursor:pointer;list-style:none;user-select:none}.config-group>summary::-webkit-details-marker{display:none}.config-group>summary:hover{background:color-mix(in srgb,var(--surface-3) 45%,transparent)}.group-heading{display:block;min-width:0;flex:1}.group-title,.group-desc{display:block}.group-title{font-size:.88rem;font-weight:750}.group-desc{font-size:.72rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.group-meta{font-size:.68rem;color:var(--dim);white-space:nowrap}.group-chevron{font-size:1.15rem;color:var(--dim);transition:transform .15s}.config-group[open] .group-chevron{transform:rotate(90deg)}.group-content{padding:0 .8rem .8rem;border-top:1px solid var(--border)}
+.cfg-section{background:transparent;border:0;border-radius:0;padding:.85rem .25rem .2rem;margin:0}.cfg-section+.cfg-section{border-top:1px solid var(--border)}.cfg-title{font-size:.72rem;color:var(--text-2);margin:0 0 .65rem;display:flex;align-items:center;gap:.45rem}.cfg-title-count{font-size:.63rem;color:var(--dim);font-weight:500;letter-spacing:0;text-transform:none}.cfg-grid{grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:.65rem}
+.cfg-field{position:relative;gap:.38rem;padding:.75rem;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);transition:border-color .15s,opacity .15s,transform .15s}.cfg-field:hover{border-color:var(--border-light)}.cfg-field.search-hit{border-color:color-mix(in srgb,var(--accent) 65%,var(--border));box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent)}.cfg-field-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.65rem;min-width:0}.cfg-label{font-size:.68rem;color:var(--text-2);letter-spacing:.055em;min-height:1.05rem;min-width:0}.cfg-field input,.cfg-field select{min-height:42px;font-size:.86rem;background:var(--bg)}.cfg-field input[type=checkbox]{width:22px;height:22px;min-height:22px;align-self:flex-start}.cfg-help{font-size:.69rem;color:var(--dim)}.cfg-help summary{cursor:pointer;display:inline;color:var(--dim);list-style:none}.cfg-help summary::-webkit-details-marker{display:none}.cfg-help summary::before{content:'ⓘ ';color:var(--accent)}.cfg-help[open] summary{color:var(--text-2)}.cfg-desc{padding-top:.35rem;font-size:.72rem;line-height:1.45}.field-level{flex:0 0 auto;font-size:.58rem;text-transform:uppercase;letter-spacing:.05em;color:var(--blue)}.cfg-empty{padding:2.5rem 1rem;text-align:center;border:1px dashed var(--border-light);border-radius:12px;color:var(--dim)}
+.save-bar{position:fixed;z-index:90;left:50%;bottom:14px;transform:translateX(-50%);width:min(1340px,calc(100% - 2rem));padding:.65rem .8rem;border-radius:12px;box-shadow:0 16px 45px rgba(0,0,0,.45)}.save-bar .save-spacer{flex:1}.save-change-count{font-size:.76rem;color:var(--text-2);font-weight:650}.save-bar:not(.is-dirty) .save-change-count{color:var(--dim)}.save-bar a{font-size:.72rem}.save-msg{margin-left:auto}.filter-hidden{display:none!important}
+@media(max-width:700px){main{padding:.85rem .75rem 6rem}.cfg-workspace{position:relative;top:auto;margin:-.85rem 0 .75rem;padding:.75rem 0 .55rem}.cfg-workspace-card{padding:.75rem;border-radius:11px}.cfg-workspace-head{margin-bottom:.6rem}.cfg-header-actions{margin-left:0;width:100%}.cfg-search{height:44px}.cfg-toolbar{flex-wrap:nowrap}.cfg-result-count{display:none}.config-group>summary{min-height:68px;padding:.7rem}.group-desc{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.group-meta{display:none}.group-content{padding:0 .55rem .55rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{bottom:8px;flex-wrap:nowrap}.save-bar a{display:none}.save-msg{display:none}.preset-body select{min-width:100%}}
+</style>
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script src="/ui_dialog.js?v=20260715a"></script>
 </head>
 <body>
 <nav>
@@ -23,30 +40,43 @@
   <span id="conn" class="conn-dot disconnected"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
-    <h2 style="margin:0;font-size:.9rem;color:var(--dim);letter-spacing:.08em;text-transform:uppercase">Configuration</h2>
-    <span id="cfg-lock-badge" style="font-size:.72rem;padding:.15rem .6rem;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--dim)">—</span>
-    <div style="display:flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--dim)">
-      Units:
-      <button id="unit-temp-btn"  onclick="setConfigTempUnit(tempUnit()==='C'?'F':'C')"
-        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">°F</button>
-      <button id="unit-press-btn" onclick="setConfigPressUnit(pressUnit()==='bar'?'psi':'bar')"
-        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit">PSI</button>
+  <div class="cfg-workspace">
+    <div class="cfg-workspace-card">
+      <div class="cfg-workspace-head">
+        <h1 class="cfg-workspace-title">Configuration</h1>
+        <span id="cfg-lock-badge" class="cfg-status">—</span>
+        <span id="cfg-state-badge" class="cfg-status" aria-live="polite">Loading</span>
+        <div class="cfg-header-actions">
+          <div class="unit-controls">Units
+            <button id="unit-temp-btn" onclick="setConfigTempUnit(tempUnit()==='C'?'F':'C')">°C</button>
+            <button id="unit-press-btn" onclick="setConfigPressUnit(pressUnit()==='bar'?'psi':'bar')">bar</button>
+          </div>
+          <a id="dev-mode-tools-link" href="/tools.html#card-dev-mode" class="btn compact-action" title="Developer Mode and its safety warning are managed from Tools.">Developer controls</a>
+        </div>
+      </div>
+      <div class="cfg-search-wrap">
+        <span class="cfg-search-icon" aria-hidden="true">⌕</span>
+        <input id="cfg-search" class="cfg-search" type="search" autocomplete="off" placeholder="Search limits, oil, relight, N2, telemetry…" aria-label="Search configuration settings">
+        <span class="cfg-search-key">/</span>
+      </div>
+      <div class="cfg-toolbar">
+        <div class="cfg-filters" role="group" aria-label="Configuration filter">
+          <button id="btn-view-basic" class="cfg-filter active" aria-pressed="true" onclick="setWorkspaceFilter('essential')">Essentials</button>
+          <button id="btn-view-expert" class="cfg-filter" aria-pressed="false" onclick="setWorkspaceFilter('all')">All settings</button>
+          <button id="btn-filter-changed" class="cfg-filter" aria-pressed="false" onclick="setWorkspaceFilter('changed')">Changed</button>
+          <button id="btn-filter-locked" class="cfg-filter" aria-pressed="false" onclick="setWorkspaceFilter('locked')">Unavailable</button>
+        </div>
+        <span id="cfg-result-count" class="cfg-result-count" aria-live="polite">Loading settings…</span>
+      </div>
     </div>
-    <div class="view-toggle" style="margin-left:auto">
-      <button id="btn-view-basic"  class="active" onclick="setView('basic')" title="Setup shows essential settings that apply to fitted hardware. Deep tuning and inactive features stay hidden.">Setup</button>
-      <button id="btn-view-expert" onclick="setView('expert')" title="Advanced view shows every configurable parameter, including rare diagnostics, controller gains, protocol details, and deep tuning values.">Advanced</button>
-    </div>
-    <button id="btn-dev-mode" onclick="toggleDevMode()" style="font-size:.75rem;padding:.2rem .75rem"
-    title="Dev Mode allows Config edits while the engine is running and unlocks bench diagnostics. Hardware and reboot-required changes still require STANDBY.">Dev Mode</button>
   </div>
-  <p style="font-size:.75rem;color:var(--dim);margin-bottom:.75rem" id="view-hint">Setup shows essential settings that apply to fitted hardware. Advanced shows deep tuning and explains hardware-dependent items.</p>
   <div id="lock-warn" class="error-banner" style="display:none">Warning: engine is running - config is locked. Stop the engine to edit (live editing requires Dev Mode enabled beforehand, from Tools while in STANDBY).</div>
 
   <!-- ── Engine Type Presets ──────────────────────────────────── -->
-  <div id="preset-bar" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-    <span style="font-size:.75rem;color:var(--dim);font-weight:600;white-space:nowrap">Example suggestions:</span>
-    <select id="preset-sel" onchange="applyPreset(this.value)" style="font-size:.78rem;padding:.2rem .5rem;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;max-width:240px">
+  <details id="preset-bar" class="preset-panel">
+    <summary>Review an engine example</summary>
+    <div class="preset-body">
+    <select id="preset-sel" onchange="applyPreset(this.value)">
       <option value="">— Choose an example to review —</option>
       <optgroup label="RC Jet">
         <option value="kj66">Small RC Jet ~60N (KJ-66 / T-62 style, ~120k RPM)</option>
@@ -55,14 +85,15 @@
       </optgroup>
       <optgroup label="APU / Turboshaft">
         <option value="apu_small">Small APU (Garrett GTP30, ~80k RPM)</option>
-        <option value="turboshaft">Turboshaft / Power Turbine (N2 governor)</option>
+        <option value="turboshaft">Turboshaft / Power Turbine (configure N2 governor in Hardware)</option>
       </optgroup>
       <optgroup label="Turbocharger Turbine">
         <option value="turbocharger">Example turbocharger-based gas turbine</option>
       </optgroup>
     </select>
-    <span style="font-size:.72rem;color:var(--yellow)" id="preset-note">Examples only. Verify every proposed value against your engine documentation and test data before saving.</span>
-  </div>
+    <span class="preset-note" id="preset-note">Examples only. Verify every proposed value against your engine documentation and test data before saving.</span>
+    </div>
+  </details>
 
   <div id="cfg-form"><p style="color:var(--dim);font-size:.85rem">Loading config…</p></div>
 
@@ -83,99 +114,103 @@
   </div>
 
   <div class="save-bar">
-    <button id="btn-save" class="primary" onclick="saveConfig()">Save to device</button>
+    <span id="save-change-count" class="save-change-count" aria-live="polite">No unsaved changes</span>
+    <span class="save-spacer"></span>
+    <button id="btn-discard" onclick="reloadConfigPage()" disabled>Discard</button>
+    <button id="btn-save" class="primary" onclick="saveConfig()" disabled>Save to device</button>
     <a href="/tools.html" style="color:var(--dim)">Full engine file backup / restore</a>
     <span class="save-msg" id="save-msg"></span>
   </div>
 </main>
 
-<script src="/app.js?v=20260711f"></script>
+<script src="/app.js?v=20260716b"></script>
 <script>
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
-  { title: 'Engine Limits', id: 'engine-limits', fields: [
-    { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'RPM Limit (RPM)',        desc:'Maximum N1 RPM when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical range: 80,000–180,000 RPM.',                       step:1000, min:1000, basic:true },
-    { key:'min_rpm',            path:['engine','min_rpm'],            label:'Min RPM (RPM)',           desc:'Minimum N1 RPM in RUNNING when an N1 sensor is fitted. Ignored when no N1 sensor is configured. Typical: 25,000–50,000 RPM.',            step:1000, min:0,    basic:true },
-    { key:'eg_src',             path:['safety','egt_source'],         label:'Engine Temp Source', type:'select', options:[{v:0,l:'Auto (TOT, else TIT)'},{v:1,l:'TOT'},{v:2,l:'TIT'}], desc:'Selects which fitted temperature sensor is used for primary engine safety, hot-start, EGT rise rate, cooldown checks, throttle pullback, and temperature confirmation. TOT and TIT keep separate limits.', basic:true },
-    { key:'tot_limit',          path:['engine','tot_limit'],          label:'TOT Limit',          unitType:'temp', zeroOff:true, desc:'Turbine outlet temperature hard limit. Used as the primary over-temperature limit only when Engine Temp Source is TOT or Auto selects TOT. 0 = disabled.',             step:10,   min:0,    basic:true },
-    { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'EGT Soft Margin',    unitType:'temp_delta', desc:'Soft warning/pullback margin below the selected primary EGT limit. Used for throttle safety pullback and cluster warnings. Typical: 30-50 °C / 55-90 °F below the hard limit.',                         step:5,    min:0, basic:true },
-    { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown EGT Target',    unitType:'temp', desc:'Engine cooldown blocks use this selected EGT target to decide when temperature-based cooldown is complete. Operator cooldown skip bypasses this target intentionally. Typical: 100-200 °C / 212-390 °F.',                              step:10,   min:0, basic:true },
+  { title: 'Engine Protection Limits', id: 'engine-limits', sectionNote:'N1 is the gas-generator or core shaft speed. TOT is turbine-outlet temperature; TIT is turbine-inlet temperature. Choose the temperature measurement used by your engine documentation.', fields: [
+    { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'Maximum N1 Speed', unit:'RPM', desc:'Hard overspeed limit for the gas-generator/core shaft. Used only when an N1 sensor is fitted.', step:1000, min:1000, basic:true },
+    { key:'n2_rpm_limit',       path:['engine','n2_rpm_limit'],       label:'Maximum N2 Speed', unit:'RPM', zeroOff:true, desc:'Independent hard shutdown limit for the free power-turbine/output shaft. This is separate from gradual N2 throttle pullback. Used only when N2 overspeed safety is enabled in Hardware.', step:1000, min:0, basic:true },
+    { key:'min_rpm',            path:['engine','min_rpm'],            label:'Minimum Running N1 Speed', unit:'RPM', desc:'Lowest N1 speed accepted after startup. Falling below it while running can indicate a flameout or stall.', step:1000, min:0, basic:true },
+    { key:'eg_src',             path:['safety','egt_source'],         label:'Primary Engine Temperature', type:'select', options:[{v:0,l:'Automatic: TOT if fitted, otherwise TIT'},{v:1,l:'Turbine outlet temperature (TOT)'},{v:2,l:'Turbine inlet temperature (TIT)'}], desc:'Temperature used for over-temperature protection, hot-start prevention, cooldown, throttle reduction, and flame confirmation.', basic:true },
+    { key:'tot_limit',          path:['engine','tot_limit'],          label:'Outlet Temperature Limit (TOT)', unitType:'temp', zeroOff:true, desc:'Hard limit for turbine-outlet temperature. Active only when TOT is the primary engine temperature. 0 disables this limit.', step:10, min:0, basic:true },
+    { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'Temperature Warning Margin', unitType:'temp_delta', desc:'Distance below the active hard temperature limit where warnings and gradual throttle reduction begin.', step:5, min:0, basic:true },
+    { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown Temperature Target', unitType:'temp', desc:'Cooldown completes after the selected engine temperature falls below this value.', step:10, min:0, basic:true },
   ]},
   { title: 'Oil System', id: 'oil-config-section', fields: [
-    { key:'oil_sp',  path:['oil','startup_pressure'],   label:'Startup Target',  unitType:'press', desc:'Oil pressure the pump targets during the OilPrime block. Should match your engine\'s lubrication requirement at startup (typically 1–4 bar / 15–60 PSI).',                                                              step:0.1, min:0, max:20, basic:true },
-    { key:'oil_am',  path:['oil','startup_min_bar'],    label:'Arm Minimum',     unitType:'press', desc:'Minimum oil pressure that must be reached before ignition is armed. If oil doesn\'t reach this, startup aborts. Set slightly below Startup Target.',                                                        step:0.1, min:0, max:20, basic:true },
-    { key:'oil_upct',path:['oil','startup_pct'],        label:'OilPrime Pump %',              desc:'Pump duty % during the OilPrime block when NO oil-pressure sensor is fitted (open-loop prime). With an oil sensor, the oil loop targets Startup Target instead of this fixed duty.',                              step:5,   min:0, max:100 },
-    { key:'oil_rm',  path:['oil','running_min'],        label:'Low-Oil Fault',   unitType:'press', desc:'Low-oil safety fault threshold while the engine is running. Shutdown occurs if oil drops below this. Set to your engine\'s minimum safe operating pressure.',                                               step:0.1, min:0, max:20, basic:true },
-    { key:'oil_zb',  path:['oil_advanced','zero_bar'],  label:'Zero-Pressure Threshold', unitType:'press', desc:'OIL_ZERO fault triggers if oil reads below this while the engine is running — indicates pump failure or broken fitting rather than calibrated low pressure. Default 0.1 bar. Set to just above your sensor noise floor.', step:0.05, min:0 },
-    { key:'oil_tm',  path:['oil','use_throttle_map'],   label:'Throttle-Map Pressure',       desc:'When ON: oil pressure target scales from Oil Target to Map Max as throttle increases. When OFF: oil targets Oil Target bar at all times (simpler, recommended for beginners).', type:'checkbox' },
-    { key:'oil_mm',  path:['oil','map_min'],            label:'Oil Target',      unitType:'press', desc:'Oil pressure SETPOINT the pump holds in RUNNING when throttle map is off (or the idle-end target when it\'s on). Keep this ABOVE Low-Oil Fault or you\'ll get nuisance shutdowns. This is the most important oil tuning parameter.',                                                      step:0.1, min:0, max:20, basic:true },
-    { key:'oil_mx',  path:['oil','map_max'],            label:'Map Max',         unitType:'press', desc:'Oil pressure target at full throttle when throttle map is enabled. Higher throttle → more oil for bearing cooling.',                                                                                       step:0.1, min:0, max:20, wrapId:'field-oil_mx' },
-    { key:'oil_as',  path:['oil','adjust_scale'],       label:'Oil P-Gain',                  desc:'P-controller gain for oil pressure loop. Higher = faster response but may oscillate. Typical: 1.5–2.5.',                                                                                             step:0.05,min:0 },
-    { key:'oil_mp',  path:['oil','min_pct'],            label:'Controller Minimum Duty %',   desc:'Minimum oil-pump duty used only by the closed-loop oil-pressure controller. This is a floor, not a maximum; startup OilPumpOn sequence steps may command a higher duty such as 100%.',                                               step:1,   min:0, max:100 },
-    { key:'oa_db',   path:['oil_advanced','deadband_bar'], label:'Pressure Deadband',        unitType:'press', desc:'Closed-loop oil controller ignores pressure error inside this band to avoid tiny pump corrections around the target.',       step:0.05, min:0 },
-    { key:'oil_fd',  path:['oil','failsafe_delay_ms'],  label:'Failsafe Delay (ms)',         desc:'If the oil pressure sensor goes unhealthy, the pump switches to a fixed duty after this delay (milliseconds).',                                                                                            step:100, min:0 },
-    { key:'oil_fp',  path:['oil','failsafe_pct'],       label:'Failsafe Pump %',             desc:'Fixed pump duty % to use when the oil sensor is faulty. Should keep enough oil flowing to be safe. Typical: 50–80%.',                                                                                    step:5,   min:0, max:100 },
+    { key:'oil_sp',  path:['oil','startup_pressure'],   label:'Startup Oil Pressure Target', unitType:'press', desc:'Pressure the automatic oil controller targets while preparing the engine for ignition.', step:0.1, min:0, max:20, basic:true },
+    { key:'oil_am',  path:['oil','startup_min_bar'],    label:'Minimum Pressure Before Ignition', unitType:'press', desc:'Startup aborts unless oil pressure reaches this value before ignition. Set it slightly below the startup target.', step:0.1, min:0, max:20, basic:true },
+    { key:'oil_upct',path:['oil','startup_pct'],        label:'Startup Oil Pump Output (%)', desc:'Fixed pump output used during startup only when no oil-pressure sensor is fitted.', step:5, min:0, max:100 },
+    { key:'oil_rm',  path:['oil','running_min'],        label:'Running Low-Pressure Shutdown', unitType:'press', desc:'The ECU shuts the engine down if oil pressure stays below this value while running.', step:0.1, min:0, max:20, basic:true },
+    { key:'oil_zb',  path:['oil_advanced','zero_bar'],  label:'No-Pressure Shutdown Threshold', unitType:'press', desc:'Detects a stopped pump, broken line, or disconnected sensor when pressure is effectively zero.', step:0.05, min:0 },
+    { key:'oil_tm',  path:['oil','use_throttle_map'],   label:'Increase Oil Pressure with Throttle', desc:'Raise the oil-pressure target as throttle increases. Leave disabled for one constant running target.', type:'checkbox' },
+    { key:'oil_mm',  path:['oil','map_min'],            label:'Normal Running Oil Pressure', unitType:'press', desc:'Target at idle and throughout running when throttle-based pressure is disabled. Keep it above the low-pressure shutdown value.', step:0.1, min:0, max:20, basic:true },
+    { key:'oil_mx',  path:['oil','map_max'],            label:'Full-Throttle Oil Pressure', unitType:'press', desc:'Target at full throttle when throttle-based pressure is enabled.', step:0.1, min:0, max:20, wrapId:'field-oil_mx' },
+    { key:'oil_as',  path:['oil','adjust_scale'],       label:'Oil Pressure Response Gain', desc:'How strongly pump output reacts to pressure error. Higher responds faster but can oscillate. Technical name: proportional or P gain.', step:0.05,min:0 },
+    { key:'oil_mp',  path:['oil','min_pct'],            label:'Minimum Automatic Pump Output (%)', desc:'Lowest output used by automatic pressure regulation. Startup steps can still command a higher output.', step:1, min:0, max:100 },
+    { key:'oa_db',   path:['oil_advanced','deadband_bar'], label:'No-Correction Pressure Band', unitType:'press', desc:'No small pump corrections are made while pressure is within this distance of the target. Technical name: deadband.', step:0.05, min:0 },
+    { key:'oil_fd',  path:['oil','failsafe_delay_ms'],  label:'Sensor-Fault Fallback Delay (ms)', desc:'How long pressure feedback may remain invalid before the pump changes to the fixed fallback output.', step:100, min:0 },
+    { key:'oil_fp',  path:['oil','failsafe_pct'],       label:'Pump Output After Sensor Failure (%)', desc:'Fixed pump output used when pressure feedback is unavailable.', step:5, min:0, max:100 },
   ]},
   { title: 'Throttle', id: 'throttle', fields: [
-    { key:'th_ru', path:['throttle','ramp_up_ms'],   label:'Throttle Open Speed (ms)',   desc:'Time to sweep throttle from 0 to 100% (milliseconds). Lower = faster response. Typical: 500-2000 ms.',   step:50,  min:0, basic:true },
-    { key:'th_rd', path:['throttle','ramp_down_ms'], label:'Throttle Close Speed (ms)', desc:'Time to sweep throttle from 100% to 0 (milliseconds). Lower = faster closure. Typical: 500-2000 ms.',    step:50,  min:0, basic:true },
-    { key:'th_mx', path:['throttle','idle_max_pct'], label:'Idle Max %',     desc:'Throttle/fuel output when the idle input is at its maximum. The low end comes from Calibration -> Fuel Pump Minimum Spin.', step:1, min:0, max:100, basic:true },
-    { key:'th_ex', path:['throttle','expo'],         label:'Throttle Expo',  desc:'Exponential response curve for the throttle input (0 = linear, 0.3 = mild, 0.7 = strong). Reduces sensitivity near idle for easier low-power control. Has no effect without a physical throttle input connected.', step:0.05, min:0, max:0.95, basic:true },
-    { key:'pb_n1e', path:['throttle','pullback_n1'], label:'N1 Soft Pullback', type:'checkbox', desc:'Reduce throttle as N1 approaches its soft/hard pullback range.', basic:true },
-    { key:'pb_n1s', path:['throttle','pullback_n1_soft_rpm'], label:'N1 Pullback Start', unit:'RPM', desc:'N1 RPM where throttle pullback begins.', step:500, min:0, max:500000 },
-    { key:'pb_n1h', path:['throttle','pullback_n1_hard_rpm'], label:'N1 Pullback Full', unit:'RPM', desc:'N1 RPM where soft pullback reaches full authority. Hard safety still remains separate.', step:500, min:0, max:500000 },
-    { key:'pb_n2e', path:['throttle','pullback_n2'], label:'N2 Soft Pullback', type:'checkbox', desc:'Reduce throttle as freepower/output shaft RPM approaches its limit.', basic:true },
-    { key:'pb_n2s', path:['throttle','pullback_n2_soft_rpm'], label:'N2 Pullback Start', unit:'RPM', desc:'N2/freepower RPM where throttle pullback begins.', step:500, min:0, max:500000 },
-    { key:'pb_n2h', path:['throttle','pullback_n2_hard_rpm'], label:'N2 Pullback Full', unit:'RPM', desc:'N2/freepower RPM where soft pullback reaches full authority.', step:500, min:0, max:500000 },
-    { key:'pb_egte', path:['throttle','pullback_egt'], label:'EGT Soft Pullback', type:'checkbox', desc:'Reduce throttle as selected engine temperature approaches its pullback range.', basic:true },
-    { key:'pb_egts', path:['throttle','pullback_egt_soft_c'], label:'EGT Pullback Start', unitType:'temp', desc:'Selected EGT where throttle pullback begins.', step:10, min:0, max:1400 },
-    { key:'pb_egth', path:['throttle','pullback_egt_hard_c'], label:'EGT Pullback Full', unitType:'temp', desc:'Selected EGT where soft pullback reaches full authority.', step:10, min:0, max:1400 },
-    { key:'pb_min', path:['throttle','pullback_min_pct'], label:'Pullback Floor %', desc:'Lowest throttle allowed by soft pullback. Hard safety can still cut lower.', step:1, min:0, max:100, basic:true },
-    { key:'pb_str', path:['throttle','pullback_strength'], label:'Pullback Strength', desc:'How hard soft pullback pulls throttle down near the limit. 1.0 = nominal; higher = more aggressive reduction, lower = gentler. Too high can cause throttle oscillation.', step:0.1, min:0, max:5 },
-    { key:'rl_mode', path:['throttle','rpm_limiter_mode'], label:'RPM Limiter Mode', type:'select', options:[{v:0,l:'Simple (reactive)'},{v:1,l:'Advanced (predictive)'}], desc:'Simple pulls throttle back on the current RPM. Advanced projects RPM from its rate of rise and eases fuel off BEFORE an overshoot during a fast spool, and softens the throttle-open ramp near the limit. EGT pullback stays reactive. Default Simple = unchanged behaviour.', basic:true },
-    { key:'rl_look', path:['throttle','pullback_lookahead_ms'], label:'Predict Lookahead (ms)', desc:'How far ahead to project RPM from its acceleration (Advanced mode). Typical 1000-2000 ms.', step:100, min:0 },
-    { key:'rl_ramp', path:['throttle','pullback_near_limit_rampup_ms'], label:'Near-limit Ramp (ms 0-100%)', desc:'Slower throttle-open time used as predicted RPM nears the soft limit (Advanced mode). Larger = gentler approach.', step:100, min:0 },
-    { key:'rl_zone', path:['throttle','pullback_approach_zone_rpm'], label:'Approach Zone (RPM, 0=auto)', desc:'RPM band below the soft limit where ramp-softening begins (Advanced mode). 0 = auto (4x the soft/hard band).', step:500, min:0 },
-    { key:'rl_acc', path:['throttle','rpm_accel_filter'], label:'RPM Accel Filter (0-1)', desc:'Smoothing weight for the RPM-acceleration estimate shared by the predictive limiter and advanced idle. Lower = smoother/slower; higher = more responsive/noisier.', step:0.01, min:0.02, max:1 },
+    { key:'th_ru', path:['throttle','ramp_up_ms'],   label:'Full Opening Time (ms)', desc:'Time for the fuel/throttle output to move from 0 to 100%. A larger value opens more gently.', step:50, min:0, basic:true },
+    { key:'th_rd', path:['throttle','ramp_down_ms'], label:'Full Closing Time (ms)', desc:'Time for the fuel/throttle output to move from 100% to 0. A smaller value closes faster.', step:50, min:0, basic:true },
+    { key:'th_mx', path:['throttle','idle_max_pct'], label:'Maximum Idle Fuel Output (%)', desc:'Fuel/throttle output when the idle control is at its maximum. The low end comes from Calibration > Minimum Reliable Fuel-Pump Output.', step:1, min:0, max:100, basic:true },
+    { key:'th_ex', path:['throttle','expo'],         label:'Low-Throttle Sensitivity', desc:'Softens response near idle while preserving full travel. 0 is linear; larger values make low-power adjustment less sensitive. Technical name: throttle expo.', step:0.05, min:0, max:0.95, basic:true },
+    { key:'pb_n1e', path:['throttle','pullback_n1'], label:'Gradual N1 Limit Protection', type:'checkbox', desc:'Automatically reduce fuel as N1 approaches its configured limit.', basic:true },
+    { key:'pb_n1s', path:['throttle','pullback_n1_soft_rpm'], label:'Begin N1 Throttle Reduction', unit:'RPM', desc:'N1 speed where gradual fuel reduction begins.', step:500, min:0, max:500000 },
+    { key:'pb_n1h', path:['throttle','pullback_n1_hard_rpm'], label:'Full N1 Throttle Reduction', unit:'RPM', desc:'N1 speed where the gradual reduction reaches full authority. Hard shutdown protection remains separate.', step:500, min:0, max:500000 },
+    { key:'pb_n2e', path:['throttle','pullback_n2'], label:'Gradual N2 Limit Protection', type:'checkbox', desc:'Automatically reduce fuel as the power-turbine/output shaft approaches its speed limit.', basic:true },
+    { key:'pb_n2s', path:['throttle','pullback_n2_soft_rpm'], label:'Begin N2 Throttle Reduction', unit:'RPM', desc:'N2 speed where gradual fuel reduction begins.', step:500, min:0, max:500000 },
+    { key:'pb_n2h', path:['throttle','pullback_n2_hard_rpm'], label:'Full N2 Throttle Reduction', unit:'RPM', desc:'N2 speed where gradual reduction reaches full authority.', step:500, min:0, max:500000 },
+    { key:'pb_egte', path:['throttle','pullback_egt'], label:'Gradual Temperature Protection', type:'checkbox', desc:'Automatically reduce fuel as the selected engine temperature approaches its limit.', basic:true },
+    { key:'pb_egts', path:['throttle','pullback_egt_soft_c'], label:'Begin Temperature Reduction', unitType:'temp', desc:'Temperature where gradual fuel reduction begins.', step:10, min:0, max:1400 },
+    { key:'pb_egth', path:['throttle','pullback_egt_hard_c'], label:'Full Temperature Reduction', unitType:'temp', desc:'Temperature where gradual reduction reaches full authority.', step:10, min:0, max:1400 },
+    { key:'pb_min', path:['throttle','pullback_min_pct'], label:'Minimum Fuel During Gradual Protection (%)', desc:'Lowest fuel/throttle output allowed by gradual protection. Emergency protection may still command less.', step:1, min:0, max:100, basic:true },
+    { key:'pb_str', path:['throttle','pullback_strength'], label:'Limit-Protection Strength', desc:'How strongly fuel is reduced near a limit. 1.0 is normal; higher is more aggressive and may cause oscillation.', step:0.1, min:0, max:5 },
+    { key:'rl_mode', path:['throttle','rpm_limiter_mode'], label:'Gradual Speed-Protection Method', type:'select', options:[{v:0,l:'React to current speed'},{v:1,l:'Predict approaching speed'}], desc:'Reactive control reduces fuel from the current RPM. Predictive control also estimates where RPM is heading so it can approach the limit more gently. Temperature protection always reacts to the current reading.', basic:true },
+    { key:'rl_look', path:['throttle','pullback_lookahead_ms'], label:'Speed Prediction Time (ms)', desc:'How far ahead the predictive method estimates shaft speed. Typical: 1000-2000 ms.', step:100, min:0 },
+    { key:'rl_ramp', path:['throttle','pullback_near_limit_rampup_ms'], label:'Near-Limit Full Opening Time (ms)', desc:'Slower full-opening time used near the predicted speed limit. Larger values make the approach gentler.', step:100, min:0 },
+    { key:'rl_zone', path:['throttle','pullback_approach_zone_rpm'], label:'Begin Prediction This Far Below Limit (RPM)', desc:'Distance below the gradual limit where the ECU starts slowing fuel increases. 0 chooses this distance automatically.', step:500, min:0 },
+    { key:'rl_acc', path:['throttle','rpm_accel_filter'], label:'Speed-Change Smoothing (0-1)', desc:'Smooths the estimated rate of RPM change. Lower values are steadier but slower; higher values react faster but pass more sensor noise.', step:0.01, min:0.02, max:1 },
   ]},
-  { title: 'Limp Mode', fields: [
-    { key:'lm_mt', path:['limp_mode','max_throttle_pct'], label:'Limp Throttle Cap %', desc:'Throttle cap when limp mode is active. Toggle limp mode from the Tools page. Useful for tuning low-power behaviour or protecting a marginal engine.', step:5, min:0, max:100, basic:true },
+  { title: 'Reduced-Power Mode', fields: [
+    { key:'lm_mt', path:['limp_mode','max_throttle_pct'], label:'Maximum Fuel Output (%)', desc:'Fuel/throttle cap while Reduced-Power Mode is active. Turn the mode on from Tools or a configured switch.', step:5, min:0, max:100, basic:true },
   ]},
-  { title: 'Dynamic Idle', fields: [
-    { key:'di_tr', path:['dynamic_idle','target_rpm'],    label:'Target RPM',       desc:'Closed-loop idle RPM setpoint',         step:500,  min:0, basic:true },
-    { key:'di_ru', path:['dynamic_idle','ramp_up_ms'],    label:'Ramp Up (ms)',     desc:'Throttle ramp-up rate for idle hold',   step:500,  min:0 },
-    { key:'di_rd', path:['dynamic_idle','ramp_down_ms'],  label:'Ramp Down (ms)',   desc:'Throttle ramp-down rate for idle hold', step:500,  min:0 },
-    { key:'di_db', path:['dynamic_idle','deadband_rpm'],  label:'Deadband RPM',     desc:'No correction within this RPM band',   step:100,  min:0 },
-    { key:'di_rl', path:['dynamic_idle','rpm_limit'],     label:'Disengage RPM',    desc:'Controller disengages above this RPM', step:1000, min:0 },
-    { key:'di_mm', path:['dynamic_idle','min_multiplier'],label:'Min Multiplier',   desc:'Floor = calibrated fuel-pump minimum-spin % × multiplier',    step:0.05, min:0, max:1 },
-    { key:'di_mx', path:['dynamic_idle','max_multiplier'],label:'Max Multiplier',   desc:'Ceiling = Idle Max % × multiplier — how much headroom above idle-max the loop may command (>=1).', step:0.05, min:1, max:3 },
-    { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Use N2 Speed',     desc:'Use N2 shaft RPM as the idle controller feedback source. N1-only protections only run when an N1 sensor is fitted.', type:'checkbox' },
-    { key:'di_ig', path:['dynamic_idle','i_gain'],       label:'I-Gain',           desc:'Integral gain (0 = off). Eliminates steady-state RPM error caused by load changes (e.g. oil pump startup). Start small: 0.05–0.15. Only active when Dynamic Idle is enabled.', step:0.01, min:0, max:2 },
-    { key:'di_im', path:['dynamic_idle','i_max'],        label:'I-Max Authority',  desc:'Maximum integral authority (fraction of throttle range). Limits wind-up so the integrator alone cannot over-speed the engine. 0.10 = ±10% throttle range.', step:0.01, min:0, max:0.5 },
-    { key:'di_mode', path:['dynamic_idle','idle_mode'], label:'Idle Mode', type:'select', options:[{v:0,l:'Simple (PI)'},{v:1,l:'Advanced (decel-catch)'}], desc:'Simple is the PI loop above. Advanced adds decel-catch (drops just below a learned hold on a fast chop from high RPM so it settles without hanging or flaming out), a learned idle-hold (replaces the integrator), and predictive trim. Default Simple = unchanged behaviour.', basic:true },
-    { key:'di_de', path:['dynamic_idle','decel_enter_rpm'], label:'Decel-catch Enter (RPM over target)', desc:'Enter decel-catch when RPM is more than this above target (Advanced mode).', step:100, min:0 },
-    { key:'di_dd', path:['dynamic_idle','decel_drop_pct'], label:'Decel-catch Drop (%)', desc:'How far below the learned hold to drop during decel-catch (Advanced mode).', step:0.5, min:0 },
-    { key:'di_lk', path:['dynamic_idle','lookahead_ms'], label:'Trim Lookahead (ms)', desc:'How far ahead to project RPM (signed) for the idle trim (Advanced mode).', step:100, min:0 },
-    { key:'di_sb', path:['dynamic_idle','settle_band_rpm'], label:'Settle Band (RPM)', desc:'No trim, and (re)learn the hold, within this RPM band of target (Advanced mode).', step:100, min:0 },
-    { key:'di_fr', path:['dynamic_idle','full_response_rpm'], label:'Full-response Error (RPM)', desc:'RPM error at which the idle trim reaches its full rate (Advanced mode).', step:500, min:0 },
-    { key:'di_tu', path:['dynamic_idle','trim_up_pct_s'], label:'Trim Up (%/s)', desc:'Maximum idle-trim increase rate (Advanced mode).', step:0.5, min:0 },
-    { key:'di_td', path:['dynamic_idle','trim_down_pct_s'], label:'Trim Down (%/s)', desc:'Maximum idle-trim decrease rate (Advanced mode).', step:0.5, min:0 },
-    { key:'di_lr', path:['dynamic_idle','learn_rate'], label:'Hold Learn Rate', desc:'How quickly the learned idle-hold adapts once settled (0-1, Advanced mode). Small = stable.', step:0.01, min:0 },
-    { key:'di_la', path:['dynamic_idle','learn_accel_max'], label:'Learn Accel Max (RPM/s)', desc:'Only re-learn the hold while |RPM acceleration| is below this (Advanced mode).', step:100, min:0 },
+  { title: 'Automatic Idle Speed Control', sectionNote:'Automatically adjusts fuel near idle to hold a steady shaft speed as accessory load changes. This is commonly called dynamic idle.', fields: [
+    { key:'di_tr', path:['dynamic_idle','target_rpm'],    label:'Idle Speed Target', unit:'RPM', desc:'Shaft speed the automatic idle controller tries to maintain.', step:500, min:0, basic:true },
+    { key:'di_ru', path:['dynamic_idle','ramp_up_ms'],    label:'Fuel Increase Time (ms)', desc:'How quickly automatic idle control may increase fuel.', step:500, min:0 },
+    { key:'di_rd', path:['dynamic_idle','ramp_down_ms'],  label:'Fuel Decrease Time (ms)', desc:'How quickly automatic idle control may reduce fuel.', step:500, min:0 },
+    { key:'di_db', path:['dynamic_idle','deadband_rpm'],  label:'No-Correction Speed Band', unit:'RPM', desc:'No fuel correction is made while speed is within this distance of the target. Technical name: deadband.', step:100, min:0 },
+    { key:'di_rl', path:['dynamic_idle','rpm_limit'],     label:'Stop Controlling Above', unit:'RPM', desc:'Automatic idle control disengages above this speed.', step:1000, min:0 },
+    { key:'di_mm', path:['dynamic_idle','min_multiplier'],label:'Minimum Fuel Range Multiplier', desc:'Scales the calibrated minimum reliable fuel-pump output to set the controller floor.', step:0.05, min:0, max:1 },
+    { key:'di_mx', path:['dynamic_idle','max_multiplier'],label:'Maximum Fuel Range Multiplier', desc:'Allows the controller extra fuel authority above the configured maximum idle output.', step:0.05, min:1, max:3 },
+    { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Control N2 Instead of N1', desc:'Use power-turbine/output shaft speed as the idle feedback signal.', type:'checkbox' },
+    { key:'di_ig', path:['dynamic_idle','i_gain'],       label:'Long-Term Correction Strength', desc:'Removes a persistent speed error caused by changing accessory load. 0 disables this correction. Start small: 0.05–0.15. Technical name: integral gain.', step:0.01, min:0, max:2 },
+    { key:'di_im', path:['dynamic_idle','i_max'],        label:'Maximum Long-Term Correction', desc:'Limits how much fuel the long-term correction may add or remove. 0.10 means 10% of the available fuel range.', step:0.01, min:0, max:0.5 },
+    { key:'di_mode', path:['dynamic_idle','idle_mode'], label:'Idle-Control Method', type:'select', options:[{v:0,l:'Standard idle control'},{v:1,l:'Predictive fast-deceleration control'}], desc:'Standard control corrects present speed error. Predictive control learns the steady idle output and briefly reduces fuel during a fast return from high speed so RPM settles without hanging high.', basic:true },
+    { key:'di_de', path:['dynamic_idle','decel_enter_rpm'], label:'Fast-Deceleration Entry Above Target (RPM)', desc:'Predictive control activates when RPM is at least this far above the idle target.', step:100, min:0 },
+    { key:'di_dd', path:['dynamic_idle','decel_drop_pct'], label:'Fast-Deceleration Fuel Reduction (%)', desc:'How far below the learned steady-idle output fuel may drop during a fast return to idle.', step:0.5, min:0 },
+    { key:'di_lk', path:['dynamic_idle','lookahead_ms'], label:'Idle Speed Prediction Time (ms)', desc:'How far ahead predictive idle control estimates shaft speed.', step:100, min:0 },
+    { key:'di_sb', path:['dynamic_idle','settle_band_rpm'], label:'Settled Speed Band (RPM)', desc:'The ECU considers idle stable and learns the required fuel output while RPM is within this distance of target.', step:100, min:0 },
+    { key:'di_fr', path:['dynamic_idle','full_response_rpm'], label:'Speed Error for Full Correction (RPM)', desc:'RPM error where automatic idle control reaches its maximum correction rate.', step:500, min:0 },
+    { key:'di_tu', path:['dynamic_idle','trim_up_pct_s'], label:'Maximum Fuel Correction Increase (%/s)', desc:'Fastest rate at which predictive idle control may add fuel.', step:0.5, min:0 },
+    { key:'di_td', path:['dynamic_idle','trim_down_pct_s'], label:'Maximum Fuel Correction Decrease (%/s)', desc:'Fastest rate at which predictive idle control may remove fuel.', step:0.5, min:0 },
+    { key:'di_lr', path:['dynamic_idle','learn_rate'], label:'Steady-Idle Learning Speed (0-1)', desc:'How quickly the learned steady-idle fuel output adapts after speed settles. Smaller values are steadier.', step:0.01, min:0 },
+    { key:'di_la', path:['dynamic_idle','learn_accel_max'], label:'Maximum Speed Change While Learning (RPM/s)', desc:'The ECU learns steady-idle fuel only while RPM is changing more slowly than this value.', step:100, min:0 },
   ]},
-  { title: 'Safety Monitor', id: 'safety-monitor', fields: [
-    { key:'sf_ci', path:['safety','check_interval_ms'],    label:'Check Interval (ms)',          desc:'How often the safety checks run (milliseconds). Lower = faster response. Default 100 ms. Rarely needs changing.',                                                     step:10,  min:10 },
-    { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Flameout Delay (ms)',          desc:'How long the selected flameout source must indicate combustion loss before a fault is declared. Set longer if the selected source is noisy or unstable. Default: 3000 ms (3 seconds).',             step:200, min:100, basic:true },
-    { key:'sf_fs', path:['safety','flameout_source'],      label:'Flameout Source', type:'select', options:[{v:0,l:'Auto best fitted source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 RPM drop'},{v:3,l:'EGT drop'}], desc:'Which signal declares a running flameout. Auto uses flame sensor if fitted, otherwise N1 RPM, otherwise selected EGT drop.', basic:true },
+  { title: 'Automatic Safety Shutdowns', id: 'safety-monitor', sectionNote:'These checks stop fuel when the ECU detects a dangerous or no-longer-running engine. Test sensor behavior before relying on automatic shutdowns.', fields: [
+    { key:'sf_ci', path:['safety','check_interval_ms'],    label:'Safety Check Interval (ms)', desc:'How often safety conditions are evaluated. Lower responds faster but increases processor load. Rarely needs changing.', step:10, min:10 },
+    { key:'sf_fo', path:['safety','flameout_shutdown_ms'], label:'Combustion-Loss Confirmation Time (ms)', desc:'How long the selected signal must indicate flameout before the ECU declares a fault.', step:200, min:100, basic:true },
+    { key:'sf_fs', path:['safety','flameout_source'],      label:'How Combustion Loss Is Detected', type:'select', options:[{v:0,l:'Best available sensor automatically'},{v:1,l:'Flame sensor reports no flame'},{v:2,l:'N1 speed falls too low'},{v:3,l:'Engine temperature falls'}], desc:'Signal used to decide that combustion has been lost while running.', basic:true },
     { key:'sf_fn', path:['safety','flameout_n1_min_rpm'],  label:'N1 Flameout RPM', desc:'For N1-source flameout: declare flameout if N1 stays below this RPM. 0 uses Min RPM. This is delayed by Flameout Delay.', step:1000, min:0, basic:true },
     { key:'sf_ft', path:['safety','flameout_tot_drop_c'],  label:'EGT Drop for Flameout', unitType:'temp_delta', desc:'For EGT-source flameout: declare flameout after selected EGT drops this far below the highest running EGT reference. 0 disables EGT-drop flameout detection. Use cautiously; throttle changes can affect EGT.', step:5, min:0, basic:true },
     { key:'sf_rr', path:['safety','tot_rise_rate_limit_deg_s'], label:'Max EGT Rise Rate', unitType:'temp_rate', desc:'Shuts down if the exhaust temperature rises faster than this in a single second. Protects against hot starts or runaway rich fuel. 0 = disabled. Typical safe value: 50-100 C/s.', step:5, min:0, basic:true },
     { key:'sf_hs', path:['sequence','startup','hot_start_tot_threshold'], label:'Hot-Start EGT Threshold', unitType:'temp', zeroOff:true, desc:'Startup is aborted if selected EGT is above this when you press START. Prevents starting into a hot turbine section. 0 = disabled. Typical: 100-200 °C / 212-390 °F.', step:10, min:0, basic:true },
   ]},
-  { title: 'Auto-Relight', id:'relight-section', sectionNote:'After a flameout during RUNNING, the ECU can fire the igniter briefly to attempt a hot restart without stopping. N1 RPM feedback is required for automatic relight attempts so the ECU can prove the engine is still windmilling; flame, N1, or selected EGT can then be used to confirm the relight succeeded. Disable if false-relight attempts would be hazardous on your installation.', fields: [
-    { key:'rl_en', path:['relight','enabled'],      label:'Auto-Relight Enabled',  desc:'When ON: if combustion is lost while RUNNING and N1 remains above the relight minimum, the igniter fires again automatically before the ECU commits to shutdown.', type:'checkbox', basic:true },
-    { key:'rl_it', path:['relight','ignition_target'], label:'Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'Igniter 2'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on during an automatic relight attempt.', basic:true },
-    { key:'rl_cs', path:['relight','confirm_source'], label:'Relight Confirm Source', type:'select', options:[{v:0,l:'Auto match flameout source'},{v:1,l:'Flame sensor'},{v:2,l:'N1 recovered'},{v:3,l:'EGT recovered'}], desc:'Which fitted signal confirms that relight succeeded and lets the igniter turn off. This does not remove the N1 windmill requirement for starting the relight attempt.', basic:true },
+  { title: 'Automatic Flameout Relight', id:'relight-section', sectionNote:'If combustion is lost while the engine is still windmilling fast enough, the ECU can briefly re-activate an ignition output instead of immediately shutting down. N1 feedback is always required to prove there is enough airflow.', fields: [
+    { key:'rl_en', path:['relight','enabled'],      label:'Attempt Automatic Relight', desc:'After combustion loss, try to restore flame before committing to shutdown.', type:'checkbox', basic:true },
+    { key:'rl_it', path:['relight','ignition_target'], label:'Ignition Output to Use', type:'select', options:[{v:0,l:'Primary igniter'},{v:1,l:'Afterburner / pilot igniter'},{v:2,l:'Glow plug / wet glow'}], desc:'Output energized during the relight attempt.', basic:true },
+    { key:'rl_cs', path:['relight','confirm_source'], label:'How Successful Relight Is Confirmed', type:'select', options:[{v:0,l:'Match the combustion-loss sensor'},{v:1,l:'Flame sensor detects flame'},{v:2,l:'N1 speed recovers'},{v:3,l:'Engine temperature rises'}], desc:'Signal that confirms combustion has returned and allows ignition to turn off.', basic:true },
     { key:'rl_cr', path:['relight','confirm_rpm'],         label:'N1 Recovery RPM', desc:'For N1 relight confirmation: igniter stays on until N1 recovers to this RPM. 0 uses Min RPM + 5%.', step:1000, min:0, basic:true },
     { key:'rl_tr', path:['relight','tot_rise_c'],          label:'EGT Recovery Rise', unitType:'temp_delta', desc:'For EGT relight confirmation: igniter stays on until selected EGT rises this much above the temperature at relight start. 0 prevents EGT-rise confirmation. Set too low and EGT noise/throttle changes can false-confirm; too high can reject a real relight. Verify on a real start.', step:5, min:0, basic:true },
     { key:'rl_mr', path:['relight','min_rpm'],            label:'Min N1 for Relight (RPM)', desc:'Abort relight if N1 falls below this RPM - the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000-40,000 RPM.', step:1000, min:0, basic:true },
@@ -186,7 +221,7 @@ const SCHEMA = [
     { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief fuel-solenoid click-test pulse.',     step:50,  min:50, basic:true },
     { key:'tl_op', path:['tools','oil_prime_ms'],      label:'Oil Prime ms',       desc:'Oil pump run time for Oil Prime.',          step:100, min:100, basic:true },
     { key:'tl_ig', path:['tools','ign_test_ms'],       label:'Igniter 1 Test ms',  desc:'Spark/igniter on time for Igniter 1 Test.', step:100, min:100, basic:true },
-    { key:'tl_i2', path:['tools','ign2_test_ms'],      label:'Igniter 2 Test ms',  desc:'Spark/igniter on time for Igniter 2 Test.', step:100, min:100 },
+    { key:'tl_i2', path:['tools','ign2_test_ms'],      label:'AB / Pilot Igniter Test ms',  desc:'Spark/igniter on time for AB / Pilot Igniter Test.', step:100, min:100 },
     { key:'tl_gl', path:['tools','glow_test_ms'],      label:'Glow Test ms',       desc:'Glow plug test duration. For wet glow, set this longer than the configured pilot-fuel delay if you want fuel to start during the test.', step:100, min:100, basic:true },
     { key:'tl_gp', path:['tools','glow_test_pct'],     label:'Glow Test Command',  desc:'Glow plug test command. PWM glow uses this as percent output; relay glow turns ON for any nonzero value. Use 100 for a full-power heat test.', step:5, min:0, max:100, basic:true },
     { key:'tl_st', path:['tools','start_test_ms'],     label:'Starter Test ms',    desc:'Starter spin time for Starter Test.',       step:100, min:100, basic:true },
@@ -198,18 +233,18 @@ const SCHEMA = [
     { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:100, basic:true },
     { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Airstarter Test ms', desc:'Airstarter solenoid pulse duration.',      step:50,  min:50, basic:true },
     { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:50, basic:true },
-    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Aux Pump 2 Test ms', desc:'Auxiliary fuel pump 2 test duration.',     step:100, min:100, basic:true },
-    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Aux Pump 2 Test %', desc:'Auxiliary fuel pump 2 demand for proportional outputs.', step:5, min:0, max:100, basic:true },
-    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable ms',  desc:'Starter enable relay pulse duration.',     step:50,  min:50, basic:true },
+    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Pilot / Auxiliary Fuel Pump Test ms', desc:'Pilot / auxiliary fuel pump test duration.',     step:100, min:100, basic:true },
+    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Pilot / Auxiliary Fuel Pump Test %', desc:'Pilot / auxiliary fuel pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
+    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable Test ms',  desc:'Starter enable output test duration.',     step:50,  min:50, basic:true },
     { key:'tl_pp', path:['tools','prop_pitch_test_ms'],label:'Prop Pitch Test ms', desc:'Prop pitch test duration.',                step:100, min:100, basic:true },
     { key:'tl_pq', path:['tools','prop_pitch_test_pct'],label:'Prop Pitch Test %', desc:'Prop pitch test position/demand for proportional outputs.', step:5, min:0, max:100, basic:true },
   ]},
   { title: 'Tools - Afterburner Bench Tests', id:'tools-ab-section', sectionNote:'Afterburner bench-test timing is shown separately because these buttons are only useful on AB builds. Demand % is ignored by relay-style AB pump outputs.', fields: [
-    { key:'tl_abs',path:['tools','ab_sol_test_ms'],    label:'AB Solenoid ms',     desc:'Afterburner solenoid pulse duration.',     step:50,  min:50, basic:true },
-    { key:'tl_abp',path:['tools','ab_pump_test_ms'],   label:'AB Pump Test ms',    desc:'Afterburner pump test duration.',          step:100, min:100, basic:true },
-    { key:'tl_abq',path:['tools','ab_pump_test_pct'],  label:'AB Pump Test %',     desc:'Afterburner pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
+    { key:'tl_abs',path:['tools','ab_sol_test_ms'],    label:'Afterburner Fuel Valve Test ms', desc:'How long the normally closed afterburner fuel valve opens during a bench pulse.', step:50, min:50, basic:true },
+    { key:'tl_abp',path:['tools','ab_pump_test_ms'],   label:'Afterburner Fuel Pump Test ms', desc:'How long the dedicated afterburner fuel pump runs during a bench test.', step:100, min:100, basic:true },
+    { key:'tl_abq',path:['tools','ab_pump_test_pct'],  label:'Afterburner Fuel Pump Test %', desc:'Pump demand for proportional afterburner fuel-pump outputs.', step:5, min:0, max:100, basic:true },
   ]},
-  { title: 'Telemetry', fields: [
+  { title: 'Logging and Data Updates', fields: [
     { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic event-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox', basic:true },
     { key:'tm_ws', path:['telemetry','ws_interval_ms'],       label:'Background Live Interval ms', desc:'Reserved: the built-in web pages currently use fixed refresh rates (Dashboard/Calibration 333 ms, others slower). This interval only affects external API pollers that honour it.', step:100, min:333, max:60000 },
     { key:'tm_lh', path:['telemetry','control_loop_hz'],      label:'ECU Loop Target Hz', desc:'Main control-loop target frequency. Default 400 Hz. Lower values reduce CPU use; higher values improve control granularity but increase load. Recommended beta range: 200-500 Hz. Takes effect after a reboot.', step:50, min:50, max:1000 },
@@ -232,39 +267,39 @@ const SCHEMA = [
     { key:'sl_wg', path:['session_log','wet_glow'],  label:'Log Wet Glow Fuel Output', type:'checkbox', desc:'Include wet-glow fuel solenoid/pump output column in session CSV.' },
     { key:'sl_gc', path:['session_log','glow_current'], label:'Log Glow Current', type:'checkbox', desc:'Include glow plug current sensor column in session CSV.' },
     { key:'sl_ic', path:['session_log','ign_current'],  label:'Log Igniter 1 Current', type:'checkbox', desc:'Include igniter 1 current sensor column in session CSV.' },
-    { key:'sl_i2', path:['session_log','ign2_current'], label:'Log Igniter 2 Current', type:'checkbox', desc:'Include igniter 2 current sensor column in session CSV.' },
+    { key:'sl_i2', path:['session_log','ign2_current'], label:'Log AB / Pilot Igniter Current', type:'checkbox', desc:'Include AB / pilot igniter current sensor column in session CSV.' },
     { key:'sl_oc', path:['session_log','oil_current'],  label:'Log Oil Pump Current', type:'checkbox', desc:'Include oil pump current sensor column in session CSV.' },
-    { key:'sl_f2', path:['session_log','fp2'],       label:'Log Auxiliary Fuel Pump 2', type:'checkbox', desc:'Include independent sequence/rule-commanded auxiliary fuel pump demand (%) column in session CSV. This channel does not automatically follow the main throttle input.' },
+    { key:'sl_f2', path:['session_log','fp2'],       label:'Log Pilot / Auxiliary Fuel Pump', type:'checkbox', desc:'Include independent sequence/rule-commanded pilot / auxiliary fuel pump demand (%) column in session CSV. This channel does not automatically follow the main throttle input.' },
     { key:'sl_ab', path:['session_log','ab'],        label:'Log AB State/Fuel', type:'checkbox', desc:'Include afterburner mode, flame, AB pump demand, and main-fuel offset columns in session CSV.' },
     { key:'sl_pp', path:['session_log','prop'],      label:'Log Prop Pitch',  type:'checkbox', desc:'Include propeller pitch demand (%) column in session CSV.' },
     { key:'sl_op', path:['session_log','oil_pct'],   label:'Log Oil Pump %',  type:'checkbox', desc:'Include oil pump duty cycle (%) column in session CSV.' },
     { key:'sl_lp', path:['session_log','loop'],      label:'Log ECU Loop Timing', type:'checkbox', desc:'Include main control-loop speed and execution timing columns in session CSV.' },
   ]},
-  { title: 'Cluster', fields: [
-    { key:'cl_en', path:['cluster','enabled'],      label:'Enable',        desc:'Send live data to instrument cluster via UART TX. When off, no serial data is transmitted.', type:'checkbox', basic:true },
+  { title: 'External Instrument Cluster Display', sectionNote:'Optional display-only thresholds for an external serial instrument cluster. These values change gauge warning colours and status messages; they do not trigger ECU shutdowns.', fields: [
+    { key:'cl_en', path:['cluster','enabled'],      label:'Send Data to External Cluster', desc:'Transmit live ECU data and display-warning status through the configured serial output.', type:'checkbox', basic:true },
     { key:'cl_n1', path:['cluster','n1_warn_rpm'],  label:'N1 Warn RPM',   desc:'N1 warning zone start on cluster gauge (yellow). 0 = auto (RPM Limit × 0.9). N1_MAX comes from Engine Limits → RPM Limit', step:500, min:0 },
     { key:'cl_n2', path:['cluster','n2_warn_rpm'],  label:'N2 Warn RPM',   desc:'N2 RPM warning threshold for cluster display', step:500, min:0 },
     { key:'cl_tw', path:['cluster','tot_warn_c'],   label:'EGT Warn',   unitType:'temp',  zeroOff:true, desc:'Selected engine-temperature warning threshold for cluster status. 0 = auto (selected EGT limit minus safety margin).', step:10, min:0 },
     { key:'cl_ow', path:['cluster','oil_warn_bar'], label:'Oil Warn',   unitType:'press', desc:'Oil pressure warning status code threshold. 0 = auto (running minimum)', step:0.1, min:0 },
   ]},
-  { title: 'Starter Assist', id: 'starter-assist-section', fields: [
-    { key:'sa_pc', path:['starter_assist','pct'],            label:'Idle Assist Duty %', desc:'Starter motor duty during idle-stall assist (keeps engine from stalling at low idle). Armed by the STARTER_ASSIST command (API/cluster - no web button yet); engages while RUNNING when N1 falls below the exit RPM.', step:5, min:0, max:100 },
-    { key:'sa_er', path:['starter_assist','exit_rpm'],       label:'Idle Assist Exit RPM', desc:'Starter assist disengages when N1 rises above this RPM. Set just above your idle stall RPM.', step:100, min:0 },
+  { title: 'Low-RPM Starter Support', id: 'starter-support-section', sectionNote:'Optional anti-stall aid for engines that need starter torque near idle. Arm it from Tools while the engine is running; it automatically disengages above the configured N1 speed and disarms at shutdown.', fields: [
+    { key:'sa_pc', path:['starter_control','low_rpm_support_pct'], label:'Starter Output While Supporting (%)', desc:'Starter demand applied when support is armed and N1 is below the disengage speed. Use only with a starter system designed to operate while the engine is running.', step:5, min:0, max:100 },
+    { key:'sa_er', path:['starter_control','low_rpm_support_disengage_rpm'], label:'Disengage Above N1 (RPM)', desc:'The starter turns off when N1 reaches this speed. It can engage again only after N1 falls below half this value, which prevents rapid on/off cycling.', step:100, min:0 },
   ]},
-  { title: 'Standby Oil Feed', fields: [
-    { key:'so_src', path:['standby_oil','source'], label:'Windmill Source', type:'select', options:[{v:0,l:'N1 shaft'},{v:1,l:'N2 shaft'},{v:2,l:'Either fitted shaft'}], desc:'Which shaft RPM can activate standby windmill oil feed. Choose Either on twin-shaft builds where either shaft may windmill after shutdown.', basic:true },
-    { key:'so_rl', path:['standby_oil','rpm_limit'], label:'Windmill RPM',    desc:'Selected shaft above this in STANDBY activates oil feed (windmill/momentum protection).', step:10, min:0, basic:true },
-    { key:'so_fp', path:['standby_oil','feed_pct'],  label:'Feed Duty %',     desc:'Oil pump % during standby feed. Used directly in fixed-% mode, and as the minimum floor in pressure mode.', step:5, min:0, max:100, basic:true },
-    { key:'so_fb', path:['standby_oil','feed_bar'],  label:'Feed Pressure (bar)', desc:'0 = fixed-% mode (use Feed Duty %). Above 0, the standby feed regulates the oil pump to hold this pressure instead of a fixed %. Requires an oil pressure sensor AND the oil control loop enabled; the pump never drops below Feed Duty %.', step:0.1, min:0, max:20, basic:true },
+  { title: 'Windmilling Oil Protection', sectionNote:'Runs the oil pump while a shaft is still turning in standby, for example from airflow, vehicle movement, or residual momentum after shutdown.', fields: [
+    { key:'so_src', path:['standby_oil','source'], label:'Shaft to Monitor', type:'select', options:[{v:0,l:'Core shaft (N1)'},{v:1,l:'Power/output shaft (N2)'},{v:2,l:'Either fitted shaft'}], desc:'Choose which shaft can automatically request protective oil flow.', basic:true },
+    { key:'so_rl', path:['standby_oil','rpm_limit'], label:'Start Oil Pump Above', unit:'RPM', desc:'Oil protection starts when the selected shaft exceeds this speed while the ECU is in standby.', step:10, min:0, basic:true },
+    { key:'so_fp', path:['standby_oil','feed_pct'],  label:'Minimum Protective Pump Output (%)', desc:'Fixed output when pressure regulation is disabled, or the minimum output when a pressure target is used.', step:5, min:0, max:100, basic:true },
+    { key:'so_fb', path:['standby_oil','feed_bar'],  label:'Protective Oil Pressure Target', unitType:'press', desc:'Set above zero to regulate oil pressure. Set to zero to use only the fixed pump output. Requires an oil pressure sensor and automatic oil control.', step:0.1, min:0, max:20, basic:true },
   ]},
-  { title: 'Misc', fields: [
+  { title: 'Manual Relight and Cooldown Override', fields: [
     { key:'ms_cs', path:['misc','cooldown_skip_hold_ms'], label:'Cooldown Skip Hold ms', desc:'Hold START+STOP simultaneously for this long during SHUTDOWN to force-skip the cooldown and go to STANDBY, even if selected EGT is still above the cooldown target.', step:500, min:500 },
-    { key:'ms_it', path:['misc','igniter_on_start_target'], label:'START Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'Igniter 2'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on while START is held during RUNNING.' },
+    { key:'ms_it', path:['misc','igniter_on_start_target'], label:'START Relight Output', type:'select', options:[{v:0,l:'Igniter 1'},{v:1,l:'AB / Pilot Igniter'},{v:2,l:'Glow / Wet Glow'}], desc:'Which configured ignition output is held on while START is held during RUNNING.' },
     { key:'ms_is', path:['misc','igniter_on_start'],      label:'Igniter on START (running)', desc:'Fire igniter while START button is held during RUNNING — manual relight aid. Disable if accidental button presses are a concern.', type:'checkbox' },
   ]},
-  { title: 'RPM Health', fields: [
-    { key:'rh_jt', path:['rpm_health','jump_threshold'],   label:'Jump Threshold',     desc:'Relative RPM step fraction above which a JUMP fault is flagged (0.40 = 40%)', step:0.05, min:0.05, max:1 },
-    { key:'rh_zs', path:['rpm_health','zero_stuck_ticks'], label:'Zero-Stuck Ticks',   desc:'Consecutive zero readings while engine was running → ZERO_STUCK fault',        step:1,    min:1 },
+  { title: 'RPM Sensor Fault Detection', fields: [
+    { key:'rh_jt', path:['rpm_health','jump_threshold'],   label:'Maximum Allowed Reading Jump', desc:'Largest one-sample RPM change accepted before the sensor is marked faulty. 0.40 means 40%.', step:0.05, min:0.05, max:1 },
+    { key:'rh_zs', path:['rpm_health','zero_stuck_ticks'], label:'Zero Readings Before Fault', desc:'Number of consecutive zero readings required before a running RPM sensor is declared stuck at zero.', step:1, min:1 },
   ]},
   { title: 'Afterburner — Ignition Conditions', id: 'ab-cfg-section', fields: [
     { key:'ab_mn', path:['afterburner','min_n1'],             label:'Min N1 RPM',            desc:'AB will not attempt ignition below this shaft speed (compressor needs sufficient airflow).', step:1000, min:0, basic:true },
@@ -274,11 +309,11 @@ const SCHEMA = [
   ]},
   { title: 'Afterburner — Ignition Method', id: 'ab-ign-section', fields: [
     { key:'ab_ut',   path:['afterburner','use_torch'],         label:'Use Torch',           type:'checkbox', desc:'Spike main fuel demand through the turbine section to push burning exhaust into the AB duct. Configure torch timing in the fields below.', basic:true },
-    { key:'ab_ui',   path:['afterburner','use_igniter'],       label:'Use AB Igniter',      type:'checkbox', desc:'Fire the dedicated AB igniter (output 2) during the ignition window. Can be used alone or with torch.', basic:true },
+    { key:'ab_ui',   path:['afterburner','use_igniter'],       label:'Use AB Igniter',      type:'checkbox', desc:'Fire the dedicated afterburner igniter installed in Hardware during the ignition window. Can be used alone or with torch.', basic:true },
     { key:'ab_tpct', path:['afterburner','torch_spike_pct'],   label:'Torch Spike %',       desc:'Main fuel pump extra demand % during the torch window. Higher = more fuel pushed through. Typical: 20–40%.', step:5, min:0, max:100 },
     { key:'ab_tms',  path:['afterburner','torch_duration_ms'], label:'Torch Duration (ms)', desc:'How long to hold the fuel spike before cutting back. Typical: 300–600 ms.', step:50, min:0, max:3000 },
     { key:'ab_ttl',  path:['afterburner','torch_tot_limit'],   label:'Torch EGT Cut',  unitType:'temp', zeroOff:true, desc:'Cut torch spike if selected EGT exceeds this during ignition. Protects turbine from over-temperature. 0 = disabled. Typical: 900-1000 °C / 1650-1830 °F.', step:10, min:0, basic:true },
-    { key:'ab_lpp',  path:['afterburner','lightup_pump_pct'],  label:'Light-Up Pump %', desc:'AB fuel pump demand used by the ABPumpOn light-up block before AB is confirmed running.', step:5, min:0, max:100, basic:true },
+    { key:'ab_lpp',  path:['afterburner','lightup_pump_pct'],  label:'Light-Up Pump %', desc:'AB fuel pump demand used while the light-up sequence is trying to establish a confirmed flame.', step:5, min:0, max:100, basic:true },
   ]},
   { title: 'Afterburner — Flame Confirmation', id: 'ab-flame-section', fields: [
     { key:'ab_fm',  path:['afterburner','flame_mode'],          label:'Flame Mode',          type:'select', options:[{v:0,l:'Flame Sensor'},{v:1,l:'EGT Rise'},{v:2,l:'Timed (no sensor)'}], desc:'How to verify the afterburner has lit. Sensor: requires AB flame sensor in Hardware. EGT Rise: waits for a selected-temperature jump. Timed: wait a fixed delay then assume lit - no sensor required.', basic:true },
@@ -289,10 +324,10 @@ const SCHEMA = [
   ]},
   { title: 'Afterburner — Running', id: 'ab-run-section', fields: [
     { key:'ab_pcm', path:['afterburner','pump_control_mode'],     label:'Pump Command Source',   type:'select', options:[{v:0,l:'Fixed Max Output'},{v:1,l:'Follow Main Throttle'},{v:2,l:'Dedicated AB Input'}], desc:'Choose how AB pump flow is commanded while lit. Dedicated AB Input uses the ADC or servo-PWM AB input configured in Hardware. Note: if the AB input was not in use when the ECU booted, switching to Dedicated AB Input needs a reboot before the input is read.', basic:true },
-    { key:'ab_pmn', path:['afterburner','pump_min_pct'],         label:'AB Pump Min %',         desc:'Minimum AB fuel pump demand for a variable command source. With a missing servo-PWM AB input, demand fails to this minimum.', step:5, min:0, max:100, basic:true },
-    { key:'ab_pmx', path:['afterburner','pump_max_pct'],         label:'AB Pump Max %',         desc:'Maximum AB fuel pump demand. Fixed Max Output holds this value while AB is running.', step:5, min:0, max:100, basic:true },
+    { key:'ab_pmn', path:['afterburner','pump_min_pct'],         label:'Afterburner Fuel Pump Min %', desc:'Minimum afterburner fuel-pump demand for a variable command source. With a missing servo-PWM afterburner input, demand fails to this minimum.', step:5, min:0, max:100, basic:true },
+    { key:'ab_pmx', path:['afterburner','pump_max_pct'],         label:'Afterburner Fuel Pump Max %', desc:'Maximum afterburner fuel-pump demand. Fixed Max Output holds this value while the afterburner is running.', step:5, min:0, max:100, basic:true },
     { key:'ab_mo',  path:['afterburner','main_fuel_offset_pct'], label:'Main Fuel Offset %',    desc:'Add this to main throttle demand while AB is running (extra air/fuel for compressor). 0 = none.', step:2, min:-20, max:50, basic:true },
-    { key:'ab_sms', path:['afterburner','stabilize_ms'],         label:'Stabilize Hold (ms)',   desc:'Hold time in ABStabilize after confirmed ignition before transitioning to AB Running. Typical: 500-2000 ms.', step:100, min:0, basic:true },
+    { key:'ab_sms', path:['afterburner','stabilize_ms'],         label:'Stabilize Hold (ms)',   desc:'Hold time after confirmed ignition before declaring the afterburner Running. Typical: 500-2000 ms.', step:100, min:0, basic:true },
     { key:'ab_smt', path:['afterburner','stabilize_max_tot'],    label:'Stabilize Max EGT',  unitType:'temp', zeroOff:true, desc:'AB faults if selected EGT exceeds this during the stabilize hold. 0 = disabled.', step:10, min:0, basic:true },
   ]},
   { title: 'Safety Thresholds', id: 'safety-ext-section', fields: [
@@ -302,20 +337,20 @@ const SCHEMA = [
     { key:'sf_bv',  path:['safety','batt_volt_min_v'],          label:'Battery Min (V)',          desc:'Battery / bus undervoltage fault threshold. 0 = disabled. Set ~0.5 V below your minimum expected loaded voltage. Typical: 10.5 V for 3S LiPo.',    step:0.1,  min:0, basic:true },
     { key:'sf_sg',  path:['safety','surge_detect_rpm_variance'],label:'Surge Detect Variance',   desc:'N1 RPM variance threshold for surge/instability detection (variance over a 10-sample rolling window). 0 = disabled. Typical starting value: 500,000 (RPM²). Tune for your engine — lower = more sensitive.', step:10000, min:0 },
   ]},
-  { title: 'Power Turbine Governor', id: 'governor-cfg-section', sectionNote:'Holds the power turbine (N2) at a set speed under changing load. Two modes, auto-selected from your hardware + gains. ▸ PROP-PITCH (turboprop): adjusts propeller pitch/load to hold N2 while you set power with the throttle; used when a proportional Prop Pitch actuator is fitted in Hardware AND Pitch Gain > 0. High N2 → coarser pitch (more load), low N2 → finer pitch. ▸ THROTTLE-DRIVEN (turboshaft / APU / generator): adjusts fuel/throttle directly to hold N2, overriding the throttle input; used when no prop pitch is fitted or Pitch Gain = 0.', fields: [
+  { title: 'Automatic N2 Speed Control', id: 'governor-cfg-section', sectionNote:'Holds the power turbine (N2) at a set speed as load changes. The ECU automatically chooses one control method from the fitted hardware and gains. PROP-PITCH (turboprop) adjusts propeller load when a proportional Prop Pitch actuator is fitted and Pitch Gain is above 0. FUEL CONTROL (turboshaft, APU, or generator) adjusts fuel directly when propeller-pitch control is unavailable or Pitch Gain is 0.', fields: [
     { key:'gv_tr', path:['governor','target_rpm'],   label:'Target N2 RPM',      desc:'Power turbine (N2) speed setpoint for the governor. Set to your rated output shaft RPM. 0 = governor disabled. In prop-pitch mode the governor adds propeller load to hold this speed, so set it to your rated power-turbine RPM — too low can over-load and stall the core.',                                                             step:100,   min:0, basic:true },
-    { key:'gv_bd', path:['governor','band_rpm'],     label:'Deadband (RPM)',      desc:'Governor makes no correction while N2 is within ±this many RPM of target. Prevents hunting. Typical: 200–500 RPM.',                                                          step:50,    min:0 },
-    { key:'gv_kp', path:['governor','kp'],            label:'Throttle-Mode Gain (Kp)', desc:'THROTTLE-DRIVEN mode: how aggressively the governor moves fuel/throttle per RPM error (throttle fraction per RPM error). Too high = oscillation / surging. Too low = sluggish. Typical: 0.0005–0.002. Start low and increase. Only one governor mode runs at a time (see the mode note above).',               step:0.0001, min:0, max:0.01 },
-    { key:'gv_pk', path:['governor','pitch_kp'],      label:'Pitch-Mode Gain (Kp)',    desc:'PROP-PITCH mode: prop pitch adjustment per RPM error. Only takes effect when a proportional Prop Pitch actuator is enabled in Hardware. Set > 0 to select prop-pitch mode; set to 0 to force throttle-driven mode. Typical: 0.0003–0.001.', step:0.0001, min:0, max:0.01 },
-    { key:'gv_pr', path:['governor','pitch_ramp_sec'], label:'Pitch Ramp (s)',          desc:'Maximum pitch servo travel time: full stroke (idle→max) in this many seconds. Prevents abrupt pitch changes from destabilising the driven system. 0 = unlimited (instant). Typical: 1–5 s.', step:0.5, min:0 },
+    { key:'gv_bd', path:['governor','band_rpm'],     label:'No-Correction Speed Band (RPM)', desc:'The controller makes no correction while N2 is within this distance above or below the target. A small band prevents hunting. Typical: 200–500 RPM.', step:50, min:0 },
+    { key:'gv_kp', path:['governor','kp'], label:'Fuel-Control Response Strength', desc:'How strongly fuel changes for N2 speed error when the ECU controls N2 with fuel. Too high can oscillate; too low responds slowly. Technical name: proportional gain (Kp). Typical: 0.0005–0.002; start low.', step:0.0001, min:0, max:0.01 },
+    { key:'gv_pk', path:['governor','pitch_kp'], label:'Propeller-Pitch Response Strength', desc:'How strongly propeller pitch changes for N2 speed error. A value above 0 selects pitch control when a proportional pitch actuator is fitted; 0 selects fuel control. Technical name: pitch gain (Kp).', step:0.0001, min:0, max:0.01 },
+    { key:'gv_pr', path:['governor','pitch_ramp_sec'], label:'Full Propeller-Pitch Travel Time (s)', desc:'Shortest allowed time for the pitch actuator to travel through its full range. This prevents abrupt load changes. 0 allows immediate movement. Typical: 1–5 s.', step:0.5, min:0 },
   ]},
   { title: 'Glow Plug Preheat', id: 'glow-cfg-section', fields: [
     { key:'gl_ms', path:['glow_plug','preheat_ms'],      label:'Preheat Duration (ms)', desc:'Time to ramp the glow plug from 0 to maximum duty before ignition. Longer = more heat soak. Typical: 8,000–15,000 ms.',                  step:500, min:0, basic:true },
     { key:'gl_mx', path:['glow_plug','preheat_max_pct'], label:'Preheat Peak Command',  desc:'Peak glow command during the preheat ramp. PWM glow uses this as duty percent; relay glow turns ON for any nonzero command. Typical PWM value: 60–90%.', step:5, min:0, max:100 },
     { key:'gl_hd', path:['glow_plug','hold_pct'],        label:'Hold Command',          desc:'Glow command held after preheat completes. PWM glow uses this as duty percent; relay glow stays ON for any nonzero hold command. Typical PWM value: 20–40%.', step:5, min:0, max:100 },
   ]},
-  { title: 'Servo Input Failsafe', id: 'rc-pwm-section', sectionNote:'Throttle and idle pulse endpoints are calibrated independently on the Calibration page.', fields: [
-    { key:'rc_fs', path:['rc_input','failsafe_ms'], label:'Failsafe ms',   desc:'Mark RC signal invalid if no pulse received within this time.', step:50, min:100 },
+  { title: 'RC / Servo Signal Loss Detection', id: 'rc-pwm-section', sectionNote:'Throttle and idle receiver-pulse endpoints are calibrated independently on the Calibration page.', fields: [
+    { key:'rc_fs', path:['rc_input','failsafe_ms'], label:'Signal-Loss Timeout (ms)', desc:'Mark the receiver signal invalid when no valid pulse arrives within this time.', step:50, min:100 },
   ]},
 ];
 
@@ -339,7 +374,13 @@ function _getFieldLabel(el) {
   while (p && !p.classList.contains('cfg-field')) p = p.parentElement;
   if (p) {
     const lbl = p.querySelector('.cfg-label');
-    if (lbl) return lbl.textContent.trim().replace(/\s*\(.*?\)\s*$/, '');
+    if (lbl) {
+      const clean = lbl.cloneNode(true);
+      clean.querySelectorAll('.live-val').forEach(node => node.remove());
+      const label = clean.textContent.trim().replace(/\s*\(.*?\)\s*$/, '');
+      const section = p.closest('.cfg-section')?.dataset.section;
+      return section ? `${section} / ${label}` : label;
+    }
   }
   return el.id.replace(/^cf-/, '').replace(/_/g, ' ');
 }
@@ -361,8 +402,6 @@ function _buildChanges() {
       const cur  = (el.type === 'checkbox') ? el.checked : el.value;
       const snap = _fieldSnap[el.id];
       if (String(cur) === String(snap)) return;
-      if (el.disabled) return;
-      if (el.offsetParent === null) return;  // hidden / collapsed
       changes.push({
         label: _getFieldLabel(el),
         was:   _formatValue(el, snap),
@@ -373,24 +412,37 @@ function _buildChanges() {
 }
 
 function _refreshChangedBorders() {
+  document.querySelectorAll('.config-group.group-changed').forEach(group => group.classList.remove('group-changed'));
+  const changedGroups = new Set();
   document.querySelectorAll('input[id^="cf-"], select[id^="cf-"]')
     .forEach(el => {
       if (!(el.id in _fieldSnap)) return;
       const cur = (el.type === 'checkbox') ? el.checked : el.value;
-      el.classList.toggle('field-changed', String(cur) !== String(_fieldSnap[el.id]));
+      const changed = String(cur) !== String(_fieldSnap[el.id]);
+      el.classList.toggle('field-changed', changed);
+      if (changed) {
+        const group = el.closest('.config-group');
+        if (group) changedGroups.add(group);
+      }
     });
+  changedGroups.forEach(group => group.classList.add('group-changed'));
+  _updateWorkspaceState();
+  if (_workspaceFilter === 'changed') _scheduleWorkspaceRefresh();
 }
 
 function _clearChangedBorders() {
   document.querySelectorAll('.field-changed').forEach(el => el.classList.remove('field-changed'));
+  document.querySelectorAll('.group-changed').forEach(group => group.classList.remove('group-changed'));
 }
 
 function _markDirty() {
   _cfgDirty = true;
   const btn  = document.getElementById('btn-save');
+  const discard = document.getElementById('btn-discard');
   const bar  = document.querySelector('.save-bar');
   const msg  = document.getElementById('save-msg');
-  if (btn && !isLocked) { btn.classList.add('primary'); }
+  if (btn) { btn.disabled = isLocked; btn.classList.add('primary'); }
+  if (discard) discard.disabled = false;
   if (bar) bar.classList.add('is-dirty');
   if (msg && !msg.textContent.startsWith('✓')) msg.textContent = 'Unsaved changes';
   _refreshChangedBorders();
@@ -398,11 +450,21 @@ function _markDirty() {
 function _clearDirty() {
   _cfgDirty = false;
   const btn = document.getElementById('btn-save');
+  const discard = document.getElementById('btn-discard');
   const bar = document.querySelector('.save-bar');
-  if (btn) btn.classList.remove('primary');
+  if (btn) { btn.disabled = true; btn.classList.remove('primary'); }
+  if (discard) discard.disabled = true;
   if (bar) bar.classList.remove('is-dirty');
   _snapshotFields();
   _clearChangedBorders();
+  _updateWorkspaceState();
+}
+
+async function reloadConfigPage() {
+  if (_cfgDirty && !await OTDialog.confirm('Discard every unsaved configuration change?', {
+    title:'Discard changes', confirmLabel:'Discard', danger:true
+  })) return;
+  location.reload();
 }
 
 // ── JSON path helpers ─────────────────────────────────────────
@@ -419,62 +481,156 @@ function setPath(obj, path, val) {
 }
 
 // ── Render form ───────────────────────────────────────────────
+const WORKSPACE_GROUPS = [
+  { id:'engine', title:'Engine & Limits', desc:'Primary speed, temperature and throttle behaviour', sections:['Engine Protection Limits','Throttle'] },
+  { id:'oil', title:'Oil & Lubrication', desc:'Startup, running and windmilling oil protection', sections:['Oil System','Windmilling Oil Protection'] },
+  { id:'operation', title:'Start, Run & Recovery', desc:'Idle control, relight, low-RPM starter support and glow', sections:['Automatic Idle Speed Control','Reduced-Power Mode','Automatic Flameout Relight','Low-RPM Starter Support','Glow Plug Preheat'] },
+  { id:'safety', title:'Safety & Input Health', desc:'Shutdown thresholds, sensor health and input signal loss', sections:['Automatic Safety Shutdowns','Safety Thresholds','RPM Sensor Fault Detection','RC / Servo Signal Loss Detection'] },
+  { id:'power', title:'Power System', desc:'Automatic N2 speed control and afterburner tuning', sections:['Automatic N2 Speed Control','Afterburner — Ignition Conditions','Afterburner — Ignition Method','Afterburner — Flame Confirmation','Afterburner — Running'] },
+  { id:'data', title:'Data & Display', desc:'Logging, external display thresholds and general timing', sections:['Logging and Data Updates','External Instrument Cluster Display','Manual Relight and Cooldown Override'] },
+  { id:'bench', title:'Bench Test Timing', desc:'Tool pulse lengths and proportional test demands', sections:['Tools - Primary Bench Tests','Tools - Accessory Bench Tests','Tools - Afterburner Bench Tests'] }
+];
+const SECTION_GROUP = new Map(WORKSPACE_GROUPS.flatMap(group => group.sections.map(title => [title, group.id])));
+let _workspaceFilter = 'essential';
 let _currentView = 'basic';
-const SETUP_KEYS=new Set([
-  'rpm_limit','min_rpm','eg_src','tot_limit','tot_safe_margin','tot_cooldown_target',
-  'oil_sp','oil_am','oil_rm','oil_mm','th_ru','th_rd','th_mx','th_ex',
-  'pb_n1e','pb_n2e','pb_egte','pb_min','rl_mode','lm_mt','di_tr','di_mode',
-  'sf_fo','sf_fs','sf_hs','rl_en','so_src','so_rl','so_fp','so_fb',
-  'sf_tit','sf_ot','sf_fp','sf_bv','gv_tr','gl_ms','cl_en'
-]);
+let _searchQuery = '';
+let _workspaceRefreshFrame = 0;
 
-function setView(v) {
-  _currentView = v;
-  document.getElementById('btn-view-basic').className  = v === 'basic'  ? 'active' : '';
-  document.getElementById('btn-view-expert').className = v === 'expert' ? 'active' : '';
-  const hint = document.getElementById('view-hint');
-  if (hint) {
-    hint.style.display = '';
-    hint.textContent = v === 'expert'
-      ? 'Advanced view is showing every saved field, including rare diagnostics, protocol values, and deep controller tuning.'
-      : 'Setup shows essential settings that apply to fitted hardware. Advanced shows deep tuning and hardware-dependent details.';
-  }
+function _scheduleWorkspaceRefresh() {
+  cancelAnimationFrame(_workspaceRefreshFrame);
+  _workspaceRefreshFrame = requestAnimationFrame(applyView);
+}
+
+function setWorkspaceFilter(filter) {
+  _workspaceFilter = ['essential','all','changed','locked'].includes(filter) ? filter : 'essential';
+  _currentView = _workspaceFilter === 'essential' ? 'basic' : 'expert';
   applyView();
 }
 
+function setConfigSearch(value) {
+  _searchQuery = String(value || '').trim().toLowerCase();
+  applyView();
+}
+
+function _updateWorkspaceState() {
+  const changes = _buildChanges();
+  const count = changes.length;
+  const state = document.getElementById('cfg-state-badge');
+  const saveCount = document.getElementById('save-change-count');
+  const discard = document.getElementById('btn-discard');
+  const save = document.getElementById('btn-save');
+  if (state) state.textContent = count ? `${count} unsaved` : 'Saved';
+  if (saveCount) saveCount.textContent = count ? `${count} unsaved change${count === 1 ? '' : 's'}` : 'No unsaved changes';
+  if (discard) discard.disabled = !count;
+  if (save) save.disabled = isLocked || !count;
+}
+
 function applyView() {
-  const expertOnly = document.querySelectorAll('.cfg-field[data-expert]');
-  expertOnly.forEach(el => {
-    if (el.dataset.hardHidden === '1') { el.style.display='none'; return; }
-    if (el.dataset.forceHidden === '1') {
-      el.style.display = _currentView === 'expert' ? '' : 'none';
-      el.style.opacity = _currentView === 'expert' ? '.42' : '';
-      el.style.filter = _currentView === 'expert' ? 'grayscale(.7)' : '';
-      return;
+  const search = _searchQuery;
+  let visibleFields = 0;
+  document.querySelectorAll('.cfg-field').forEach(field => {
+    const hardHidden = field.dataset.hardHidden === '1';
+    const unavailable = field.dataset.forceHidden === '1';
+    const essential = field.dataset.level === 'essential';
+    const bench = field.closest('.config-group')?.dataset.group === 'bench';
+    const changed = !!field.querySelector('.field-changed');
+    const haystack = field.dataset.search || '';
+    const searchMatch = !search || search.split(/\s+/).every(token => haystack.includes(token));
+    let show = false;
+    if (!hardHidden && searchMatch) {
+      if (search) show = true;
+      else if (_workspaceFilter === 'essential') show = essential && !unavailable && !bench;
+      else if (_workspaceFilter === 'all') show = !unavailable;
+      else if (_workspaceFilter === 'changed') show = changed;
+      else if (_workspaceFilter === 'locked') show = unavailable;
     }
-    el.style.opacity=''; el.style.filter='';
-    el.style.display = _currentView === 'expert' ? '' : 'none';
+    field.classList.toggle('filter-hidden', !show);
+    field.classList.toggle('search-hit', !!search && show);
+    field.style.opacity = unavailable && show ? '.56' : '';
+    field.style.filter = unavailable && show ? 'grayscale(.35)' : '';
+    if (show) visibleFields++;
   });
-  // Also hide sections that have no visible fields in basic mode
-  document.querySelectorAll('.cfg-section[data-expert-section]').forEach(sec => {
-    if (sec.dataset.forceHidden === '1') { sec.style.display = 'none'; return; }
-    sec.style.display = _currentView === 'expert' ? '' : 'none';
+
+  document.querySelectorAll('.cfg-section').forEach(section => {
+    const fields = Array.from(section.querySelectorAll('.cfg-field'));
+    const count = fields.filter(field => !field.classList.contains('filter-hidden')).length;
+    const featureHidden = section.dataset.forceHidden === '1';
+    const hiddenBench = ['tools-primary-section','tools-accessory-section','tools-ab-section'].includes(section.id) && _workspaceFilter !== 'all' && !search;
+    section.classList.toggle('filter-hidden', featureHidden || count === 0 || hiddenBench);
+    const badge = section.querySelector('.cfg-title-count');
+    if (badge) badge.textContent = count ? `${count} setting${count === 1 ? '' : 's'}` : '';
   });
-  // Bench-test timing/output belongs beside the actuator buttons on Tools.
-  ['tools-primary-section','tools-accessory-section','tools-ab-section'].forEach(id => {
-    const sec=document.getElementById(id); if(sec) sec.style.display='none';
+
+  document.querySelectorAll('.config-group').forEach(group => {
+    const sections = Array.from(group.querySelectorAll('.cfg-section'));
+    const shownSections = sections.filter(section => !section.classList.contains('filter-hidden'));
+    const count = shownSections.reduce((sum, section) => sum + section.querySelectorAll('.cfg-field:not(.filter-hidden)').length, 0);
+    group.classList.toggle('filter-hidden', count === 0);
+    const meta = group.querySelector('.group-meta');
+    if (meta) meta.textContent = count ? `${count} setting${count === 1 ? '' : 's'}` : '';
+    if ((search || _workspaceFilter === 'changed' || _workspaceFilter === 'locked') && count) group.open = true;
   });
+
+  // Field filtering runs before feature-gated sections are resolved. Recount
+  // after the section/group pass so hidden governor/afterburner children never
+  // inflate the result total or create an apparently empty expandable group.
+  visibleFields = Array.from(document.querySelectorAll('.cfg-field:not(.filter-hidden)'))
+    .filter(field => !field.closest('.cfg-section')?.classList.contains('filter-hidden') &&
+                     !field.closest('.config-group')?.classList.contains('filter-hidden')).length;
+
+  const empty = document.getElementById('cfg-empty');
+  if (empty) empty.hidden = visibleFields !== 0;
+  const result = document.getElementById('cfg-result-count');
+  if (result) result.textContent = `${visibleFields} setting${visibleFields === 1 ? '' : 's'}`;
+  const buttonMap = { essential:'btn-view-basic', all:'btn-view-expert', changed:'btn-filter-changed', locked:'btn-filter-locked' };
+  Object.entries(buttonMap).forEach(([name,id]) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    const active = _workspaceFilter === name;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  _updateWorkspaceState();
+}
+
+function initWorkspaceControls() {
+  const search = document.getElementById('cfg-search');
+  if (search && !search.dataset.bound) {
+    search.dataset.bound = '1';
+    search.addEventListener('input', () => setConfigSearch(search.value));
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { search.value = ''; setConfigSearch(''); search.blur(); }
+    });
+  }
+  document.querySelectorAll('.config-group').forEach(group => {
+    const key = 'ot_cfg_group_' + group.dataset.group;
+    try {
+      const stored = sessionStorage.getItem(key);
+      if (stored !== null) group.open = stored === '1';
+    } catch (e) {}
+    group.addEventListener('toggle', () => {
+      if (_searchQuery || _workspaceFilter === 'changed' || _workspaceFilter === 'locked') return;
+      try { sessionStorage.setItem(key, group.open ? '1' : '0'); } catch (e) {}
+    });
+  });
+  if (!document.documentElement.dataset.cfgKeysBound) {
+    document.documentElement.dataset.cfgKeysBound = '1';
+    document.addEventListener('keydown', event => {
+      const tag = event.target?.tagName;
+      if (event.key === '/' && tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
+        event.preventDefault(); document.getElementById('cfg-search')?.focus();
+      }
+    });
+  }
 }
 
 function setCfgFieldVisibleByElement(wrap, show) {
   if (!wrap) return;
-  if (wrap.dataset.hardHidden === '1' && !show) { wrap.style.display='none'; return; }
   wrap.dataset.forceHidden = show ? '0' : '1';
-  wrap.title = show ? '' : 'Inactive or not applicable with the current hardware/feature selection. Shown only as a reference in Advanced view.';
+  wrap.title = show ? '' : 'Unavailable with the current fitted hardware or controller selection.';
   const control=wrap.querySelector('input,select');
   if(control) control.disabled = !show || isLocked;
-  wrap.style.display = show ? '' : (_currentView==='expert'?'':'none');
-  wrap.style.opacity = show ? '' : (_currentView==='expert'?'.42':'');
+  _scheduleWorkspaceRefresh();
 }
 
 function setCfgFieldVisible(key, show) {
@@ -485,20 +641,20 @@ function setCfgFieldHardHidden(key, hidden) {
   const wrap=document.getElementById('cf-'+key)?.closest('.cfg-field');
   if(!wrap)return;
   wrap.dataset.hardHidden=hidden?'1':'0';
-  if(hidden) wrap.style.display='none';
+  _scheduleWorkspaceRefresh();
 }
 
-// Advanced-only tuning fields appear only when their mode select = Advanced
-// (and, being basic:false, only in Expert view — applyView() finalises that).
+// Mode-specific tuning fields appear only when their controller selects the
+// advanced algorithm; the workspace then exposes them under All settings.
 // The field's own description also rewrites to explain the CURRENTLY selected
 // mode, so picking Simple or Advanced shows exactly what that choice does.
 const _RL_MODE_DESC = {
   0: 'Simple (reactive) — original behaviour: throttle eases back based on the shaft\'s current RPM as it approaches the soft limit.',
-  1: 'Advanced (predictive) — anticipates RPM from its rate of rise (spool rate) and eases fuel off BEFORE an overshoot during a fast spool, then slows the throttle-open ramp as RPM nears the limit. EGT pullback stays reactive. Tune with the fields below (Expert view).'
+  1: 'Advanced (predictive) — anticipates RPM from its rate of rise (spool rate) and eases fuel off BEFORE an overshoot during a fast spool, then slows the throttle-open ramp as RPM nears the limit. EGT pullback stays reactive. Tune with the fields below in All settings.'
 };
 const _DI_MODE_DESC = {
   0: 'Simple (PI) — original behaviour: a proportional-integral loop holds the idle RPM setpoint.',
-  1: 'Advanced (decel-catch) — on a fast chop from high RPM it drops just below a learned idle-hold so it settles without hanging high or dipping toward flameout; near idle it trims against predicted RPM and re-learns the hold. Tune with the fields below (Expert view).'
+  1: 'Advanced (decel-catch) — on a fast chop from high RPM it drops just below a learned idle-hold so it settles without hanging high or dipping toward flameout; near idle it trims against predicted RPM and re-learns the hold. Tune with the fields below in All settings.'
 };
 function _setFieldDesc(key, text) {
   const el = document.getElementById('cf-' + key);
@@ -592,17 +748,13 @@ function setConfigPressUnit(value) {
 }
 
 function renderForm() {
-  document.getElementById('cfg-form').innerHTML = SCHEMA.map(sec => {
-    // Setup is deliberately small; historical basic:true remains metadata for
-    // compatibility, while SETUP_KEYS controls the beginner-facing surface.
-    const hasBasicField = sec.fields.some(f => SETUP_KEYS.has(f.key));
-    const expertAttr = (!hasBasicField && !sec.basic) ? ' data-expert-section' : '';
+  const renderSection = (sec, group) => {
     const noteHtml = sec.sectionNote
       ? `<div style="font-size:.72rem;color:var(--dim);background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:5px;padding:.35rem .65rem;margin:.25rem 0 .5rem;line-height:1.5">${sec.sectionNote}</div>`
       : '';
     return `
-    <div class="cfg-section"${sec.id ? ` id="${sec.id}"` : ''}${expertAttr}>
-      <div class="cfg-title">${sec.title}</div>
+    <section class="cfg-section"${sec.id ? ` id="${sec.id}"` : ''} data-section="${_escHtml(sec.title)}">
+      <div class="cfg-title">${sec.title}<span class="cfg-title-count"></span></div>
       ${noteHtml}<div class="cfg-grid">
         ${sec.fields.map(f => {
           let val = getPath(cfg, f.path);
@@ -629,18 +781,35 @@ function renderForm() {
             : `<input type="number" id="cf-${f.key}" value="${val !== undefined ? val : ''}"
               step="${step}"${min}${max}${isLocked ? ' disabled' : ''}>`;
           const wid = f.wrapId ? ` id="${f.wrapId}"` : '';
-          const expertAttr2 = !SETUP_KEYS.has(f.key) ? ' data-expert' : '';
-          return `<div class="cfg-field"${wid}${expertAttr2}>
-            <div class="cfg-label">${f.label}${unitSuffix}</div>
-            <div class="cfg-desc">${f.desc}</div>
+          const level = f.basic ? 'essential' : 'advanced';
+          const searchText = `${f.key} ${f.label} ${f.desc} ${sec.title} ${group.title}`.toLowerCase();
+          return `<div class="cfg-field"${wid} data-key="${f.key}" data-level="${level}" data-search="${_escHtml(searchText)}">
+            <div class="cfg-field-head"><div class="cfg-label">${f.label}${unitSuffix}</div>
+              ${level === 'advanced' ? '<span class="field-level">Advanced</span>' : ''}</div>
             ${inp}
+            <details class="cfg-help"><summary>About this setting</summary><div class="cfg-desc">${f.desc}</div></details>
           </div>`;
         }).join('')}
       </div>
-    </div>
-  `;}).join('');
+    </section>`;
+  };
 
-  document.getElementById('btn-save').disabled = isLocked;
+  const sectionByTitle = new Map(SCHEMA.map(section => [section.title, section]));
+  const groupsHtml = WORKSPACE_GROUPS.map((group, index) => {
+    const sections = group.sections.map(title => sectionByTitle.get(title)).filter(Boolean);
+    return `<details class="config-group" data-group="${group.id}"${index === 0 ? ' open' : ''}>
+      <summary>
+        <span class="group-heading"><span class="group-title">${group.title}</span><span class="group-desc">${group.desc}</span></span>
+        <span class="group-meta"></span><span class="group-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="group-content">${sections.map(section => renderSection(section, group)).join('')}</div>
+    </details>`;
+  }).join('');
+  document.getElementById('cfg-form').innerHTML = groupsHtml +
+    '<div id="cfg-empty" class="cfg-empty" hidden>No settings match this search and filter.</div>';
+  initWorkspaceControls();
+
+  document.getElementById('btn-save').disabled = isLocked || !_cfgDirty;
   document.getElementById('lock-warn').style.display = isLocked ? '' : 'none';
 
   // Inject live sensor badges next to relevant fields
@@ -648,7 +817,7 @@ function renderForm() {
 
   // Wire cluster enable checkbox to show/hide dependent fields.
   // Re-run hw conditions (N2 guard on cl_n2) and the view filter so expert-only
-  // cluster fields stay hidden in Normal view.
+  // cluster fields remain hidden from Essentials when they do not apply.
   const clEn = document.getElementById('cf-cl_en');
   if (clEn) clEn.addEventListener('change', () => { applyClusterVisibility(); applyHwConditions(); applyView(); });
 
@@ -716,19 +885,20 @@ function runValidation() {
 
   const idleTargetRpm  = fv('di_tr');          // dynamic_idle.target_rpm
   const rpmLimit       = fv('rpm_limit');
+  const n2RpmLimit     = fv('n2_rpm_limit');
 
   // Compute startup values from cfg (these live in sequence/hardware, not config form)
   const startupCfg  = cfg?.sequence?.startup ?? {};
   const computedPreIgnRpm     = startupCfg.pre_ign_rpm     ?? preIgnRpmVal;
   const computedSpoolRpmTarget= startupCfg.rpm_target      ?? spoolRpmTarget;
   const computedFlameThresh   = cfg?.calibration?.flame_threshold;
-  const hasFlameHw = !!(hwCfg.sensors?.flame?.enabled || hwCfg.has_flame);
+  const hasFlameHw = hasRegistryInput('flame');
 
   // 1. preIgnRpm > spoolRpmTarget
   if (computedPreIgnRpm !== undefined && computedSpoolRpmTarget !== undefined
       && computedPreIgnRpm > computedSpoolRpmTarget) {
     warnings.push({
-      section: 'Engine Limits',
+      section: 'Engine Protection Limits',
       key:     'warn-preignrpm',
       msg:     '⚠ Pre-ignition RPM is above spool target — engine will never reach spool'
     });
@@ -737,7 +907,7 @@ function runValidation() {
   // 2. flameThreshold > 3500
   if (hasFlameHw && computedFlameThresh !== undefined && computedFlameThresh > 3500) {
     warnings.push({
-      section: 'Safety Monitor',
+      section: 'Automatic Safety Shutdowns',
       key:     'warn-flamehigh',
       msg:     '⚠ Flame threshold very high — detection may be unreliable'
     });
@@ -746,24 +916,48 @@ function runValidation() {
   // 3. flameThreshold < 100 and > 0
   if (hasFlameHw && computedFlameThresh !== undefined && computedFlameThresh > 0 && computedFlameThresh < 100) {
     warnings.push({
-      section: 'Safety Monitor',
+      section: 'Automatic Safety Shutdowns',
       key:     'warn-flamelow',
       msg:     '⚠ Flame threshold very low — false detections likely'
     });
   }
 
-  // 4. idleTargetRpm >= rpmLimit
-  if (idleTargetRpm !== undefined && rpmLimit !== undefined && idleTargetRpm >= rpmLimit) {
+  // 4. Idle target must remain below the shaft limit it actually uses.
+  const idleUsesN2 = !!document.getElementById('cf-di_n2')?.checked;
+  const idleComparisonLimit = idleUsesN2 ? n2RpmLimit : rpmLimit;
+  if (idleTargetRpm !== undefined && idleComparisonLimit !== undefined &&
+      idleComparisonLimit > 0 && idleTargetRpm >= idleComparisonLimit) {
     warnings.push({
-      section: 'Dynamic Idle',
+      section: 'Automatic Idle Speed Control',
       key:     'warn-idlelimit',
-      msg:     '⚠ Idle RPM at or above RPM limit'
+      msg:     '⚠ Idle target is at or above the selected shaft hard limit.'
     });
   }
 
+  // N2 control targets should leave operating margin below the independent trip.
+  if (hwCfg.safety?.n2_overspeed && n2RpmLimit > 0) {
+    const pbEnabled = !!document.getElementById('cf-pb_n2e')?.checked;
+    const pbSoft = fv('pb_n2s'), pbFull = fv('pb_n2h');
+    if (pbEnabled && ((pbSoft > 0 && pbSoft >= n2RpmLimit) ||
+                      (pbFull > 0 && pbFull >= n2RpmLimit))) {
+      warnings.push({section:'Throttle', key:'warn-n2-pullback-trip',
+        msg:'⚠ N2 pullback starts or reaches full authority at/above the hard N2 shutdown limit. Set both pullback points below the trip.'});
+    }
+    const govTarget = fv('gv_tr'), govBand = fv('gv_bd') || 0;
+    if (hwCfg.controllers?.governor && govTarget > 0 && govTarget + govBand >= n2RpmLimit) {
+      warnings.push({section:'Automatic N2 Speed Control', key:'warn-n2-governor-trip',
+        msg:'⚠ Governor target plus its no-correction band reaches the hard N2 shutdown limit. Leave operating margin below the trip.'});
+    }
+    const n2Warn = fv('cl_n2');
+    if (n2Warn > 0 && n2Warn >= n2RpmLimit) {
+      warnings.push({section:'External Instrument Cluster Display', key:'warn-n2-cluster-trip',
+        msg:'⚠ Cluster N2 warning is at/above the hard shutdown limit, so the display may not warn before the ECU trips.'});
+    }
+  }
+
   const egtSourceVal = Number((document.getElementById('cf-eg_src') || {}).value || cfg?.safety?.egt_source || 0);
-  const hasTotHw = !!(hwCfg.sensors?.tot?.enabled || hwCfg.has_tot);
-  const hasTitHw = !!(hwCfg.sensors?.tit?.enabled || hwCfg.has_tit);
+  const hasTotHw = hasRegistryInput('tot');
+  const hasTitHw = hasRegistryInput('tit');
   const effectiveEgt = egtSourceVal === 1 && hasTotHw ? 1 :
                        egtSourceVal === 2 && hasTitHw ? 2 :
                        hasTotHw ? 1 :
@@ -776,7 +970,7 @@ function runValidation() {
   const titLimitCanonical = titLimitVal !== undefined ? _fieldFromDisplay(_fieldDef('sf_tit') || {}, titLimitVal) : undefined;
   if (effectiveEgt === 1 && totLimitCanonical !== undefined && Math.abs(totLimitCanonical) < 0.001) {
     warnings.push({
-      section: 'Engine Limits',
+      section: 'Engine Protection Limits',
       key:     'warn-tot-zero',
       msg:     '⚠ TOT Limit is 0 - overtemperature protection is DISABLED for the selected engine temperature source.'
     });
@@ -808,8 +1002,7 @@ function runValidation() {
     const sections = document.querySelectorAll('.cfg-section');
     let targetSection = null;
     sections.forEach(sec => {
-      const titleEl = sec.querySelector('.cfg-title');
-      if (titleEl && titleEl.textContent.trim() === w.section) {
+      if (sec.dataset.section === w.section) {
         targetSection = sec;
       }
     });
@@ -824,6 +1017,8 @@ function runValidation() {
     div.style.cssText = 'font-size:.75rem;color:var(--yellow);background:rgba(255,196,0,.08);border:1px solid rgba(255,196,0,.3);border-radius:5px;padding:.28rem .65rem;margin:.3rem 0 .4rem;line-height:1.4';
     div.textContent = w.msg;
     titleEl.insertAdjacentElement('afterend', div);
+    const group = targetSection.closest('.config-group');
+    if (group) group.open = true;
   });
 }
 
@@ -835,7 +1030,7 @@ function hookValidation() {
 }
 
 // ── Save validation ───────────────────────────────────────────
-function validateBeforeSave(cfg) {
+async function validateBeforeSave(cfg) {
   const errors = [];
   const warns  = [];
 
@@ -844,16 +1039,39 @@ function validateBeforeSave(cfg) {
   }
 
   const rpmLimit   = gv(cfg, 'engine', 'rpm_limit');
+  const n2RpmLimit = gv(cfg, 'engine', 'n2_rpm_limit');
   const minRpm     = gv(cfg, 'engine', 'min_rpm');
   const idleTarget = gv(cfg, 'dynamic_idle', 'target_rpm');
-  const hasN1       = !!((hwCfg.sensors || {}).n1_rpm?.enabled || hwCfg.has_n1_rpm);
-  const hasAnyIdleRpm = !!(hasN1 || (hwCfg.has_two_shaft && ((hwCfg.sensors || {}).n2_rpm?.enabled || hwCfg.has_n2_rpm)));
+  const idleUseN2  = !!gv(cfg, 'dynamic_idle', 'use_n2');
+  const hasN1 = hasRegistryInput('n1_speed');
+  const hasN2 = hasRegistryInput('n2_speed');
+  const hasAnyIdleRpm = hasN1 || hasN2;
 
   if (hasN1 && rpmLimit !== undefined && minRpm !== undefined && minRpm >= rpmLimit)
     errors.push('Min RPM (' + minRpm + ') must be below RPM Limit (' + rpmLimit + ').');
+  if (hwCfg.safety?.n2_overspeed && (!hasN2 || !(Number(n2RpmLimit) > 0)))
+    errors.push('N2 overspeed safety requires a fitted N2 RPM input and a Maximum N2 Speed above 0.');
 
   if (hasAnyIdleRpm && idleTarget !== undefined && minRpm !== undefined && idleTarget < minRpm)
     warns.push('Idle target RPM (' + idleTarget + ') is below Min RPM (' + minRpm + '). Engine may fault at idle.');
+
+  if (hwCfg.safety?.n2_overspeed && Number(n2RpmLimit) > 0) {
+    const pbN2Enabled = !!gv(cfg, 'throttle', 'pullback_n2');
+    const pbN2Soft = Number(gv(cfg, 'throttle', 'pullback_n2_soft_rpm') || 0);
+    const pbN2Full = Number(gv(cfg, 'throttle', 'pullback_n2_hard_rpm') || 0);
+    if (pbN2Enabled && ((pbN2Soft > 0 && pbN2Soft >= n2RpmLimit) ||
+                        (pbN2Full > 0 && pbN2Full >= n2RpmLimit)))
+      warns.push('N2 pullback should begin and reach full authority below Maximum N2 Speed (' + n2RpmLimit + ' RPM), otherwise the hard shutdown can occur before gradual reduction is effective.');
+    const governorTarget = Number(gv(cfg, 'governor', 'target_rpm') || 0);
+    const governorBand = Number(gv(cfg, 'governor', 'band_rpm') || 0);
+    if (hwCfg.controllers?.governor && governorTarget > 0 && governorTarget + governorBand >= n2RpmLimit)
+      warns.push('Governor target plus no-correction band (' + (governorTarget + governorBand) + ' RPM) reaches Maximum N2 Speed (' + n2RpmLimit + ' RPM). Leave operating margin below the hard trip.');
+    if (hwCfg.controllers?.dynamic_idle && idleUseN2 && Number(idleTarget) >= n2RpmLimit)
+      warns.push('N2-based idle target (' + idleTarget + ' RPM) is at or above Maximum N2 Speed (' + n2RpmLimit + ' RPM).');
+    const clusterN2Warn = Number(gv(cfg, 'cluster', 'n2_warn_rpm') || 0);
+    if (clusterN2Warn > 0 && clusterN2Warn >= n2RpmLimit)
+      warns.push('Cluster N2 warning (' + clusterN2Warn + ' RPM) is at or above Maximum N2 Speed (' + n2RpmLimit + ' RPM), so the display may not warn before shutdown.');
+  }
 
   // Oil system cross-checks
   const oilRunning   = gv(cfg, 'oil', 'running_min');
@@ -873,8 +1091,8 @@ function validateBeforeSave(cfg) {
   const totMargin   = gv(cfg, 'engine', 'tot_safe_margin');
   const totCooldown = gv(cfg, 'engine', 'tot_cooldown_target');
   const sourcePref = gv(cfg, 'safety', 'egt_source') || 0;
-  const hasTotHw = !!(hwCfg.sensors?.tot?.enabled || hwCfg.has_tot);
-  const hasTitHw = !!(hwCfg.sensors?.tit?.enabled || hwCfg.has_tit);
+  const hasTotHw = hasRegistryInput('tot');
+  const hasTitHw = hasRegistryInput('tit');
   const primaryLimit = sourcePref === 1 && hasTotHw ? totLimit :
                        sourcePref === 2 && hasTitHw ? titLimit :
                        hasTotHw ? totLimit :
@@ -891,7 +1109,7 @@ function validateBeforeSave(cfg) {
   const abPmn = gv(cfg, 'afterburner', 'pump_min_pct');
   const abPmx = gv(cfg, 'afterburner', 'pump_max_pct');
   if (abPmn !== undefined && abPmx !== undefined && abPmx < abPmn)
-    errors.push('AB Pump Max % (' + abPmx + ') is below AB Pump Min % (' + abPmn + '). Swap them.');
+    errors.push('Afterburner Fuel Pump Max % (' + abPmx + ') is below Min % (' + abPmn + '). Swap them.');
 
   // Throttle pullback ordering — backend rejects hard limits at/below the
   // soft/start limit; catch each pair here with a named message.
@@ -917,14 +1135,16 @@ function validateBeforeSave(cfg) {
     return false;
   }
   if (warns.length) {
-    return confirm('Warnings:\n\n' + warns.map(w => '• ' + w).join('\n') + '\n\nSave anyway?');
+    return await OTDialog.confirm('Warnings:\n\n' + warns.map(w => '• ' + w).join('\n'), {
+      title:'Review safety warnings', confirmLabel:'Save anyway', danger:true
+    });
   }
   return true;
 }
 
 // ── Save ──────────────────────────────────────────────────────
 // Stage 1: collect form values into cfg, validate, then show recap modal.
-function saveConfig() {
+async function saveConfig() {
   if (isLocked) { alert('Config is locked - stop the engine first. (Live editing requires Dev Mode enabled beforehand, from Tools while in STANDBY.)'); return; }
 
   // Read form values into cfg (needed so _buildChanges has current cfg for validation)
@@ -945,7 +1165,7 @@ function saveConfig() {
   });
 
   // Run hard validation first (errors block save entirely)
-  if (!validateBeforeSave(cfg)) return;
+  if (!await validateBeforeSave(cfg)) return;
 
   // Build the change list for the recap
   const changes = _buildChanges();
@@ -1000,6 +1220,7 @@ function _doSave() {
     return d;
   }).then(d => {
     if (d.ok) {
+      if (window.OTSetup) OTSetup.mark('config');
       _clearDirty();
       saveMsg.textContent = (d.warn ? 'Saved — ' + d.warn : '✓ Saved — ' + new Date().toLocaleTimeString());
       saveMsg.style.color = d.warn ? 'var(--yellow)' : 'var(--green)';
@@ -1017,62 +1238,42 @@ function _doSave() {
 }
 
 // ── Engine type presets ───────────────────────────────────────
-// Each preset sets key config parameters via PATCH.
+// Each example proposes reviewable Config-page values; only Save performs PATCH.
 // Hardware pins are NOT touched — user handles those in hardware.html.
 const PRESETS = {
   kj66: {
     desc: 'Small RC Jet ~60N (KJ-66 style)',
     patch: {
       engine: { rpm_limit: 120000, min_rpm: 35000, tot_limit: 870, tot_safe_margin: 30, tot_cooldown_target: 150 },
-      dynamic_idle: { target_rpm: 45000 },
-      sequence: {
-        startup: { rpm_target: 60000, rpm_timeout_ms: 30000, safety_hold_ms: 5000,
-                   pre_ign_rpm: 20000, flame_timeout_ms: 8000 }
-      }
+      dynamic_idle: { target_rpm: 45000 }
     }
   },
   med_jet: {
     desc: 'Medium RC Jet ~200N',
     patch: {
       engine: { rpm_limit: 90000, min_rpm: 28000, tot_limit: 800, tot_safe_margin: 30, tot_cooldown_target: 150 },
-      dynamic_idle: { target_rpm: 35000 },
-      sequence: {
-        startup: { rpm_target: 50000, rpm_timeout_ms: 35000, safety_hold_ms: 6000,
-                   pre_ign_rpm: 18000, flame_timeout_ms: 10000 }
-      }
+      dynamic_idle: { target_rpm: 35000 }
     }
   },
   large_jet: {
     desc: 'Large RC Jet ~400N+',
     patch: {
       engine: { rpm_limit: 72000, min_rpm: 22000, tot_limit: 750, tot_safe_margin: 25, tot_cooldown_target: 120 },
-      dynamic_idle: { target_rpm: 28000 },
-      sequence: {
-        startup: { rpm_target: 42000, rpm_timeout_ms: 45000, safety_hold_ms: 8000,
-                   pre_ign_rpm: 15000, flame_timeout_ms: 12000 }
-      }
+      dynamic_idle: { target_rpm: 28000 }
     }
   },
   apu_small: {
     desc: 'Small APU (Garrett GTP30 style)',
     patch: {
       engine: { rpm_limit: 80000, min_rpm: 20000, tot_limit: 700, tot_safe_margin: 30, tot_cooldown_target: 100 },
-      dynamic_idle: { target_rpm: 25000 },
-      sequence: {
-        startup: { rpm_target: 40000, rpm_timeout_ms: 60000, safety_hold_ms: 10000,
-                   pre_ign_rpm: 12000, flame_timeout_ms: 15000 }
-      }
+      dynamic_idle: { target_rpm: 25000 }
     }
   },
   turboshaft: {
     desc: 'Turboshaft / Power Turbine',
     patch: {
       engine: { rpm_limit: 50000, min_rpm: 10000, tot_limit: 650, tot_safe_margin: 30, tot_cooldown_target: 80 },
-      dynamic_idle: { target_rpm: 15000 },
-      sequence: {
-        startup: { rpm_target: 25000, rpm_timeout_ms: 60000, safety_hold_ms: 12000,
-                   pre_ign_rpm: 8000, flame_timeout_ms: 15000 }
-      }
+      dynamic_idle: { target_rpm: 15000 }
     }
   },
   turbocharger: {
@@ -1082,61 +1283,61 @@ const PRESETS = {
       oil:    { startup_pressure: 1.5, startup_min_bar: 0.8, running_min: 1.8, map_min: 2.0, map_max: 2.8 },
       dynamic_idle: { target_rpm: 15000 },
       glow_plug: { preheat_ms: 12000, preheat_max_pct: 80, hold_pct: 30 },
-      sequence: {
-        startup: { rpm_target: 25000, rpm_timeout_ms: 60000, safety_hold_ms: 8000,
-                   pre_ign_rpm: 6000, flame_timeout_ms: 15000, hot_start_tot_threshold: 150 }
-      },
       safety: { flameout_shutdown_ms: 4000 }
     }
   }
 };
 
-function applyPreset(key) {
+async function applyPreset(key) {
   const sel = document.getElementById('preset-sel');
   if (!key) return;
   const preset = PRESETS[key];
   if (!preset) { sel.value = ''; return; }
-  if (!confirm('Load "' + preset.desc + '" as editable example suggestions?\n\nThese values are NOT verified for your turbine. They only change the form and do not reach the ECU unless you review and explicitly save them.\n\nAffected examples include RPM and temperature limits, oil targets, idle RPM, glow timing, and startup timing.')) {
+  if (!await OTDialog.confirm('Load "' + preset.desc + '" as editable example suggestions?\n\nThese values are NOT verified for your turbine. They only change Config fields that are currently available for the fitted hardware, and do not reach the ECU unless you review and explicitly save them. Hardware assignments and sequences are not changed.', {
+    title:'Load unverified example values', confirmLabel:'Load suggestions'
+  })) {
     sel.value = ''; return;
   }
-  // Deep-merge into cfg
-  function deepMerge(dst, src) {
-    for (const k in src) {
-      if (typeof src[k] === 'object' && !Array.isArray(src[k])) {
-        if (!dst[k]) dst[k] = {};
-        deepMerge(dst[k], src[k]);
-      } else {
-        dst[k] = src[k];
-      }
+  // Apply only fields represented on this Config page and currently usable
+  // with the fitted hardware. Presets never mutate sequence data or settings
+  // that the user cannot review here.
+  let applied = 0;
+  let skipped = 0;
+  SCHEMA.forEach(sec => sec.fields.forEach(f => {
+    const proposed = getPath(preset.patch, f.path);
+    if (proposed === undefined) return;
+    const el = document.getElementById('cf-' + f.key);
+    if (!el || el.disabled) { skipped++; return; }
+    setPath(cfg, f.path, proposed);
+    applied++;
+  }));
+  if (!applied) {
+    const note = document.getElementById('preset-note');
+    if (note) {
+      note.textContent = 'No values from this example apply to the currently fitted hardware.';
+      note.style.color = 'var(--yellow)';
     }
+    sel.value = '';
+    return;
   }
-  deepMerge(cfg, preset.patch);
   // Repopulate the form and indicate unsaved changes
   renderForm();
   _applyAllVisibility();
   hookValidation();
   runValidation();
-  _refreshChangedBorders();   // highlight fields that differ from last-saved state
-  document.querySelector('.save-bar').classList.add('is-dirty');
+  _markDirty();
   const saveMsg = document.getElementById('save-msg');
   if (saveMsg) { saveMsg.textContent = '⚠ Example suggestions loaded — unverified and unsaved'; saveMsg.style.color = 'var(--yellow)'; }
   const note = document.getElementById('preset-note');
-  if (note) { note.textContent = '⚠ "' + preset.desc + '" examples loaded. Verify every changed value before saving.'; note.style.color = 'var(--yellow)'; }
+  if (note) {
+    note.textContent = '⚠ "' + preset.desc + '" examples loaded. Verify every changed value before saving.' +
+      (skipped ? ' ' + skipped + ' hardware-dependent suggestion' + (skipped === 1 ? ' was' : 's were') + ' skipped.' : '');
+    note.style.color = 'var(--yellow)';
+  }
   sel.value = '';
 }
 
 // ── Dev Mode toggle ───────────────────────────────────────────
-function toggleDevMode() {
-  fetch('/api/command', {
-    method: 'POST',
-    body: JSON.stringify({ cmd: 'TOGGLE_DEV_MODE' }),
-    headers: { 'Content-Type': 'application/json' }
-  }).then(async r => {
-    const body = await r.json().catch(() => ({}));
-    if (!r.ok || body.ok === false) throw new Error(body.error || body.reason || ('HTTP ' + r.status));
-  }).catch(e => alert('Dev mode toggle failed: ' + e.message));
-}
-
 // ── Live sensor badge helpers ─────────────────────────────────
 // Map from field key → function that returns badge text from telemetry data
 function liveSensorFitted(d, telemetryKey, sensorKey, hwFlatKey) {
@@ -1148,6 +1349,8 @@ function liveSensorFitted(d, telemetryKey, sensorKey, hwFlatKey) {
 const LIVE_BADGE_KEYS = {
   'rpm_limit': d => liveSensorFitted(d, 'has_n1', 'n1_rpm', 'has_n1_rpm') && d.n1 !== undefined
     ? 'live: ' + fmtInt(d.n1) + ' RPM' : null,
+  'n2_rpm_limit': d => liveSensorFitted(d, 'has_n2', 'n2_rpm', 'has_n2_rpm') && d.n2 !== undefined
+    ? 'live: ' + fmtInt(d.n2) + ' RPM' : null,
   'tot_limit': d => liveSensorFitted(d, 'has_tot', 'tot', 'has_tot') && d.tot !== undefined
     ? 'live: ' + toDispTemp(Number(d.tot)).toFixed(1) + '\u00a0' + dispTempUnit() : null,
   'sf_tit': d => liveSensorFitted(d, 'has_tit', 'tit', 'has_tit') && d.tit !== undefined
@@ -1193,10 +1396,10 @@ window.applyData = function(d) {
   const locked = !!d.config_locked;
   if (locked !== isLocked && cfg.profile_id) {
     isLocked = locked;
-    _clearDirty();  // re-render resets form values from cfg
     renderForm();
-    _snapshotFields();
     _applyAllVisibility();
+    _clearDirty();
+    applyView();
     hookValidation();
     runValidation();
   }
@@ -1207,15 +1410,6 @@ window.applyData = function(d) {
     applyRcPwmVisibility();
   }
 
-  // Afterburner fitted flag from hardware config
-  if (d.has_afterburner !== undefined) {
-    const newVal = !!d.has_afterburner;
-    if (newVal !== hasAfterburnerCfg) {
-      hasAfterburnerCfg = newVal;
-      applyAbCfgVisibility();
-    }
-  }
-
   // Governor / glow / safety-ext / starter-assist flags from hardware telemetry
   let extChanged = false;
   if (d.has_governor !== undefined && !!d.has_governor !== _hasGovernorCfg) {
@@ -1224,8 +1418,8 @@ window.applyData = function(d) {
   if (d.has_glow_plug !== undefined && !!d.has_glow_plug !== _hasGlowCfg) {
     _hasGlowCfg = !!d.has_glow_plug; extChanged = true;
   }
-  if (d.has_starter_assist !== undefined && !!d.has_starter_assist !== _hasStarterAssistCfg) {
-    _hasStarterAssistCfg = !!d.has_starter_assist; extChanged = true;
+  if (d.has_starter_low_rpm_support !== undefined && !!d.has_starter_low_rpm_support !== _hasStarterSupportCfg) {
+    _hasStarterSupportCfg = !!d.has_starter_low_rpm_support; extChanged = true;
   }
   const hasSafetyExt = !!(d.has_oil_temp || d.has_batt_voltage || d.has_fuel_press || d.has_tit || d.has_governor || d.has_n1);
   if (hasSafetyExt !== _hasSafetyExtCfg) {
@@ -1254,12 +1448,6 @@ window.applyData = function(d) {
   }
 
   // Dev Mode button label
-  const devBtn = document.getElementById('btn-dev-mode');
-  if (devBtn) {
-    devBtn.textContent    = d.dev_mode ? 'Disable Dev Mode' : 'Enable Dev Mode';
-    devBtn.style.color    = d.dev_mode ? 'var(--red)' : '';
-    devBtn.style.borderColor = d.dev_mode ? 'var(--red)' : '';
-  }
 };
 
 // ── Cluster enable — show/hide dependent fields ───────────────
@@ -1312,6 +1500,7 @@ function applyAbIgnitionParamVisibility() {
   showF('ab_tr',   flameMode === 1);
   showF('ab_tw',   flameMode === 1);
   showF('ab_ams',  flameMode === 2);
+  applyView();
 }
 
 function _cfgShowField(key, show) {
@@ -1322,11 +1511,10 @@ function _cfgShowField(key, show) {
 function applyFlameoutRelightVisibility() {
   const flSrc = parseInt(document.getElementById('cf-sf_fs')?.value || '0', 10);
   const rlSrc = parseInt(document.getElementById('cf-rl_cs')?.value || '0', 10);
-  const s = hwCfg.sensors || {};
-  const hasFlame = !!(s.flame?.enabled || hwCfg.has_flame);
-  const hasN1 = !!(s.n1_rpm?.enabled || hwCfg.has_n1_rpm);
-  const hasTot = !!(s.tot?.enabled || hwCfg.has_tot);
-  const hasTit = !!(s.tit?.enabled || hwCfg.has_tit);
+  const hasFlame = hasRegistryInput('flame');
+  const hasN1 = hasRegistryInput('n1_speed');
+  const hasTot = hasRegistryInput('tot');
+  const hasTit = hasRegistryInput('tit');
   const hasEgt = hasTot || hasTit;
   const autoFlameSrc = hasFlame ? 1 : (hasN1 ? 2 : (hasEgt ? 3 : 0));
   const effFl = flSrc || autoFlameSrc;
@@ -1335,6 +1523,7 @@ function applyFlameoutRelightVisibility() {
   _cfgShowField('sf_ft', effFl === 3);
   _cfgShowField('rl_cr', effRl === 2);
   _cfgShowField('rl_tr', effRl === 3);
+  applyView();
 }
 
 // ── RC PWM section — show only when RC PWM is active ─────────
@@ -1361,29 +1550,25 @@ function applyAbCfgVisibility() {
 }
 
 // ── Safety-ext / Governor / Glow / StarterAssist sections — show when hardware fitted ──
-let _hasGovernorCfg = false, _hasGlowCfg = false, _hasSafetyExtCfg = false, _hasStarterAssistCfg = false;
+let _hasGovernorCfg = false, _hasGlowCfg = false, _hasSafetyExtCfg = false, _hasStarterSupportCfg = false;
 function refreshFeatureCachesFromHardware() {
-  const s = hwCfg.sensors || {};
   const a = hwCfg.actuators || {};
-  hasAfterburnerCfg = !!hwCfg.has_afterburner;
-  _hasGovernorCfg = !!(hwCfg.controllers?.governor || hwCfg.has_governor);
-  _hasGlowCfg = !!(a.glow_plug?.enabled || hwCfg.has_glow_plug);
-  _hasStarterAssistCfg = !!((a.starter?.enabled || hwCfg.has_starter) &&
-                            a.starter?.assist_enabled !== false &&
-                            (s.n1_rpm?.enabled || hwCfg.has_n1_rpm));
+  hasAfterburnerCfg = hasActualAfterburnerHardware();
+  _hasGovernorCfg = !!hwCfg.controllers?.governor;
+  _hasGlowCfg = hasRegistryOutput('glow_plug');
+  _hasStarterSupportCfg = !!(hasRegistryOutput('starter') &&
+                            a.starter?.low_rpm_support_enabled !== false &&
+                            hasRegistryInput('n1_speed'));
   // AB servo-PWM input uses the same shared RC failsafe timeout, so an
   // AB-only RC setup must still see the RC Input section.
-  const abRcPwm = !!(hwCfg.has_afterburner && hwCfg.ab_trigger?.input_rc_pwm &&
+  const abRcPwm = !!(hasAfterburnerCfg && hwCfg.ab_trigger?.input_rc_pwm &&
                      (hwCfg.ab_trigger?.input_pin ?? -1) >= 0);
-  rcPwmActive = !!((s.throttle_input?.enabled && s.throttle_input?.rc_pwm) ||
-                   (s.idle_input?.enabled && s.idle_input?.rc_pwm) ||
-                   abRcPwm || hwCfg.rc_pwm_active);
+  rcPwmActive = !!(Number(registryInputByPurpose('throttle')?.driver) === 3 ||
+                   Number(registryInputByPurpose('idle')?.driver) === 3 || abRcPwm);
   _hasSafetyExtCfg = !!(
-    s.tit?.enabled || hwCfg.has_tit ||
-    s.oil_temp?.enabled || hwCfg.has_oil_temp ||
-    s.fuel_press?.enabled || hwCfg.has_fuel_press ||
-    s.batt_voltage?.enabled || hwCfg.has_batt_voltage ||
-    s.n1_rpm?.enabled || hwCfg.has_n1_rpm
+    hasRegistryInput('tit') || hasRegistryInput('oil_temperature') ||
+    hasRegistryInput('fuel_pressure') || hasRegistryInput('battery_voltage') ||
+    hasRegistryInput('n1_speed')
   );
 }
 function applyExtSectionVisibility() {
@@ -1398,8 +1583,8 @@ function applyExtSectionVisibility() {
   const glowSec = document.getElementById('glow-cfg-section');
   if (glowSec) { glowSec.dataset.forceHidden = _hasGlowCfg ? '0' : '1'; glowSec.style.display = _hasGlowCfg ? '' : 'none'; }
 
-  const assistSec = document.getElementById('starter-assist-section');
-  if (assistSec) { assistSec.dataset.forceHidden = _hasStarterAssistCfg ? '0' : '1'; assistSec.style.display = _hasStarterAssistCfg ? '' : 'none'; }
+  const supportSec = document.getElementById('starter-support-section');
+  if (supportSec) { supportSec.dataset.forceHidden = _hasStarterSupportCfg ? '0' : '1'; supportSec.style.display = _hasStarterSupportCfg ? '' : 'none'; }
 }
 
 // ── Hardware-conditional visibility ──────────────────────
@@ -1407,51 +1592,81 @@ function applyExtSectionVisibility() {
 // to the fitted hardware without requiring the user to manage them.
 let hwCfg = {};
 
+function registryChannelInstalled(channel) {
+  if (!channel || channel.installed === false) return false;
+  const tempInterface = Number(channel.temp_interface || 0);
+  if (tempInterface >= 1 && tempInterface <= 3) {
+    return Number(channel.spi_clk) >= 0 && Number(channel.spi_cs) >= 0 &&
+      Number(channel.spi_miso) >= 0 && (tempInterface !== 3 || Number(channel.spi_mosi) >= 0);
+  }
+  return Number(channel.pin) >= 0;
+}
+function registryInputByPurpose(...purposes) {
+  const wanted = new Set(purposes.map(String));
+  return (hwCfg.channel_registry?.inputs || []).find(channel =>
+    registryChannelInstalled(channel) && wanted.has(String(channel.purpose || channel.id || '')));
+}
+function registryOutputByPurpose(...purposes) {
+  const wanted = new Set(purposes.map(String));
+  return (hwCfg.channel_registry?.outputs || []).find(channel =>
+    registryChannelInstalled(channel) && wanted.has(String(channel.purpose || channel.id || '')));
+}
+function hasRegistryInput(...purposes) { return !!registryInputByPurpose(...purposes); }
+function hasRegistryOutput(...purposes) { return !!registryOutputByPurpose(...purposes); }
+function hasActualAfterburnerHardware(hw = hwCfg) {
+  return hasRegistryOutput('ab_igniter', 'ab_pump', 'ab_valve');
+}
+
 function applyHwConditions() {
-  // Resolve hardware flags — /api/hardware may present them in nested sensor/actuator
-  // objects (same format used by sequence.html) OR as top-level has_xxx booleans.
-  const s  = hwCfg.sensors    || {};
   const a  = hwCfg.actuators  || {};
-  const hasOilPress    = !!(s.oil_press?.enabled  || hwCfg.has_oil_press);
-  const hasN1          = !!(s.n1_rpm?.enabled     || hwCfg.has_n1_rpm);
-  const hasN2          = !!(hwCfg.has_two_shaft && (s.n2_rpm?.enabled || hwCfg.has_n2_rpm));
-  const hasOilTemp     = !!(s.oil_temp?.enabled   || hwCfg.has_oil_temp);
-  const hasFuelPress   = !!(s.fuel_press?.enabled || hwCfg.has_fuel_press);
-  const hasBattVolt    = !!(s.batt_voltage?.enabled  || hwCfg.has_batt_voltage);
-  const hasFlame       = !!(s.flame?.enabled      || hwCfg.has_flame);
-  const hasTot         = !!(s.tot?.enabled        || hwCfg.has_tot);
-  const hasTit         = !!(s.tit?.enabled        || hwCfg.has_tit);
-  const hasAB          = !!hwCfg.has_afterburner;
-  const hasAbFlame     = !!(hasAB && hwCfg.ab_flame?.enabled);
-  const hasAbInput     = !!(hasAB && (hwCfg.ab_trigger?.input_pin ?? -1) >= 0);
+  const hasOilPress    = hasRegistryInput('oil_pressure');
+  const hasN1          = hasRegistryInput('n1_speed');
+  const hasN2          = hasRegistryInput('n2_speed');
+  const hasOilTemp     = hasRegistryInput('oil_temperature');
+  const hasFuelPress   = hasRegistryInput('fuel_pressure');
+  const hasBattVolt    = hasRegistryInput('battery_voltage');
+  const hasFlame       = hasRegistryInput('flame');
+  const hasTot         = hasRegistryInput('tot');
+  const hasTit         = hasRegistryInput('tit');
+  const hasAB          = hasActualAfterburnerHardware();
+  const hasAbFlame     = !!(hasAB && hasRegistryInput('ab_flame'));
   const abTriggerSource = Number(hwCfg.ab_trigger?.source ?? hwCfg.abTriggerSource ?? 0);
-  const hasIgniter     = !!(a.igniter?.enabled    || hwCfg.has_igniter);
-  const hasIgniter2    = !!(a.igniter2?.enabled   || hwCfg.has_igniter2);
+  const hasAbInput     = !!(hasAB && abTriggerSource === 3 && (hwCfg.ab_trigger?.input_pin ?? -1) >= 0);
+  const hasIgniter     = hasRegistryOutput('igniter');
+  const hasIgniter2    = hasRegistryOutput('ab_igniter');
   const hasAbIgniter   = !!(hasAB && hasIgniter2);
-  const hasThrottleOut = !!(a.throttle?.enabled   || hwCfg.has_throttle);
-  const hasOilPump     = !!(a.oil_pump?.enabled   || hwCfg.has_oil_pump);
-  const hasStarter     = !!(a.starter?.enabled    || hwCfg.has_starter);
-  const hasFuelSol     = !!(a.fuel_sol?.enabled   || hwCfg.has_fuel_sol);
-  const hasPropPitch   = !!(a.prop_pitch?.enabled || hwCfg.has_prop_pitch);
-  const hasGlowPlug    = !!(a.glow_plug?.enabled  || hwCfg.has_glow_plug);
-  const hasFuelPump2   = !!(a.fuel_pump2?.enabled || hwCfg.has_fuel_pump2);
-  const hasCoolFan     = !!(a.cool_fan?.enabled   || hwCfg.has_cool_fan);
-  const hasAirstarter  = !!(a.airstarter_sol?.enabled || hwCfg.has_airstarter);
-  const hasOilScavenge = !!(a.oil_scavenge_pump?.enabled || hwCfg.has_oil_scavenge);
-  const hasBleedValve  = !!(a.bleed_valve?.enabled || hwCfg.has_bleed_valve);
-  const hasStarterEn   = !!(a.starter_en?.enabled || hwCfg.has_starter_en);
-  const hasAbSol       = !!(hasAB && (a.ab_sol?.enabled || hwCfg.has_ab_sol));
-  const hasAbPump      = !!(hasAB && (a.ab_pump?.enabled || hwCfg.has_ab_pump));
+  const hasThrottleOut = hasRegistryOutput('main_fuel');
+  const hasThrottleInput = hasRegistryInput('throttle');
+  const hasOilPump     = hasRegistryOutput('oil_pump');
+  const hasStarter     = hasRegistryOutput('starter');
+  const hasFuelSol     = hasRegistryOutput('fuel_shutoff');
+  const hasPropPitch   = hasRegistryOutput('prop_pitch');
+  const hasGlowPlug    = hasRegistryOutput('glow_plug');
+  const hasFuelPump2   = hasRegistryOutput('fuel_pump');
+  const hasCoolFan     = hasRegistryOutput('cooling_fan');
+  const hasAirstarter  = hasRegistryOutput('air_starter');
+  const hasOilScavenge = hasRegistryOutput('scavenge_pump');
+  const hasBleedValve  = hasRegistryOutput('bleed_valve');
+  const hasStarterEn   = hasRegistryOutput('starter_enable');
+  const hasAbSol       = !!(hasAB && hasRegistryOutput('ab_valve'));
+  const hasAbPump      = !!(hasAB && hasRegistryOutput('ab_pump'));
   const hasClusterSerial = !!hwCfg.cluster_serial?.enabled;
-  const hasDynamicIdle = !!((hwCfg.controllers?.dynamic_idle || hwCfg.has_dynamic_idle) &&
+  const hasDynamicIdle = !!(hwCfg.controllers?.dynamic_idle &&
     hasThrottleOut && (hasN1 || hasN2));
-  const hasGovernorRequested = !!(hwCfg.controllers?.governor || hwCfg.has_governor);
-  const hasProportionalPropPitch = hasPropPitch && Number(a.prop_pitch?.type ?? hwCfg.prop_pitch_type ?? 0) !== 2;
+  const hasGovernorRequested = !!hwCfg.controllers?.governor;
+  const registryPropPitch = registryOutputByPurpose('prop_pitch');
+  const hasProportionalPropPitch = hasPropPitch && Number(registryPropPitch?.driver) !== 4;
   const hasGovernorControl = hasThrottleOut || hasProportionalPropPitch;
   const hasGovernor = hasGovernorRequested && hasN2 && hasGovernorControl;
+  const actuatorPurposes = {
+    throttle: 'main_fuel', starter: 'starter', oil_pump: 'oil_pump', fuel_sol: 'fuel_shutoff',
+    prop_pitch: 'prop_pitch', glow_plug: 'glow_plug', fuel_pump2: 'fuel_pump', cool_fan: 'cooling_fan',
+    airstarter_sol: 'air_starter', oil_scavenge_pump: 'scavenge_pump', bleed_valve: 'bleed_valve',
+    starter_en: 'starter_enable', ab_sol: 'ab_valve', ab_pump: 'ab_pump'
+  };
   const actuatorType = key => {
-    const act = a[key] || {};
-    return Number(act.type ?? hwCfg[`${key}_type`] ?? NaN);
+    const driver = Number(registryOutputByPurpose(actuatorPurposes[key] || key)?.driver);
+    return driver === 4 ? 2 : (driver === 5 ? 1 : (driver === 6 ? 0 : NaN));
   };
   const isOnOffType = key => Number(actuatorType(key)) === 2;
 
@@ -1489,7 +1704,7 @@ function applyHwConditions() {
 
   function ghostSectionByTitle(title, available, reason) {
     const sec = Array.from(document.querySelectorAll('.cfg-section'))
-      .find(s => s.querySelector('.cfg-title')?.textContent?.trim() === title);
+      .find(s => s.dataset.section === title);
     if (!sec) return;
     sec.style.opacity = available ? '' : '0.45';
     sec.style.cursor = available ? '' : 'not-allowed';
@@ -1542,15 +1757,15 @@ function applyHwConditions() {
     oilNote.style.display = 'none';
   }
 
-  // ── Standby Oil Feed — windmill protection from N1/N2, no oil-pressure sensor required ─────
+  // ── Windmilling oil protection from N1/N2, no oil-pressure sensor required ─────
   const hasStandbyOilSource = hasN1 || hasN2;
   const standbyOilAvailable = hasOilPump && hasStandbyOilSource;
-  ghostSectionByTitle('Standby Oil Feed', standbyOilAvailable,
+  ghostSectionByTitle('Windmilling Oil Protection', standbyOilAvailable,
     !hasOilPump
-      ? 'Oil pump output is not configured in Hardware. Enable an oil pump to unlock standby oil feed.'
-      : 'No N1 or N2 RPM sensor is configured. Enable a shaft RPM sensor to unlock windmill standby oil feed.');
+      ? 'Oil pump output is not configured in Hardware. Enable an oil pump to unlock windmilling oil protection.'
+      : 'No N1 or N2 RPM sensor is configured. Enable a shaft RPM sensor to unlock windmilling oil protection.');
   ghostField('so_src', standbyOilAvailable,
-    'Standby oil feed needs an oil pump and at least one shaft RPM sensor.');
+    'Windmilling oil protection needs an oil pump and at least one shaft RPM sensor.');
   ghostSelectOption('so_src', 0, hasN1,
     'N1 RPM sensor is not configured in Hardware.');
   ghostSelectOption('so_src', 1, hasN2,
@@ -1558,7 +1773,7 @@ function applyHwConditions() {
   ghostSelectOption('so_src', 2, hasStandbyOilSource,
     'No N1 or N2 RPM sensor is configured in Hardware.');
   ['so_rl','so_fp','so_fb'].forEach(k => ghostField(k, standbyOilAvailable,
-    'Standby oil feed needs an oil pump and at least one shaft RPM sensor.'));
+    'Windmilling oil protection needs an oil pump and at least one shaft RPM sensor.'));
 
   // ── Core sensor-dependent limits stay visible but ghosted so users can see
   // which common protections need hardware before they matter.
@@ -1592,10 +1807,12 @@ function applyHwConditions() {
   ghostField('th_ru', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Throttle / fuel output is not configured in Hardware.' : slewMsg);
   ghostField('th_rd', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Throttle / fuel output is not configured in Hardware.' : slewMsg);
   ghostField('th_mx', hasThrottleOut, 'Throttle / fuel output is not configured in Hardware.');
-  ghostField('th_ex', hasThrottleOut, 'Throttle / fuel output is not configured in Hardware.');
-  const hasN1Pb  = !!(hwCfg.sensors?.n1_rpm?.enabled || hwCfg.has_n1_rpm);
-  const hasEgtPb = !!(hwCfg.sensors?.tot?.enabled || hwCfg.has_tot ||
-                      hwCfg.sensors?.tit?.enabled || hwCfg.has_tit);
+  ghostField('th_ex', hasThrottleOut && hasThrottleInput,
+    !hasThrottleOut
+      ? 'Throttle / fuel output is not configured in Hardware.'
+      : 'Low-throttle sensitivity only applies to a physical throttle input configured in Hardware.');
+  const hasN1Pb = hasRegistryInput('n1_speed');
+  const hasEgtPb = hasRegistryInput('tot', 'tit');
   ['pb_n1e','pb_n1s','pb_n1h'].forEach(k =>
     ghostField(k, hasThrottleSlew && hasN1Pb,
       !hasN1Pb ? 'N1 pullback requires an N1 RPM sensor in Hardware.' : slewMsg));
@@ -1605,20 +1822,24 @@ function applyHwConditions() {
   ['pb_egte','pb_egts','pb_egth'].forEach(k =>
     ghostField(k, hasThrottleSlew && hasEgtPb,
       !hasEgtPb ? 'EGT pullback requires a TOT or TIT sensor in Hardware.' : slewMsg));
+  const hasAnyPullbackSource = hasN1Pb || hasN2 || hasEgtPb;
   ['pb_min','pb_str'].forEach(k =>
-    ghostField(k, hasThrottleSlew, slewMsg));
-  ghostField('lm_mt', hasThrottleOut, 'Limp Mode throttle cap requires a throttle/fuel output.');
+    ghostField(k, hasThrottleSlew && hasAnyPullbackSource,
+      !hasAnyPullbackSource ? 'Pullback floor has no effect until an N1, N2, TOT, or TIT sensor is configured in Hardware.' : slewMsg));
+  ghostField('rl_mode', hasThrottleSlew && (hasN1Pb || hasN2),
+    !(hasN1Pb || hasN2) ? 'RPM limiter mode requires an N1 or N2 RPM sensor in Hardware.' : slewMsg);
+  ghostField('lm_mt', hasThrottleOut, 'Reduced-power mode requires a throttle/fuel output.');
   const hasAnyIgnitionOutput = hasIgniter || hasIgniter2 || hasGlowPlug;
-  ghostField('ms_is', hasAnyIgnitionOutput, 'Igniter-on-START requires Igniter 1, Igniter 2, or Glow/Wet Glow to be configured in Hardware.');
-  ghostField('ms_it', hasAnyIgnitionOutput, 'START relight output requires Igniter 1, Igniter 2, or Glow/Wet Glow to be configured in Hardware.');
+  ghostField('ms_is', hasAnyIgnitionOutput, 'Igniter-on-START requires Igniter 1, AB / Pilot Igniter, or Glow/Wet Glow to be configured in Hardware.');
+  ghostField('ms_it', hasAnyIgnitionOutput, 'START relight output requires Igniter 1, AB / Pilot Igniter, or Glow/Wet Glow to be configured in Hardware.');
   ghostSelectOption('ms_it', 0, hasIgniter, 'Igniter 1 is not configured in Hardware.');
-  ghostSelectOption('ms_it', 1, hasIgniter2, 'Igniter 2 is not configured in Hardware.');
+  ghostSelectOption('ms_it', 1, hasIgniter2, 'AB / Pilot Igniter is not configured in Hardware.');
   ghostSelectOption('ms_it', 2, hasGlowPlug, 'Glow/Wet Glow is not configured in Hardware.');
   ghostField('tl_fp', hasFuelSol, 'Fuel Prime duration requires a fuel solenoid output.');
   ghostField('tl_fs', hasFuelSol, 'Solenoid Click duration requires a fuel solenoid output.');
   ghostField('tl_op', hasOilPump, 'Oil Prime duration requires an oil pump output.');
   ghostField('tl_ig', hasIgniter, 'Igniter 1 Test duration requires Igniter 1 to be configured in Hardware.');
-  ghostField('tl_i2', hasIgniter2, 'Igniter 2 Test duration requires Igniter 2 to be configured in Hardware.');
+  ghostField('tl_i2', hasIgniter2, 'AB / Pilot Igniter Test duration requires AB / Pilot Igniter to be configured in Hardware.');
   ghostField('tl_gl', hasGlowPlug, 'Glow Test duration requires a glow plug output.');
   ghostField('tl_gp', hasGlowPlug, 'Glow Test demand requires a glow plug output.');
   ghostField('tl_st', hasStarter, 'Starter Test duration requires a starter output.');
@@ -1630,20 +1851,20 @@ function applyHwConditions() {
   ghostField('tl_cf', hasCoolFan, 'Fan Test duration requires a cooling fan output.');
   ghostField('tl_as', hasAirstarter, 'Airstarter Test duration requires an airstarter solenoid output.');
   ghostField('tl_bv', hasBleedValve, 'Bleed Test duration requires a bleed valve output.');
-  ghostField('tl_f2', hasFuelPump2, 'Aux Pump 2 Test duration requires Auxiliary Fuel Pump 2 in Hardware.');
+  ghostField('tl_f2', hasFuelPump2, 'Pilot / Auxiliary Fuel Pump Test duration requires Pilot / Auxiliary Fuel Pump in Hardware.');
   ghostField('tl_f2p', hasFuelPump2 && !isOnOffType('fuel_pump2'), isOnOffType('fuel_pump2')
-    ? 'Auxiliary Fuel Pump 2 is configured as relay/on-off. Aux Pump 2 Test % is ignored; use Aux Pump 2 Test ms to control pulse length.'
-    : 'Aux Pump 2 Test demand requires Auxiliary Fuel Pump 2 in Hardware.');
-  ghostField('tl_se', hasStarterEn, 'Starter Enable Test duration requires a starter enable relay output.');
+    ? 'Pilot / Auxiliary Fuel Pump is configured as relay/on-off. Test % is ignored; use test duration to control pulse length.'
+    : 'Pilot / Auxiliary Fuel Pump Test demand requires Pilot / Auxiliary Fuel Pump in Hardware.');
+  ghostField('tl_se', hasStarterEn, 'Starter Enable Test duration requires a starter enable output.');
   ghostField('tl_pp', hasPropPitch, 'Prop Pitch Test duration requires a prop-pitch actuator.');
   ghostField('tl_pq', hasPropPitch && !isOnOffType('prop_pitch'), isOnOffType('prop_pitch')
     ? 'Prop pitch is configured as relay/on-off. Prop Pitch Test % is ignored; use Prop Pitch Test ms to control pulse length.'
     : 'Prop Pitch Test demand requires a prop-pitch actuator.');
-  ghostField('tl_abs', hasAbSol, 'AB Solenoid duration requires afterburner hardware and an AB solenoid output.');
-  ghostField('tl_abp', hasAbPump, 'AB Pump Test duration requires afterburner hardware and an AB pump output.');
+  ghostField('tl_abs', hasAbSol, 'The valve test requires an installed afterburner fuel shutoff valve.');
+  ghostField('tl_abp', hasAbPump, 'The pump test requires an installed afterburner fuel pump.');
   ghostField('tl_abq', hasAbPump && !isOnOffType('ab_pump'), isOnOffType('ab_pump')
-    ? 'AB pump is configured as relay/on-off. AB Pump Test % is ignored; use AB Pump Test ms to control pulse length.'
-    : 'AB Pump Test demand requires afterburner hardware and an AB pump output.');
+    ? 'The afterburner fuel pump is configured as relay/on-off. Pump Test % is ignored; use the test duration instead.'
+    : 'Pump-test demand requires an installed afterburner fuel pump.');
   ghostField('sl_wg', hasGlowPlug && Number(a.glow_plug?.type || 0) === 2,
     'Wet glow fuel logging requires a Wet Glow Plug output in Hardware.');
   ghostField('sl_gc', hasGlowPlug && !!a.glow_plug?.has_current,
@@ -1651,28 +1872,28 @@ function applyHwConditions() {
   ghostField('sl_ic', hasIgniter && !!a.igniter?.has_current,
     'Igniter 1 current logging requires an igniter current sensor in Hardware.');
   ghostField('sl_i2', hasIgniter2 && !!a.igniter2?.has_current,
-    'Igniter 2 current logging requires an igniter 2 current sensor in Hardware.');
+    'AB / Pilot Igniter current logging requires an AB / pilot igniter current sensor in Hardware.');
   ghostField('sl_oc', hasOilPump && !!a.oil_pump?.has_current,
     'Oil pump current logging requires an oil pump current sensor in Hardware.');
 
   ['di_tr','di_ru','di_rd','di_db','di_rl','di_mm','di_ig','di_im'].forEach(k =>
-    ghostField(k, hasDynamicIdle, 'Dynamic Idle needs Hardware > Controllers > Dynamic Idle plus a throttle/fuel output and at least one fitted shaft RPM sensor.'));
+    ghostField(k, hasDynamicIdle, 'Automatic idle speed control must be enabled in Hardware > Controllers and needs a throttle/fuel output plus an N1 or N2 speed sensor.'));
   ghostField('di_n2', hasDynamicIdle && hasN2, hasN2
-    ? 'Dynamic Idle needs Hardware > Controllers > Dynamic Idle plus a throttle/fuel output.'
+    ? 'Automatic idle speed control must be enabled in Hardware > Controllers and needs a throttle/fuel output.'
     : 'Use N2 Speed requires an N2 RPM sensor in Hardware.');
-  ghostSectionByTitle('Dynamic Idle', hasDynamicIdle, 'Dynamic Idle needs a throttle/fuel output and N1 or N2 RPM feedback.');
+  ghostSectionByTitle('Automatic Idle Speed Control', hasDynamicIdle, 'Automatic idle speed control needs a throttle/fuel output and N1 or N2 speed feedback.');
 
-  ghostSectionByTitle('Power Turbine Governor', hasGovernor,
+  ghostSectionByTitle('Automatic N2 Speed Control', hasGovernor,
     !hasGovernorRequested
-      ? 'Power Turbine Governor is not enabled in Hardware > Controllers.'
+      ? 'Automatic N2 speed control is not enabled in Hardware > Controllers.'
       : !hasN2
-      ? 'Power Turbine Governor requires an N2 RPM sensor.'
-      : 'Power Turbine Governor requires a throttle/fuel output or proportional prop-pitch actuator.');
+      ? 'Automatic N2 speed control requires an N2 RPM sensor.'
+      : 'Automatic N2 speed control requires a throttle/fuel output or proportional propeller-pitch actuator.');
   ['gv_tr','gv_bd','gv_kp'].forEach(k =>
-    ghostField(k, hasGovernor, 'Power Turbine Governor needs N2 RPM plus a throttle/fuel output or proportional prop-pitch actuator.'));
+    ghostField(k, hasGovernor, 'Automatic N2 speed control needs N2 RPM plus a throttle/fuel output or proportional propeller-pitch actuator.'));
   ['gv_pk','gv_pr'].forEach(k =>
     ghostField(k, hasGovernor && hasProportionalPropPitch, hasProportionalPropPitch
-      ? 'Power Turbine Governor needs N2 RPM plus a usable control output.'
+      ? 'Automatic N2 speed control needs N2 RPM plus a usable control output.'
       : 'Prop-pitch governor fields require a proportional prop-pitch actuator in Hardware.'));
 
   // ── N2 / two-shaft fields ────────────────────────────────────────────────
@@ -1681,11 +1902,12 @@ function applyHwConditions() {
   setCfgFieldHardHidden('cl_n2', !hasN2); // impossible on single-shaft topology; do not ghost
   if (!hasN2) showField('cl_n2', false); // applyClusterVisibility guards show, we guard N2
   const clusterSec = Array.from(document.querySelectorAll('.cfg-section'))
-    .find(sec => sec.querySelector('.cfg-title')?.textContent?.trim() === 'Cluster');
+    .find(sec => sec.dataset.section === 'Cluster');
   if (clusterSec) { clusterSec.dataset.forceHidden = hasClusterSerial ? '0' : '1'; clusterSec.style.display = hasClusterSerial ? '' : 'none'; }
   ghostField('cl_en', hasClusterSerial, 'Cluster serial output is not fitted/enabled in Hardware.');
   ['rpm_limit','min_rpm','cl_n1'].forEach(k =>
     ghostField(k, hasN1, 'N1 RPM sensor is not configured in Hardware. Standard timer/TOT setup does not use this value.'));
+  ghostField('n2_rpm_limit', hasN2, 'N2 RPM sensor is not configured in Hardware. This hard power-turbine shutdown limit does not apply.');
   ghostField('cl_tw', hasEgt, 'Cluster EGT warning needs a fitted TOT or TIT sensor.');
   ghostField('cl_ow', hasOilPress, 'Cluster oil warning needs a fitted oil pressure sensor.');
 
@@ -1701,7 +1923,7 @@ function applyHwConditions() {
   ghostSelectOption('rl_cs', 2, hasN1, 'N1 RPM sensor is not configured in Hardware.');
   ghostSelectOption('rl_cs', 3, hasEgt, 'No primary EGT source is configured in Hardware.');
   ghostSelectOption('rl_it', 0, hasIgniter, 'Igniter 1 is not configured in Hardware.');
-  ghostSelectOption('rl_it', 1, hasIgniter2, 'Igniter 2 is not configured in Hardware.');
+  ghostSelectOption('rl_it', 1, hasIgniter2, 'AB / Pilot Igniter is not configured in Hardware.');
   ghostSelectOption('rl_it', 2, hasGlowPlug, 'Glow/Wet Glow is not configured in Hardware.');
   const relightTarget = Number((document.getElementById('cf-rl_it') || {}).value || 0);
   const hasRelightIgnition = relightTarget === 1 ? hasIgniter2 : relightTarget === 2 ? hasGlowPlug : hasIgniter;
@@ -1709,7 +1931,7 @@ function applyHwConditions() {
   ghostField('rl_it', hasN1 && hasAnyIgnitionOutput,
     !hasN1
       ? 'Auto-relight requires N1 RPM feedback so the ECU can prove the engine is still windmilling.'
-      : 'Auto-relight requires Igniter 1, Igniter 2, or Glow/Wet Glow to be configured in Hardware.');
+      : 'Auto-relight requires Igniter 1, AB / Pilot Igniter, or Glow/Wet Glow to be configured in Hardware.');
   ['rl_en','rl_mr','rl_cs','rl_cr','rl_tr','rl_to'].forEach(k =>
     ghostField(k, hasAutoRelightHardware,
       !hasN1
@@ -1726,7 +1948,7 @@ function applyHwConditions() {
   ghostField('ab_tt', hasThrottleOut && abTriggerSource === 1,
     abTriggerSource === 1
       ? 'Afterburner throttle trigger requires a fitted throttle/fuel output.'
-      : 'Afterburner trigger source is not Throttle in Hardware; edit the active AB trigger on the Sequence page.');
+      : 'Afterburner trigger source is not Throttle; change it in Hardware under Afterburner trigger and arm.');
   ghostField('ab_ui', hasAbIgniter, 'AB igniter output is not configured in Hardware.');
   ghostField('ab_ut', hasThrottleOut, 'Main throttle/fuel output is not configured in Hardware.');
   ghostField('ab_mt', hasEgt, 'No primary EGT source is configured in Hardware.');
@@ -1762,13 +1984,13 @@ function applyHwConditions() {
   }
 
   // P1/P2 — hide completely when absent (they also lack a dashboard card)
-  const hasP1 = !!(s.p1?.enabled || hwCfg.has_p1);
-  const hasP2 = !!(s.p2?.enabled || hwCfg.has_p2);
+  const hasP1 = hasRegistryInput('p1_pressure');
+  const hasP2 = hasRegistryInput('p2_pressure');
   showField('sl_p1', hasP1);
   showField('sl_p2', hasP2);
 
   // Other hardware-conditional log columns — ghost treatment
-  const hasFuelFlow  = !!(s.fuel_flow?.enabled    || hwCfg.has_fuel_flow);
+  const hasFuelFlow = hasRegistryInput('fuel_flow');
   ghostSlogField('sl_n1', hasN1,          'N1 RPM sensor');
   ghostSlogField('sl_n2', hasN2,          'N2 RPM sensor');
   ghostSlogField('sl_tt', hasTot,         'TOT sensor');
@@ -1784,9 +2006,9 @@ function applyHwConditions() {
   ghostSlogField('sl_wg', hasGlowPlug && Number(a.glow_plug?.type || 0) === 2, 'Wet Glow fuel output');
   ghostSlogField('sl_gc', hasGlowPlug && !!a.glow_plug?.has_current, 'Glow current sensor');
   ghostSlogField('sl_ic', hasIgniter && !!a.igniter?.has_current, 'Igniter 1 current sensor');
-  ghostSlogField('sl_i2', hasIgniter2 && !!a.igniter2?.has_current, 'Igniter 2 current sensor');
+  ghostSlogField('sl_i2', hasIgniter2 && !!a.igniter2?.has_current, 'AB / Pilot Igniter current sensor');
   ghostSlogField('sl_oc', hasOilPump && !!a.oil_pump?.has_current, 'Oil pump current sensor');
-  ghostSlogField('sl_f2', hasFuelPump2,   'Fuel Pump 2');
+  ghostSlogField('sl_f2', hasFuelPump2,   'Pilot / Auxiliary Fuel Pump');
   ghostSlogField('sl_ab', hasAB,          'Afterburner');
   ghostSlogField('sl_pp', hasPropPitch,   'Prop pitch');
 
@@ -1806,7 +2028,7 @@ function _applyAllVisibility() {
   applyHwConditions();
   applyOilMapVisibility();
   // Re-run view filter AFTER hw conditions — applyHwConditions() may un-hide expert-only
-  // sections (e.g. Standby Oil Feed) which the basic view should still mask.
+  // sections (e.g. Windmilling Oil Protection) which the basic view should still mask.
   applyView();
 }
 
@@ -1852,8 +2074,9 @@ async function fetchJsonWithRetry(url, attempts = 3) {
     cfg   = c;
     hwCfg = hw;
     renderForm();
-    _snapshotFields();   // baseline for orange-border tracking
     _applyAllVisibility();
+    _clearDirty();       // baseline after dependency selectors finish normalizing
+    applyView();
     hookValidation();
     runValidation();
     if (typeof startTelemetryBoot === 'function') startTelemetryBoot();
@@ -1863,7 +2086,11 @@ async function fetchJsonWithRetry(url, attempts = 3) {
     if (location.hash) {
       try {
         const t = document.querySelector(location.hash);
-        if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (t) {
+          const group = t.closest('.config-group');
+          if (group) group.open = true;
+          t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       } catch (e) { /* invalid selector in hash — ignore */ }
     }
   })

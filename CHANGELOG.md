@@ -10,23 +10,66 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.2] — 2026-07-16
+
+### Changed
+- The Windows setup tool now labels destructive and update gates as **Confirmation required** and declares Per-Monitor-V2 DPI awareness for clearer Windows 10/11 scaling.
+- Versioned `v*` tags now build and publish a matched firmware, web-assets, signed-driver, and setup-tool release bundle. Publication stops if the firmware version does not match the tag or any release input fails its pinned checksum.
+
+## [1.9.1] — 2026-07-16
+
+### Added
+- Independent, configurable hard N2 overspeed shutdown for two-shaft turbines. It confirms raw RPM samples, remains effective during sensor jump faults, requires a fitted N2 channel, and is separate from gradual N2 pullback/governor control.
+
+### Fixed
+- The dashboard N2 card now matches the N1 card with a limit gauge, absolute RPM/limit readout, and approaching-limit warning based on the independent hard N2 shutdown setting.
+- Settings-only safety corrections now refresh cached startup-readiness issues immediately, so clearing an invalid limit does not leave START blocked until reboot.
+- Two-shaft configuration now warns when N2 pullback, governor band, N2-based idle, or cluster warning settings do not leave margin below the hard N2 shutdown limit.
+- The dashboard post-run summary now includes peak N2 when an N2 sensor is fitted.
+- Mobile Configuration groups no longer reserve large blank off-screen placeholders, and mobile Log run summaries use the same full-width statistics layout for short and long outcomes.
+- Dashboard P1, P2, and fuel-flow cards now show their available sensor-health state; fuel flow is labelled consistently as L/min across Dashboard and Calibration.
+- Hardware unit controls now retain a usable compact touch target, and Save & Reboot uses the same primary-action styling as the other editors.
+- The detailed user guide now covers hard-versus-gradual N2 protection, controllers and limiters, relight, afterburner, logging, custom sequence behavior, update verification, and turbine-safe dry testing in the current UI.
+
+## [1.9.0] — 2026-07-16
+
 ### Added
 - Guided calibration for fuel-pump and oil-pump minimum output, pressure-sensor model fitting, one-second throttle/idle endpoint capture, known-point oil-temperature curves, and current-sensor known-point/datasheet modes.
 - A hardware-aware Setup view, advanced manual controls, hover help, a first-run workflow, responsive mobile layout fixes, and configurable bench-test durations in Tools.
 - A consolidated user manual with installation, wiring, first setup, calibration, operation, recovery, troubleshooting, and cluster-integration guidance.
 - A practical OpenTurbine Cluster example and implementation guide.
+- A bounded hardware channel registry with installed input/output inventory, stable channel IDs, editable registry cards on the Hardware page, and compatibility migration from legacy singleton hardware fields.
+- Stable channel references for control rules, sequence side actions, and custom sequence blocks, while retaining legacy numeric fields for older configuration files.
+- Fixed-capacity oil-loop definitions that bind pressure input channels to oil-pump output channels. The first enabled loop feeds the existing oil-pressure controller compatibility path; additional enabled registry loops drive their selected non-core pump outputs before rules run.
+- Runtime dispatch for generic registry inputs and outputs: digital/analog/pulse/RC-PWM inputs publish telemetry and rule values, relay/PWM/servo outputs use normalized demand, and testable registry outputs appear in Tools.
+- Registry input switch roles for existing DI behaviors (`fault`, `estop`, `inhibit_start`, `sequence_gate`, `ab_arm`, `ab_fire`, `limp_mode`) with a compatibility bridge into the fixed DI runtime slots.
+- A searchable, grouped Configuration workspace with Essentials, All settings, Changed, and Unavailable filters; changed fields and cards are highlighted until saved or discarded.
+- Simple Control Rules for threshold switching with hysteresis and linear input-to-variable-output mapping, with selectable engine states and an explicit off value.
 
 ### Changed
 - Configuration suggestions are explicitly unverified starting points; unavailable hardware-dependent controls are hidden in Setup and retained as explained, disabled controls in Advanced.
 - The Windows installer now distinguishes **Clean install / reinstall** (USB, complete erase) from **Update and keep my setup** (Wi-Fi, automatic settings backup, no reset).
 - Raw firmware and web-asset uploads remain available in Tools but are grouped under a collapsed advanced section; the setup tool is the normal update path.
 - User-facing aircraft/flight-specific wording was replaced with turbine-neutral operator, event-log, and engine-operation terminology.
+- Controller and safety enables are now rejected by Hardware save/import validation and START preflight when their required inventory is missing.
+- The first enabled oil-loop definition now supplies the oil controller's selected pressure/pump channels plus min/max demand and deadband; duplicate enabled pump ownership is rejected.
+- Rule and sequence ID resolution now accepts standard binding keys and registry channel IDs where they map to existing runtime inputs/outputs.
+- Control-rule editing now includes installed registry inputs/outputs, preserves stable `source`/`target` IDs, and backend validation rejects unavailable explicit rule/sequence/custom-block references before save or full restore.
+- Core output ownership is determined by stable IDs or explicit bindings instead of semantic role, so repeatable same-role outputs such as `Oil Pump 2` remain available to rules, sequences, tools, or additional oil loops unless intentionally bound to a singleton subsystem.
+- The AB igniter registry role bridges to the existing Igniter 2 / afterburner ignition runtime when using the standard `ab_igniter` or `igniter2_main` ID.
+- Hardware, Configuration, and Sequence editors now share one clean/dirty save contract: actions are disabled when clean, highlighted when edited, and reset after save or discard.
+- Tools uses a responsive two-column desktop layout while keeping maintenance, backup, update, and destructive actions full width.
 
 ### Fixed
 - Known-point oil-temperature curves now reject duplicate ADC captures, allow individual point removal, persist their calibrated ADC range, and clamp conversion to that range instead of extrapolating beyond measured data.
 - Factory reset now describes every erased data class and requires an explicit typed confirmation.
 - Calibration saves and hardware patches preserve sibling configuration fields and report acceptance accurately.
 - Multiple narrow-screen overflow, inactive-hardware dependency, single-shaft, and first-run navigation inconsistencies found by the release audits.
+- Registry bindings now reject missing channels, invalid directions for standard binding keys, duplicate IDs, invalid drivers, invalid safe demands, and cross-direction GPIO conflicts.
+- Control Rules now persist through save and reboot as part of the unified engine file.
+- Complete engine-file restore now preserves registry channel identities, ordering, drivers, and GPIO assignments exactly through reboot.
+- Configuration PATCH requests now replace array values correctly, including clearing all Control Rules with an empty array.
+- Dashboard setup-status text, page headings, unit labels, empty configuration groups, and narrow-screen editor layouts are visually consistent across the web interface.
 
 ## [1.7.0] — 2026-07-09
 

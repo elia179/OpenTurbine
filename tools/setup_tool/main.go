@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	appVersion              = "0.5.24"
+	appVersion              = "0.5.25"
 	requiredPackageSchema   = 2
 	appTitle                = "OpenTurbine Setup Tool"
 	ecuBaseURL              = "http://192.168.4.1"
@@ -68,6 +68,7 @@ var webAssets = []string{
 	"style.css.gz",
 	"tools.html.gz",
 	"theme.js.gz",
+	"ui_dialog.js.gz",
 }
 
 type AppConfig struct {
@@ -1109,8 +1110,8 @@ func (ui *NativeUI) paintCardScreen(hdc uintptr, w, h int, body, detail string, 
 	if busy {
 		drawStatusBadge(hdc, rect{card.left + 28, int32(top), card.left + 136, int32(top + 32)}, "Working", ui.fontSmall)
 		text(hdc, body, rect{card.left + 28, int32(top + 48), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
-	} else if primary != "" {
-		drawStatusBadge(hdc, rect{card.left + 28, int32(top), card.left + 176, int32(top + 32)}, "Waiting for you", ui.fontSmall)
+	} else if requiresConfirmationBadge(primary) {
+		drawStatusBadge(hdc, rect{card.left + 28, int32(top), card.left + 230, int32(top + 32)}, "Confirmation required", ui.fontSmall)
 		text(hdc, body, rect{card.left + 28, int32(top + 48), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
 	} else {
 		text(hdc, body, rect{card.left + 28, int32(top), card.right - 28, bodyBottom}, ui.fontBody, colText, dtLeft|dtWordBreak|dtNoPrefix)
@@ -1162,6 +1163,10 @@ func (ui *NativeUI) paintCardScreen(hdc uintptr, w, h int, body, detail string, 
 		drawButton(hdc, pr, primary, ui.fontButton, true)
 		ui.addZone(pr, primaryButtonAction(primary))
 	}
+}
+
+func requiresConfirmationBadge(primary string) bool {
+	return primary != "" && primary != "Back to start"
 }
 
 func primaryButtonAction(label string) string {
@@ -1613,7 +1618,7 @@ func (j *Job) runExistingUpdate() {
 		return
 	}
 
-	j.set(7, total, 94, "Reconnect for final verification", "The dashboard files were accepted and the board is restarting.\n\nWindows may have switched back to another network. Connect to this OpenTurbine board's Wi-Fi again, wait a few seconds, then click Continue.", "The tool will verify the firmware version and all ten dashboard files; it will not report success merely because upload returned quickly.", true)
+	j.set(7, total, 94, "Reconnect for final verification", "The dashboard files were accepted and the board is restarting.\n\nWindows may have switched back to another network. Connect to this OpenTurbine board's Wi-Fi again, wait a few seconds, then click Continue.", "The tool will verify the firmware version and all eleven web assets; it will not report success merely because upload returned quickly.", true)
 	j.waitContinue()
 	if err := waitForECU(75 * time.Second); err != nil {
 		j.fail(errors.New("The files were uploaded, but the tool could not reconnect for final verification. Reconnect to the board Wi-Fi and run Update and keep my setup again; it is safe to repeat."))

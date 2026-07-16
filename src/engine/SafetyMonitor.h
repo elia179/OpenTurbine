@@ -25,6 +25,7 @@ public:
 
     // Config parameters (populated from Config before begin())
     float         rpmLimit              = 100000.0f;
+    float         n2RpmLimit            = 0.0f;
     float         minRpm               = 30000.0f;
     float         titLimit             = 0.0f;    // °C — 0 = disabled
     float         oilTempLimit         = 0.0f;    // °C — 0 = disabled
@@ -49,6 +50,7 @@ public:
         _refDemand        = 0.0f;
         _startupSpooled   = false;
         _overspeedPending = false;
+        _n2OverspeedPending = false;
         _resetEgtRing();
         _refWindowOpen    = false;
     }
@@ -78,6 +80,7 @@ public:
             _resetEgtRing();
             _refWindowOpen   = false;
             _overspeedPending = false;
+            _n2OverspeedPending = false;
             _lastEgt        = -1.0f;
             _lastEgtMs      = 0;
             ed.totRiseRate  = 0.0f;
@@ -92,7 +95,13 @@ public:
             return;
         }
 
-        if (ed.skipSafetyChecks || ed.benchMode) return;
+        if (ed.skipSafetyChecks || ed.benchMode) {
+            // Never carry a partly confirmed raw overspeed across a period in
+            // which monitoring was deliberately suspended.
+            _overspeedPending = false;
+            _n2OverspeedPending = false;
+            return;
+        }
 
         // Hot start aborts if the configured engine temperature source is still too high.
         const bool hotStartEgt = Config::primaryEgtHealthy(ed)
@@ -123,6 +132,23 @@ public:
             }
         } else {
             _overspeedPending = false;
+        }
+
+        // N2 is an independently protected power-turbine shaft. As with N1,
+        // use confirmed raw readings so the sensor's fast-change health flag
+        // cannot mask a real free-power-turbine runaway.
+        if (HardwareConfig::safetyN2Overspeed && HardwareConfig::hasN2Rpm &&
+            n2RpmLimit > 0.0f && ed.n2Rpm > n2RpmLimit) {
+            unsigned long nowOs = millis();
+            if (!_n2OverspeedPending) {
+                _n2OverspeedPending = true;
+                _n2OverspeedSinceMs = nowOs;
+            } else if (nowOs - _n2OverspeedSinceMs >= OVERSPEED_CONFIRM_MS) {
+                _trigger("N2_OVERSPEED");
+                return;
+            }
+        } else {
+            _n2OverspeedPending = false;
         }
 
         // ── Interval checks ──────────────────────────────────
@@ -235,14 +261,6 @@ public:
                 _relightStartEgt = 0.0f;
                 _relightStartMs = 0;  // flame returned — reset relight state
             }
-        }
-
-        // ── TIT overtemp ─────────────────────────────────────
-        if (HardwareConfig::safetyTitOvertemp && HardwareConfig::hasTit && titLimit > 0.0f
-            && ed.titHealthy && ed.tit > titLimit)
-        {
-            _trigger("TIT_OVERTEMP");
-            return;
         }
 
         // ── Oil temperature high ──────────────────────────────
@@ -383,6 +401,8 @@ private:
     unsigned long _egtRingLastMs  = 0;
     bool          _overspeedPending = false; // raw reading above rpmLimit, confirming
     unsigned long _overspeedSinceMs = 0;     // millis() when the overspeed reading began
+    bool          _n2OverspeedPending = false;
+    unsigned long _n2OverspeedSinceMs = 0;
     bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
     uint8_t       _n1BufIdx       = 0;
@@ -549,6 +569,10 @@ private:
             "Engine over-speed: RPM exceeded the safety limit.\n"
             "What to do: Wait for the engine to cool down fully. Check your RPM limit setting "
             "in Config and verify throttle calibration before the next start.";
+        else if (strcmp(code, "N2_OVERSPEED") == 0) desc =
+            "N2 over-speed: power-turbine RPM exceeded its hard shutdown limit.\n"
+            "What to do: Do not restart until the driven load, shaft, coupling, N2 pickup, "
+            "governor or propeller control, and configured N2 limit have been inspected.";
         else if (strcmp(code, "OVERTEMP")   == 0) desc =
             "Over-temperature: selected engine temperature source (TOT/TIT) exceeded the limit.\n"
             "What to do: Allow the engine to cool. Check your fuel flow, throttle calibration, "

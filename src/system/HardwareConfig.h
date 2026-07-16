@@ -21,7 +21,13 @@
 class HardwareConfig {
 public:
     static constexpr uint8_t CHANNEL_REGISTRY_VERSION = 1;
+#if defined(OT_PLATFORM_ESP32S3)
     static ChannelRegistry channelRegistry;
+#else
+    // The classic target keeps the registry on the heap; a static instance
+    // would consume the constrained linker DRAM segment before setup().
+    static ChannelRegistry& channelRegistry;
+#endif
     static constexpr const char* PATH        = "/ecu_config.json";
     static constexpr const char* SECTION     = "hardware";
 
@@ -34,16 +40,18 @@ public:
     static int   wifiTxPowerDbm;     // AP transmit power, dBm; lower reduces heat/current draw
 
     // ── System features ───────────────────────────────────────
-    static bool  hasAfterburner;     // shows AB hardware sections; renames to "Fuel Pump 2" etc when false
+    static bool  hasAfterburner;     // shows afterburner-specific hardware sections
     static bool  hasTwoShaft;        // shows N2 RPM sensor
 
     // ── Physical controls ─────────────────────────────────────
     static int  stopPin;
     static bool stopActiveH;    // false = active-low (button to GND, INPUT_PULLUP) — default
     static bool stopPullup;     // true = enable ESP32 internal pull-up on stop pin (default on)
+    static bool stopPulldown;   // true = enable ESP32 internal pull-down on stop pin
     static int  startPin;
     static bool startActiveH;   // false = active-low
     static bool startPullup;    // true = enable ESP32 internal pull-up on start pin (default on)
+    static bool startPulldown;  // true = enable ESP32 internal pull-down on start pin
 
     // ── Sensor feature flags ──────────────────────────────────
     static bool hasN1Rpm;
@@ -141,7 +149,7 @@ public:
     static bool hasGlowPlug;         // glow plug / pilot-flame element
     static bool hasGlowCurrentSensor;       // current sensor on glow plug output
     static bool hasIgniterCurrentSensor;   // current sensor on igniter 1 coil output
-    static bool hasIgniter2CurrentSensor;  // current sensor on igniter 2 coil output
+    static bool hasIgniter2CurrentSensor;  // current sensor on AB / pilot igniter coil output
     static bool hasOilPumpCurrentSensor;   // current sensor on oil pump output (overcurrent detection)
     static bool hasGovernor;         // N2 power turbine speed governor (turboshaft/APU)
     static bool hasMAVLink;          // MAVLink UART telemetry output
@@ -173,7 +181,7 @@ public:
     static int   starterLedcBits;
     static float starterPwmMinPct;
     static float starterPwmMaxPct;
-    static bool  starterAssistEnabled;  // allow starter assist in RUNNING (servo/PWM types)
+    static bool  starterLowRpmSupportEnabled; // allow optional starter support while RUNNING
 
     // oilPumpType: 0=servo, 1=ledc_pwm, 2=onoff
     static int   oilPumpPin;
@@ -207,7 +215,7 @@ public:
     static int   igniter2RestMs;
     static bool  igniter2Coil;             // true = active coil switching (fires repeatedly)
     static float igniter2CoilSatAmps;      // saturation threshold (coil + current mode)
-    static int   igniter2CurrentPin;       // ADC pin for igniter 2 current sensor (-1 = none)
+    static int   igniter2CurrentPin;       // ADC pin for AB / pilot igniter current sensor (-1 = none)
     static float igniter2CurrentMvPerA;    // sensor sensitivity mV/A (e.g. 100 for ACS712-20A)
     static float igniter2CurrentZeroV;     // output voltage at 0A (default 1.65V)
 
@@ -343,8 +351,23 @@ public:
     static bool hasThrottleSlew;
     static bool hasDynamicIdle;
 
+    static constexpr int MAX_OIL_LOOPS = 2;
+    struct OilLoopDef {
+        bool  enabled = false;
+        char  id[16] = {};
+        uint8_t pressureInputIndex = 255;
+        uint8_t pumpOutputIndex = 255;
+        uint16_t targetCentiBar = 250;
+        uint16_t deadbandCentiBar = 20;
+        uint8_t minDemandPct = 18;
+        uint8_t maxDemandPct = 100;
+    };
+    static OilLoopDef oilLoops[MAX_OIL_LOOPS];
+    static uint8_t oilLoopCount;
+
     // ── Safety enables ────────────────────────────────────────
     static bool safetyOverspeed;
+    static bool safetyN2Overspeed;
     static bool safetyOvertemp;
     static bool safetyLowOil;
     static bool safetyOilZero;
@@ -484,6 +507,10 @@ public:
     static bool   validateJson(const char* json, size_t len);
     static bool   validateJson(const JsonDocument& doc);
     static bool   fromJson(const char* json, size_t len);
+    // Apply a document already accepted by validateJson(), without writing
+    // storage. The full-engine restore path uses this to avoid a second large
+    // validation allocation while several transaction documents are resident.
+    static void   applyValidatedJsonRuntimeOnly(const JsonDocument& doc);
 
 private:
     static void _toDoc(JsonDocument& doc);

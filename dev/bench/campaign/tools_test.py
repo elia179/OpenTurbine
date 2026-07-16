@@ -33,8 +33,8 @@ toggle_test("toggle dynamic_idle", "TOGGLE_DYNAMIC_IDLE", "dynamic_idle_enabled"
 toggle_test("toggle limp_mode",    "TOGGLE_LIMP_MODE",    "limp_mode")
 
 # ── 2. STARTER_ASSIST rejected outside RUNNING ──────────────────────
-code, resp = dut.command("STARTER_ASSIST", iParam=1)
-rec("starter_assist rejected in STANDBY", code != 200 or not dut.data().get("starter_assist_active"),
+code, resp = dut.command("STARTER_LOW_RPM_SUPPORT", iParam=1)
+rec("starter support rejected in STANDBY", code != 200 or not dut.data().get("starter_low_rpm_support_active"),
     "code=%s" % code)
 
 # ── 3. Configured actuator self-tests drive the pin ─────────────────
