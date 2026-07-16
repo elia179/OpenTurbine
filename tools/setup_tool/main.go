@@ -68,6 +68,7 @@ var webAssets = []string{
 	"style.css.gz",
 	"tools.html.gz",
 	"theme.js.gz",
+	"ui_dialog.js.gz",
 }
 
 type AppConfig struct {

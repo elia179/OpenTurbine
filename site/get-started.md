@@ -31,6 +31,6 @@ After a successful install, join the board’s Wi-Fi network and open `http://19
 
 ## First dry setup
 
-Follow this safe order: Hardware → Config → Calibration → Sequence → Tools → Dashboard. Verify pins and input readings, review limits and sequences, then test outputs at logic level before connecting loads. Do not add fuel until every shutdown path, including the independent physical stop, has been tested.
+Follow this safe order: Hardware → Config → Calibration → Sequence / Control Rules → Tools → Dashboard. Verify the installed-channel inventory and pins, use Config search to review every applicable limit, calibrate fitted inputs, inspect sequence final states and rule off values, then test outputs at logic level before connecting loads. Do not add fuel until every shutdown path, including the independent physical stop, has been tested.
 
 Need help? Use the [Setup Help form](https://github.com/elia179/OpenTurbine/issues/new?template=setup_help.yml) and attach only sanitized diagnostics.

@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'data_src');
-const port = Number(globalThis.OT_UI_SIM_PORT || 8765);
-const host = '127.0.0.1';
+const port = Number(globalThis.OT_UI_SIM_PORT || process.env.OT_UI_SIM_PORT || 8765);
+const host = globalThis.OT_UI_SIM_HOST || process.env.OT_UI_SIM_HOST || '127.0.0.1';
 const sockets = new Set();
 
 function clone(value) {
@@ -32,8 +32,51 @@ function makeHardware() {
     profile_desc: 'UI simulator',
     wifi_password: '',
     wifi_tx_power_dbm: 8,
-    has_afterburner: true,
-    has_two_shaft: true,
+    channel_registry: {
+      version: 1,
+      inputs: [
+        {id:'n1_main',name:'N1 Speed',purpose:'n1_speed',role:'speed',driver:2,pin:34,min:0,max:100000,pulses_per_unit:1},
+        {id:'n2_main',name:'N2 Speed',purpose:'n2_speed',role:'speed',driver:2,pin:35,min:0,max:100000,pulses_per_unit:1},
+        {id:'tot_main',name:'Main TOT',purpose:'tot',role:'temperature',driver:1,pin:-1,min:0,max:4095,temp_interface:2,spi_clk:18,spi_cs:5,spi_miso:19,spi_mosi:-1,tc_type:'K'},
+        {id:'tit_main',name:'Main TIT',purpose:'tit',role:'temperature',driver:1,pin:-1,min:0,max:4095,temp_interface:2,spi_clk:18,spi_cs:17,spi_miso:19,spi_mosi:-1,tc_type:'K'},
+        {id:'oil_pressure_main',name:'Oil Pressure',purpose:'oil_pressure',role:'pressure',driver:1,pin:32,min:0,max:4095,analog_zero_mv:500,analog_mv_per_unit:400},
+        {id:'flame_main',name:'Flame',purpose:'flame',role:'flame',driver:1,pin:33,min:0,max:4095},
+        {id:'fuel_flow',name:'Fuel Flow',purpose:'fuel_flow',role:'flow',driver:2,pin:25,min:0,max:100,pulses_per_unit:450},
+        {id:'fuel_pressure',name:'Fuel Pressure',purpose:'fuel_pressure',role:'pressure',driver:1,pin:36,min:0,max:4095,analog_zero_mv:161.2,analog_mv_per_unit:290.1},
+        {id:'p1_main',name:'P1 Pressure',purpose:'p1_pressure',role:'pressure',driver:1,pin:39,min:0,max:4095,analog_zero_mv:161.2,analog_mv_per_unit:362.6},
+        {id:'p2_main',name:'P2 Pressure',purpose:'p2_pressure',role:'pressure',driver:1,pin:34,min:0,max:4095,analog_zero_mv:161.2,analog_mv_per_unit:362.6},
+        {id:'operator_throttle',name:'Throttle Input',purpose:'throttle',role:'operator',driver:3,pin:4,min:1000,max:2000},
+        {id:'operator_idle',name:'Idle Input',purpose:'idle',role:'operator',driver:3,pin:16,min:1000,max:2000},
+        {id:'oil_temperature',name:'Oil Temp',purpose:'oil_temperature',role:'temperature',driver:1,pin:15,min:0,max:4095,temp_interface:4,ntc_beta:3950,ntc_r0:10000,ntc_r_fixed:10000},
+        {id:'battery_voltage',name:'Battery Volt',purpose:'battery_voltage',role:'voltage',driver:1,pin:14,min:0,max:4095,analog_divider:4.7},
+        {id:'torque_main',name:'Torque',purpose:'torque',role:'torque',driver:1,pin:13,min:0,max:4095,analog_zero_mv:0,analog_mv_per_unit:1000},
+        {id:'ab_flame_main',name:'AB Flame',purpose:'ab_flame',role:'flame',driver:1,pin:32,min:0,max:4095}
+      ],
+      outputs: [
+        {id:'main_fuel',name:'Main Fuel Pump',purpose:'main_fuel',role:'fuel',driver:6,pin:21,min:1000,max:2000,safe_demand:0},
+        {id:'starter',name:'Starter',purpose:'starter',role:'starter',driver:6,pin:22,min:1000,max:2000,safe_demand:0},
+        {id:'oil_pump',name:'Oil Pump',purpose:'oil_pump',role:'oil_pump',driver:5,pin:23,min:0,max:1,pwm_freq_hz:5000,pwm_res_bits:10,safe_demand:0},
+        {id:'fuel_shutoff',name:'Fuel Shutoff',purpose:'fuel_shutoff',role:'fuel_shutoff',driver:4,pin:2,min:0,max:1,safe_demand:0},
+        {id:'igniter',name:'Igniter',purpose:'igniter',role:'igniter',driver:4,pin:0,min:0,max:1,safe_demand:0},
+        {id:'ab_igniter',name:'AB Igniter',purpose:'ab_igniter',role:'ab_igniter',driver:4,pin:1,min:0,max:1,safe_demand:0},
+        {id:'starter_enable',name:'Starter Enable',purpose:'starter_enable',role:'starter_en',driver:4,pin:22,min:0,max:1,safe_demand:0},
+        {id:'ab_solenoid',name:'AB Fuel Valve',purpose:'ab_valve',role:'valve',driver:4,pin:27,min:0,max:1,safe_demand:0},
+        {id:'air_starter',name:'Air Starter',purpose:'air_starter',role:'starter',driver:4,pin:26,min:0,max:1,safe_demand:0},
+        {id:'cooling_fan',name:'Cooling Fan',purpose:'cooling_fan',role:'cooling_fan',driver:5,pin:25,min:0,max:1,pwm_freq_hz:5000,pwm_res_bits:10,safe_demand:0},
+        {id:'ab_pump',name:'AB Fuel Pump',purpose:'ab_pump',role:'ab_pump',driver:5,pin:13,min:0,max:1,pwm_freq_hz:5000,pwm_res_bits:10,safe_demand:0},
+        {id:'scavenge_pump',name:'Scavenge Pump',purpose:'scavenge_pump',role:'scavenge_pump',driver:5,pin:12,min:0,max:1,pwm_freq_hz:5000,pwm_res_bits:10,safe_demand:0},
+        {id:'fuel_pump',name:'Aux Fuel Pump',purpose:'fuel_pump',role:'fuel_pump',driver:5,pin:14,min:0,max:1,pwm_freq_hz:5000,pwm_res_bits:10,safe_demand:0},
+        {id:'bleed_valve',name:'Bleed Valve',purpose:'valve',role:'valve',driver:6,pin:15,min:1000,max:2000,safe_demand:0},
+        {id:'prop_pitch',name:'Prop Pitch',purpose:'prop_pitch',role:'prop_pitch',driver:6,pin:16,min:1000,max:2000,safe_demand:0},
+        {id:'glow_plug',name:'Glow Plug',purpose:'glow_plug',role:'glow_plug',driver:5,pin:17,min:0,max:1,pwm_freq_hz:1000,pwm_res_bits:8,safe_demand:0}
+      ],
+      bindings: [
+        {key:'primary_n1',channel:'n1_main'},{key:'primary_n2',channel:'n2_main'},
+        {key:'primary_egt',channel:'tot_main'},{key:'operator_throttle',channel:'operator_throttle'},
+        {key:'main_fuel_output',channel:'main_fuel'},{key:'main_fuel_shutoff',channel:'fuel_shutoff'},
+        {key:'main_starter',channel:'starter'}
+      ]
+    },
     controls: { stop_pin: 27, stop_active_h: false, stop_pullup: true, start_pin: 26, start_active_h: false, start_pullup: true },
     sensors: {
       n1_rpm: { enabled: true, pin: 34, ppr: 1 },
@@ -54,7 +97,7 @@ function makeHardware() {
     },
     actuators: {
       throttle: { enabled: true, pin: 21, type: 0, min_us: 1000, max_us: 2000, inverted: false, ledc_freq: 50, ledc_bits: 16 },
-      starter: { enabled: true, pin: 22, type: 0, min_us: 1000, max_us: 2000, inverted: false, ledc_freq: 50, ledc_bits: 16, assist_enabled: true },
+      starter: { enabled: true, pin: 22, type: 0, min_us: 1000, max_us: 2000, inverted: false, ledc_freq: 50, ledc_bits: 16, low_rpm_support_enabled: true },
       oil_pump: { enabled: true, pin: 23, type: 1, active_h: true, min_us: 1000, max_us: 2000, freq_hz: 5000, res_bits: 10, has_current: true, current_pin: 12, current_mv_a: 100, current_zero_v: 0, current_max_a: 12 },
       fuel_sol: { enabled: true, pin: 2, active_h: true },
       igniter: { enabled: true, pin: 0, active_h: true, pwm: false, dwell_ms: 50, rest_ms: 100, coil: false, coil_sat_a: 3, current_pin: 12, current_mv_a: 100, current_zero_v: 0, has_current: true },
@@ -82,8 +125,8 @@ function makeHardware() {
     shutdown_delay_ms: [0, 15000, 0],
     ab_trigger: { source: 0, requires_arm: true, arm_pin: 35, arm_active_h: true, switch_pin: 34, switch_active_h: true, input_pin: -1, input_rc_pwm: false, input_min_us: 1000, input_max_us: 2000, input_threshold: 2048 },
     ab_flame: { enabled: true, pin: 32, threshold: 1800 },
-    ab_seq: ['ABArm', 'ABIgnition', 'ABFuelRamp'],
-    ab_shut_seq: ['ABFuelCut', 'ABCool'],
+    ab_seq: ['ABCheckReady', 'ABSolOpen', 'ABPumpOn', 'ABIgnite', 'ABFlameConfirm', 'ABStabilize'],
+    ab_shut_seq: ['ABPumpOff', 'ABSolClose', 'ABIgnOff'],
     labels: { tot: 'TOT', tit: 'TIT', n1: 'N1', n2: 'N2', oil_press: 'Oil Press', oil_temp: 'Oil Temp', p1: 'P1', p2: 'P2', fuel_press: 'Fuel Press', fuel_flow: 'Fuel Flow', stop: 'Stop', start: 'Start', ab_arm: 'AB Arm' },
     di_channels: [
       { pin: 18, active_h: true, debounce_ms: 20, label: 'Door interlock', role: 'fault', fault_code: 20, fault_msg: 'Door open', active_modes: 7 },
@@ -97,7 +140,7 @@ function makeHardware() {
 function makeSettings() {
   return {
     profile_id: 'sim-dev',
-    config_version: 2,
+    config_version: 5,
     engine: { rpm_limit: 95000, min_rpm: 12000, tot_limit: 720, tot_cooldown_target: 110, tot_safe_margin: 40 },
     oil: { startup_pressure: 1.5, startup_pct: 35, startup_min_bar: 0.5, running_min: 1.2, map_min: 1.5, map_max: 3.6, use_throttle_map: true, adjust_scale: 0.1, min_pct: 12, failsafe_delay_ms: 500, failsafe_pct: 70 },
     sequence: {
@@ -113,18 +156,19 @@ function makeSettings() {
     relight: { enabled: true, min_rpm: 6000, relight_timeout_ms: 5000 },
     tools: { fuel_prime_ms: 3000, oil_prime_ms: 5000, ign_test_ms: 1000, start_test_ms: 2000, fuel_sol_test_ms: 1000 },
     telemetry: { ws_interval_ms: 100, snapshot_interval_ms: 500, log_standby: false },
-    starter_assist: { pct: 15, exit_rpm: 22000, ramp_pct_per_s: 5 },
+    starter_control: { low_rpm_support_pct: 15, low_rpm_support_disengage_rpm: 22000, startup_ramp_pct_per_s: 5 },
     oil_advanced: { zero_bar: 0.05, deadband_bar: 0.1 },
     standby_oil: { source: 0, rpm_limit: 500, feed_pct: 10 },
     limp_mode: { max_throttle_pct: 35 },
     misc: { cooldown_skip_hold_ms: 1500, igniter_on_start: true },
-    fuel_pump: { idle_max_pct: 25 },
     rpm_health: { jump_threshold: 15000, zero_stuck_ticks: 20 },
     cluster: { n1_warn_rpm: 85000, n2_warn_rpm: 25000, tot_warn_c: 680, oil_warn_bar: 1.2, enabled: true },
     rc_input: { min_us: 1000, max_us: 2000, failsafe_ms: 500 },
-    afterburner: { min_n1: 45000, max_n1: 92000, max_tot_for_light: 650, throttle_threshold: 0.8, use_torch: true, use_igniter: true, torch_spike_pct: 20, torch_duration_ms: 250, torch_tot_limit: 780, flame_mode: 0, tot_rise_deg_c: 30, tot_rise_window_ms: 1000, assume_ignited_ms: 1500, flame_timeout_ms: 4000, pump_min_pct: 20, pump_max_pct: 80, pump_control_mode: 1, pump_follow_throttle: true, main_fuel_offset_pct: 0, stabilize_ms: 1000, stabilize_max_tot: 750 },
+    afterburner: { min_n1: 45000, max_n1: 92000, max_tot_for_light: 650, throttle_threshold: 0.8, use_torch: true, use_igniter: true, torch_spike_pct: 20, torch_duration_ms: 250, torch_tot_limit: 780, lightup_pump_pct: 80, flame_mode: 0, tot_rise_deg_c: 30, tot_rise_window_ms: 1000, assume_ignited_ms: 1500, flame_timeout_ms: 4000, pump_min_pct: 20, pump_max_pct: 80, pump_control_mode: 1, pump_follow_throttle: true, main_fuel_offset_pct: 0, stabilize_ms: 1000, stabilize_max_tot: 750 },
     session_log: { n1: true, n2: true, tot: true, oil: true, p1: true, p2: true, throttle: true, mode: true, tit: true, batt: true, fuel_press: true, fuel_flow: true, glow: true, fp2: true, ab: true, prop: true, loop: false, interval_ms: 500 },
-    rules: [{ enabled: true, name: 'Oil fan', sensor: 0, op: 0, threshold: 90, actuator: 0, on_value: 1, off_value: 0 }]
+    rules: [{ enabled: true, name: 'Oil fan', kind: 0, sensor: 0, source: 'oil_temp', op: 0, threshold: 90, hysteresis: 5,
+      actuator: 0, target: 'cooling_fan_main', on_value: 1, off_value: 0, input_min: 0, input_max: 1,
+      output_min: 0, output_max: 1, mode_mask: 4 }]
   };
 }
 
@@ -143,7 +187,7 @@ function fullTelemetry() {
     dev_mode_fw: true, dev_mode: false, skip_safety_checks: false, bench_mode: false,
     has_n1: true, has_n2: true, has_tot: true, has_oil_press: true, has_flame: true, has_p1: true, has_p2: true, has_oil_temp: true, has_batt_voltage: true, has_torque: true, has_fuel_press: true, has_fuel_flow: true, has_tit: true, has_governor: true,
     has_glow_plug: true, has_glow_current: true, has_igniter_current: true, has_igniter2_current: true, has_oil_pump_current: true, has_bleed_valve: true, has_prop_pitch: true, has_fuel_pump2: true, has_cool_fan: true, has_airstarter: true, has_oil_scavenge: true, has_afterburner: true, has_ab_flame: true,
-    has_throttle: true, has_oil_pump: true, has_dynamic_idle: true, has_oil_loop: true, has_mavlink: true, has_starter_assist: true,
+    has_throttle: true, has_oil_pump: true, has_dynamic_idle: true, has_oil_loop: true, has_mavlink: true, has_starter_low_rpm_support: true,
     glow_current_amps: 3.2, glow_plug_hot: true, igniter_current_amps: 0, igniter2_current_amps: 0, oil_pump_current_amps: 2.3, oil_pump_overcurrent: false,
     glow_plug_pct: 20, bleed_valve_open: false, prop_pitch_demand: 0.38, fuel_pump2_demand: 0.42, cool_fan_on: true, airstarter_open: false, oil_scavenge_on: true,
     ab_mode: 'Off', ab_sol_open: false, ab_arm_switch_on: true, ab_flame_on: false, ab_flame_raw: 760, ab_flame_threshold: 1800, ab_trigger_active: false,
@@ -165,7 +209,7 @@ const scenarios = {
     has_glow_plug: false, has_glow_current: false, has_igniter_current: false, has_igniter2_current: false,
     has_oil_pump_current: false, has_bleed_valve: false, has_prop_pitch: false, has_fuel_pump2: false,
     has_cool_fan: false, has_airstarter: false, has_oil_scavenge: false, has_afterburner: false, has_ab_flame: false,
-    has_mavlink: false, has_starter_assist: false, relight_enabled: false
+    has_mavlink: false, has_starter_low_rpm_support: false, relight_enabled: false
   }),
   startup: () => merge(fullTelemetry(), {
     mode: 'STARTUP', n1: 8200, n2: 0, tot: 175, oil: 1.55, throttle_demand: 0.18,
@@ -201,8 +245,12 @@ function initialState() {
 function syncDataFromHardware(data, hardware) {
   const s = hardware.sensors || {};
   const a = hardware.actuators || {};
+  const registryInputs = hardware.channel_registry?.inputs || [];
+  const registryOutputs = hardware.channel_registry?.outputs || [];
+  const hasInputPurpose = purpose => registryInputs.some(c => c?.installed !== false && c.purpose === purpose);
+  const hasOutputPurpose = purpose => registryOutputs.some(c => c?.installed !== false && c.purpose === purpose);
   data.has_n1 = !!s.n1_rpm?.enabled;
-  data.has_n2 = !!(hardware.has_two_shaft && s.n2_rpm?.enabled);
+  data.has_n2 = !!(s.n2_rpm?.enabled || hasInputPurpose('n2_speed'));
   data.has_tot = !!s.tot?.enabled;
   data.has_tit = !!s.tit?.enabled;
   if (data.egt_source === 1 && !data.has_tot) data.egt_source = data.has_tit ? 2 : 0;
@@ -232,16 +280,17 @@ function syncDataFromHardware(data, hardware) {
   data.has_cool_fan = !!a.cool_fan?.enabled;
   data.has_airstarter = !!a.airstarter_sol?.enabled;
   data.has_oil_scavenge = !!a.oil_scavenge_pump?.enabled;
-  data.has_afterburner = !!hardware.has_afterburner;
-  data.has_ab_flame = !!(hardware.has_afterburner && hardware.ab_flame?.enabled);
+  data.has_afterburner = !!(a.ab_sol?.enabled || a.ab_pump?.enabled || a.igniter2?.enabled || hardware.ab_flame?.enabled ||
+    hasOutputPurpose('ab_pump') || hasOutputPurpose('ab_igniter') || hasInputPurpose('ab_flame'));
+  data.has_ab_flame = !!(hardware.ab_flame?.enabled || hasInputPurpose('ab_flame'));
   data.ab_flame_threshold = hardware.ab_flame?.threshold ?? data.ab_flame_threshold;
   data.has_governor = !!(hardware.controllers?.governor && data.has_n2);
   data.has_dynamic_idle = !!(hardware.controllers?.dynamic_idle && data.has_throttle && (data.has_n1 || data.has_n2));
   data.has_oil_loop = !!(hardware.controllers?.oil_loop && data.has_oil_pump && data.has_oil_press);
   data.has_mavlink = !!hardware.mavlink?.enabled;
-  data.has_starter_assist = !!(data.has_n1 &&
+  data.has_starter_low_rpm_support = !!(data.has_n1 &&
     (a.starter?.enabled || hardware.has_starter) &&
-    a.starter?.assist_enabled !== false &&
+    a.starter?.low_rpm_support_enabled !== false &&
     a.starter?.type !== 2);
   data.relight_enabled = !!(hardware.safety?.flameout && data.has_n1 && a.igniter?.enabled);
   data.throttle_input_type = s.throttle_input?.enabled ? (s.throttle_input?.rc_pwm ? 'servo' : 'adc') : 'none';

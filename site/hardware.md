@@ -13,6 +13,12 @@ This guide covers the physical interface for an OpenTurbine ESP32 turbine ECU. I
 
 Use a Classic ESP32 with at least 4 MB flash, or the supported ESP32-S3 DevKitC-1 N16R8 target. ESP32-C3 and other unlisted families are not supported by the normal Windows setup path. Select the exact target in Hardware before assigning pins, and never copy a classic-ESP32 pin assignment to an S3 without rechecking it.
 
+## Installed Channel Inventory
+
+The Hardware page is the source of truth for what is physically connected. Add each fitted input and output once, give it a short unique stable ID, select its electrical driver, assign a valid GPIO, and set the real engineering range. Display names can change later; stable IDs should not change after sequences, rules, controllers, or telemetry refer to them.
+
+Inputs can represent digital switches, analog measurements, pulse/frequency sensors, or RC PWM commands. Outputs can represent relays, proportional PWM loads, or servo/ESC commands. Set boot-safe and fault-safe output demand deliberately. Resolve every missing requirement, invalid-channel message, and GPIO conflict before saving; the firmware blocks unsafe or ambiguous hardware configurations rather than guessing.
+
 ## Power supply
 
 Power the controller from a clean regulated supply within the board manufacturer's limits. Fuse the ECU supply and each load supply appropriately. Keep starter, pump, motor, and ignition current away from sensor wiring and the ESP32 ground return. Use connectors, wire sizes, strain relief, and enclosure protection appropriate for vibration, heat, and current.

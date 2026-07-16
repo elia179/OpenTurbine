@@ -45,6 +45,7 @@ WEB_ASSETS = [
     "style.css.gz",
     "tools.html.gz",
     "theme.js.gz",
+    "ui_dialog.js.gz",
 ]
 TARGETS = {
     "esp32dev": {

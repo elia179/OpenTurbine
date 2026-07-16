@@ -134,6 +134,7 @@ struct EngineData {
 
     // ── Engine state ──────────────────────────────────────────
     volatile SysMode  mode               = SysMode::STANDBY;
+    volatile bool     faultShutdownActive = false; // keeps selected output overrides latched through the fault sequence
     volatile bool     flameMonitorActive = false;
     volatile bool     relightArmed       = false;
     volatile bool     devMode            = false;
@@ -148,7 +149,7 @@ struct EngineData {
     volatile bool     limpMode           = false;
     volatile bool     stopSwitchActive   = false;
     volatile bool     startSwitchActive  = false;  // hardware start button currently pressed
-    volatile bool     starterAssistActive = false; // starter assist enabled for this run
+    volatile bool     starterLowRpmSupportActive = false; // optional starter support armed for this run
     volatile bool     manualRelightActive = false; // operator holding START while running
 
     // ── Last mode-change reason (best-effort display, no mutex) ──

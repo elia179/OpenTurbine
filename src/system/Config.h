@@ -160,11 +160,11 @@ public:
     static bool     logStandby;          // include periodic flight-log snapshots while idle
 
     // ── Starter assist ────────────────────────────────────────
-    static float starterAssistPct;       // assist duty % (e.g. 15 or 30)
-    static float starterAssistExitRpm;   // disengage above this N1 RPM
+    static float starterLowRpmSupportPct;           // starter demand while support is engaged
+    static float starterLowRpmSupportDisengageRpm;  // support disengages above this N1 speed
 
     // ── Starter slew rate & demand ───────────────────────────
-    static float starterRampPctPerSec;   // starter ESC ramp rate % per second during StarterSpin
+    static float starterStartupRampPctPerSec; // starter ramp rate during the startup crank step
     static float starterDemand;          // starter ESC demand % during StarterSpin (0-100)
 
     // ── Oil zero / disconnect fault ───────────────────────────
@@ -371,19 +371,24 @@ public:
     static float fuelFlowValMax;       // Flow rate in units/min at fuelFlowRawMax
 
     // ── Automation rules ("if this, then that") ──────────────
-    // Simple threshold rules that run every control tick in RUNNING/STARTUP.
-    // Rules are stored in config JSON under "rules": [...] and applied after
-    // sequencer actuator writes so they can override or supplement fixed logic.
+    // Small, deterministic automations evaluated every control tick. A rule is
+    // either a threshold switch or a linear input-to-output map. Outside its
+    // selected engine states the target is explicitly driven to offValue.
     struct Rule {
         bool    enabled;
+        uint8_t kind;       // 0=threshold on/off, 1=linear map
         uint8_t sensor;     // 0=oil_temp 1=tot 2=n1_rpm 3=oil_press 4=tit 5=batt_v 6=n2_rpm
-        uint8_t op;         // 0=> 1=< 2=>= 3=<= 4===
+        uint8_t op;         // threshold rules: 0=above, 1=below
         float   threshold;  // SI units: °C, bar, RPM, V
         uint8_t actuator;   // 0=cool_fan 1=bleed_valve 2=fuel_pump2
-        float   onValue;    // when condition true: 1.0=ON for on/off, 0–1 for variable
-        float   offValue;   // when condition false
+        float   onValue;    // threshold rule active demand, canonical 0–1
+        float   offValue;   // false/inactive/unhealthy demand, canonical 0–1
         float   hysteresis; // analog deadband in sensor units; 0 = exact threshold
-        uint8_t modeMask;   // SysMode bitmask: STARTUP=2, RUNNING=4
+        float   inputMin;   // map source range in source units
+        float   inputMax;
+        float   outputMin;  // map target range, canonical 0–1
+        float   outputMax;
+        uint8_t modeMask;   // STANDBY=1, STARTUP=2, RUNNING=4, SHUTDOWN=8
         char    name[24];   // display name (UI only)
         // Persisted references. The numeric fields above are compact handles
         // resolved once while loading; control ticks never compare IDs.
@@ -406,7 +411,7 @@ public:
     static char    loadWarning[192];
 
     // ── Config version ────────────────────────────────────────
-    static constexpr uint8_t CONFIG_VERSION = 4;
+    static constexpr uint8_t CONFIG_VERSION = 6;
 
     // ── API ───────────────────────────────────────────────────
     static void load();

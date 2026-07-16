@@ -108,6 +108,37 @@ nav a.active { color: var(--text); border-bottom-color: var(--accent); }
 /* ── Layout ─────────────────────────────────────────────────── */
 main { padding: 1.5rem; max-width: 920px; margin: 0 auto; }
 
+/* Shared page heading used by the editor and utility pages. */
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.page-heading-main { min-width: 0; }
+.page-title {
+  margin: 0;
+  color: var(--text);
+  font: 700 1.05rem/1.25 var(--font-ui);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.page-subtitle {
+  margin: .3rem 0 0;
+  color: var(--dim);
+  font: 400 .76rem/1.5 var(--font-ui);
+  max-width: 58rem;
+}
+.page-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
 .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -208,6 +239,18 @@ button:hover  { background: var(--surface-2); border-color: var(--border-light);
 button:active { background: var(--surface-2); }
 button.danger { border-color: color-mix(in srgb, var(--red) 50%, transparent); color: var(--red); }
 button.danger:hover { background: color-mix(in srgb, var(--red) 10%, transparent); border-color: var(--red); }
+button.danger.remove-action {
+  border-color: var(--border-light);
+  background: var(--surface-3);
+  color: var(--text-2);
+}
+button.danger.remove-action:hover,
+button.danger.remove-action:focus-visible,
+button.danger.remove-action:active {
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  border-color: var(--red);
+  color: var(--red);
+}
 button:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
 button.primary {
   background: var(--accent);
@@ -287,7 +330,12 @@ button.primary:hover { background: color-mix(in srgb,var(--accent) 85%,#000); bo
 .gs-title  { font-weight: 700; font-size: 0.9rem; color: var(--text); }
 .gs-dismiss { font-size: 0.75rem; color: var(--dim); background: none; border: 1px solid var(--border); cursor: pointer; padding: 0.2rem 0.7rem; border-radius: var(--r-sm); min-height: 32px; text-transform: none; letter-spacing: 0; }
 .gs-steps  { margin: 0.4rem 0 0 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; color: var(--text); }
+.gs-steps li { display: flex; align-items: baseline; justify-content: space-between; gap: .65rem 1rem; flex-wrap: wrap; }
 .gs-steps a { color: var(--text); }
+.gs-steps li.done::marker { content: '✓  '; color: var(--green); font-weight: 800; }
+.gs-step-state { margin-left:0; color:var(--dim); font-size:.72rem; white-space:nowrap; }
+.gs-steps li.done .gs-step-state { color:var(--green); }
+.gs-progress { color:var(--text-2); font-size:.76rem; margin-bottom:.35rem; }
 .gs-step-text { font-size: 0.82rem; color: var(--text); }
 
 /* Gauge absolute-value label (shows "45,000 / 120,000 RPM" under the bar) */
@@ -594,21 +642,26 @@ input[type=range] { accent-color: var(--accent); cursor: pointer; }
 .save-msg { font-size: 0.78rem; color: var(--dim); flex: 1; min-width: 120px; }
 .save-bar.is-dirty { border-color: var(--yellow); box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 15%, transparent); }
 .save-bar.is-dirty .save-msg { color: var(--yellow); font-weight: 600; }
+.save-bar.is-dirty .save-status { color: var(--yellow); font-weight: 600; }
 
 /* Unsaved-change indicator — applied to individual form controls */
 .field-changed,
 input.field-changed,
 select.field-changed,
 textarea.field-changed {
-  border-color: color-mix(in srgb, var(--yellow) 75%, transparent) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 18%, transparent);
+  border-color: var(--yellow) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 20%, transparent);
   transition: border-color .15s, box-shadow .15s;
 }
 /* Card-level highlight for sensor/actuator enable-toggle changes */
 .hw-item-card.field-changed {
-  border-color: color-mix(in srgb, var(--yellow) 70%, transparent) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 14%, transparent);
+  border-color: var(--yellow) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 16%, transparent);
   transition: border-color .15s, box-shadow .15s;
+}
+.hw-toggle input.field-changed + span {
+  border-color: var(--yellow) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--yellow) 20%, transparent);
 }
 .field-error,
 input.field-error,
@@ -728,6 +781,32 @@ textarea.field-error {
 .tool-desc  { font-size: 0.71rem; color: var(--dim); flex: 1; line-height: 1.4; font-family: var(--font-ui); }
 .tool-time  { font-size: 0.68rem; color: var(--dim); min-width: 2.8rem; text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
 .tool-divider { border: none; border-top: 1px solid var(--border); margin: 0.5rem 0 0.9rem; }
+
+body[data-page="tools"] main { max-width: 1180px; }
+#tool-area {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  align-items: start;
+}
+#tool-area > .tool-card { max-width: none; margin: 0; }
+#tool-area > .tool-divider { grid-column: 1 / -1; width: 100%; margin: .35rem 0; }
+#tool-area > #card-CONFIG_BACKUP,
+#tool-area > #card-OTA,
+#tool-area > #card-WEB-ASSETS,
+#tool-area > #card-factory-reset,
+#tool-area > #card-dev-mode,
+#tool-area > #card-TOGGLE_BENCH_MODE,
+#tool-area > #card-TOGGLE_SAFETY_CHECKS { grid-column: 1 / -1; }
+.tools-wide-card { max-width: none; }
+.appearance-card {
+  margin-top: 1rem;
+  padding: .8rem 1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.appearance-note { margin-top: .55rem; color: var(--dim); font-size: .68rem; }
 
 /* ── Hardware page section headers ───────────────────────────── */
 .hw-section {
@@ -885,7 +964,6 @@ textarea.field-error {
   nav a { flex: 0 0 auto; padding: 0 0.55rem; font-size: 0.68rem; height: 44px; line-height: 44px; }
   .conn-dot { margin-left: 0.55rem; }
   .conn-label { display: none; }
-
   /* START / STOP full-width on mobile for maximum target size */
   #btn-start, #btn-stop { min-height: 56px; font-size: 1rem; width: 100%; }
 
@@ -949,12 +1027,21 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
   gap: .75rem;
   align-items: flex-start;
 }
+.registry-card-summary > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .registry-card-actions {
   display: flex;
   gap: .4rem;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+@media (max-width: 700px) {
+  .registry-card-summary { flex-direction: column; }
+  .registry-card-actions { align-self: stretch; flex-wrap: wrap; justify-content: flex-start; }
 }
 .registry-card-editor {
   margin-top: .8rem;
@@ -1033,7 +1120,7 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
 }
 .registry-add-group-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: .45rem;
 }
 .registry-add-option {
@@ -1052,6 +1139,33 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
   margin-top: .18rem;
   color: var(--dim);
   font-weight: 400;
+}
+.registry-add-option .registry-add-default {
+  color: var(--text-2);
+  font-size: .68rem;
+  margin-top: .32rem;
+}
+.workflow-availability {
+  margin-top: .55rem;
+  color: var(--text-2);
+  font-size: .75rem;
+}
+
+/* A flat, ordered settings grid: the outer card provides the visual grouping. */
+.hw-grid.profile-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  column-gap: 1.4rem;
+  row-gap: 1rem;
+}
+.hw-grid.profile-grid > .hw-field {
+  min-width: 0;
+  padding: 0 0 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.hw-grid.profile-grid > .hw-field > .hw-desc { margin-bottom: .5rem; }
+@media (max-width: 760px) {
+  .hw-grid.profile-grid { grid-template-columns: minmax(0, 1fr); }
 }
 .registry-add-search {
   width: 100%;
@@ -1472,10 +1586,9 @@ select option.pin-inonly { color: #5ba3e0; }
 
 /* Sequence save bar — full-bleed sticky bottom bar */
 .seq-save-bar {
-  position: sticky; bottom: 0;
-  background: var(--surface); border-top: 1px solid var(--border);
-  padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem;
-  margin: 1rem -1rem -1rem;
+  position: sticky;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  margin-top: 1rem;
 }
 .save-btn { background: var(--accent); color: color-mix(in srgb, var(--accent) 22%, #000); border: none; border-radius: var(--r-sm); padding: 0.5rem 1.4rem; font-size: 0.88rem; font-weight: 700; cursor: pointer; font-family: var(--font-ui); }
 .save-btn:disabled { opacity: 0.35; cursor: default; }
@@ -1490,10 +1603,12 @@ select option.pin-inonly { color: #5ba3e0; }
     position: static;
     bottom: auto;
     flex-wrap: wrap;
-    margin: 1rem 0 0;
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
   }
+  #tool-area { grid-template-columns: minmax(0, 1fr); }
+  #tool-area > * { grid-column: 1 !important; }
+  .page-heading-actions { width: 100%; justify-content: flex-start; }
+  .gs-steps li { display: block; }
+  .gs-step-state { display: block; margin-top: .12rem; white-space: normal; }
 }
 
 /* Custom block dialog */

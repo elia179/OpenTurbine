@@ -129,14 +129,14 @@ const setups = [
         outputs: [regOut('generic_pwm_output', 'Telemetry Fan', 'generic', 'generic', 5, 25)]
       })
     },
-    config: { calibration: { throttle_min_raw: 1040, throttle_max_raw: 1890 }, rules: [{ enabled: true, name: 'Generic input to fan', sensor: 81, source: 'generic_pwm_duty_input', sensor_id: 'generic_pwm_duty_input', op: 0, threshold: 0.5, actuator: 64, target: 'generic_pwm_output', actuator_id: 'generic_pwm_output', on_value: 1, off_value: 0 }] },
+    config: { calibration: { throttle_min_raw: 1040, throttle_max_raw: 1890 }, rules: [{ enabled: true, name: 'Generic input to fan', kind: 0, source: 'generic_pwm_duty_input', op: 0, threshold: 0.5, hysteresis: 0.05, target: 'generic_pwm_output', on_value: 1, off_value: 0, input_min: 0, input_max: 1, output_min: 0, output_max: 1, mode_mask: 4 }] },
     commands: [{ cmd: 'TOGGLE_DYNAMIC_IDLE' }]
   },
   {
     id: 'free_turbine_governor',
     title: 'Free turbine with N2 governor and servo prop pitch',
     hardware: {
-      has_two_shaft: true,
+      has_two_shaft: false,
       sensors: { n1_rpm: { enabled: true }, n2_rpm: { enabled: true }, tot: { enabled: true } },
       actuators: { prop_pitch: { enabled: true, type: 0, min_us: 980, max_us: 2020 }, throttle: { enabled: true, type: 0 } },
       controllers: { governor: true, dynamic_idle: true, throttle_slew: true },
@@ -152,7 +152,7 @@ const setups = [
     id: 'turboprop_pwm_pitch_coolant',
     title: 'Turboprop with PWM prop pitch and coolant pump',
     hardware: {
-      has_two_shaft: true,
+      has_two_shaft: false,
       sensors: { n1_rpm: { enabled: true }, n2_rpm: { enabled: true }, oil_temp: { enabled: true, chip: 'ds18b20', pin: 15 } },
       actuators: { prop_pitch: { enabled: true, type: 1, freq_hz: 5000, res_bits: 10 }, cool_fan: { enabled: true, type: 1, freq_hz: 5000 } },
       channel_registry: merge(clone(baseRegistry), {
@@ -160,14 +160,14 @@ const setups = [
         outputs: [regOut('coolant_pump', 'Coolant Pump', 'coolant_pump', 'coolant_pump', 5, 26), regOut('prop_pitch', 'Prop Pitch', 'prop_pitch', 'prop_pitch', 5, 16)]
       })
     },
-    config: { rules: [{ enabled: true, name: 'Coolant pump above 70C', sensor_id: 'coolant_temperature', op: 0, threshold: 70, actuator_id: 'coolant_pump', on_value: 0.8, off_value: 0 }] },
+    config: { rules: [{ enabled: true, name: 'Coolant pump above 70C', kind: 0, source: 'coolant_temperature', op: 0, threshold: 70, hysteresis: 5, target: 'coolant_pump', on_value: 0.8, off_value: 0, input_min: 0, input_max: 1, output_min: 0, output_max: 1, mode_mask: 4 }] },
     commands: [{ cmd: 'PROP_PITCH_TEST', fParam: 0.55 }]
   },
   {
     id: 'afterburning_turbojet',
     title: 'Afterburner with arm switch, AB pump and AB igniter',
     hardware: {
-      has_afterburner: true,
+      has_afterburner: false,
       sensors: { n1_rpm: { enabled: true }, tot: { enabled: true }, flame: { enabled: true } },
       actuators: { ab_sol: { enabled: true }, ab_pump: { enabled: true, type: 1, freq_hz: 5000 }, igniter2: { enabled: true, coil: true, has_current: true } },
       ab_trigger: { source: 3, input_pin: 32, input_rc_pwm: true, input_threshold: 2600, requires_arm: true, arm_pin: 33 },
@@ -228,7 +228,7 @@ const setups = [
         outputs: [regOut('starter_enable', 'Starter Enable Servo', 'starter_enable', 'starter_en', 6, 22), regOut('starter', 'Starter PWM', 'starter', 'starter', 5, 23), regOut('oil_pump_main', 'Oil Pump', 'oil_pump', 'oil_pump', 5, 24, { has_current: true, current_pin: 12 })]
       })
     },
-    config: { starter_assist: { pct: 18, exit_rpm: 21000 }, calibration: { p1_raw_min: 200, p1_raw_max: 3800 } },
+    config: { starter_control: { low_rpm_support_pct: 18, low_rpm_support_disengage_rpm: 21000 }, calibration: { p1_raw_min: 200, p1_raw_max: 3800 } },
     commands: [{ cmd: 'START_TEST', fParam: 0.35 }]
   }
 ];
@@ -259,7 +259,7 @@ const setups = [
         });
       }
       await page.goto(`${base}/hardware.html#${setup.id}`);
-      await page.waitForSelector('#f-thinput-type', { state: 'attached' });
+      await page.waitForFunction(() => /Loaded|Converted/i.test(document.querySelector('#save-msg')?.textContent || ''));
       await assertVisibleTextClean(page, `${setup.id} hardware`);
       if (setup.id === 'minimal_timer_turbojet') {
         const mainFuelUsage = await page.evaluate(() => {
@@ -267,7 +267,7 @@ const setups = [
           const card = cards.find(card => /^Main Fuel Pump$/i.test((card.querySelector('strong')?.textContent || '').trim()));
           return card ? card.innerText : '';
         });
-        assert.match(mainFuelUsage, /Controller: throttle slew limiter/, 'main fuel should name its actual controller user');
+        assert.match(mainFuelUsage, /Controller: smooth fuel\/throttle movement/, 'main fuel should name its actual controller user');
         assert.match(mainFuelUsage, /Core firmware: controller binding/, 'main fuel should name its controller binding');
         const removeDialogText = await page.evaluate(() => {
           const cards = Array.from(document.querySelectorAll('#registry-outputs .registry-card'));
@@ -279,7 +279,7 @@ const setups = [
           return text;
         });
         assert.match(removeDialogText, /currently used by/i, 'remove dialog should talk about current users');
-        assert.match(removeDialogText, /Controller: throttle slew limiter/, 'remove dialog should include specific controller user');
+        assert.match(removeDialogText, /Controller: smooth fuel\/throttle movement/, 'remove dialog should include specific controller user');
         assert.doesNotMatch(removeDialogText, /known references/i, 'remove dialog should not use vague reference wording');
       }
       if (setup.id === 'analog_rpm_and_servo_enable') {
@@ -318,9 +318,9 @@ const setups = [
       if (setup.id === 'rc_pwm_generic_rules') {
         await page.evaluate(() => switchTab('rules'));
         await page.waitForSelector('#rule-unit-0');
-        assert.equal(await page.locator('#rule-unit-0').textContent(), '0-1');
-        assert.equal(await page.locator('#rule-thresh-0').getAttribute('max'), '1');
-        assert.equal(await page.locator('#rule-thresh-0').getAttribute('step'), '0.01');
+        assert.equal(await page.locator('#rule-unit-0').textContent(), '%');
+        assert.equal(await page.locator('#rule-thresh-0').getAttribute('max'), '100');
+        assert.equal(await page.locator('#rule-thresh-0').getAttribute('step'), '1');
         assert.match(await page.locator('#rule-sensor-0 option:checked').textContent(), /PWM Duty Input/);
         assert.doesNotMatch(await page.locator('#rule-sensor-0 option:checked').textContent(), /generic_pwm/);
       }

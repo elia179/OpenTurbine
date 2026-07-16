@@ -20,6 +20,8 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Fixed-capacity oil-loop definitions that bind pressure input channels to oil-pump output channels. The first enabled loop feeds the existing oil-pressure controller compatibility path; additional enabled registry loops drive their selected non-core pump outputs before rules run.
 - Runtime dispatch for generic registry inputs and outputs: digital/analog/pulse/RC-PWM inputs publish telemetry and rule values, relay/PWM/servo outputs use normalized demand, and testable registry outputs appear in Tools.
 - Registry input switch roles for existing DI behaviors (`fault`, `estop`, `inhibit_start`, `sequence_gate`, `ab_arm`, `ab_fire`, `limp_mode`) with a compatibility bridge into the fixed DI runtime slots.
+- A searchable, grouped Configuration workspace with Essentials, All settings, Changed, and Unavailable filters; changed fields and cards are highlighted until saved or discarded.
+- Simple Control Rules for threshold switching with hysteresis and linear input-to-variable-output mapping, with selectable engine states and an explicit off value.
 
 ### Changed
 - Configuration suggestions are explicitly unverified starting points; unavailable hardware-dependent controls are hidden in Setup and retained as explained, disabled controls in Advanced.
@@ -32,6 +34,8 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Control-rule editing now includes installed registry inputs/outputs, preserves stable `source`/`target` IDs, and backend validation rejects unavailable explicit rule/sequence/custom-block references before save or full restore.
 - Core output ownership is determined by stable IDs or explicit bindings instead of semantic role, so repeatable same-role outputs such as `Oil Pump 2` remain available to rules, sequences, tools, or additional oil loops unless intentionally bound to a singleton subsystem.
 - The AB igniter registry role bridges to the existing Igniter 2 / afterburner ignition runtime when using the standard `ab_igniter` or `igniter2_main` ID.
+- Hardware, Configuration, and Sequence editors now share one clean/dirty save contract: actions are disabled when clean, highlighted when edited, and reset after save or discard.
+- Tools uses a responsive two-column desktop layout while keeping maintenance, backup, update, and destructive actions full width.
 
 ### Fixed
 - Known-point oil-temperature curves now reject duplicate ADC captures, allow individual point removal, persist their calibrated ADC range, and clamp conversion to that range instead of extrapolating beyond measured data.
@@ -39,6 +43,8 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Calibration saves and hardware patches preserve sibling configuration fields and report acceptance accurately.
 - Multiple narrow-screen overflow, inactive-hardware dependency, single-shaft, and first-run navigation inconsistencies found by the release audits.
 - Registry bindings now reject missing channels, invalid directions for standard binding keys, duplicate IDs, invalid drivers, invalid safe demands, and cross-direction GPIO conflicts.
+- Control Rules now persist through save and reboot as part of the unified engine file.
+- Dashboard setup-status text, page headings, unit labels, empty configuration groups, and narrow-screen editor layouts are visually consistent across the web interface.
 
 ## [1.7.0] — 2026-07-09
 

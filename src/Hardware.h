@@ -907,13 +907,62 @@ namespace Hardware {
         }
     }
 
+    inline void applyFaultSafeOutputs() {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        if (!ed.faultShutdownActive) return;
+        for (uint8_t i = 0; i < reg.outputCount; ++i) {
+            const auto& c = reg.outputs[i];
+            if (!c.installed || !c.forceSafeOnFault) continue;
+            const bool core = reg.ownsCoreOutput(c) || reg.boundToCoreOutput(c);
+            // Engine actuators have a fixed Off power-on state. General-purpose
+            // outputs may use their explicitly configured power-on demand.
+            const float safe = core ? 0.0f : constrain(c.safeDemand, 0.0f, 1.0f);
+            ed.registryOutputDemand[i] = safe;
+            const char* p = c.purpose;
+            if (!strcmp(p, "main_fuel")) {
+                ed.throttleDemand = safe; ed.abFuelOffset = 0.0f;
+            } else if (!strcmp(p, "fuel_shutoff")) {
+                ed.fuelSolOpen = safe >= 0.5f;
+            } else if (!strcmp(p, "starter")) {
+                ed.starterDemand = safe;
+            } else if (!strcmp(p, "starter_enable")) {
+                ed.starterEnabled = safe >= 0.5f;
+            } else if (!strcmp(p, "oil_pump")) {
+                ed.oilPumpPct = safe * 100.0f;
+            } else if (!strcmp(p, "scavenge_pump")) {
+                ed.oilScavengeDemand = safe; ed.oilScavengeOn = safe > 0.001f;
+            } else if (!strcmp(p, "cooling_fan")) {
+                ed.coolFanDemand = safe; ed.coolFanOn = safe > 0.001f;
+            } else if (!strcmp(p, "fuel_pump")) {
+                ed.fuelPump2Demand = safe;
+            } else if (!strcmp(p, "igniter")) {
+                ed.igniterOn = safe >= 0.5f;
+            } else if (!strcmp(p, "ab_igniter")) {
+                ed.igniter2On = safe >= 0.5f;
+            } else if (!strcmp(p, "ab_valve")) {
+                ed.abSolOpen = safe >= 0.5f;
+            } else if (!strcmp(p, "glow_plug")) {
+                ed.glowPlugDemand = safe;
+            } else if (!strcmp(p, "ab_pump")) {
+                ed.abPumpDemand = safe;
+            } else if (!strcmp(p, "prop_pitch")) {
+                ed.propPitchDemand = safe;
+            } else if (!strcmp(p, "air_starter")) {
+                ed.airstarterOpen = safe >= 0.5f;
+            } else if (!strcmp(p, "bleed_valve")) {
+                ed.bleedValveDemand = safe; ed.bleedValveOpen = safe >= 0.5f;
+            }
+        }
+    }
+
     inline void faultRegistryOutputs() {
         auto& reg = HardwareConfig::channelRegistry;
         auto& ed = EngineData::instance();
         for (uint8_t i = 0; i < reg.outputCount; ++i) {
             if (!registryOutputManaged(reg.outputs[i])) continue;
-            // Fault shutdown is deliberately non-configurable: every
-            // registry output is commanded fully off.
+            // Final STANDBY is always fully off. Per-output fault overrides
+            // are applied separately while the shutdown sequence is running.
             ed.registryOutputDemand[i] = 0.0f;
             writeRegistryOutput(reg.outputs[i], ed.registryOutputDemand[i]);
         }
@@ -938,7 +987,7 @@ namespace Hardware {
         g_blkStarterSpin.targetRpm        = Config::preIgnRpm;
         g_blkStarterSpin.timeoutMs        = (unsigned long)Config::starterTimeoutMs;
         g_blkStarterSpin.oilStartupMinBar = Config::oilStartupMinBar;
-        g_blkStarterSpin.rampPctPerSec    = Config::starterRampPctPerSec;
+        g_blkStarterSpin.rampPctPerSec    = Config::starterStartupRampPctPerSec;
         g_blkPreIgnSpark.sparkMs          = Config::preIgnSparkMs;
         g_blkTempConfirm.tempTarget       = Config::tempConfirmTarget;
         g_blkTempConfirm.timeoutMs        = (unsigned long)Config::tempConfirmTimeoutMs;
@@ -1791,6 +1840,7 @@ namespace Hardware {
     inline void updateActuators() {
         auto& hw = HardwareConfig::instance();
         auto& ed = EngineData::instance();
+        applyFaultSafeOutputs();
         // AB main-fuel offset is added here at the actuator write, NOT to throttleDemand,
         // so ThrottleSlew's feedback loop never sees the inflated value.
         if (hw.hasThrottle && g_actThrottle) {
@@ -2117,7 +2167,7 @@ namespace Hardware {
             }
             // Apply throttle expo if configured (softens stick sensitivity)
             float expo = Config::throttleExpo;  // 0=linear, 1=max expo
-            if (expo > 0.0f && expo < 1.0f) {
+            if (expo > 0.0f) {
                 // Standard RC expo: y = x*(1-e) + x^3*e
                 norm = norm * (1.0f - expo) + norm * norm * norm * expo;
             }

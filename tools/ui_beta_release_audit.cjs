@@ -143,6 +143,8 @@ function enumNames(source, marker) {
     const profiles = [
       {
         name: 'single-shaft minimal cluster TX-only',
+        disableInputs: ['n2_speed', 'ab_flame'],
+        disableOutputs: ['ab_igniter', 'ab_pump', 'ab_valve', 'prop_pitch'],
         patch: {
           has_two_shaft: false,
           has_afterburner: false,
@@ -151,13 +153,14 @@ function enumNames(source, marker) {
           actuators: { prop_pitch: { enabled: false }, ab_sol: { enabled: true }, ab_pump: { enabled: true } }
         },
         checks: async () => {
-          assert.equal(await shown(page, '#section-n2rpm'), false);
-          assert.equal(await shown(page, '#section-ab-actuators'), false);
+          assert.equal(await page.evaluate(() => registryHasPurpose('input', 'n2_rpm')), false);
+          assert.equal(await page.evaluate(() => hardwareHasAfterburner()), false);
           assert.equal(await page.locator('#f-cl-rx option[value="-1"]').count(), 1);
         }
       },
       {
         name: 'two-shaft turboprop governor',
+        disableOutputs: ['ab_igniter', 'ab_pump', 'ab_valve'],
         patch: {
           has_two_shaft: true,
           has_afterburner: false,
@@ -167,8 +170,8 @@ function enumNames(source, marker) {
         },
         checks: async () => {
           assert.equal(await page.evaluate(() => cfg.has_two_shaft && cfg.sensors.n2_rpm.enabled), true);
-          assert.equal(await page.locator('#en-proppitch').isChecked(), true);
-          assert.equal(await page.locator('#f-ctrl-gov').isChecked(), true);
+          assert.equal(await page.evaluate(() => registryHasPurpose('output', 'prop_pitch')), true);
+          assert.equal(await page.evaluate(() => cfg.controllers.governor && controllerAvailability('governor').ok), true);
         }
       },
       {
@@ -179,8 +182,8 @@ function enumNames(source, marker) {
           ab_flame: { enabled: true }
         },
         checks: async () => {
-          assert.equal(await page.evaluate(() => cfg.has_afterburner && cfg.actuators.ab_sol.enabled && cfg.actuators.ab_pump.enabled), true);
-          assert.equal(await page.evaluate(() => document.getElementById('grp-ab-flame').style.display !== 'none'), true);
+          assert.equal(await page.evaluate(() => hardwareHasAfterburner()), true);
+          assert.equal(await page.evaluate(() => registryHasPurpose('input', 'ab_flame')), true);
         }
       },
       {
@@ -194,15 +197,28 @@ function enumNames(source, marker) {
         },
         checks: async () => {
           assert.equal(await page.locator('#f-cl-rx option[value="46"]').count(), 1);
-          assert.equal(await page.locator('#f-mav-tx option[value="46"]').count(), 0);
-          assert.equal(await page.locator('#f-led-pin option[value="46"]').count(), 0);
-          assert.equal(await page.locator('#f-buzzer-pin option[value="46"]').count(), 0);
+          assert.equal(await page.evaluate(() => buildPinOptions(46, 'out').includes('value="46"')), false);
         }
       }
     ];
     for (const profile of profiles) {
       await reset(page);
-      await patchHardware(page, profile.patch);
+      const current = await (await page.request.get(`${base}/api/hardware`)).json();
+      const disabledInputs = new Set(profile.disableInputs || []);
+      const disabledOutputs = new Set(profile.disableOutputs || []);
+      const profilePatch = {
+        ...profile.patch,
+        channel_registry: {
+          ...current.channel_registry,
+          inputs: current.channel_registry.inputs.map(channel => ({
+            ...channel, installed: !disabledInputs.has(channel.purpose)
+          })),
+          outputs: current.channel_registry.outputs.map(channel => ({
+            ...channel, installed: !disabledOutputs.has(channel.purpose)
+          }))
+        }
+      };
+      await patchHardware(page, profilePatch);
       await page.goto(`${base}/hardware.html`);
       await page.waitForSelector('#f-profile-id', { state: 'attached' });
       await profile.checks();
@@ -231,13 +247,13 @@ function enumNames(source, marker) {
       return {
         hasAbBlock: optionText.some(t => /\bAB\b|Afterburner/i.test(t)),
         abTabVisible: getComputedStyle(document.getElementById('tab-btn-afterburner')).display !== 'none',
-        hasGovernorBlock: optionText.some(t => /Governor/i.test(t)),
+        hasGovernorBlock: optionText.some(t => /N2 Speed Control|Governor/i.test(t)),
         hasHiddenN2Rule: ruleText.some(t => /\bN2\b/i.test(t)),
         hasPropRule: ruleText.some(t => /Prop/i.test(t))
       };
     });
-    assert.deepEqual(sequencer, { hasAbBlock: false, abTabVisible: false, hasGovernorBlock: false, hasHiddenN2Rule: false, hasPropRule: false });
-    results.push('sequencer options and rule dependencies stay filtered when master hardware features are disabled');
+    assert.deepEqual(sequencer, { hasAbBlock: false, abTabVisible: true, hasGovernorBlock: true, hasHiddenN2Rule: false, hasPropRule: false });
+    results.push('sequencer ignores obsolete master fields and follows the fitted N2 and afterburner devices');
 
     const ecuCluster = fs.readFileSync(path.join('src', 'system', 'ClusterSerial.cpp'), 'utf8');
     const client = fs.readFileSync(path.join('examples', 'OTCClusterClient.h'), 'utf8');
@@ -303,6 +319,23 @@ function enumNames(source, marker) {
     assert.match(hardwareConfig, /void readCustomBlocks\(const JsonDocument& doc\)/);
     assert.match(hardwareConfig, /doc\["custom_blocks"\]/);
     assert.match(hardwareConfig, /strncmp\(name, "custom_", 7\) == 0\) return customBlockAvailable\(name\)/);
+    const channelRegistry = fs.readFileSync(path.join('src', 'system', 'ChannelRegistry.h'), 'utf8');
+    assert.match(channelRegistry, /bool forceSafeOnFault = false/);
+    assert.match(channelRegistry, /o\["force_safe_on_fault"\] = c\.forceSafeOnFault/);
+    assert.match(channelRegistry, /c\.forceSafeOnFault = o\["force_safe_on_fault"\] \| false/);
+    const runtimeHardware = fs.readFileSync(path.join('src', 'Hardware.h'), 'utf8');
+    assert.match(runtimeHardware, /if \(!ed\.faultShutdownActive\) return/);
+    assert.match(runtimeHardware, /if \(!c\.installed \|\| !c\.forceSafeOnFault\) continue/);
+    assert.match(runtimeHardware, /const float safe = core \? 0\.0f : constrain\(c\.safeDemand/);
+    assert.match(runtimeHardware, /inline void updateActuators\(\) \{[\s\S]*applyFaultSafeOutputs\(\)/);
+    assert.match(runtimeHardware, /if \(expo > 0\.0f\) \{[\s\S]*norm = norm \* \(1\.0f - expo\) \+ norm \* norm \* norm \* expo/,
+      'maximum Throttle Expo (1.0) must still apply the cubic response curve');
+    const abIgnite = fs.readFileSync(path.join('src', 'engine', 'sequencer', 'blocks', 'ABIgnite.h'), 'utf8');
+    assert.match(abIgnite, /_useIgniterEff = useIgniter;\s*_hasIgnitionAction = _doTorch \|\| _useIgniterEff/);
+    assert.doesNotMatch(abIgnite, /falling back to the fitted AB igniter/,
+      'an unchecked AB igniter option must never energize the fitted igniter');
+    assert.match(mainSource, /ed\.mode = SysMode::SHUTDOWN;\s*ed\.faultShutdownActive = true/);
+    assert.match(mainSource, /Hardware::allOff\(\);\s*ed\.faultShutdownActive = false/);
     const webSource = fs.readFileSync(path.join('src', 'system', 'web', 'WebServer.cpp'), 'utf8');
     assert.match(webSource, /doc\["has_ab_flame"\]\s+=\s+HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame/);
     assert.match(webSource, /doc\["has_n2"\]\s+=\s+HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm/);
@@ -315,8 +348,7 @@ function enumNames(source, marker) {
     assert.match(webSource, /char lineBuf\[640\];[\s\S]*readBytesUntil\('\\n', lineBuf, sizeof\(lineBuf\) - 1\)/);
     assert.match(webSource, /JsonDocument doc;[\s\S]*char lineBuf\[640\];[\s\S]*deserializeJson\(doc, lineBuf\)/);
     const calibrationHtml = fs.readFileSync(path.join('data_src', 'calibration.html'), 'utf8');
-    assert.match(calibrationHtml, /const hasAfterburner = hw\?\.has_afterburner === true \|\| hw\?\.afterburner\?\.enabled === true/);
-    assert.match(calibrationHtml, /return !!\(hasAfterburner && \(hw\?\.ab_flame\?\.enabled \|\| hw\?\.has_ab_flame\)\)/);
+    assert.match(calibrationHtml, /function hwAbFlameEnabled\(hw\) \{\s*return !!registryChannelByPurpose\(hw, 'inputs', 'ab_flame'\);/);
     const sequenceHtml = fs.readFileSync(path.join('data_src', 'sequence.html'), 'utf8');
     for (const tab of ['startup', 'shutdown', 'afterburner', 'ab-shut']) {
       assert.match(sequenceHtml, new RegExp(`openCustomBlockDialog\\('${tab}'\\)`));
@@ -329,11 +361,16 @@ function enumNames(source, marker) {
     assert.match(sequenceHtml, /if \(type !== 'wait'\) rawDef\.steps/);
     assert.match(sequenceHtml, /validateRulesForSave\(\)/);
     assert.match(sequenceHtml, /Control rule hardware mismatch/);
+    assert.doesNotMatch(sequenceHtml, /Default:\s*AB(?:CheckReady|SolClose|PumpOn)/);
+    assert.match(sequenceHtml, /Default: check readiness &rarr; open the AB fuel valve &rarr; start the AB fuel pump &rarr; ignite &rarr; confirm flame &rarr; stabilize/);
+    assert.match(sequenceHtml, /Default: stop the AB fuel pump &rarr; close the AB fuel valve &rarr; turn the AB igniter off/);
     results.push('runtime safety guards cover zero limits, inactive EGT flameout, and stale auto-relight prerequisites');
 
     const indexHtml = fs.readFileSync(path.join('data_src', 'index.html'), 'utf8');
     assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|20260625a|20260705a|Primary thermal limit/);
-    assert.match(indexHtml, /20260711f/);
+    assert.doesNotMatch(indexHtml, />Not saved<|No calibration saved|No successful test recorded/);
+    assert.match(indexHtml, /Run a safe actuator or dry-sequence test/);
+    assert.match(indexHtml, /20260716a/);
     assert.match(indexHtml, /<body data-page="dashboard">/);
     assert.match(indexHtml, /id="profile-mismatch-banner" style="display:none"/);
     const appSource = fs.readFileSync(path.join('data_src', 'app.js'), 'utf8');

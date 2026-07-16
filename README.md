@@ -13,9 +13,21 @@
 
 ## What is OpenTurbine?
 
-OpenTurbine is experimental open-source turbine engine controller software for turbojets, APUs, generators, turboshafts, turboprops, and other small turbine systems. It runs on supported ESP32 boards and provides configurable startup and shutdown sequences, fuel and oil control, monitoring, fault handling, calibration, logging, and a browser-based interface.
+OpenTurbine is experimental open-source turbine engine controller software for turbojets, APUs, generators, turboshafts, turboprops, and other small turbine systems. It runs on supported ESP32 boards and provides configurable startup and shutdown sequences, hardware-aware settings, simple control rules, fuel and oil control, monitoring, fault handling, calibration, logging, and a browser-based interface.
 
 The normal Windows installation does not require Git, PlatformIO, or source-code compilation.
+
+### Current interface highlights
+
+- Installed-channel inventory for fitted sensors, switches, relays, PWM outputs, and servo/ESC outputs
+- Searchable grouped configuration with Essentials, All settings, Changed, and Unavailable views
+- Startup, shutdown, afterburner, and custom sequence blocks with final-state previews
+- Simple threshold/hysteresis rules and direct input-to-variable-output mapping
+- Guided calibration, standby-only actuator tests, complete engine-file backup/restore, event logs, and per-run session data
+
+| Configuration | Control Rules |
+| --- | --- |
+| ![Searchable OpenTurbine configuration workspace](site/assets/images/config-page.png) | ![OpenTurbine Control Rules editor](site/assets/images/control-rules-page.png) |
 
 ## What you need
 

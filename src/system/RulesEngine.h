@@ -1,14 +1,14 @@
 #pragma once
 // ============================================================
-//  RulesEngine — simple "if sensor op threshold then actuator"
-//  automation rules, evaluated every control tick.
+//  RulesEngine — deterministic threshold and linear-map automations,
+//  evaluated every control tick.
 //
 //  Rules are edited in the Sequence page Control Rules tab and
 //  stored in the settings section of ecu_config.json under "rules".
 //
-//  Rules run after the sequencer and controller writes while
-//  STARTUP/RUNNING is active. They are disabled during shutdown
-//  so a rule cannot re-assert a fuel or thrust actuator after a cut.
+//  Rules run after sequencer/controller writes in the explicitly selected
+//  engine states. Outside those states, on invalid input, or after deletion,
+//  their output is driven off instead of retaining a stale demand.
 // ============================================================
 #include "Config.h"
 #include "HardwareConfig.h"
@@ -60,31 +60,75 @@ public:
         for (int i = 0; i < Config::MAX_RULES; i++) _ruleLatched[i] = false;
     }
 
-    // Called once per control tick (Core 1, ~10 ms cycle)
+    // Called once per control tick (Core 1, ~10 ms cycle).
     static void evaluate() {
         auto& ed = EngineData::instance();
-        if ((ed.mode != SysMode::STARTUP && ed.mode != SysMode::RUNNING) ||
-            ed.benchMode) return;
+        const SysMode modeAtStart = ed.mode;
+        uint8_t currentTargets[Config::MAX_RULES] = {};
+        uint8_t currentTargetCount = 0;
+
+        // FAULT is never an automation state. Force both current and recently
+        // removed targets physically off, regardless of a configured off value.
+        if (ed.mode == SysMode::FAULT) {
+            for (int i = 0; i < Config::ruleCount; ++i)
+                if (_actuatorUsable(Config::rules[i].actuator))
+                    _applyActuator(Config::rules[i].actuator, 0.0f, ed, nullptr);
+            for (uint8_t i = 0; i < _ownedTargetCount; ++i)
+                if (_actuatorUsable(_ownedTargets[i]))
+                    _applyActuator(_ownedTargets[i], 0.0f, ed, nullptr);
+            _ownedTargetCount = 0;
+            return;
+        }
 
         for (int i = 0; i < Config::ruleCount; i++) {
             const Config::Rule& r = Config::rules[i];
-            if (!r.enabled) continue;
+            if (!_targetPresent(currentTargets, currentTargetCount, r.actuator) &&
+                currentTargetCount < Config::MAX_RULES)
+                currentTargets[currentTargetCount++] = r.actuator;
+
             const uint8_t modeBit = (uint8_t)(1u << (int)ed.mode);
-            if ((r.modeMask & modeBit) == 0) continue;
-            if (!_sensorUsable(r.sensor, ed)) continue;
+            const bool applies = r.enabled && (r.modeMask & modeBit) != 0 &&
+                                 _sensorUsable(r.sensor, ed) && _actuatorUsable(r.actuator);
+            float demand = r.offValue;
 
-            float sval = _readSensor(r.sensor, ed);
-            bool  met  = _evalRuleState(i, sval, r.op, r.threshold, r.hysteresis, r.sensor);
-            float dem  = met ? r.onValue : r.offValue;
+            if (applies) {
+                const float value = _readSensor(r.sensor, ed);
+                if (r.kind == 1) {
+                    const float span = r.inputMax - r.inputMin;
+                    const float mapped = span != 0.0f
+                        ? constrain((value - r.inputMin) / span, 0.0f, 1.0f)
+                        : 0.0f;
+                    demand = r.outputMin + mapped * (r.outputMax - r.outputMin);
+                    _ruleLatched[i] = false;
+                } else {
+                    const bool met = _evalRuleState(i, value, r.op, r.threshold,
+                                                    r.hysteresis, r.sensor);
+                    demand = met ? r.onValue : r.offValue;
+                }
+            } else {
+                _ruleLatched[i] = false;
+            }
 
-            if (dem < 0.0f) continue;  // negative value = leave current output unchanged
             if (_actuatorUsable(r.actuator))
-                _applyActuator(r.actuator, dem, ed, r.name);
-            if (ed.mode == SysMode::SHUTDOWN) return;
+                _applyActuator(r.actuator, constrain(demand, 0.0f, 1.0f), ed, r.name);
+            if (modeAtStart != SysMode::SHUTDOWN && ed.mode == SysMode::SHUTDOWN) return;
         }
+
+        // A deleted rule no longer appears above, so explicitly release any
+        // target it owned on the previous tick.
+        for (uint8_t i = 0; i < _ownedTargetCount; ++i)
+            if (!_targetPresent(currentTargets, currentTargetCount, _ownedTargets[i]) &&
+                _actuatorUsable(_ownedTargets[i]))
+                _applyActuator(_ownedTargets[i], 0.0f, ed, nullptr);
+        _ownedTargetCount = currentTargetCount;
+        for (uint8_t i = 0; i < currentTargetCount; ++i) _ownedTargets[i] = currentTargets[i];
     }
 
 private:
+    static bool _targetPresent(const uint8_t* targets, uint8_t count, uint8_t target) {
+        for (uint8_t i = 0; i < count; ++i) if (targets[i] == target) return true;
+        return false;
+    }
     static bool _sensorUsable(uint8_t s, const EngineData& ed) {
         if (ChannelRegistry::isInputSensor(s)) {
             uint8_t idx = ChannelRegistry::inputIndexFromSensor(s);
@@ -284,7 +328,13 @@ private:
             case FUEL_PUMP2:  ed.fuelPump2Demand = constrain(dem, 0.0f, 1.0f); break;
             case OIL_SCAVENGE:ed.oilScavengeDemand = dem; ed.oilScavengeOn = dem >= 0.5f; break;
             case THROTTLE:    ed.throttleDemand = constrain(dem, 0.0f, 1.0f); break;
-            case STARTER:     ed.starterDemand  = constrain(dem, 0.0f, 1.0f); break;
+            case STARTER:
+                ed.starterDemand = constrain(dem, 0.0f, 1.0f);
+                // A starter automation owns the complete starter action. This
+                // makes a potentiometer map usable even when an enable relay is
+                // fitted, while zero demand returns both outputs to off.
+                ed.starterEnabled = dem > 0.001f;
+                break;
             case STARTER_ENABLE: ed.starterEnabled = (dem >= 0.5f); break;
             case OIL_PUMP:    ed.oilPumpPct     = constrain(dem, 0.0f, 1.0f) * 100.0f; break;
             case FUEL_SOL:    ed.fuelSolOpen    = (dem >= 0.5f); break;
@@ -317,4 +367,6 @@ private:
     static inline ShutdownCallback _shutdownCb = nullptr;
     static inline FaultCallback _faultCb = nullptr;
     static inline bool _ruleLatched[Config::MAX_RULES] = {};
+    static inline uint8_t _ownedTargets[Config::MAX_RULES] = {};
+    static inline uint8_t _ownedTargetCount = 0;
 };

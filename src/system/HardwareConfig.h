@@ -181,7 +181,7 @@ public:
     static int   starterLedcBits;
     static float starterPwmMinPct;
     static float starterPwmMaxPct;
-    static bool  starterAssistEnabled;  // allow starter assist in RUNNING (servo/PWM types)
+    static bool  starterLowRpmSupportEnabled; // allow optional starter support while RUNNING
 
     // oilPumpType: 0=servo, 1=ledc_pwm, 2=onoff
     static int   oilPumpPin;
@@ -506,6 +506,10 @@ public:
     static bool   validateJson(const char* json, size_t len);
     static bool   validateJson(const JsonDocument& doc);
     static bool   fromJson(const char* json, size_t len);
+    // Apply a document already accepted by validateJson(), without writing
+    // storage. The full-engine restore path uses this to avoid a second large
+    // validation allocation while several transaction documents are resident.
+    static void   applyValidatedJsonRuntimeOnly(const JsonDocument& doc);
 
 private:
     static void _toDoc(JsonDocument& doc);

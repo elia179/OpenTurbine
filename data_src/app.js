@@ -18,7 +18,7 @@ function plainRegistryName(raw, fallback = '') {
     fuel_shutoff:'Fuel Shutoff', fuel_sol:'Fuel Shutoff', flame:'Flame Sensor', flame_main:'Flame Sensor',
     coolant_pump:'Coolant Pump', coolant_temperature:'Coolant Temperature',
     pilot_fuel:'Pilot Gas', purge_valve:'Purge Valve', air_starter:'Air Starter',
-    ab_pump:'AB Pump', ab_solenoid:'AB Solenoid', ab_igniter:'AB Igniter',
+    ab_pump:'Afterburner Fuel Pump', ab_solenoid:'Afterburner Fuel Valve', ab_igniter:'Afterburner Igniter',
     prop_pitch:'Prop Pitch', nozzle_actuator:'Nozzle Actuator'
   };
   if (direct[key]) return direct[key];
@@ -65,9 +65,15 @@ function applyUnitLabels() {
   document.querySelectorAll('[data-unit="temp"]').forEach( el => el.textContent = dispTempUnit());
   document.querySelectorAll('[data-unit="press"]').forEach(el => el.textContent = dispPressUnit());
   const bt = document.getElementById('unit-temp-btn');
-  if (bt) bt.textContent = tempUnit()  === 'C'   ? '°F'  : '°C';
+  if (bt) {
+    bt.textContent = dispTempUnit();
+    bt.title = `Currently displaying ${dispTempUnit()}. Click to use ${tempUnit() === 'C' ? '°F' : '°C'}.`;
+  }
   const bp = document.getElementById('unit-press-btn');
-  if (bp) bp.textContent = pressUnit() === 'bar' ? 'PSI' : 'bar';
+  if (bp) {
+    bp.textContent = dispPressUnit();
+    bp.title = `Currently displaying ${dispPressUnit()}. Click to use ${pressUnit() === 'bar' ? 'PSI' : 'bar'}.`;
+  }
 }
 
 function applyContextTooltips(root = document) {
@@ -520,7 +526,7 @@ function applyData(d) {
   setText('uptime',      d.uptime_s !== undefined ? formatUptime(d.uptime_s)  : '—');
   setText('last-event',  d.last_event || '—');
 
-  // Throttle sub-labels: calibrated fuel-pump min-spin + dynamic idle target.
+  // Fuel-output sub-labels: calibrated minimum pump output + automatic idle target.
   // Non-standby commands below min-spin are displayed as zero after firmware
   // applies the same deadband used at the actuator output.
   if (d.fuel_pump_min_pct !== undefined) {
@@ -594,7 +600,7 @@ function applyData(d) {
   if (d.extra_cooldown_remaining_s !== undefined)
     setText('extra-cooldown-remaining', d.extra_cooldown_remaining_s);
 
-  // Standby oil feed indicator
+  // Windmilling oil-protection indicator
   const standbyOilNote = document.getElementById('standby-oil-feed-note');
   if (standbyOilNote) standbyOilNote.style.display = d.standby_oil_feed_active ? '' : 'none';
 
@@ -1178,7 +1184,7 @@ function applyData(d) {
       const govMode = document.getElementById('gov-mode');
       if (govMode) {
         if (d.governor_mode) {
-          govMode.textContent = d.governor_mode === 'pitch' ? 'PROP-PITCH' : 'THROTTLE-DRIVEN';
+          govMode.textContent = d.governor_mode === 'pitch' ? 'PROPELLER-PITCH CONTROL' : 'FUEL CONTROL';
           govMode.title = d.governor_mode === 'pitch'
             ? 'Holds N2 by adjusting propeller pitch/load — you set power with the throttle.'
             : 'Holds N2 by winding fuel/throttle directly — the governor owns the throttle.';
@@ -1306,7 +1312,8 @@ function applyData(d) {
   // ── Afterburner card
   const abSection = document.getElementById('ab-section');
   if (abSection) {
-    const hasAB = !!d.has_afterburner;
+    const hasAB = !!(d.has_ab_pump || d.has_ab_sol || d.has_ab_flame ||
+      d.ab_trigger_source > 0 || d.ab_input_fitted);
     abSection.style.display = hasAB ? '' : 'none';
     if (hasAB) {
       const abMode = d.ab_mode || 'Off';
@@ -1323,7 +1330,7 @@ function applyData(d) {
       setDot('ab-arm-dot',  d.ab_arm_switch_on ? true : null);
       setDot('ab-trig-dot', d.ab_trigger_active ? true : null);
       const _abT = (id, txt) => { const e = document.getElementById(id); if (e) e.title = txt; };
-      _abT('ab-sol-dot',  'AB solenoid — ' + (d.ab_sol_open ? 'OPEN' : 'closed'));
+      _abT('ab-sol-dot',  'Afterburner fuel valve — ' + (d.ab_sol_open ? 'OPEN' : 'closed'));
       _abT('ab-arm-dot',  'AB arm switch — ' + (d.ab_arm_switch_on ? 'ARMED' : 'off'));
       _abT('ab-trig-dot', 'AB trigger — ' + (d.ab_trigger_active ? 'ACTIVE' : 'idle'));
       // AB flame: red only when the AB should be lit but no flame is seen —
@@ -1602,8 +1609,10 @@ function sendAbCmd(cmd) {
 // Clear all session peak values (max N1/N2/TOT/TIT/pressures/battery) — the
 // firmware command existed but had no web control, so a bench spike could
 // only be cleared by reboot or cluster command.
-function resetPeaks() {
-  if (!confirm('Reset all session peak values (max RPM, temperatures, pressures)?')) return;
+async function resetPeaks() {
+  if (!await OTDialog.confirm('Reset all session peak values (max RPM, temperatures, pressures)?', {
+    title:'Reset session peaks', confirmLabel:'Reset peaks'
+  })) return;
   fetch('/api/command', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

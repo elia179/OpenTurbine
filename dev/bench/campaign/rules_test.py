@@ -43,7 +43,7 @@ def igniter_after(n1, secs=2.0):
 
 # ── A + B: igniter rule with hysteresis ─────────────────────────────
 print("-- rule: N1>45000 -> IGNITER (hyst 3000) --")
-setup([{"enabled": True, "sensor": 2, "op": 0, "threshold": 45000, "actuator": 9,
+setup([{"enabled": True, "kind": 0, "source": "n1_main", "target": "igniter_main", "op": 0, "threshold": 45000,
         "on_value": 1.0, "off_value": 0.0, "hysteresis": 3000, "mode_mask": 4, "name": "ign_on_n1"}])
 r, _ = reach_running(); print("  reached RUNNING:", r)
 lvl_lo, _ = igniter_after(40000);  rec("igniter OFF below threshold (N1=40k)", lvl_lo == 0, "lvl=%s" % lvl_lo)
@@ -54,7 +54,7 @@ dut.stop(); dut.ensure_mode_standby()
 
 # ── C: REQUEST_SHUTDOWN rule ────────────────────────────────────────
 print("\n-- rule: TOT>600 -> REQUEST_SHUTDOWN --")
-setup([{"enabled": True, "sensor": 1, "op": 0, "threshold": 600, "actuator": 13,
+setup([{"enabled": True, "kind": 0, "source": "tot_main", "target": "request_shutdown", "op": 0, "threshold": 600,
         "on_value": 1.0, "off_value": 0.0, "hysteresis": 0, "mode_mask": 4, "name": "shutdown_hot"}])
 r, _ = reach_running(); print("  reached RUNNING:", r)
 # safe TOT first
@@ -77,3 +77,4 @@ print("\n=== Rules: %d/%d passed ===" % (npass, len(results)))
 for n,ok in results:
     if not ok: print("  FAIL:", n)
 rig.close()
+raise SystemExit(0 if npass == len(results) else 1)

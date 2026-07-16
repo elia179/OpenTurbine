@@ -6,6 +6,7 @@
 #include "../HardwareCapabilities.h"
 #include "../FlightRecorder.h"
 #include "../SessionLogger.h"
+#include "../SessionFiles.h"
 #include "../../engine/EngineData.h"
 #include "../../hal/sensors/AnalogSensor.h"
 
@@ -126,7 +127,7 @@ static bool _outputsActiveForOta() {
 static const char* const WEB_ASSETS[] = {
     "app.js.gz", "calibration.html.gz", "config.html.gz", "hardware.html.gz",
     "index.html.gz", "log.html.gz", "sequence.html.gz", "style.css.gz",
-    "tools.html.gz", "theme.js.gz"
+    "tools.html.gz", "theme.js.gz", "ui_dialog.js.gz"
 };
 static constexpr uint16_t WEB_ASSET_COUNT = sizeof(WEB_ASSETS) / sizeof(WEB_ASSETS[0]);
 static constexpr uint16_t WEB_ASSET_ALL = (1u << WEB_ASSET_COUNT) - 1u;
@@ -240,8 +241,8 @@ static const char* _missingHardwareForCommand(const OTPacket& pkt) {
             return HardwareConfig::hasDynamicIdle ? nullptr : "Dynamic Idle is not enabled in hardware";
         case OTCommand::TOGGLE_LIMP_MODE:
             return HardwareConfig::hasThrottle ? nullptr : "Limp Mode requires a throttle output";
-        case OTCommand::STARTER_ASSIST:
-            return (HardwareConfig::hasStarter && HardwareConfig::starterAssistEnabled && HardwareConfig::hasN1Rpm) ? nullptr : "Starter assist requires starter output and N1 RPM feedback";
+        case OTCommand::STARTER_LOW_RPM_SUPPORT:
+            return (HardwareConfig::hasStarter && HardwareConfig::starterLowRpmSupportEnabled && HardwareConfig::hasN1Rpm) ? nullptr : "Low-RPM starter support requires a starter output and N1 speed feedback";
         case OTCommand::AB_FIRE:
         case OTCommand::AB_STOP:
             return HardwareConfig::hasAfterburner ? nullptr : "Afterburner is not configured";
@@ -284,7 +285,7 @@ static const char* _commandPreflightRejectReason(const OTPacket& pkt) {
         if (!_isStandbyLike(ed.mode)) return "Safety bypass can only be changed in STANDBY";
         if (!ed.devMode || !ed.benchMode) return "Enable Developer Mode and Bench Mode before safety bypass";
     }
-    if (pkt.cmd == OTCommand::STARTER_ASSIST && pkt.iParam != 0 && ed.mode != SysMode::RUNNING) {
+    if (pkt.cmd == OTCommand::STARTER_LOW_RPM_SUPPORT && pkt.iParam != 0 && ed.mode != SysMode::RUNNING) {
         return "Starter assist can only be enabled while RUNNING";
     }
     if ((pkt.cmd == OTCommand::TOGGLE_DYNAMIC_IDLE || pkt.cmd == OTCommand::TOGGLE_LIMP_MODE)
@@ -582,17 +583,14 @@ static bool _sendTelemetryFrame(AsyncWebSocketClient* client, const char* buf, s
 
 // ── WiFi AP setup ─────────────────────────────────────────────
 static void _startWiFi() {
-    // Software restart after a hardware save can leave the ESP WiFi driver and
-    // client devices with stale AP/TCP state.  Force a clean radio/DNS/mDNS
-    // bring-up so save-and-reboot behaves like a cold power cycle.
+    // begin() is called once on a freshly booted runtime.  Do not stop and
+    // immediately restart the WiFi driver here: on current IDF builds the stop
+    // is asynchronous, and starting AP mode while it is still stopping fails
+    // netstack registration with ESP_ERR_WIFI_STOP_STATE (0x3014).  That leaves
+    // ICMP alive but HTTP unavailable for roughly a TCP timeout after warm boot.
     _dns.stop();
     MDNS.end();
     WiFi.persistent(false);
-    WiFi.softAPdisconnect(true);
-    WiFi.disconnect(true, true);
-    WiFi.mode(WIFI_OFF);
-    delay(150);
-
     WiFi.mode(WIFI_AP);
     const IPAddress apIP(192, 168, 4, 1);
     const IPAddress apGateway(192, 168, 4, 1);
@@ -654,9 +652,6 @@ static void _scheduleRestart(const char* reason, uint32_t delayMs = 5000) {
 
 static void _restartCleanly(const char* reason) {
     Serial.printf("[WebServer] Restarting: %s\n", reason ? reason : "requested");
-    // Do not explicitly tear down the AP before ESP.restart().  Windows treats
-    // a deliberate AP disappearance as a reason to roam away to another known
-    // network, which makes 192.168.4.1 and captive DNS look dead after reboot.
     // Give the HTTP response time to flush, then let reset drop/recreate WiFi.
     delay(250);
     ESP.restart();
@@ -761,7 +756,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["limp_mode"]             = ed.limpMode;
     doc["stop_switch_active"]    = ed.stopSwitchActive;
     doc["start_switch_active"]   = ed.startSwitchActive;
-    doc["starter_assist_active"] = ed.starterAssistActive;
+    doc["starter_low_rpm_support_active"] = ed.starterLowRpmSupportActive;
     doc["manual_relight_active"] = ed.manualRelightActive;
     doc["oil_failsafe_active"]   = ed.oilFailsafeActive;
     doc["oil_min_bar"]           = (float)(int)(ed.oilMinBar * 100) / 100.0f;
@@ -922,6 +917,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_fuel_sol"]          = HardwareConfig::hasFuelSol;
         doc["has_igniter"]           = HardwareConfig::hasIgniter;
         doc["has_igniter2"]          = HardwareConfig::hasIgniter2;
+        doc["has_ab_sol"]            = HardwareConfig::hasAbSol;
+        doc["has_ab_pump"]           = HardwareConfig::hasAbPump;
         doc["has_oil_pump"]          = HardwareConfig::hasOilPump;
         doc["has_dynamic_idle"]      = HardwareConfig::hasDynamicIdle;
         doc["ws_interval_ms"]        = Config::wsIntervalMs;
@@ -1006,8 +1003,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["has_airstarter"]        = HardwareConfig::hasAirstarterSol;
         doc["has_oil_scavenge"]      = HardwareConfig::hasOilScavengePump;
         doc["has_tit"]               = HardwareConfig::hasTit;
-        doc["has_starter_assist"]    = HardwareConfig::hasStarter
-                                       && HardwareConfig::starterAssistEnabled
+        doc["has_starter_low_rpm_support"] = HardwareConfig::hasStarter
+                                       && HardwareConfig::starterLowRpmSupportEnabled
                                        && (HardwareConfig::starterType != 2)
                                        && HardwareConfig::hasN1Rpm;
         // ── Channel labels ────────────────────────────────────────────────
@@ -1087,6 +1084,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
             ch["min"] = c.minValue;
             ch["max"] = c.maxValue;
             ch["safe_demand"] = c.safeDemand;
+            ch["force_safe_on_fault"] = c.forceSafeOnFault;
             ch["min_run_demand"] = c.minimumRunDemand;
             ch["invert"] = c.inverted;
             ch["has_current"] = c.hasCurrent;
@@ -1186,6 +1184,9 @@ void WebServer::_setupRoutes() {
     });
     _server.on("/theme.js", HTTP_GET, [](AsyncWebServerRequest* req) {
         _sendGzipAsset(req, "/theme.js.gz", "application/javascript", SHARED_ASSET_CACHE);
+    });
+    _server.on("/ui_dialog.js", HTTP_GET, [](AsyncWebServerRequest* req) {
+        _sendGzipAsset(req, "/ui_dialog.js.gz", "application/javascript", SHARED_ASSET_CACHE);
     });
     _server.on("/", HTTP_GET, [redirectCaptiveToIp](AsyncWebServerRequest* req) {
         if (redirectCaptiveToIp(req)) return;
@@ -1638,7 +1639,7 @@ void WebServer::_setupRoutes() {
             else if (strcmp(cmdStr, "SET_THROTTLE_PCT")     == 0) pkt.cmd = OTCommand::SET_THROTTLE_PCT;
             else if (strcmp(cmdStr, "SET_OIL_DEMAND")        == 0) pkt.cmd = OTCommand::SET_OIL_DEMAND;
             else if (strcmp(cmdStr, "EXTRA_COOLDOWN")        == 0) pkt.cmd = OTCommand::EXTRA_COOLDOWN;
-            else if (strcmp(cmdStr, "STARTER_ASSIST")       == 0) pkt.cmd = OTCommand::STARTER_ASSIST;
+            else if (strcmp(cmdStr, "STARTER_LOW_RPM_SUPPORT") == 0) pkt.cmd = OTCommand::STARTER_LOW_RPM_SUPPORT;
             else if (strcmp(cmdStr, "CLEAR_LOG")            == 0) pkt.cmd = OTCommand::CLEAR_LOG;
             else if (strcmp(cmdStr, "AB_FIRE")              == 0) pkt.cmd = OTCommand::AB_FIRE;
             else if (strcmp(cmdStr, "AB_STOP")              == 0) pkt.cmd = OTCommand::AB_STOP;
@@ -1692,10 +1693,7 @@ void WebServer::_setupRoutes() {
                 int num = -1;
                 // entry.name() may return the full path (/logs/session_1.csv) or just the
                 // basename (session_1.csv) depending on LittleFS version — strip the dir prefix.
-                const char* ename = entry.name();
-                const char* fname = strrchr(ename, '/');
-                fname = fname ? fname + 1 : ename;
-                if (sscanf(fname, "session_%d.csv", &num) == 1) {
+                if (SessionFiles::parseRunNumber(entry.name(), num)) {
                     char path[40];
                     snprintf(path, sizeof(path), "/logs/session_%d.csv", num);
                     entry.close();
@@ -1764,11 +1762,8 @@ void WebServer::_setupRoutes() {
             File entry = dir.openNextFile();
             while (entry) {
                 int num = -1;
-                const char* ename = entry.name();
-                const char* fname = strrchr(ename, '/');
-                fname = fname ? fname + 1 : ename;
                 char path[40] = {};
-                if (sscanf(fname, "session_%d.csv", &num) == 1)
+                if (SessionFiles::parseRunNumber(entry.name(), num))
                     snprintf(path, sizeof(path), "/logs/session_%d.csv", num);
                 entry.close();
                 if (path[0]) LittleFS.remove(path);
@@ -1792,10 +1787,7 @@ void WebServer::_setupRoutes() {
             while (entry) {
                 int num = -1;
                 // entry.name() may return full path (/logs/session_1.csv) or just basename
-                const char* ename = entry.name();
-                const char* fname = strrchr(ename, '/');
-                fname = fname ? fname + 1 : ename;
-                if (count < 64 && sscanf(fname, "session_%d.csv", &num) == 1)
+                if (count < 64 && SessionFiles::parseRunNumber(entry.name(), num))
                     runs[count++] = num;
                 entry.close();
                 entry = dir.openNextFile();
@@ -2305,8 +2297,15 @@ void WebServer::_setupRoutes() {
                 req->send(500, "application/json", "{\"error\":\"failed to read current hardware config\"}");
                 return;
             }
-            JsonDocument previous;
-            previous.set(current);
+            // Preserve the rollback image in the now-idle request buffer instead
+            // of retaining a second complete JsonDocument. Large registry layouts
+            // otherwise leave too little contiguous heap for HardwareConfig::save()
+            // to read and rewrite the unified ecu_config.json document.
+            size_t previousLen = serializeJson(current, g_webRxBuf, sizeof(g_webRxBuf));
+            if (previousLen >= sizeof(g_webRxBuf)) {
+                req->send(500, "application/json", "{\"error\":\"hardware config too large for rollback buffer\"}");
+                return;
+            }
             if (patch["channel_registry_calibration"].is<JsonObject>()) {
                 JsonObjectConst cal = patch["channel_registry_calibration"].as<JsonObjectConst>();
                 const char* id = cal["id"] | "";
@@ -2338,10 +2337,15 @@ void WebServer::_setupRoutes() {
                 req->send(400, "application/json", "{\"error\":\"hardware patch rejected\"}");
                 return;
             }
+            // fromJson has copied the merged values into HardwareConfig. Release
+            // both temporary JSON trees before save() allocates its full unified
+            // config document.
+            current.clear();
+            current.shrinkToFit();
+            patch.clear();
+            patch.shrinkToFit();
             if (!HardwareConfig::save()) {
-                size_t previousLen = serializeJson(previous, g_webTxBuf, sizeof(g_webTxBuf));
-                if (previousLen < sizeof(g_webTxBuf))
-                    HardwareConfig::fromJson(g_webTxBuf, previousLen);
+                HardwareConfig::fromJson(g_webRxBuf, previousLen);
                 req->send(500, "application/json", "{\"error\":\"failed to write hardware config\"}");
                 return;
             }
@@ -2457,6 +2461,13 @@ void WebServer::_setupRoutes() {
                 _finishConfigRestore();
                 return;
             }
+            // Keep this small subsection independent of fullDoc. Later the
+            // canonical settings object replaces fullDoc["settings"], so a
+            // JsonVariant pointing into fullDoc would alias the object being
+            // overwritten and silently lose the rules.
+            JsonDocument uploadedRules;
+            const bool hasUploadedRules = settingsDoc["rules"].is<JsonArrayConst>();
+            if (hasUploadedRules) uploadedRules.set(settingsDoc["rules"]);
             if (strcmp(hwDoc["profile_id"] | "", settingsDoc["profile_id"] | "") != 0) {
                 req->send(400, "application/json",
                     "{\"error\":\"hardware and settings profile_id must identify the same engine\"}");
@@ -2468,34 +2479,44 @@ void WebServer::_setupRoutes() {
             JsonDocument previousSettings;
             Config::toJson(previousSettings);
             bool previousConfigMismatch = EngineData::instance().configVersionMismatch;
-            size_t stagedHwLen = serializeJson(hwDoc, g_webRxBuf, sizeof(g_webRxBuf));
-            if (previousHwLen >= sizeof(g_webTxBuf) ||
-                stagedHwLen >= sizeof(g_webRxBuf) ||
-                !HardwareConfig::fromJson(g_webRxBuf, stagedHwLen) ||
-                !Config::applyJsonRuntimeOnly(settingsDoc)) {
-                if (previousHwLen < sizeof(g_webTxBuf)) HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
+            const bool hardwareSnapshotFits = previousHwLen < sizeof(g_webTxBuf);
+            if (hardwareSnapshotFits) HardwareConfig::applyValidatedJsonRuntimeOnly(hwDoc);
+            const bool settingsApplied = hardwareSnapshotFits && Config::applyJsonRuntimeOnly(settingsDoc);
+            if (!settingsApplied) {
+                hwDoc.clear();
+                settingsDoc.clear();
+                if (hardwareSnapshotFits) HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
                 Config::applyJsonRuntimeOnly(previousSettings);
                 EngineData::instance().configVersionMismatch = previousConfigMismatch;
-                req->send(400, "application/json", "{\"error\":\"config dependency cleanup rejected uploaded sections\"}");
+                const char* detail = !hardwareSnapshotFits ? "current hardware exceeds rollback buffer" :
+                                     "settings could not be applied for dependency cleanup";
+                snprintf(g_webRxBuf, sizeof(g_webRxBuf),
+                    "{\"error\":\"config dependency cleanup rejected uploaded sections\",\"detail\":\"%s\"}", detail);
+                req->send(400, "application/json", g_webRxBuf);
                 _finishConfigRestore();
                 return;
             }
             Config::sanitizeForHardware();
-            JsonDocument sanitizedHw;
-            JsonDocument sanitizedSettings;
-            size_t sanitizedHwLen = HardwareConfig::toJson(g_webRxBuf, sizeof(g_webRxBuf), false);
-            if (sanitizedHwLen >= sizeof(g_webRxBuf) ||
-                deserializeJson(sanitizedHw, g_webRxBuf, sanitizedHwLen) != DeserializationError::Ok) {
-                HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
-                Config::applyJsonRuntimeOnly(previousSettings);
-                EngineData::instance().configVersionMismatch = previousConfigMismatch;
-                req->send(500, "application/json", "{\"error\":\"sanitized hardware section too large\"}");
-                _finishConfigRestore();
-                return;
+            hwDoc.clear();
+            settingsDoc.clear();
+            HardwareConfig::toJson(hwDoc, false);
+            Config::toJson(settingsDoc);
+            // Rules have already passed Config::validateJson() above. Preserve
+            // their validated definitions from the upload: the temporary
+            // hardware apply used for dependency cleanup is intentionally not a
+            // full boot and can transiently report a registry-bound source as
+            // unavailable. Let the normal boot load perform the authoritative
+            // hardware availability sanitization instead of silently deleting
+            // a valid rule from the engine file here.
+            if (hasUploadedRules) {
+                settingsDoc["rules"].set(uploadedRules);
+            } else {
+                settingsDoc.remove("rules");
             }
-            Config::toJson(sanitizedSettings);
-            fullDoc[HardwareConfig::SECTION].set(sanitizedHw);
-            fullDoc[Config::SECTION].set(sanitizedSettings);
+            fullDoc[HardwareConfig::SECTION].set(hwDoc);
+            fullDoc[Config::SECTION].set(settingsDoc);
+            hwDoc.clear();
+            settingsDoc.clear();
             HardwareConfig::fromJson(g_webTxBuf, previousHwLen);
             Config::applyJsonRuntimeOnly(previousSettings);
             EngineData::instance().configVersionMismatch = previousConfigMismatch;

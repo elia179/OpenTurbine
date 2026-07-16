@@ -224,14 +224,14 @@ with a pull-up keeping the released input high. For long/noisy wiring, use suita
 
 The web interface is organized in the order a new installation should normally follow:
 
-1. **Hardware** — enable only what is physically fitted, select signal types, and assign pins.
-2. **Config → Setup** — enter verified engine limits, oil targets, and essential behavior.
+1. **Hardware** — add only what is physically fitted, select signal types, assign pins, and resolve inventory requirements.
+2. **Config** — search and filter verified engine limits, oil targets, and essential behavior.
 3. **Calibration** — calibrate inputs and find minimum reliable pump outputs.
-4. **Sequence** — review startup and shutdown blocks and their conditions.
+4. **Sequence** — review startup/shutdown blocks and any simple Control Rules.
 5. **Tools** — test one output at a time with fuel and ignition made safe.
 6. **Dashboard** — perform dry sequences before any fueled attempt.
 
-Settings that cannot apply to the fitted hardware are hidden in Setup. Advanced view keeps deeper tuning available and ghosts temporarily inactive settings.
+Settings that cannot apply to the fitted hardware are hidden or ghosted. Use **Essentials**, **All settings**, **Changed**, and **Unavailable** to understand what applies and why.
 
 ## Complete first-time procedure
 
@@ -245,9 +245,9 @@ This is the literal path from an unopened board to a dry-tested ECU.
 6. **Configure one device at a time.** In Hardware, select the correct target, enable only fitted devices, choose electrical types, assign pins, and resolve every warning. Save and reboot.
 7. **Verify the saved hardware.** Reopen Hardware after reboot and compare every pin/type with the wiring before applying actuator power.
 8. **Check live inputs.** Power sensors only. Open Dashboard/Calibration and confirm plausible raw/live response. Do not enable a safety based on an uncalibrated sensor.
-9. **Enter verified essential settings.** Use Config → Setup. Do not use example suggestions as authority.
+9. **Enter verified essential settings.** Use Config search and the Essentials filter. Do not use example suggestions as authority.
 10. **Calibrate inputs and pump minimums.** Follow the visible Calibration wizards with fuel/ignition made safe.
-11. **Review sequences.** Confirm startup and shutdown order, timing, sensor gates, and abort behavior.
+11. **Review sequences and rules.** Confirm startup/shutdown order, timing, sensor gates, abort behavior, active rule states, hysteresis, mappings, and off values.
 12. **Test outputs at logic level.** With load power still isolated, confirm output polarity using a meter or test indicator.
 13. **Connect and test loads individually.** Use Tools in STANDBY. Begin with short duration and conservative proportional output. Keep fuel and ignition separated until each path is proven.
 14. **Test every stop path.** Verify web STOP, physical STOP, loss-of-signal behavior, and fuel shutoff. Do not continue if any stop path is ambiguous.
@@ -276,7 +276,7 @@ After reboot, return to Hardware and verify that every saved device and pin is s
 
 ### 2. Essential configuration
 
-Open **Config → Setup**. Example suggestions are editable examples only; they are not safe values for your turbine.
+Open **Config** and begin with **Essentials**. Use search or **All settings** for deeper applicable tuning, **Changed** to review pending edits, and **Unavailable** to understand missing hardware prerequisites. Example suggestions are editable examples only; they are not safe values for your turbine.
 
 Review at least:
 
@@ -324,7 +324,17 @@ Confirm that:
 
 Use dry runs with fuel physically disconnected before a fueled test.
 
-### 5. Bench-test outputs
+### 5. Simple control rules
+
+Open **Sequence → Control Rules** for small automations that do not belong in the ordered startup or shutdown sequence. A rule can switch one output at a threshold with hysteresis, or map a fitted input range linearly to a variable PWM/servo output range.
+
+- Select All states, or Starting, Running, and/or Shutdown.
+- Outside those states—or if the input becomes unavailable—the output returns to its configured off value.
+- Hysteresis prevents rapid switching near a threshold. For “above 100 °C” with 5 °C hysteresis, the output turns on above 100 °C and stays on until the input falls to 95 °C.
+- Mapping clamps below/above its input limits and is useful for testing proportional outputs from a potentiometer.
+- Keep one enabled rule per output. Hardware fault-safe behavior still owns faults.
+
+### 6. Bench-test outputs
 
 Open **Tools** in STANDBY. The page shows only tests whose hardware is fitted. Use **Test settings** or the gear button on a test card to edit duration and proportional output.
 

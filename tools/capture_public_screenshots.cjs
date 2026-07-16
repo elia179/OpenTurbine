@@ -34,9 +34,13 @@ async function prepare(page) {
   await page.request.post(`${base}/__sim/data`, { data: { mode: 'STANDBY', last_event: 'STANDBY', uptime_s: 0 } });
 }
 
-async function capture(page, route, file, selector) {
+async function capture(page, route, file, selector, scrollToSelector = false) {
   await page.goto(`${base}/${route}`);
   await page.waitForSelector(selector);
+  if (scrollToSelector) {
+    await page.locator(selector).scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollBy(0, -72));
+  }
   await page.screenshot({ path: path.join(output, file), type: 'png' });
 }
 
@@ -50,9 +54,14 @@ async function capture(page, route, file, selector) {
     const page = await browser.newPage({ viewport: { width: 1800, height: 1050 }, deviceScaleFactor: 1 });
     await prepare(page);
     await capture(page, 'index.html', 'hero-dashboard.png', '#n1-card');
-    await capture(page, 'hardware.html', 'hardware-page.png', '#f-profile-id');
+    await capture(page, 'hardware.html', 'hardware-page.png', '#hardware-inputs-panel', true);
+    await capture(page, 'config.html', 'config-page.png', '#cfg-form');
     await capture(page, 'calibration.html', 'calibration-page.png', '#throttle-cal-row');
     await capture(page, 'sequence.html', 'sequence-page.png', '#list-startup');
+    await page.getByRole('button', { name: 'Control Rules' }).click();
+    await page.waitForSelector('#rules-list');
+    await page.screenshot({ path: path.join(output, 'control-rules-page.png'), type: 'png' });
+    await capture(page, 'tools.html', 'tools-page.png', '#tool-area');
     const heroData = fs.readFileSync(path.join(output, 'hero-dashboard.png')).toString('base64');
     const social = await browser.newPage({ viewport: { width: 1280, height: 640 }, deviceScaleFactor: 1 });
     await social.setContent(`<!doctype html><style>body{margin:0;background:#0c1218;color:#eef4f8;font:700 48px Arial,sans-serif;overflow:hidden}.copy{position:absolute;z-index:1;left:72px;top:104px;width:580px}.copy p{font-size:26px;line-height:1.35;color:#c8d3dd;font-weight:400}.rule{width:88px;height:7px;background:#ff6a00;margin-bottom:30px}.shot{position:absolute;right:-85px;bottom:-95px;width:760px;border:2px solid #354553;border-radius:18px;transform:rotate(-3deg);box-shadow:0 30px 80px #000}</style><div class="copy"><div class="rule"></div>OpenTurbine<p>Open-source turbine ECU for ESP32</p></div><img class="shot" src="data:image/png;base64,${heroData}"></html>`);

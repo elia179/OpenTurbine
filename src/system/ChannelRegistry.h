@@ -8,22 +8,14 @@
 
 class ChannelRegistry {
 public:
-    // The registry is the S3-first hardware inventory.  Keep enough room for
-    // a complete turbine installation plus auxiliary IO; the legacy ESP32
-    // memory profile is deliberately not the sizing constraint for this UI.
+    // Both supported boards expose the same inventory and configuration
+    // schema. Classic ESP32 stores its instance on the heap (see
+    // HardwareConfig) instead of reducing functionality to save static DRAM.
     // Handles occupy 64..79 (outputs) and 80..95 (inputs), leaving the fixed
     // rule/sequence handle ranges untouched.
-#if defined(OT_PLATFORM_ESP32S3)
     static constexpr uint8_t MAX_INPUT_CHANNELS = 16;
     static constexpr uint8_t MAX_OUTPUT_CHANNELS = 16;
     static constexpr uint8_t MAX_BINDINGS = 8;
-#else
-    // Classic ESP32 keeps a smaller compatibility inventory so the live
-    // registry and bounded sampling state leave usable internal DRAM.
-    static constexpr uint8_t MAX_INPUT_CHANNELS = 8;
-    static constexpr uint8_t MAX_OUTPUT_CHANNELS = 8;
-    static constexpr uint8_t MAX_BINDINGS = 4;
-#endif
     static constexpr uint8_t INPUT_SENSOR_BASE = 80;
     static constexpr uint8_t OUTPUT_ACTUATOR_BASE = 64;
     static constexpr bool isInputSensor(uint8_t handle) {
@@ -112,6 +104,7 @@ public:
                            !strcmp(purpose, "fuel_pump") ||
                            !strcmp(purpose, "igniter") ||
                            !strcmp(purpose, "ab_igniter") ||
+                           !strcmp(purpose, "ab_valve") ||
                            !strcmp(purpose, "glow_plug") ||
                            !strcmp(purpose, "ab_pump") ||
                            !strcmp(purpose, "prop_pitch") ||
@@ -177,6 +170,12 @@ public:
         float analogZeroMv = 0.0f;      // analog physical roles: mV at zero output
         float analogMvPerUnit = 1000.0f; // speed=RPM, pressure=bar, temp=C, flow=L/min, torque=Nm
         float analogDivider = 1.0f;     // voltage role: Vbatt = ADC volts * divider
+        // Torque cards can use a normal analog transmitter (0) or an HX711
+        // bridge ADC (1).  For HX711, pin is DOUT and hx711Clk is SCK.
+        uint8_t torqueInterface = 0;
+        int8_t hx711Clk = -1;
+        float hx711Scale = 1.0f;
+        int32_t hx711Zero = 0;
         // Temperature cards can be a calibrated analog transmitter (0), a
         // thermocouple amplifier (1=MAX6675, 2=MAX31855, 3=MAX31856), an
         // NTC divider (4), or a DS18B20 OneWire probe (5). SPI bus lines may
@@ -188,6 +187,7 @@ public:
         float thermistorBeta = 3950.0f, thermistorR0 = 10000.0f, thermistorRFixed = 10000.0f;
         bool thermistorPullup = true;
         float safeDemand = 0.0f;
+        bool forceSafeOnFault = false; // optional hard override during fault shutdown
         float minimumRunDemand = 0.0f; // operational floor inside the electrical output range
         uint32_t pwmFrequency = 5000;
         uint8_t pwmResolution = 10;
@@ -237,8 +237,14 @@ public:
         uint8_t max = c.direction == Input ? MAX_INPUT_CHANNELS : MAX_OUTPUT_CHANNELS;
         if (count >= max || !driverMatches(c.direction, c.driver) || !roleValid(c.direction, c.role) ||
             !purposeValid(c.direction, c.purpose) || !semanticDriverValid(c) || !demandsValid(c)) return false;
-        for (uint8_t i=0; i<inputCount; ++i) if (c.pin >= 0 && inputs[i].pin == c.pin) return false;
-        for (uint8_t i=0; i<outputCount; ++i) if (c.pin >= 0 && outputs[i].pin == c.pin) return false;
+        for (uint8_t i=0; i<inputCount; ++i) {
+            if (c.pin >= 0 && (inputs[i].pin == c.pin || inputs[i].hx711Clk == c.pin)) return false;
+            if (c.hx711Clk >= 0 && (inputs[i].pin == c.hx711Clk || inputs[i].hx711Clk == c.hx711Clk)) return false;
+        }
+        for (uint8_t i=0; i<outputCount; ++i) {
+            if (c.pin >= 0 && (outputs[i].pin == c.pin || outputs[i].hx711Clk == c.pin)) return false;
+            if (c.hx711Clk >= 0 && (outputs[i].pin == c.hx711Clk || outputs[i].hx711Clk == c.hx711Clk)) return false;
+        }
         list[count] = c;
         if (!strcmp(list[count].purpose, "generic") && strcmp(list[count].role, "generic"))
             strlcpy(list[count].purpose, derivePurpose(c.direction, c.id, c.role), sizeof(list[count].purpose));
@@ -246,7 +252,7 @@ public:
         return true;
     }
     bool validate() const {
-        for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver) || !roleValid(Input, inputs[i].role) || !purposeValid(Input, inputs[i].purpose) || !semanticDriverValid(inputs[i]) || !temperatureInterfaceValid(inputs[i]) || !demandsValid(inputs[i])) return false;
+        for (uint8_t i=0; i<inputCount; ++i) if (!validId(inputs[i].id) || !driverMatches(Input, inputs[i].driver) || !roleValid(Input, inputs[i].role) || !purposeValid(Input, inputs[i].purpose) || !semanticDriverValid(inputs[i]) || !temperatureInterfaceValid(inputs[i]) || !torqueInterfaceValid(inputs[i]) || !demandsValid(inputs[i])) return false;
         for (uint8_t i=0; i<outputCount; ++i) if (!validId(outputs[i].id) || !driverMatches(Output, outputs[i].driver) || !roleValid(Output, outputs[i].role) || !purposeValid(Output, outputs[i].purpose) || !semanticDriverValid(outputs[i]) || !demandsValid(outputs[i])) return false;
         uint8_t auxiliaryPcnt = 0, registryOneWire = 0;
         for (uint8_t i=0; i<inputCount; ++i) {
@@ -315,6 +321,7 @@ public:
                !strcmp(purpose, "valve") || !strcmp(purpose, "igniter") ||
                !strcmp(purpose, "ab_igniter") || !strcmp(purpose, "glow_plug") ||
                !strcmp(purpose, "fuel_pump") || !strcmp(purpose, "ab_pump") ||
+               !strcmp(purpose, "ab_valve") ||
                !strcmp(purpose, "prop_pitch") ||
                !strcmp(purpose, "air_starter") || !strcmp(purpose, "pilot_fuel") ||
                !strcmp(purpose, "purge_valve") || !strcmp(purpose, "nozzle_actuator");
@@ -362,7 +369,14 @@ private:
         return c.temperatureInterface == 5 && c.pin >= 0 &&
                c.temperatureResolution >= 9 && c.temperatureResolution <= 12;
     }
+    static bool torqueInterfaceValid(const Channel& c) {
+        if (!c.torqueInterface) return true;
+        return c.torqueInterface == 1 && c.direction == Input && !strcmp(c.role, "torque") &&
+               c.driver == Analog && c.pin >= 0 && c.hx711Clk >= 0 && c.pin != c.hx711Clk &&
+               c.hx711Scale >= 0.000001f && c.hx711Scale <= 1000000.0f;
+    }
     static bool rangeValid(const Channel& c) {
+        if (c.torqueInterface == 1) return torqueInterfaceValid(c);
         if (c.maxValue < c.minValue) return false;
         if (c.driver == Analog) {
             if (c.minValue < 0.0f || c.maxValue > 4095.0f || c.maxValue <= c.minValue) return false;
@@ -456,6 +470,7 @@ private:
         if (!strcmp(id, "cooling_fan") || !strcmp(id, "cooling_fan_main")) return "cooling_fan";
         if (!strcmp(id, "igniter")) return "igniter";
         if (!strcmp(id, "ab_igniter") || !strcmp(id, "igniter2_main")) return "ab_igniter";
+        if (!strcmp(id, "ab_solenoid")) return "ab_valve";
         if (!strcmp(id, "glow_plug")) return "glow_plug";
         if (!strcmp(id, "fuel_pump")) return "fuel_pump";
         if (!strcmp(id, "ab_pump")) return "ab_pump";
@@ -474,9 +489,11 @@ private:
             o["id"] = c.id; o["name"] = c.name; o["role"] = c.role; o["purpose"] = c.purpose; o["driver"] = (uint8_t)c.driver; o["pin"] = c.pin;
             o["min"] = c.minValue; o["max"] = c.maxValue; o["pulses_per_unit"] = c.pulsesPerUnit;
             o["analog_zero_mv"] = c.analogZeroMv; o["analog_mv_per_unit"] = c.analogMvPerUnit; o["analog_divider"] = c.analogDivider;
+            o["torque_interface"] = c.torqueInterface; o["hx711_clk"] = c.hx711Clk; o["hx711_scale"] = c.hx711Scale; o["hx711_zero"] = c.hx711Zero;
             o["temp_interface"] = c.temperatureInterface; o["spi_clk"] = c.spiClk; o["spi_cs"] = c.spiCs; o["spi_miso"] = c.spiMiso; o["spi_mosi"] = c.spiMosi; o["tc_type"] = c.tcType;
             o["temp_resolution"] = c.temperatureResolution; o["ntc_beta"] = c.thermistorBeta; o["ntc_r0"] = c.thermistorR0; o["ntc_r_fixed"] = c.thermistorRFixed; o["ntc_pullup"] = c.thermistorPullup;
             o["safe_demand"] = c.safeDemand;
+            o["force_safe_on_fault"] = c.forceSafeOnFault;
             o["min_run_demand"] = c.minimumRunDemand;
             if (c.pwmTimingConfigured) { o["pwm_freq_hz"] = c.pwmFrequency; o["pwm_res_bits"] = c.pwmResolution; }
             o["invert"] = c.inverted; o["active_high"] = c.activeHigh; o["pullup"] = c.pullup; o["pulldown"] = c.pulldown;
@@ -490,9 +507,10 @@ private:
             strlcpy(c.purpose, o["purpose"] | derivePurpose(d, c.id, c.role), sizeof(c.purpose));
             c.driver = (Driver)(o["driver"] | 0); c.pin = o["pin"] | -1; c.minValue = o["min"] | 0.0f; c.maxValue = o["max"] | 1.0f;
             c.pulsesPerUnit = o["pulses_per_unit"] | 1.0f; c.analogZeroMv = o["analog_zero_mv"] | 0.0f; c.analogMvPerUnit = o["analog_mv_per_unit"] | 1000.0f; c.analogDivider = o["analog_divider"] | 1.0f;
+            c.torqueInterface = o["torque_interface"] | 0; c.hx711Clk = o["hx711_clk"] | -1; c.hx711Scale = o["hx711_scale"] | 1.0f; c.hx711Zero = o["hx711_zero"] | 0;
             c.temperatureInterface = o["temp_interface"] | 0; c.spiClk = o["spi_clk"] | -1; c.spiCs = o["spi_cs"] | -1; c.spiMiso = o["spi_miso"] | -1; c.spiMosi = o["spi_mosi"] | -1; strlcpy(c.tcType, o["tc_type"] | "K", sizeof(c.tcType));
             c.temperatureResolution = o["temp_resolution"] | 12; c.thermistorBeta = o["ntc_beta"] | 3950.0f; c.thermistorR0 = o["ntc_r0"] | 10000.0f; c.thermistorRFixed = o["ntc_r_fixed"] | 10000.0f; c.thermistorPullup = o["ntc_pullup"] | true;
-            c.safeDemand = o["safe_demand"] | 0.0f; c.minimumRunDemand = o["min_run_demand"] | 0.0f; c.pwmTimingConfigured = !o["pwm_freq_hz"].isNull() || !o["pwm_res_bits"].isNull(); c.pwmFrequency = o["pwm_freq_hz"] | 5000; c.pwmResolution = o["pwm_res_bits"] | 10;
+            c.safeDemand = o["safe_demand"] | 0.0f; c.forceSafeOnFault = o["force_safe_on_fault"] | false; c.minimumRunDemand = o["min_run_demand"] | 0.0f; c.pwmTimingConfigured = !o["pwm_freq_hz"].isNull() || !o["pwm_res_bits"].isNull(); c.pwmFrequency = o["pwm_freq_hz"] | 5000; c.pwmResolution = o["pwm_res_bits"] | 10;
             c.inverted = o["invert"] | false; c.activeHigh = o["active_high"] | true; c.pullup = o["pullup"] | false; c.pulldown = o["pulldown"] | false; c.hasCurrent = o["has_current"] | false; c.currentPin = o["current_pin"] | -1; c.currentMvPerA = o["current_mv_a"] | 100.0f; c.currentZeroV = o["current_zero_v"] | 1.65f; c.currentMaxAmps = o["current_max_a"] | 0.0f;
             if (c.pullup) c.pulldown = false;
             if (!add(c)) return false;

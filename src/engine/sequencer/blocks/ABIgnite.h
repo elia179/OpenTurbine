@@ -40,16 +40,7 @@ public:
         if (useTorch && torchTotLimit == 0.0f) {
             Serial.println("[AB] Ignite: torch skipped - torchTotLimit is 0 (no EGT safety cap configured)");
         }
-        // Fallback: if neither torch nor the igniter is explicitly active but an AB igniter
-        // (igniter2) is fitted, fire it instead of faulting. A spark needs no EGT cap, so
-        // default AB settings still light whenever the ignition hardware exists. If no
-        // igniter2 is fitted either, we still fault (correct) and the preflight warning
-        // already told the user to configure a method.
         _useIgniterEff = useIgniter;
-        if (!_doTorch && !useIgniter && HardwareConfig::hasIgniter2) {
-            _useIgniterEff = true;
-            Serial.println("[AB] Ignite: no method configured - falling back to the fitted AB igniter");
-        }
         _hasIgnitionAction = _doTorch || _useIgniterEff;
         if (!_hasIgnitionAction) {
             Serial.println("[AB] Ignite fault: no active ignition method");
@@ -121,7 +112,7 @@ private:
     unsigned long _startMs  = 0;
     bool          _done     = false;
     bool          _doTorch  = false;  // runtime copy of useTorch — never mutates the config member
-    bool          _useIgniterEff = false;  // useIgniter, or fallback to a fitted AB igniter
+    bool          _useIgniterEff = false;  // runtime copy of the explicitly configured option
 
     void _cutTorch(EngineData& ed) {
         if (_doTorch) {

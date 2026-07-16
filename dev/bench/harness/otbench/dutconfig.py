@@ -39,7 +39,7 @@ class DutConfig:
     def cfg(self):
         return self.dut.config()
 
-    def _wait_reboot(self):
+    def _wait_reboot(self, previous_boot_count=None):
         # A hardware POST answers 200 and then schedules the reboot ~5 s LATER,
         # so /api/status keeps answering the PRE-reboot state for several seconds
         # before the ESP32 actually restarts. The old "wait for one failed poll
@@ -60,6 +60,11 @@ class DutConfig:
         while time.time() < deadline:
             try:
                 self.dut.status()
+                if previous_boot_count is not None:
+                    current = self.dut.data().get("boot_count")
+                    if current is not None and int(current) != int(previous_boot_count):
+                        time.sleep(2.0)
+                        return True
                 down = 0
             except Exception:
                 down += 1
@@ -84,11 +89,15 @@ class DutConfig:
         resp = None
         for _ in range(tries):
             hw = self.dut.hardware()
+            try:
+                previous_boot_count = self.dut.data().get("boot_count")
+            except Exception:
+                previous_boot_count = None
             mutate(hw)
             code, resp = self.dut._post("/api/hardware", hw)
             if code != 200:
                 time.sleep(2); continue
-            self._wait_reboot()
+            self._wait_reboot(previous_boot_count)
             if check is None or check(self.dut.hardware()):
                 return True, resp
         return False, resp
@@ -150,7 +159,11 @@ class DutConfig:
         return self.dut.hardware()
 
     def restore(self, snap):
+        try:
+            previous_boot_count = self.dut.data().get("boot_count")
+        except Exception:
+            previous_boot_count = None
         code, resp = self.dut._post("/api/hardware", snap)
         if code == 200:
-            self._wait_reboot()
+            self._wait_reboot(previous_boot_count)
         return code == 200, resp

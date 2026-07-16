@@ -370,6 +370,91 @@ class TenBuildRunner:
         if with_igniter:
             hw["actuators"]["igniter"].update(enabled=True, pin=21, active_h=True, pwm=False, dwell_ms=6, rest_ms=3)
 
+    def sync_core_registry(self, hw) -> None:
+        """Mirror legacy test fixtures into the canonical fitted-device registry."""
+        reg = hw.setdefault("channel_registry", {"version": 1, "inputs": [], "outputs": [], "bindings": []})
+        input_ids = {c.get("id") for c in reg["inputs"]}
+        output_ids = {c.get("id") for c in reg["outputs"]}
+
+        def add_input(channel):
+            if channel["id"] not in input_ids:
+                reg["inputs"].append(channel)
+                input_ids.add(channel["id"])
+
+        def add_output(channel):
+            if channel["id"] not in output_ids:
+                reg["outputs"].append(channel)
+                output_ids.add(channel["id"])
+
+        sensors = hw["sensors"]
+        if sensors["n1_rpm"].get("enabled"):
+            add_input(chan_input("n1_main", "N1 Speed", "speed", "n1_speed", 2,
+                                 sensors["n1_rpm"]["pin"], pulses_per_unit=sensors["n1_rpm"].get("ppr", 1)))
+        if sensors["n2_rpm"].get("enabled"):
+            add_input(chan_input("n2_main", "N2 Speed", "speed", "n2_speed", 2,
+                                 sensors["n2_rpm"]["pin"], pulses_per_unit=sensors["n2_rpm"].get("ppr", 1)))
+        if sensors["tot"].get("enabled"):
+            s = sensors["tot"]
+            add_input(chan_input("tot_main", "Main TOT", "temperature", "tot", 1, -1,
+                                 temp_interface=1, spi_clk=s["clk"], spi_cs=s["cs"],
+                                 spi_miso=s["miso"], spi_mosi=s.get("mosi", -1), tc_type=s.get("tc_type", "K")))
+        if sensors["oil_press"].get("enabled"):
+            add_input(chan_input("oil_pressure_main", "Oil Pressure", "pressure", "oil_pressure", 1,
+                                 sensors["oil_press"]["pin"]))
+        for key, channel_id, name, purpose in (
+            ("throttle_input", "operator_throttle", "Throttle Input", "throttle"),
+            ("idle_input", "operator_idle", "Idle Input", "idle"),
+        ):
+            s = sensors[key]
+            if s.get("enabled"):
+                add_input(chan_input(channel_id, name, "operator", purpose, 3 if s.get("rc_pwm") else 1,
+                                     s["pin"], min=1000 if s.get("rc_pwm") else 0,
+                                     max=2000 if s.get("rc_pwm") else 4095))
+
+        def driver(legacy_type):
+            return 6 if legacy_type == 0 else 5 if legacy_type == 1 else 4
+
+        def variable(key, channel_id, name, role, purpose):
+            a = hw["actuators"][key]
+            if not a.get("enabled"):
+                return
+            d = driver(a.get("type", 2))
+            add_output(chan_output(channel_id, name, role, purpose, d, a["pin"],
+                                   min=a.get("min_us", 1000) if d == 6 else a.get("pwm_min_pct", 0) / 100 if d == 5 else 0,
+                                   max=a.get("max_us", 2000) if d == 6 else a.get("pwm_max_pct", 100) / 100 if d == 5 else 1,
+                                   invert=a.get("inverted", False) or not a.get("active_h", True)))
+
+        variable("throttle", "main_fuel", "Main Fuel Pump", "fuel", "main_fuel")
+        variable("starter", "starter", "Starter", "starter", "starter")
+        variable("oil_pump", "oil_pump_main", "Oil Pump", "oil_pump", "oil_pump")
+        variable("prop_pitch", "prop_pitch", "Prop Pitch", "prop_pitch", "prop_pitch")
+        variable("ab_pump", "ab_pump", "AB Fuel Pump", "ab_pump", "ab_pump")
+
+        for key, channel_id, name, role, purpose in (
+            ("fuel_sol", "fuel_shutoff", "Fuel Shutoff", "fuel_shutoff", "fuel_shutoff"),
+            ("starter_en", "starter_enable", "Starter Enable", "starter_en", "starter_enable"),
+            ("ab_sol", "ab_solenoid", "Afterburner Fuel Valve", "valve", "ab_valve"),
+            ("airstarter_sol", "air_starter", "Air Starter", "starter", "air_starter"),
+        ):
+            a = hw["actuators"][key]
+            if a.get("enabled"):
+                add_output(chan_output(channel_id, name, role, purpose, 4, a["pin"], invert=not a.get("active_h", True)))
+
+        for key, channel_id, name, role, purpose in (
+            ("igniter", "igniter", "Igniter", "igniter", "igniter"),
+            ("igniter2", "ab_igniter", "AB Igniter", "ab_igniter", "ab_igniter"),
+        ):
+            a = hw["actuators"][key]
+            if a.get("enabled"):
+                add_output(chan_output(channel_id, name, role, purpose, 5 if a.get("pwm") else 4,
+                                       a["pin"], invert=not a.get("active_h", True)))
+
+        glow = hw["actuators"]["glow_plug"]
+        if glow.get("enabled"):
+            add_output(chan_output("glow_plug", "Glow Plug", "glow_plug", "glow_plug",
+                                   4 if glow.get("output_type") == 1 else 5, glow["pin"],
+                                   invert=not glow.get("active_h", True)))
+
     def enable_n1(self, hw):
         hw["sensors"]["n1_rpm"].update(enabled=True, pin=14, ppr=1.0)
 
@@ -433,15 +518,27 @@ class TenBuildRunner:
             return False
         if current.get("platform") != "esp32s3":
             return False
-        if bool(current.get("has_two_shaft")) != bool(expected.get("has_two_shaft")):
-            return False
-        if bool(current.get("has_afterburner")) != bool(expected.get("has_afterburner")):
-            return False
         def registry_has(direction, purpose):
             reg = expected.get("channel_registry", {})
             for ch in reg.get(direction, []):
                 if ch.get("purpose") == purpose:
                     return True
+            return False
+
+        def topology(doc, kind):
+            reg = doc.get("channel_registry", {})
+            inputs = reg.get("inputs", [])
+            outputs = reg.get("outputs", [])
+            if kind == "two_shaft":
+                return bool(doc.get("sensors", {}).get("n2_rpm", {}).get("enabled")) or any(
+                    c.get("purpose") == "n2_speed" for c in inputs)
+            return any(doc.get("actuators", {}).get(k, {}).get("enabled") for k in
+                       ("ab_sol", "ab_pump", "igniter2")) or bool(doc.get("ab_flame", {}).get("enabled")) or any(
+                           c.get("purpose") in ("ab_valve", "ab_pump", "ab_igniter") for c in outputs)
+
+        if topology(current, "two_shaft") != topology(expected, "two_shaft"):
+            return False
+        if topology(current, "afterburner") != topology(expected, "afterburner"):
             return False
 
         registry_sensor_alias = {
@@ -484,6 +581,7 @@ class TenBuildRunner:
         expected = self.dut.hardware()
         self.clear_hw(expected)
         spec["build"](expected)
+        self.sync_core_registry(expected)
         self.prepare_hardware_save()
         try:
             previous_boot_count = self.dut.data().get("boot_count")
@@ -879,6 +977,11 @@ def build_profiles(r: TenBuildRunner):
         r.enable_tot(hw)
         r.enable_oil_press(hw, pin=1)
         hw["controllers"]["oil_loop"] = True
+        hw["oil_loops"] = [{
+            "id": "main_oil_loop", "enabled": True,
+            "pressure_input": "oil_pressure_main", "pump_output": "oil_pump_main",
+            "target_bar": 2.5, "deadband_bar": 0.2, "min_demand": 0.18, "max_demand": 1,
+        }]
         hw["safety"]["overtemp"] = True
 
     def p3(hw):

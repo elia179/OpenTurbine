@@ -86,8 +86,15 @@ static const BlockEntry _blockRegistry[] = {
 };
 static constexpr size_t _blockRegistryLen = sizeof(_blockRegistry) / sizeof(BlockEntry);
 
-static IBlock* _startupBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static TimedDelay _startupDelays[HardwareConfig::MAX_SEQ_BLOCKS];
+// Pointer tables are populated once from the stored configuration. Keeping
+// their small backing store on the heap preserves classic ESP32 static DRAM
+// for ISR/runtime state without changing either target's sequence capacity.
+static IBlock** const _sequenceBlockStorage =
+    new IBlock*[HardwareConfig::MAX_SEQ_BLOCKS * 4]();
+static TimedDelay* const _sequenceDelayStorage =
+    new TimedDelay[HardwareConfig::MAX_SEQ_BLOCKS * 4]();
+static IBlock** const _startupBlocks = _sequenceBlockStorage;
+static TimedDelay* const _startupDelays = _sequenceDelayStorage;
 class CustomSequenceBlock : public IBlock {
 public:
     void bind(const HardwareConfig::CustomBlockDef* def) { _def = def; }
@@ -244,23 +251,39 @@ static void commandIgnitionTarget(uint8_t target, bool on) {
     }
 }
 
-static CustomSequenceBlock _startupCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static IgnitionCommandBlock _startupIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static CustomSequenceBlock* const _sequenceCustomBlockStorage =
+    new CustomSequenceBlock[HardwareConfig::MAX_SEQ_BLOCKS * 4]();
+static IgnitionCommandBlock* const _sequenceIgnitionBlockStorage =
+    new IgnitionCommandBlock[HardwareConfig::MAX_SEQ_BLOCKS * 4]();
+static CustomSequenceBlock* const _startupCustomBlocks = _sequenceCustomBlockStorage;
+static IgnitionCommandBlock* const _startupIgnitionBlocks = _sequenceIgnitionBlockStorage;
 static int     _startupCount  = 0;
-static IBlock* _shutdownBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static TimedDelay _shutdownDelays[HardwareConfig::MAX_SEQ_BLOCKS];
-static CustomSequenceBlock _shutdownCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static IgnitionCommandBlock _shutdownIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IBlock** const _shutdownBlocks =
+    _sequenceBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS;
+static TimedDelay* const _shutdownDelays =
+    _sequenceDelayStorage + HardwareConfig::MAX_SEQ_BLOCKS;
+static CustomSequenceBlock* const _shutdownCustomBlocks =
+    _sequenceCustomBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS;
+static IgnitionCommandBlock* const _shutdownIgnitionBlocks =
+    _sequenceIgnitionBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS;
 static int     _shutdownCount = 0;
-static IBlock* _abIgnBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static TimedDelay _abIgnDelays[HardwareConfig::MAX_SEQ_BLOCKS];
-static CustomSequenceBlock _abIgnCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static IgnitionCommandBlock _abIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IBlock** const _abIgnBlocks =
+    _sequenceBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 2;
+static TimedDelay* const _abIgnDelays =
+    _sequenceDelayStorage + HardwareConfig::MAX_SEQ_BLOCKS * 2;
+static CustomSequenceBlock* const _abIgnCustomBlocks =
+    _sequenceCustomBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 2;
+static IgnitionCommandBlock* const _abIgnitionBlocks =
+    _sequenceIgnitionBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 2;
 static int     _abIgnCount    = 0;
-static IBlock* _abShutBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static TimedDelay _abShutDelays[HardwareConfig::MAX_SEQ_BLOCKS];
-static CustomSequenceBlock _abShutCustomBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
-static IgnitionCommandBlock _abShutIgnitionBlocks[HardwareConfig::MAX_SEQ_BLOCKS];
+static IBlock** const _abShutBlocks =
+    _sequenceBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 3;
+static TimedDelay* const _abShutDelays =
+    _sequenceDelayStorage + HardwareConfig::MAX_SEQ_BLOCKS * 3;
+static CustomSequenceBlock* const _abShutCustomBlocks =
+    _sequenceCustomBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 3;
+static IgnitionCommandBlock* const _abShutIgnitionBlocks =
+    _sequenceIgnitionBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 3;
 static int     _abShutCount   = 0;
 static void validateSequences();  // defined after buildSequences
 
@@ -914,7 +937,7 @@ static void validateSequences() {
     }
     if (hw.hasGovernor) {
         if (Config::governorTargetRpm <= 0.0f)
-            addIssue("Governor", "Power Turbine Governor is enabled but Target N2 RPM is 0 - governor will not control speed", false);
+            addIssue("N2 speed control", "Automatic N2 speed control is enabled but Target N2 RPM is 0 - speed control will remain inactive", false);
         if (hw.hasPropPitch && hw.propPitchType == 2)
             addIssue("Governor", "Prop pitch is configured as on/off; governor will ignore it and use throttle only if throttle is fitted", false);
         else if (hw.hasPropPitch && Config::governorPitchKp <= 0.0f)
@@ -1241,7 +1264,7 @@ static void checkRelight() {
     commandIgnitionTarget((uint8_t)Config::relightIgnitionTarget, true);
 }
 
-// ── Standby oil feed (windmill protection) ───────────────────
+// ── Windmilling oil protection in standby ────────────────────
 // When a selected shaft is windmilling in STANDBY, run oil pump at a low feed
 // duty to protect bearings. Source: 0=N1, 1=N2, 2=either fitted shaft.
 // (_manualOilPct is declared above checkToolTimers(), which shares it.)
@@ -1271,7 +1294,7 @@ static void checkStandbyOilFeed() {
     if (windmilling) {
         if (!ed.standbyOilFeedActive) {
             ed.standbyOilFeedActive = true;
-            Serial.printf("[OT] Standby oil feed ON (N1=%.0f N2=%.0f)\n",
+            Serial.printf("[OT] Windmilling oil protection ON (N1=%.0f N2=%.0f)\n",
                 (double)ed.n1Rpm, (double)ed.n2Rpm);
         }
         // Pressure mode: with an oil sensor + the oil control loop enabled, regulate the
@@ -1303,7 +1326,7 @@ static void checkStandbyOilFeed() {
             // running oil prime. Restore the operator's manual SET_OIL_PCT value.
             ed.oilPumpPct = _manualOilPct;
         }
-        Serial.printf("[OT] Standby oil feed OFF (oil %.0f%%)\n", (double)ed.oilPumpPct);
+        Serial.printf("[OT] Windmilling oil protection OFF (oil %.0f%%)\n", (double)ed.oilPumpPct);
     }
 }
 
@@ -1700,15 +1723,15 @@ static void checkCooldownSkip() {
     }
 }
 
-// ── Starter assist (RUNNING only) ────────────────────────────
+// ── Low-RPM starter support (RUNNING only) ───────────────────
 // When enabled: keeps the starter motor spinning at a low % while N1 is below
-// starterAssistExitRpm, giving the engine torque support at low idle.
-// Exits (and re-arms) via hysteresis: re-enables only below starterAssistExitRpm * 0.5.
+// configured disengage RPM, giving the engine torque support at low idle.
+// Hysteresis re-enables it only below half the disengage RPM.
 static void checkStarterAssist() {
     auto& hw = HardwareConfig::instance();
     if (!hw.hasStarter) return;
     if (!hw.hasN1Rpm) return;
-    if (!hw.starterAssistEnabled) return;    // disabled in hardware config
+    if (!hw.starterLowRpmSupportEnabled) return;
     auto& ed = EngineData::instance();
 
     // Hysteresis state: set when N1 climbs above exitRpm, cleared when N1 drops back
@@ -1716,11 +1739,11 @@ static void checkStarterAssist() {
     // the first engagement always works without requiring the 50% drop.
     static bool _saDisengaged = false;
     static bool _prevRunning  = false;
-    if (!_prevRunning || !ed.starterAssistActive) _saDisengaged = false;
-    _prevRunning = (ed.mode == SysMode::RUNNING && ed.starterAssistActive);
+    if (!_prevRunning || !ed.starterLowRpmSupportActive) _saDisengaged = false;
+    _prevRunning = (ed.mode == SysMode::RUNNING && ed.starterLowRpmSupportActive);
 
     if (ed.mode != SysMode::RUNNING) return;
-    if (!ed.starterAssistActive) return;
+    if (!ed.starterLowRpmSupportActive) return;
 
     // If the RPM sensor is unhealthy, stale/zero n1Rpm could either lock the
     // starter on permanently or drop it when the engine still needs support.
@@ -1733,15 +1756,15 @@ static void checkStarterAssist() {
 
     // Hysteresis: disengage at exitRpm, re-arm only when N1 drops below 50% of exitRpm.
     // Prevents rapid on/off chattering if RPM oscillates around the threshold.
-    if (ed.n1Rpm >= Config::starterAssistExitRpm) {
+    if (ed.n1Rpm >= Config::starterLowRpmSupportDisengageRpm) {
         _saDisengaged = true;
-    } else if (ed.n1Rpm < Config::starterAssistExitRpm * 0.5f) {
+    } else if (ed.n1Rpm < Config::starterLowRpmSupportDisengageRpm * 0.5f) {
         _saDisengaged = false;
     }
 
     if (!_saDisengaged) {
         ed.starterEnabled = true;
-        ed.starterDemand  = Config::starterAssistPct / 100.0f;
+        ed.starterDemand  = Config::starterLowRpmSupportPct / 100.0f;
     } else {
         // N1 is in the dead-band (50–100 % of exit) — hold off until it drops further.
         ed.starterEnabled = false;
@@ -1754,6 +1777,7 @@ static void checkStarterAssist() {
 static void enterRunning() {
     auto& ed = EngineData::instance();
     ed.mode               = SysMode::RUNNING;
+    ed.faultShutdownActive = false;
     // Dev mode and bench mode runs are not real engine starts — don't count toward run log
     if (!ed.benchMode && !ed.devMode) {
         ed.runCount = ed.runCount + 1;          // per-boot (kept for any internal use)
@@ -1782,6 +1806,7 @@ static void enterShutdown() {
     auto& ed = EngineData::instance();
     if (ed.mode == SysMode::SHUTDOWN) return;  // already shutting down
     ed.mode = SysMode::SHUTDOWN;
+    ed.faultShutdownActive = false;
     _buzzerPattern = 4; _buzzerStep = 0;  // single low beep: normal stop
     // Clear operator-hold states so igniter/flags don't persist into cooldown.
     // The manual relight target may be igniter2 or glow — cut it explicitly;
@@ -1812,6 +1837,7 @@ static void enterFaultShutdown() {
     const char* fault = g_safety.lastFault();
     if (!fault || !fault[0]) fault = "UNKNOWN";
     if (ed.mode == SysMode::SHUTDOWN) {
+        ed.faultShutdownActive = true;
         // Already shutting down — log the additional fault but keep the
         // running shutdown sequence. Restarting it from block 0 would
         // interrupt spindown/cooldown (and a deterministic fault would
@@ -1825,6 +1851,7 @@ static void enterFaultShutdown() {
     FlightRecorder::logFault(fault);           // sensor snapshot at moment of fault
     FlightRecorder::logFaultShutdown(fault);   // shutdown event record
     ed.mode = SysMode::SHUTDOWN;
+    ed.faultShutdownActive = true;
     // Synchronously stop any active AB sequence so igniter2, solenoid and
     // AB pump are cut immediately rather than waiting for the next
     // checkABTrigger() tick.
@@ -1886,7 +1913,7 @@ static void enterStandby() {
     ed.igniterOn          = false;
     ed.starterDemand      = 0;
     ed.starterEnabled     = false;
-    ed.starterAssistActive = false;
+    ed.starterLowRpmSupportActive = false;
     ed.manualRelightActive = false;
     ed.flameMonitorActive = false;
     ed.oilMinBar          = 0;
@@ -1926,6 +1953,7 @@ static void enterStandby() {
     // Keep any startup-abort or fault explanation visible after the ECU returns
     // to STANDBY. START clears it before a new attempt.
     Hardware::allOff();
+    ed.faultShutdownActive = false;
     Serial.println("[OT] STANDBY");
 }
 
@@ -1968,6 +1996,7 @@ static void enterAbortStandby() {
         // Run the full shutdown sequence (ImmediateCut → RPMDrop → CooldownSpin → FinalStop)
         // to keep bearings oiled through spindown and cool the turbine before standby.
         ed.mode = SysMode::SHUTDOWN;
+        ed.faultShutdownActive = true;
         FlightRecorder::logFaultShutdown("STARTUP_ABORT");
         g_sequencer.startSequence(_shutdownBlocks, _shutdownCount,
                                   HardwareConfig::shutdownEnterActions,
@@ -2143,6 +2172,7 @@ static void handleCommand(const OTPacket& pkt) {
                     break;
                 }
                 ed.mode = SysMode::STARTUP;
+                ed.faultShutdownActive = false;
                 _buzzerPattern = 3; _buzzerStep = 0;  // double chirp: sequence starting
                 ed.faultDescription[0] = '\0';  // clear previous fault/abort description
                 strncpy(ed.lastEvent, "Start sequence initiated", sizeof(ed.lastEvent) - 1);
@@ -2337,14 +2367,13 @@ static void handleCommand(const OTPacket& pkt) {
             }
             break;
 
-        case OTCommand::STARTER_ASSIST:
-            // iParam: 0 = off, non-zero = on (pct comes from Config::starterAssistPct)
-            ed.starterAssistActive = (pkt.iParam != 0)
+        case OTCommand::STARTER_LOW_RPM_SUPPORT:
+            ed.starterLowRpmSupportActive = (pkt.iParam != 0)
                                    && HardwareConfig::hasStarter
-                                   && HardwareConfig::starterAssistEnabled
+                                   && HardwareConfig::starterLowRpmSupportEnabled
                                    && HardwareConfig::hasN1Rpm
                                    && ed.mode == SysMode::RUNNING;
-            if (!ed.starterAssistActive) {
+            if (!ed.starterLowRpmSupportActive) {
                 ed.starterEnabled = false;
                 ed.starterDemand  = 0;
             }

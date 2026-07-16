@@ -6,6 +6,7 @@
 <title>OpenTurbine - Sequence</title>
 <link rel="stylesheet" href="/style.css?v=20260711f">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<script src="/ui_dialog.js?v=20260715a"></script>
 <style>
 #seq-validation-banner { margin-bottom: .6rem; }
 .seq-val-error, .seq-val-warn {
@@ -23,10 +24,7 @@
   color: #f06060; border-radius: 7px; padding: .5rem .8rem;
   font-size: .78rem; font-weight: 600; margin-bottom: .5rem;
 }
-.rules-row { display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; padding:.42rem .65rem; border:1px solid var(--border); border-radius:6px; margin-bottom:.3rem; background:var(--surface); }
-.rules-row select, .rules-row input[type="text"], .rules-row input[type="number"] { font-size:.78rem; padding:.18rem .3rem; border-radius:4px; border:1px solid var(--border); background:var(--bg); color:var(--text); }
-.rules-row option:disabled { color:var(--dim); }
-.rule-dim { font-size:.7rem; color:var(--dim); white-space:nowrap; }
+.automation-intro{display:flex;gap:1rem;align-items:flex-start;justify-content:space-between;margin-bottom:1rem}.automation-copy{max-width:720px}.automation-copy p{font-size:.76rem;color:var(--dim);margin:.25rem 0;line-height:1.55}.automation-list{display:grid;gap:.65rem}.automation-card{border:1px solid var(--border);border-radius:11px;background:var(--surface);overflow:hidden}.automation-card[open]{border-color:color-mix(in srgb,var(--accent) 38%,var(--border));box-shadow:0 8px 24px rgba(0,0,0,.16)}.automation-card>summary{display:flex;align-items:center;gap:.7rem;min-height:62px;padding:.65rem .8rem;cursor:pointer;list-style:none}.automation-card>summary::-webkit-details-marker{display:none}.automation-summary{min-width:0;flex:1}.automation-title{font-size:.82rem;font-weight:750}.automation-sentence{display:block;font-size:.7rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.automation-kind{font-size:.62rem;font-weight:750;text-transform:uppercase;letter-spacing:.05em;padding:.16rem .4rem;border-radius:999px;background:var(--surface-3);color:var(--text-2)}.automation-chevron{color:var(--dim);font-size:1rem;transition:transform .15s}.automation-card[open] .automation-chevron{transform:rotate(90deg)}.automation-body{padding:.85rem;border-top:1px solid var(--border)}.automation-topline{display:grid;grid-template-columns:minmax(150px,1fr) minmax(145px,.7fr) auto;gap:.65rem;align-items:end;margin-bottom:.8rem}.automation-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.6rem}.automation-field{display:grid;gap:.25rem;align-content:start}.automation-field.wide{grid-column:span 2}.automation-field label,.automation-label{font-size:.62rem;color:var(--dim);font-weight:750;text-transform:uppercase;letter-spacing:.045em}.automation-tip{font-size:.62rem;text-transform:none;letter-spacing:0;color:var(--accent);text-decoration:underline dotted;text-underline-offset:2px;cursor:help}.automation-field select,.automation-field input[type="text"],.automation-field input[type="number"],.automation-topline select,.automation-topline input[type="text"]{width:100%;min-height:38px;font-size:.78rem;padding:.35rem .48rem;border-radius:7px;border:1px solid var(--border);background:var(--bg);color:var(--text);box-sizing:border-box}.automation-field option:disabled{color:var(--dim)}.automation-unit-input{display:flex;align-items:center;gap:.35rem}.automation-unit-input input{min-width:0}.automation-unit{font-size:.68rem;color:var(--dim);white-space:nowrap}.automation-states{display:flex;gap:.35rem;flex-wrap:wrap}.automation-state{display:flex;align-items:center;gap:.28rem;min-height:34px;padding:.15rem .48rem;border:1px solid var(--border);border-radius:999px;font-size:.68rem;color:var(--text-2);cursor:pointer}.automation-state:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--text)}.automation-state input{margin:0}.automation-enabled{display:flex;align-items:center;gap:.4rem;min-height:38px;font-size:.72rem;color:var(--text-2)}.automation-actions{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-top:.8rem;padding-top:.65rem;border-top:1px solid var(--border)}.automation-help{font-size:.68rem;color:var(--dim)}.rule-dim{font-size:.7rem;color:var(--dim);white-space:nowrap}
 .rule-presets { display:flex; gap:.4rem; flex-wrap:wrap; margin:0 0 .75rem; }
 .rule-preset-btn { font-size:.72rem; padding:.22rem .55rem; }
 .rule-preset-unavailable {
@@ -36,6 +34,17 @@
   border-style:dashed;
 }
 .rule-preset-unavailable:hover { border-color:var(--yellow); color:var(--yellow); }
+#tab-rules>.tool-card{max-width:none}
+@media(max-width:850px){.automation-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.automation-topline{grid-template-columns:1fr 1fr}.automation-enabled{grid-column:span 2}}@media(max-width:560px){.automation-intro{display:block}.rule-presets{flex-wrap:nowrap;overflow-x:auto;padding-bottom:.25rem;scrollbar-width:none}.rule-presets::-webkit-scrollbar{display:none}.rule-preset-btn{flex:0 0 auto}.automation-grid,.automation-topline{grid-template-columns:minmax(0,1fr)}.automation-field.wide,.automation-enabled{grid-column:auto}.automation-card>summary{padding:.6rem}.automation-kind{display:none}.automation-body{padding:.7rem}.automation-sentence{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}}
+.block-card.block-hardware-missing {
+  border-color: rgba(220,50,50,.72);
+  box-shadow: inset 0 0 0 1px rgba(220,50,50,.14);
+}
+.block-hardware-pill {
+  flex: 0 0 auto; padding: .16rem .42rem; border: 1px solid rgba(220,50,50,.72);
+  border-radius: 999px; color: #ff6270; background: rgba(220,50,50,.10);
+  font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+}
 </style>
 </head>
 <body>
@@ -50,12 +59,12 @@
   <span id="conn" class="conn-dot disconnected" title="WebSocket"></span><span id="conn-label" class="conn-label">Disconnected</span>
 </nav>
 <main>
-<h1 style="margin-bottom:.25rem">Sequence Editor</h1>
-<p style="color:var(--dim);font-size:.78rem;margin-bottom:1rem">
-  Edit startup and shutdown sequences. Each block shows its control structure, condition, and configurable parameters.
-  Sequence order and block parameters are saved together in the engine's
-  <code>ecu_config.json</code> file and applied after reboot.
-</p>
+<div class="page-heading">
+  <div class="page-heading-main">
+    <h1 class="page-title">Sequence Editor</h1>
+    <p class="page-subtitle">Edit startup, shutdown, afterburner and simple control rules. Sequence order and parameters are saved together and applied after reboot.</p>
+  </div>
+</div>
 
 <div id="seq-validation-banner"></div>
 
@@ -67,22 +76,19 @@
 </div>
 <div id="tab-rules" style="display:none">
   <div class="tool-card" style="padding:1rem;line-height:1.55">
-    <h3 style="margin:.1rem 0 .45rem">Control Rules</h3>
-    <p style="font-size:.76rem;color:var(--dim);margin:0 0 .8rem">
-      Threshold rules can monitor configured inputs and command auxiliary outputs during Startup or Running.
-      Rules can also request an orderly shutdown or a logged fault shutdown. Rules are suppressed during Shutdown so they cannot re-enable a fuel output after a cut.
-    </p>
-    <p style="font-size:.72rem;color:var(--dim);margin:0 0 .8rem">
-      Inputs and outputs not enabled in Hardware are unavailable and cannot be selected.
-      Thresholds always use canonical ECU units: deg C, bar, RPM and V — the deg F / PSI display preference on other pages does not apply here.
-      If a selected sensor is unhealthy (railed/disconnected), the rule leaves its output unchanged.
-    </p>
+    <div class="automation-intro">
+      <div class="automation-copy">
+        <h3 style="margin:.1rem 0 .35rem">Control Rules</h3>
+        <p>Turn an output on at a threshold, or map an input directly to a variable output. Each output can have one rule, so the result is always predictable.</p>
+        <p>Outside the selected engine states—or if its input becomes unavailable—the rule immediately returns its output to the configured off value. Fault hands control to the output's hardware-safe setting.</p>
+      </div>
+      <span id="rules-count-label" style="font-size:.72rem;color:var(--dim);white-space:nowrap">0 / 8 rules</span>
+    </div>
     <div id="rule-presets" class="rule-presets"></div>
-    <div id="rules-list"></div>
+    <div id="rules-list" class="automation-list"></div>
     <div id="rules-warnings" style="display:none;margin-top:.45rem;font-size:.72rem;color:var(--yellow);line-height:1.45"></div>
     <div style="margin-top:.5rem;display:flex;align-items:center;gap:.75rem">
-      <button id="btn-add-rule" onclick="addRule()" class="add-btn">+ Add Rule</button>
-      <span id="rules-count-label" style="font-size:.72rem;color:var(--dim)">0 / 8</span>
+      <button id="btn-add-rule" onclick="addRule()" class="add-btn">+ Add control rule</button>
     </div>
   </div>
 </div>
@@ -152,14 +158,14 @@
   <!-- Fault behavior info -->
   <div style="margin-bottom:.85rem;padding:.6rem .85rem;border:1px solid rgba(255,196,0,0.3);border-radius:7px;font-size:.75rem;color:var(--dim);line-height:1.55;background:rgba(255,196,0,0.05)">
     <strong style="color:var(--yellow)">Fault behavior:</strong>
-    If Light Up faults (ignition not confirmed), the AB solenoid closes, AB pump stops and AB igniter turns off immediately.
+    If Light Up faults (ignition not confirmed), the afterburner fuel valve closes, its fuel pump stops, and the afterburner igniter turns off immediately.
     The main engine continues running normally. AB state resets - you can retry from the dashboard.
   </div>
 
   <!-- Light Up section -->
   <div class="ab-section-hdr">Light Up Sequence</div>
   <p style="font-size:.72rem;color:var(--dim);margin:.35rem 0 .65rem">
-    Runs when afterburner trigger is activated. Default: ABCheckReady -> ABSolOpen -> ABPumpOn -> ABIgnite -> ABFlameConfirm -> ABStabilize.
+    Runs when the afterburner trigger is activated. Default: check readiness &rarr; open the AB fuel valve &rarr; start the AB fuel pump &rarr; ignite &rarr; confirm flame &rarr; stabilize.
     If empty, the built-in default sequence is used.
   </p>
   <div class="block-list" id="list-afterburner"></div>
@@ -174,7 +180,7 @@
   <div class="ab-section-hdr" style="margin-top:1.75rem">Light Off Sequence</div>
   <div id="ab-shutoff-criteria" class="ab-criteria-box" style="margin-bottom:.65rem;display:none"></div>
   <p style="font-size:.72rem;color:var(--dim);margin:.35rem 0 .65rem">
-    Runs when afterburner trigger is released / deactivated. Default: ABSolClose -> ABPumpOff.
+    Runs when the afterburner trigger is released. Default: stop the AB fuel pump &rarr; close the AB fuel valve &rarr; turn the AB igniter off.
   </p>
   <div class="block-list" id="list-ab-shut"></div>
   <div class="add-row" style="margin-top:.75rem">
@@ -290,9 +296,10 @@
 
 <div id="block-info-panel" style="display:none"></div>
 
-<div class="seq-save-bar">
-  <button class="save-btn" id="save-btn" onclick="saveAll()">Save &amp; Reboot</button>
-  <div class="save-status" id="save-status">Load config from device to begin</div>
+<div class="save-bar seq-save-bar" id="sequence-save-bar">
+  <div class="save-status" id="save-status">Loading configuration…</div>
+  <button id="seq-discard-btn" onclick="discardSequenceChanges()" disabled>Discard</button>
+  <button class="save-btn" id="save-btn" onclick="saveAll()" disabled>Save &amp; Reboot</button>
 </div>
 </main>
 
@@ -328,66 +335,68 @@ document.addEventListener('DOMContentLoaded', function () {
 // timeout_action: 'fault'|'abort'|'continue'|null
 const BLOCKS = {
   OilPrime: {
-    label:'Oil Prime', type:'while', badgeClass:'badge-while',
-    condition: hw => hwCfg.sensors?.oil_press?.enabled
+    label:'Build Oil Pressure', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => actuatorEnabled('oil_pump'),
+    condition: hw => sensorEnabled('oil_press')
       ? `oil >= ${hw.oil_arm_min_bar ?? 1.5} bar`
       : `timer (no pressure sensor)`,
     timeout_action:'abort',
     desc:'Turns oil pump ON and pre-lubricates bearings. WITH pressure sensor: waits until oil >= arm threshold, aborts on timeout (safe - no fuel or ignition active). WITHOUT pressure sensor: runs pump at fixed duty % for the configured timeout, then completes automatically.',
     hwWarnings:[
-      { check: hw => !!hw.actuators?.oil_pump?.enabled,
+      { check: hw => actuatorEnabled('oil_pump'),
         msg: 'Warning: No oil pump actuator configured - this block cannot actually pump oil. Add an oil pump in Hardware Config -> Actuators.' },
     ],
     params:[
       // ------ With oil pressure sensor ------------------------------------------------------------------------------------------------------------------------------
       {key:'startup_oil_demand', label:'Oil pressure target', unit:'bar', type:'float', min:0, max:10, step:0.1, def:2.5,
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled && actuatorHasProportionalOutput('oil_pump'),
+        visibleIf: hw => sensorEnabled('oil_press') && actuatorHasProportionalOutput('oil_pump'),
         configKey:'startup_oil_demand'},
-      {key:'oil_arm_min_bar',    label:'Arm threshold',       unit:'bar', type:'float', min:0, max:10, step:0.1, def:1.5,
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled, configKey:'oil_arm_min_bar'},
+      {key:'oil_arm_min_bar',    label:'Minimum pressure before ignition', unit:'bar', type:'float', min:0, max:10, step:0.1, def:1.5,
+        visibleIf: hw => sensorEnabled('oil_press'), configKey:'oil_arm_min_bar'},
       // ------ Without oil pressure sensor ---------------------------------------------------------------------------------------------------------------------
       {key:'startup_oil_pct',    label:'Pump duty %',         unit:'%',  type:'float', min:0, max:100, step:5, def:80,
-        visibleIf: hw => !hw.sensors?.oil_press?.enabled && actuatorHasProportionalOutput('oil_pump'),
+        visibleIf: hw => !sensorEnabled('oil_press') && actuatorHasProportionalOutput('oil_pump'),
         configKey:'startup_oil_pct',
         desc:'Pump runs at this fixed duty since no pressure sensor is fitted. Run timeout (below) determines how long the block holds.'},
       // ------ Common ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
       {key:'oil_arm_timeout_ms', label:'Timeout', unit:'ms', type:'int', min:500, max:30000, step:100, def:3000, configKey:'oil_arm_timeout_ms'},
       {key:'oil_prime_use_scavenge', label:'Run scavenge pump', type:'bool', def:false,
         configKey:'oil_prime_use_scavenge',
-        visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
+        visibleIf: hw => actuatorEnabled('oil_scavenge_pump')},
     ]
   },
   StarterSpin: {
-    label:'Starter Spin', type:'while', badgeClass:'badge-while',
+    label:'Crank Engine', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => actuatorEnabled('starter') && sensorEnabled('n1_rpm'),
     condition: hw => `N1 < ${hw.pre_ign_rpm ?? 5000} rpm`,
     timeout_action:'fault',
     desc:'Asserts starter enable output (if fitted), then ramps starter demand from 0 to target %. Waits for N1 to reach pre-ignition RPM. Starter enable delay (hardware config) is applied before the starter spins. On timeout -> FAULT SHUTDOWN. Outputs: starterEnabled=true, starterDemand ramping to target.',
     hwWarnings:[
-      { check: hw => !!hw.actuators?.starter?.enabled,
+      { check: hw => actuatorEnabled('starter'),
         msg: 'Warning: No starter actuator configured - starter output will have no physical effect. Add a starter in Hardware Config -> Actuators.',
         level: 'error' },
-      { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+      { check: hw => sensorEnabled('n1_rpm'),
         msg: 'Warning: No N1 RPM sensor - block cannot verify target RPM. It will run for the full timeout, then FAULT SHUTDOWN. Enable bench mode for timer-only testing.' },
     ],
     params:[
       {key:'starter_demand',      label:'Starter demand',unit:'%',   type:'float', min:0,   max:100,   step:1,   def:60,    configKey:'starter_demand',
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
-      {key:'ramp_pct_per_s',     label:'Ramp rate',     unit:'%/s', type:'float', min:0,   max:200,   step:5,   def:30,    configKey:'ramp_pct_per_s',
+      {key:'ramp_pct_per_s',     label:'Starter output increase rate', unit:'%/s', type:'float', min:0, max:200, step:5, def:30, configKey:'ramp_pct_per_s',
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
-      {key:'pre_ign_rpm',        label:'Target N1',     unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000,  configKey:'pre_ign_rpm',
-        visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+      {key:'pre_ign_rpm',        label:'Stop cranking at N1', unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000, configKey:'pre_ign_rpm',
+        visibleIf: hw => sensorEnabled('n1_rpm'),
         desc:'Starter runs until N1 exceeds this RPM. Without N1 sensor this condition cannot be checked - the block will run for the full timeout.'},
       {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
         configKey:'starter_timeout_ms',
         desc:'Maximum spin time before fault. If no N1 sensor is fitted, the timeout determines when the block exits.'},
       {key:'oil_startup_min_bar',label:'Oil arm min',   unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled, configKey:'oil_startup_min_bar',
+        visibleIf: hw => sensorEnabled('oil_press'), configKey:'oil_startup_min_bar',
         desc:'Shared with OilPrime arm threshold - both use the same config value.'},
     ]
   },
   PreIgnSpark: {
     label:'Igniter 1 Spark', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.igniter?.enabled,
+    visibleIf: hw => actuatorEnabled('igniter'),
     condition: null, timeout_action:null,
     desc:'Igniter-1-only block. Prefer Igniter On or Pre-Heat when you want to choose igniter 1, AB / pilot igniter, glow, or wet glow from the block card. This block turns igniter 1 ON and leaves it ON when it exits.',
     params:[
@@ -396,19 +405,19 @@ const BLOCKS = {
   },
   FuelOpen: {
     label:'Fuel Open', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.fuel_sol?.enabled,
+    visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: null, timeout_action:null,
     desc:'Opens the fuel solenoid and sets the internal fuelEverOpened flag (used by Cooldown block to decide if cooling is needed). Instant action. Outputs: fuelSolOpen=true.',
     params:[]
   },
   FlameConfirm: {
-    label:'Flame Confirm', type:'while', badgeClass:'badge-while',
-    visibleIf: hw => !!hw.sensors?.flame?.enabled,
+    label:'Confirm Combustion by Flame Sensor', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => sensorEnabled('flame'),
     condition: hw => `flame count < ${hw.flame_required_count ?? 3}`,
     timeout_action:'abort',
     desc:'Waits until the flame sensor fires N consecutive times within the check interval. Confirms that combustion is self-sustained. On timeout -> ABORT. On exit: optionally cuts all ignition outputs.',
     hwWarnings:[
-      { check: hw => !!hw.sensors?.flame?.enabled,
+      { check: hw => sensorEnabled('flame'),
         msg: 'Blocked: No flame sensor configured - flame count will never increment. This block will always timeout and ABORT. Use TempConfirm as a replacement if a temperature sensor is fitted.',
         level: 'error' },
     ],
@@ -422,13 +431,13 @@ const BLOCKS = {
     ]
   },
   TempConfirm: {
-    label:'Temp Confirm', type:'while', badgeClass:'badge-while',
-    visibleIf: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
+    label:'Confirm Combustion by Temperature', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => sensorEnabled('tot') || sensorEnabled('tit'),
     condition: hw => `EGT < ${fmtSeqTemp(hw.temp_confirm_target ?? 200)}`,
     timeout_action:'abort',
     desc:'Waits until selected engine temperature (TOT or TIT) rises above the configured threshold. Use as an alternative to or alongside FlameConfirm when a flame sensor is not fitted. On timeout -> ABORT. Does NOT change any actuator state.',
     hwWarnings:[
-      { check: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
+      { check: hw => sensorEnabled('tot') || sensorEnabled('tit'),
         msg: 'Blocked: No temperature (TOT/TIT) sensor configured - EGT will never rise above ambient. This block will always timeout and ABORT.',
         level: 'error' },
     ],
@@ -447,91 +456,93 @@ const BLOCKS = {
     ]
   },
   FuelPumpIdle: {
-    label:'Fuel Pump -> Idle Input', type:'action', badgeClass:'badge-action',
+    label:'Set Fuel from Idle Control', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
-    desc:'Sets the throttle/fuel ESC demand from the idle input (pot or RC channel). The low end is the calibrated Fuel Pump Minimum Spin value; this block maps raw input (0-4095) linearly up to Max%. If no idle channel is fitted, it uses the calibrated minimum as the fixed idle. Completes immediately.',
+    desc:'Sets the fuel/throttle demand from the idle input (pot or RC channel). The low end is the calibrated minimum reliable fuel-pump output; this block maps raw input (0-4095) linearly up to Max%. If no idle channel is fitted, it uses the calibrated minimum as the fixed idle. Completes immediately.',
     params:[
       {key:'fp_idle_max_pct',      label:'Max pump %',            unit:'%', type:'float', min:0, max:100, step:0.5, def:18,    configKey:'fp_idle_max_pct'},
     ]
   },
   ModifiedIdle: {
-    label:'Modified Idle', type:'action', badgeClass:'badge-action',
+    label:'Set Raised Idle Fuel', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Sets throttle demand = idle input mapped through throttle idle range (Config -> Throttle) x multiplier. Use multiplier > 1.0 for a slightly higher idle on first spool. Completes immediately. throttleDemand is reset to 0 when the engine enters RUNNING. Outputs: throttleDemand set to scaled value.',
     params:[
-      {key:'modified_idle_multiplier', label:'Multiplier', unit:'x', type:'float', min:0.1, max:5, step:0.05, def:1.0, configKey:'modified_idle_multiplier'},
+      {key:'modified_idle_multiplier', label:'Idle fuel multiplier', unit:'x', type:'float', min:0.1, max:5, step:0.05, def:1.0, configKey:'modified_idle_multiplier'},
     ]
   },
   Spool: {
-    label:'Spool', type:'while', badgeClass:'badge-while',
+    label:'Accelerate to Idle', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => actuatorHasProportionalOutput('throttle') && sensorEnabled('n1_rpm'),
     condition: hw => `N1 < ${hw.rpm_target ?? 32000} rpm`,
     timeout_action:'fault',
-    desc:'Sets throttleDemand to the calibrated Fuel Pump Minimum Spin value and holds until N1 reaches target RPM. Flame monitor is active - if flame is lost the engine faults. On timeout -> FAULT SHUTDOWN. The running oil minimum is enforced from this block onward. On exit: optionally cuts starter demand and/or starter enable output (checkboxes below).',
+    desc:'Sets fuel/throttle demand to the calibrated minimum reliable fuel-pump output and holds until N1 reaches the idle-entry target. Flame monitoring is active; loss of combustion causes a fault shutdown. The running oil-pressure minimum is enforced from this block onward.',
     hwWarnings:[
-      { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+      { check: hw => sensorEnabled('n1_rpm'),
         msg: 'Warning: No N1 RPM sensor - Spool cannot verify target RPM has been reached. Block will run until timeout -> FAULT SHUTDOWN.' },
     ],
     params:[
-      {key:'rpm_target',                label:'Target N1',                  unit:'rpm',type:'float', min:1000, max:200000, step:500,  def:32000, configKey:'rpm_target'},
+      {key:'rpm_target',                label:'Idle-entry N1 target', unit:'rpm',type:'float', min:1000, max:200000, step:500, def:32000, configKey:'rpm_target'},
       {key:'rpm_timeout_ms',            label:'Timeout',                    unit:'ms', type:'int',   min:1000, max:120000, step:1000, def:12000, configKey:'rpm_timeout_ms'},
       {key:'oil_running_min',           label:'Running oil min',            unit:'bar',type:'float', min:0,    max:10,     step:0.1,  def:2.8,   configKey:'oil_running_min',
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
+        visibleIf: hw => sensorEnabled('oil_press'),
         desc:'Oil pressure minimum enforced from Spool start through running. Shared with SafetyHold - edit in either block or in Config -> Oil -> Running Min.'},
       {key:'spool_cut_starter_on_exit', label:'Cut starter demand on exit',            type:'bool',                                  def:true,  configKey:'spool_cut_starter_on_exit'},
       {key:'spool_cut_starter_en_on_exit',label:'Cut starter enable output on exit',   type:'bool',                                  def:true,  configKey:'spool_cut_starter_en_on_exit',
-        visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
+        visibleIf: hw => actuatorEnabled('starter_en')},
     ]
   },
   SafetyHold: {
-    label:'Safety Hold', type:'check', badgeClass:'badge-check',
+    label:'Verify Stable Idle', type:'check', badgeClass:'badge-check',
+    visibleIf: hw => sensorEnabled('n1_rpm') || sensorEnabled('oil_press'),
     condition: hw => `${hw.safety_hold_ms ?? 1000} ms hold`,
     timeout_action:'fault',
     desc:'Holds for the configured duration and verifies N1 >= target RPM and oil pressure >= minimum. If either check fails -> FAULT SHUTDOWN. On successful exit: optionally cuts starter demand, starter enable output, and all ignition outputs. After this block the engine enters RUNNING state.',
     hwWarnings:[
-      { check: hw => (!!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm) || !!hw.sensors?.oil_press?.enabled,
+      { check: hw => sensorEnabled('n1_rpm') || sensorEnabled('oil_press'),
         level: 'error',
         msg: 'Error: No N1 RPM or oil pressure sensor - SafetyHold has nothing to verify before RUNNING. Add N1 or oil pressure feedback, remove SafetyHold, or use Bench Mode for timer-only testing.' },
     ],
     params:[
-      {key:'safety_hold_ms', label:'Hold duration',unit:'ms', type:'int',   min:100,  max:10000,  step:100, def:1000,  configKey:'safety_hold_ms'},
-      {key:'final_check_rpm',label:'Verify N1 >=', unit:'rpm',type:'float', min:1000, max:200000, step:500, def:31000, configKey:'final_check_rpm',
-        visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+      {key:'safety_hold_ms', label:'Stable time required',unit:'ms', type:'int', min:100, max:10000, step:100, def:1000, configKey:'safety_hold_ms'},
+      {key:'final_check_rpm',label:'Minimum accepted N1', unit:'rpm',type:'float', min:1000, max:200000, step:500, def:31000, configKey:'final_check_rpm',
+        visibleIf: hw => sensorEnabled('n1_rpm'),
         desc:'Fault if N1 is below this after the hold. Not checked when no N1 RPM sensor is fitted.'},
-      {key:'oil_running_min',label:'Verify oil >=',unit:'bar',type:'float', min:0,    max:10,     step:0.1, def:2.8,   configKey:'oil_running_min',
-        visibleIf: hw => !!hw.sensors?.oil_press?.enabled,
+      {key:'oil_running_min',label:'Minimum accepted oil pressure',unit:'bar',type:'float', min:0, max:10, step:0.1, def:2.8, configKey:'oil_running_min',
+        visibleIf: hw => sensorEnabled('oil_press'),
         desc:'Same threshold as Spool running oil min - both read Config -> Oil -> Running Min.'},
       {key:'safety_turn_off_starter',    label:'Turn off starter on exit',             type:'bool', def:false, configKey:'safety_turn_off_starter'},
       {key:'safety_turn_off_starter_en', label:'Turn off starter enable output on exit',type:'bool', def:false, configKey:'safety_turn_off_starter_en',
-        visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en},
+        visibleIf: hw => actuatorEnabled('starter_en')},
       {key:'safety_turn_off_igniter',    label:'Turn off ignition outputs on exit',    type:'bool', def:false, configKey:'safety_turn_off_igniter'},
     ]
   },
   AirstarterOn: {
     label:'Airstarter On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.airstarter_sol?.enabled,
+    visibleIf: hw => actuatorEnabled('airstarter_sol'),
     condition: null, timeout_action:null,
     desc:'Open the airstarter solenoid to allow compressed air to drive the starter.',
     params:[]
   },
   AirstarterOff: {
     label:'Airstarter Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.airstarter_sol?.enabled,
+    visibleIf: hw => actuatorEnabled('airstarter_sol'),
     condition: null, timeout_action:null,
     desc:'Close the airstarter solenoid.',
     params:[]
   },
   CoolFanOn: {
     label:'Cooling Fan On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.cool_fan?.enabled,
+    visibleIf: hw => actuatorEnabled('cool_fan'),
     condition: null, timeout_action:null,
     desc:'Enable the cooling fan.',
     params:[]
   },
   CoolFanOff: {
     label:'Cooling Fan Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.cool_fan?.enabled,
+    visibleIf: hw => actuatorEnabled('cool_fan'),
     condition: null, timeout_action:null,
     desc:'Disable the cooling fan.',
     params:[]
@@ -553,28 +564,28 @@ const BLOCKS = {
   },
   FuelSolClose: {
     label:'Fuel Solenoid Close', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.fuel_sol?.enabled,
+    visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: null, timeout_action:null,
     desc:'Close the fuel solenoid. Use to cut fuel without triggering full emergency stop.',
     params:[]
   },
   StarterEnOn: {
     label:'Starter Enable On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en,
+    visibleIf: hw => actuatorEnabled('starter_en'),
     condition: null, timeout_action:null,
     desc:'Assert the starter enable output or gate. Required on hardware with a separate starter arm circuit.',
     params:[]
   },
   StarterEnOff: {
     label:'Starter Enable Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en,
+    visibleIf: hw => actuatorEnabled('starter_en'),
     condition: null, timeout_action:null,
     desc:'De-assert the starter enable output.',
     params:[]
   },
   OilPumpOn: {
     label:'Oil Pump On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.oil_pump?.enabled,
+    visibleIf: hw => actuatorEnabled('oil_pump'),
     condition: null, timeout_action:null,
     desc:'Start oil pump at the specified direct output demand. This sequence setting is independent of the closed-loop oil controller minimum duty.',
     params:[
@@ -585,46 +596,46 @@ const BLOCKS = {
   },
   OilPumpOff: {
     label:'Oil Pump Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.oil_pump?.enabled,
+    visibleIf: hw => actuatorEnabled('oil_pump'),
     condition: null, timeout_action:null,
     desc:'Stop the oil pump. For post-stop oil cut-off or dry cranking.',
     params:[]
   },
   OilScavengeOn: {
     label:'Scavenge On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled,
+    visibleIf: hw => actuatorEnabled('oil_scavenge_pump'),
     condition: null, timeout_action:null,
     desc:'Activates the dedicated oil scavenge pump. Use during startup priming, warmup holds, or anywhere you need scavenge running independently of the main oil pressure loop.',
     params:[]
   },
   OilScavengeOff: {
     label:'Scavenge Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled,
+    visibleIf: hw => actuatorEnabled('oil_scavenge_pump'),
     condition: null, timeout_action:null,
     desc:'Deactivates the oil scavenge pump.',
     params:[]
   },
   StarterOff: {
     label:'Starter Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!hw.actuators?.starter?.enabled,
+    visibleIf: hw => actuatorEnabled('starter'),
     condition: null, timeout_action:null,
     desc:'Set starter demand to zero. Use after spool is established to disengage the starter motor.',
     params:[]
   },
   // ------ Shutdown blocks ---------------------------------------------------------------------------------------------------------------------------------------------------------------
   ImmediateCut: {
-    label:'Immediate Cut', type:'action', badgeClass:'badge-action',
+    label:'Immediate Fuel and Ignition Cut', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action:null,
     desc:'Instant emergency cut. Sets: throttleDemand=0, fuelSolOpen=false, igniterOn=false, starterDemand=0, starterEnabled=false. Use as first shutdown block.',
     params:[]
   },
   RPMDrop: {
-    label:'RPM Drop', type:'while', badgeClass:'badge-while',
+    label:'Wait for Rotor to Slow', type:'while', badgeClass:'badge-while',
     condition: hw => `N1 > ${hw.rpm_drop_threshold ?? 5000} rpm`,
     timeout_action:'continue',
     desc:'Waits for N1 to fall below the threshold RPM before proceeding to cooldown. Ensures the starter motor is not fighting against residual turbine spin. On timeout -> continues anyway. No actuator changes.',
     hwWarnings:[
-      { check: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+      { check: hw => sensorEnabled('n1_rpm'),
         msg: 'Warning: No N1 RPM sensor - RPM drop cannot be verified. Block will proceed after timeout (safe - timeout action is continue).' },
     ],
     params:[
@@ -638,52 +649,51 @@ const BLOCKS = {
     timeout_action:'continue',
     desc:'Spin starter and/or run oil pump to cool EGT below target. Skipped if fuel was never opened. Proceeds on timeout. With oil pressure sensor: pump is regulated to target pressure; without: runs at fixed %.',
     hwWarnings:[
-      { check: hw => !!(hw.sensors?.tot?.enabled || hw.sensors?.tit?.enabled),
+      { check: hw => sensorEnabled('tot') || sensorEnabled('tit'),
         msg: 'Warning: No temperature sensor - cooldown cannot verify EGT has dropped. Block will run for the full timeout then continue (safe).' },
     ],
     params:[
       {key:'tot_cooldown_target',       label:'EGT target',              unitType:'temp', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
       {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:200000, configKey:'cooldown_timeout_ms'},
       {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
-        visibleIf: hw => !!(hw.actuators?.starter?.enabled || hw.has_starter)},
+        visibleIf: hw => actuatorEnabled('starter')},
       {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct',
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
       {key:'cooldown_starter_en_relay', label:'Starter enable output asserted automatically', type:'bool', def:true,
-        visibleIf: hw => (!!hw.actuators?.starter_en?.enabled || !!hw.has_starter_en)
-                      && !!(hw.actuators?.starter?.enabled || hw.has_starter),
+        visibleIf: hw => actuatorEnabled('starter_en') && actuatorEnabled('starter'),
         desc:'When a dedicated starter enable output is fitted, it is always asserted before the starter motor runs. This is handled automatically - no action needed.'},
       {key:'cooldown_use_oil_pump',     label:'Run oil pump',                       type:'bool',                                  def:true,   configKey:'cooldown_use_oil',
-        visibleIf: hw => !!(hw.actuators?.oil_pump?.enabled || hw.has_oil_pump)},
+        visibleIf: hw => actuatorEnabled('oil_pump')},
       {key:'cooldown_oil_pct',          label:'Oil pump %',              unit:'%',  type:'float',min:0,    max:100,    step:5,     def:30,     configKey:'cooldown_oil_pct',
-        visibleIf: hw => actuatorHasProportionalOutput('oil_pump') && !hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => actuatorHasProportionalOutput('oil_pump') && !sensorEnabled('oil_press')},
       {key:'cooldown_oil_pressure_bar', label:'Oil pressure target',     unit:'bar',type:'float',min:0.5,  max:10,     step:0.1,   def:2.0,    configKey:'cooldown_oil_pressure_bar',
-        visibleIf: hw => actuatorHasProportionalOutput('oil_pump') && !!hw.sensors?.oil_press?.enabled},
+        visibleIf: hw => actuatorHasProportionalOutput('oil_pump') && sensorEnabled('oil_press')},
       {key:'cooldown_use_scavenge',     label:'Run scavenge pump',                  type:'bool',                                  def:false,  configKey:'cooldown_use_scavenge',
-        visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
+        visibleIf: hw => actuatorEnabled('oil_scavenge_pump')},
     ]
   },
   FinalStop: {
-    label:'Final Stop', type:'while', badgeClass:'badge-while',
-    condition: hw => (hwCfg.sensors?.n1_rpm?.enabled || hwCfg.has_n1_rpm)
+    label:'Wait for Complete Stop', type:'while', badgeClass:'badge-while',
+    condition: hw => sensorEnabled('n1_rpm')
       ? `N1 > ${hw.rpm_zero_threshold ?? 100} rpm`
       : `timer (no N1 sensor)`,
     timeout_action:'continue',
     desc:'Wait for complete stop. Main oil pump cuts when N1 reaches zero (or on timeout). If a scavenge pump is fitted and scavenge time > 0, it continues running to flush hot oil from bearings. Without N1 sensor: completes immediately (N1 health = unhealthy = treated as stopped) then runs scavenge if configured.',
     params:[
       {key:'rpm_zero_threshold',    label:'Stop threshold',   unit:'rpm',type:'float',min:0,   max:1000,  step:10,   def:100,
-        visibleIf: hw => !!hw.sensors?.n1_rpm?.enabled || !!hw.has_n1_rpm,
+        visibleIf: hw => sensorEnabled('n1_rpm'),
         configKey:'rpm_zero_threshold',
         desc:'N1 below this is treated as "stopped". Without N1 sensor the block treats the rotor as stopped and moves directly to the optional scavenge phase.'},
       {key:'final_stop_timeout_ms', label:'Timeout',          unit:'ms', type:'int',  min:1000,max:60000, step:1000, def:10000, configKey:'final_stop_timeout_ms'},
       {key:'oil_scavenge_ms', label:'Scavenge pump run time', unit:'ms', type:'int',
         min:0, max:120000, step:1000, def:0, configKey:'oil_scavenge_ms',
-        visibleIf: hw => !!hw.actuators?.oil_scavenge_pump?.enabled},
+        visibleIf: hw => actuatorEnabled('oil_scavenge_pump')},
     ]
   },
   // ------ Extended / optional blocks ---------------------------------------------------------------------------------------------------------------------------------
   FuelPulse: {
     label:'Fuel Pulse', type:'wait', badgeClass:'badge-wait',
-    visibleIf: hw => !!hw.actuators?.fuel_sol?.enabled,
+    visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: hw => `fuel ${hw.fuel_pulse_ms ?? 200}ms`,
     timeout_action:null,
     desc:'Opens the fuel solenoid for a brief pulse to wet the atomiser or clear the dead-leg before ignition. Does NOT set fuelEverOpened - use before PreIgnSpark as a pre-prime step. The solenoid closes after pulseMs; the block then waits offMs before completing.',
@@ -693,7 +703,8 @@ const BLOCKS = {
     ]
   },
   WaitTOTCool: {
-    label:'Wait EGT Cool', type:'while', badgeClass:'badge-while',
+    label:'Wait for Safe Restart Temperature', type:'while', badgeClass:'badge-while',
+    visibleIf: hw => sensorEnabled('tot') || sensorEnabled('tit'),
     condition: hw => `EGT < ${fmtSeqTemp(hw.wait_tot_target ?? 150)}`,
     timeout_action:'continue',
     desc:'Holds the sequence until selected EGT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout -> continues (does not abort). If the selected EGT sensor is unhealthy, completes immediately.',
@@ -712,7 +723,7 @@ const BLOCKS = {
     ]
   },
   WaitForInput: {
-    label:'Wait For Input', type:'while', badgeClass:'badge-while',
+    label:'Wait for External Input', type:'while', badgeClass:'badge-while',
     visibleIf: hw => hw.di_channels?.some(ch => ch.pin >= 0),
     condition: hw => `DI-${(hw.wait_for_input_ch ?? 0) + 1} ${hw.wait_for_input_state !== false ? '-> active' : '-> inactive'}`,
     timeout_action:'abort',
@@ -733,7 +744,7 @@ const BLOCKS = {
     ]
   },
   WaitForInputOff: {
-    label:'Wait For Input Off', type:'while', badgeClass:'badge-while',
+    label:'Wait for External Input to Release', type:'while', badgeClass:'badge-while',
     visibleIf: hw => hw.di_channels?.some(ch => ch.pin >= 0),
     condition: hw => `DI-${(hw.wait_for_input_ch ?? 0) + 1} -> inactive`,
     timeout_action:'abort',
@@ -757,62 +768,62 @@ const BLOCKS = {
   },
   // ------ Afterburner blocks ---------------------------------------------------------------------------------------------------------------------------------------------------------
   ABPumpOn: {
-    label:'AB Pump On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.ab_pump?.enabled),
+    label:'Afterburner Fuel Pump On', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => actuatorEnabled('ab_pump'),
     condition: null, timeout_action:null,
     desc:'Enable the afterburner fuel pump at Config -> Afterburner -> Light-Up Pump %.',
     params:[]
   },
   ABPumpOff: {
-    label:'AB Pump Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.ab_pump?.enabled),
+    label:'Afterburner Fuel Pump Off', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => actuatorEnabled('ab_pump'),
     condition: null, timeout_action:null,
     desc:'Disable the afterburner fuel pump.',
     params:[]
   },
   ABIgnOn: {
     label:'AB Igniter On', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.igniter2?.enabled),
+    visibleIf: hw => actuatorEnabled('igniter2'),
     condition: null, timeout_action:null,
     desc:'Enable the afterburner / pilot igniter.',
     params:[]
   },
   ABIgnOff: {
     label:'AB Igniter Off', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.igniter2?.enabled),
+    visibleIf: hw => actuatorEnabled('igniter2'),
     condition: null, timeout_action:null,
     desc:'Disable the afterburner igniter.',
     params:[]
   },
   ABSolOpen: {
-    label:'AB Solenoid Open', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.ab_sol?.enabled),
+    label:'Afterburner Fuel Valve Open', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => actuatorEnabled('ab_sol'),
     condition: null, timeout_action:null,
     desc:'Open the afterburner fuel solenoid (abSolOpen = true).',
     params:[]
   },
   ABSolClose: {
-    label:'AB Solenoid Close', type:'action', badgeClass:'badge-action',
-    visibleIf: hw => !!(hw.has_afterburner && hw.actuators?.ab_sol?.enabled),
+    label:'Afterburner Fuel Valve Close', type:'action', badgeClass:'badge-action',
+    visibleIf: hw => actuatorEnabled('ab_sol'),
     condition: null, timeout_action:null,
     desc:'Close the afterburner fuel solenoid (abSolOpen = false).',
     params:[]
   },
   ABCheckReady: {
-    label:'AB Check Ready', type:'check', badgeClass:'badge-check',
+    label:'Check Afterburner Entry Conditions', type:'check', badgeClass:'badge-check',
     condition: hw => 'entry conditions above',
     timeout_action:'abort',
     desc:'Gate block: checks the entry conditions configured above before proceeding with AB ignition. Aborts if any condition fails.',
     params:[]
   },
   ABIgnite: {
-    label:'AB Ignite', type:'action', badgeClass:'badge-action',
+    label:'Ignite Afterburner', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action:null,
     desc:'Fire AB ignition using the method configured in Config -> Afterburner - Ignition Method (torch, AB igniter, or both). Completes after the torch duration.',
     params:[]
   },
   ABFlameConfirm: {
-    label:'AB Flame Confirm', type:'while', badgeClass:'badge-while',
+    label:'Confirm Afterburner Flame', type:'while', badgeClass:'badge-while',
     condition: hw => 'Waiting for AB flame confirmation',
     timeout_action:'fault',
     desc:'Waits for AB flame confirmation using the method configured in Config -> Afterburner - Flame Confirmation. Faults if the overall timeout is exceeded.',
@@ -821,7 +832,7 @@ const BLOCKS = {
     ]
   },
   ABStabilize: {
-    label:'AB Stabilize', type:'while', badgeClass:'badge-while',
+    label:'Stabilize Afterburner', type:'while', badgeClass:'badge-while',
     condition: hw => `Hold ${hw.ab_stab_ms ?? 1000} ms, monitor EGT`,
     timeout_action:'complete',
     desc:'Hold after lighting. Monitors selected EGT - faults if too hot. On completion, sets AB state to Running.',
@@ -837,14 +848,14 @@ const BLOCKS = {
     condition: null, timeout_action: null,
     desc:'Opens the compressor bleed valve immediately (one tick). Use at the start of startup sequences to reduce surge risk during spool-up. Outputs: bleedValveOpen=true.',
     params:[],
-    visibleIf: hw => !!hw.actuators?.bleed_valve?.enabled,
+    visibleIf: hw => actuatorEnabled('bleed_valve'),
   },
   BleedClose: {
     label:'Bleed Valve Close', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
     desc:'Closes the compressor bleed valve immediately (one tick). Use after spool-up is complete to restore full pressure recovery. Outputs: bleedValveOpen=false.',
     params:[],
-    visibleIf: hw => !!hw.actuators?.bleed_valve?.enabled,
+    visibleIf: hw => actuatorEnabled('bleed_valve'),
   },
   GlowPreheat: {
     label:'Glow Preheat', type:'action', badgeClass:'badge-action',
@@ -857,9 +868,9 @@ const BLOCKS = {
       {key:'glow_hold_pct',        label:'Hold duty',         unit:'%',  type:'float', min:0,    max:100,   step:5,   def:30,    configKey:'glow_hold_pct',
        visibleIf: hw => actuatorHasProportionalOutput('glow_plug')},
       {key:'glow_wait_until_hot',  label:'Wait until hot (requires current sensor)', type:'bool', def:false, configKey:'glow_wait_until_hot',
-       visibleIf: hw => !!(hw.actuators?.glow_plug?.enabled && hw.actuators?.glow_plug?.has_current)},
+       visibleIf: hw => actuatorEnabled('glow_plug') && !!hw.actuators?.glow_plug?.has_current},
     ],
-    visibleIf: hw => !!hw.actuators?.glow_plug?.enabled,
+    visibleIf: hw => actuatorEnabled('glow_plug'),
   },
   FuelPumpRamp: {
     label:'Pilot / Auxiliary Fuel Pump Ramp', type:'action', badgeClass:'badge-action',
@@ -886,17 +897,17 @@ const BLOCKS = {
     condition: null, timeout_action: null,
     desc:'Switches relay-type pilot / auxiliary fuel pump on. This card is shown only when that pump is configured as an on/off output.',
     params:[],
-    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled && actuatorIsRelay('fuel_pump2'),
+    visibleIf: hw => actuatorEnabled('fuel_pump2') && actuatorIsRelay('fuel_pump2'),
   },
   FuelPump2Off: {
     label:'Pilot / Auxiliary Fuel Pump Off', type:'action', badgeClass:'badge-action',
     condition: null, timeout_action: null,
     desc:'Switches relay-type pilot / auxiliary fuel pump off.',
     params:[],
-    visibleIf: hw => !!hw.actuators?.fuel_pump2?.enabled && actuatorIsRelay('fuel_pump2'),
+    visibleIf: hw => actuatorEnabled('fuel_pump2') && actuatorIsRelay('fuel_pump2'),
   },
   GovernorHold: {
-    label:'Governor Hold', type:'while', badgeClass:'badge-while',
+    label:'Wait for N2 Speed Control', type:'while', badgeClass:'badge-while',
     condition: hw => `N2 within ${hw.gov_hold_band_rpm ?? 500} rpm of target`,
     timeout_action:'complete',
     desc:'Waits until N2 (power turbine) is within bandRpm of the governor target RPM, or until timeoutMs elapses. On timeout, proceeds normally (engine is already in RUNNING - governor will continue to regulate). Use after entering RUNNING to confirm the governor has taken control. Outputs: none (monitoring only).',
@@ -904,7 +915,8 @@ const BLOCKS = {
       {key:'gov_hold_timeout_ms', label:'Timeout', unit:'ms',  type:'int',   min:1000, max:60000, step:500,  def:10000, configKey:'gov_hold_timeout_ms'},
       {key:'gov_hold_band_rpm',   label:'Band',    unit:'rpm', type:'float', min:10,   max:5000,  step:50,   def:500,   configKey:'gov_hold_band_rpm'},
     ],
-    visibleIf: hw => !!(hw.controllers?.governor && hw.has_two_shaft && hw.sensors?.n2_rpm?.enabled),
+    visibleIf: hw => !!(hw.controllers?.governor && sensorEnabled('n2_rpm') &&
+      (actuatorEnabled('throttle') || actuatorHasProportionalOutput('prop_pitch'))),
   },
 };
 
@@ -944,7 +956,7 @@ const CONFIG_SECTIONS = {
   final_stop_timeout_ms:   {sec:'sequence.shutdown', key:'final_stop_timeout_ms'},
   oil_scavenge_ms:         {sec:'sequence.shutdown', key:'oil_scavenge_ms'},
   rpm_zero_threshold:      {sec:'sequence.shutdown', key:'rpm_zero_threshold'},
-  ramp_pct_per_s:          {sec:'starter_assist',    key:'ramp_pct_per_s'},  // reuses starter section
+  ramp_pct_per_s:          {sec:'starter_control', key:'startup_ramp_pct_per_s'},
   // new blocks
   timed_delay_ms:          {sec:'sequence.startup', key:'timed_delay_ms'},
   modified_idle_multiplier:{sec:'sequence.startup', key:'modified_idle_multiplier'},
@@ -1073,7 +1085,7 @@ const BLOCK_INFO = {
   FlameConfirm: {
     desc: 'Waits until the flame sensor fires N consecutive times. Can turn off all ignition outputs on exit.',
     links: [
-      { label: 'Flameout Delay (Safety Monitor)',   url: '/config.html#safety-monitor' },
+      { label: 'Combustion-Loss Confirmation Time', url: '/config.html#safety-monitor' },
     ]
   },
   TempConfirm: {
@@ -1084,9 +1096,9 @@ const BLOCK_INFO = {
     ]
   },
   Spool: {
-    desc: 'Holds throttle/fuel at calibrated Fuel Pump Minimum Spin and waits for N1 to reach target RPM. Flame monitor active - flameout causes fault.',
+    desc: 'Holds fuel/throttle at the calibrated minimum reliable fuel-pump output and waits for N1 to reach the idle-entry target. Flame monitoring remains active.',
     links: [
-      { label: 'Fuel Pump Minimum Spin', url: '/calibration.html#fuelpump-min-cal-row' },
+      { label: 'Minimum Reliable Fuel-Pump Output', url: '/calibration.html#fuelpump-min-cal-row' },
       { label: 'Throttle Open Speed', url: '/config.html#throttle' },
       { label: 'Running Oil Min',     url: '/config.html#oil-config-section' },
     ]
@@ -1119,15 +1131,15 @@ const BLOCK_INFO = {
     links: []
   },
   FuelPumpIdle: {
-    desc: 'Maps idle input (pot or RC) from calibrated Fuel Pump Minimum Spin up to Max pump %. The calibrated minimum is edited on Calibration.',
+    desc: 'Maps idle input (pot or RC) from the calibrated minimum reliable fuel-pump output up to maximum pump output. The minimum is edited on Calibration.',
     links: [
-      { label: 'Fuel Pump Minimum Spin', url: '/calibration.html#fuelpump-min-cal-row' },
+      { label: 'Minimum Reliable Fuel-Pump Output', url: '/calibration.html#fuelpump-min-cal-row' },
     ]
   },
   ModifiedIdle: {
-    desc: 'Sets throttle demand from calibrated Fuel Pump Minimum Spin to Idle Max %, then applies the multiplier.',
+    desc: 'Sets fuel/throttle demand from the calibrated minimum reliable fuel-pump output to the configured maximum idle output, then applies the multiplier.',
     links: [
-      { label: 'Fuel Pump Minimum Spin', url: '/calibration.html#fuelpump-min-cal-row' },
+      { label: 'Minimum Reliable Fuel-Pump Output', url: '/calibration.html#fuelpump-min-cal-row' },
       { label: 'Throttle Idle Max %', url: '/config.html#throttle' },
     ]
   },
@@ -1174,7 +1186,7 @@ const BLOCK_INFO = {
   GovernorHold: {
     desc: 'Waits until N2 is within bandRpm of the governor target RPM before completing.',
     links: [
-      { label: 'Power Turbine Governor', url: '/config.html#governor-cfg-section' },
+      { label: 'Automatic N2 Speed Control', url: '/config.html#governor-cfg-section' },
     ]
   },
   FuelPumpRamp: {
@@ -1233,19 +1245,36 @@ function hideBlockInfo() {
 // ------ App state ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 let hwCfg = {};    // hardware section of ecu_config.json
 let cfg   = {};    // settings section of ecu_config.json
+let _seqDirty = false;
 let paramVals = {}; // shared block settings plus per-slot TimedDelay edits
 let activeTab = 'startup';
 let engineMode = 'STANDBY';
 let ws;
 let lastIdleRaw = null;
 
+const SEQUENCE_INPUT_PURPOSE = {
+  n1_rpm:'n1_speed', n2_rpm:'n2_speed', tot:'tot', tit:'tit', oil_press:'oil_pressure',
+  oil_temp:'oil_temperature', fuel_press:'fuel_pressure', fuel_flow:'fuel_flow',
+  p1:'p1_pressure', p2:'p2_pressure', torque:'torque', batt_voltage:'battery_voltage',
+  flame:'flame', ab_flame:'ab_flame', throttle_input:'throttle', idle_input:'idle'
+};
+const SEQUENCE_OUTPUT_PURPOSE = {
+  throttle:'main_fuel', starter:'starter', starter_en:'starter_enable', oil_pump:'oil_pump',
+  fuel_sol:'fuel_shutoff', igniter:'igniter', igniter2:'ab_igniter', glow_plug:'glow_plug',
+  prop_pitch:'prop_pitch', cool_fan:'cooling_fan', oil_scavenge_pump:'scavenge_pump',
+  bleed_valve:'valve', fuel_pump2:'fuel_pump', airstarter_sol:'air_starter',
+  ab_sol:'ab_valve', ab_pump:'ab_pump'
+};
+function sensorEnabled(key) {
+  return !!registryInputPurpose(SEQUENCE_INPUT_PURPOSE[key]);
+}
 function actuatorEnabled(key) {
-  return !!hwCfg.actuators?.[key]?.enabled;
+  const channel = registryOutputPurpose(SEQUENCE_OUTPUT_PURPOSE[key]);
+  return key === 'bleed_valve' ? channel?.id === 'bleed_valve' : !!channel;
 }
 function actuatorIsRelay(key) {
-  const act = hwCfg.actuators?.[key];
-  if (key === 'glow_plug') return !!act && Number(act.output_type || 0) === 1;
-  return !!act && act.type === 2;
+  const registry = registryOutputPurpose(SEQUENCE_OUTPUT_PURPOSE[key]);
+  return !!registry && Number(registry.driver) === 4;
 }
 function actuatorHasProportionalOutput(key) {
   return actuatorEnabled(key) && !actuatorIsRelay(key);
@@ -1255,8 +1284,7 @@ function registryLabel(c, fallback) {
   return String(name || '').includes('_') ? plainRegistryName(name, fallback) : name;
 }
 function hasIgnitionOutput(hw = hwCfg) {
-  const a = hw?.actuators || {};
-  return !!(a.igniter?.enabled || a.igniter2?.enabled || a.glow_plug?.enabled);
+  return !!(registryOutputPurpose('igniter') || registryOutputPurpose('ab_igniter') || registryOutputPurpose('glow_plug'));
 }
 function demandText(key, pct, label = 'on') {
   return actuatorIsRelay(key) ? label : `${pct}%`;
@@ -1398,8 +1426,8 @@ async function loadAll() {
     renderRules();
     // Show/hide afterburner tab based on hardware feature flag
     const abTabBtn = document.getElementById('tab-btn-afterburner');
-    if (abTabBtn) abTabBtn.style.display = hwCfg.has_afterburner ? '' : 'none';
-    setSaveStatus('Ready - edit parameters then save');
+    if (abTabBtn) abTabBtn.style.display = sequenceHasAfterburner() ? '' : 'none';
+    clearSequenceDirty('No unsaved changes');
   } catch(e) {
     setSaveStatus('Warning: Load failed: ' + e.message);
   }
@@ -1562,7 +1590,7 @@ async function refreshSequenceLiveData() {
 function renderFast(tab) {
   const openKeys = _openBlockKeys(tab);
   render(tab, lastIdleRaw, openKeys);
-  setSaveStatus('Sequence edited - save to apply');
+  markSequenceDirty('Sequence edited — save to apply');
 }
 
 // ------ Final state summary card ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -1612,8 +1640,7 @@ function clearIgnitionPreviewState(state) {
 
 function buildFinalStateCard(tab, seq, idleRaw) {
   if (!seq || seq.length === 0) return null;
-  const acts = hwCfg.actuators || {};
-  const hasAct = key => !!acts[key]?.enabled;
+  const hasAct = key => actuatorEnabled(key);
 
   const state = {
     throttle:  '0%',
@@ -1669,7 +1696,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
       if (bname === 'FuelPumpIdle') {
         const mn = cfg?.throttle?.fuel_pump_min_pct ?? 0;
         const mx = paramVals['FuelPumpIdle.fp_idle_max_pct'] ?? 18;
-        state.throttle = `${mn}-${mx}%  (from idle input)`;
+        state.throttle = `${mn}-${mx}%  (minimum reliable output to idle maximum; position set by idle input)`;
       }
       if (bname === 'ModifiedIdle') {
         const mul = paramVals['ModifiedIdle.modified_idle_multiplier'] ?? 1.0;
@@ -1743,7 +1770,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
       applySideActionsToState(tab, i, 'exit', abState);
     }
     const abRows = [
-      hasAct('ab_sol') ? { label:'AB Solenoid', val:abState.abSol } : null,
+      hasAct('ab_sol') ? { label:'Afterburner Fuel Valve', val:abState.abSol } : null,
       hasAct('ab_pump') ? { label:'AB Fuel Pump', val: abState.abPump } : null,
       hasAct('igniter2') ? { label:'AB Igniter', val:abState.igniter2 === 'off' ? 'off  (fired during sequence)' : abState.igniter2 } : null,
       { label:'Main Fuel Offset',   val: offStr },
@@ -1764,7 +1791,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
       applySideActionsToState(tab, i, 'exit', abState);
     }
     const abOffRows = [
-      hasAct('ab_sol') ? { label:'AB Solenoid',  val:abState.abSol } : null,
+      hasAct('ab_sol') ? { label:'Afterburner Fuel Valve',  val:abState.abSol } : null,
       hasAct('ab_pump') ? { label:'AB Fuel Pump', val:abState.abPump } : null,
       hasAct('igniter2') ? { label:'AB Igniter',   val:abState.igniter2 } : null,
       { label:'Main engine',  val:'continues running normally' },
@@ -1783,7 +1810,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     hasAct('throttle') ? { label:'Throttle / Fuel ESC', val: state.throttle } : null,
     hasAct('fuel_sol') ? { label:'Fuel Solenoid',       val: state.fuelSol } : null,
     hasAct('igniter') ? { label:'Igniter',              val: state.igniter } : null,
-    hasAct('igniter2') && !hwCfg.has_afterburner ? { label:'AB / Pilot Igniter', val: state.igniter2 } : null,
+    hasAct('igniter2') ? { label:'AB / Pilot Igniter', val: state.igniter2 } : null,
     hasAct('starter') ? { label:'Starter',              val: state.starter } : null,
     hasAct('starter_en') ? { label:'Starter Enable',    val: state.starterEn } : null,
     hasAct('oil_pump') ? { label:'Oil Pump',            val: state.oilPump } : null,
@@ -1794,8 +1821,8 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     hasAct('glow_plug') ? { label:'Glow Plug',          val: state.glow } : null,
     hasAct('fuel_pump2') ? { label:'Pilot / Auxiliary Fuel Pump',   val: state.fuelPump2 } : null,
     hasAct('prop_pitch') ? { label:'Prop Pitch',         val: state.propPitch } : null,
-    hwCfg.has_afterburner && hasAct('ab_sol') ? { label:'AB Solenoid', val: state.abSol } : null,
-    hwCfg.has_afterburner && hasAct('ab_pump') ? { label:'AB Fuel Pump', val: state.abPump } : null,
+    hasAct('ab_sol') ? { label:'Afterburner Fuel Valve', val: state.abSol } : null,
+    hasAct('ab_pump') ? { label:'AB Fuel Pump', val: state.abPump } : null,
   ].filter(Boolean);
   if (!rows.length) return null;
 
@@ -1843,7 +1870,7 @@ function buildAbCriteriaHtml() {
   const totWrap = document.getElementById('ab-edit-tot-wrap');
   if (throttleWrap) throttleWrap.style.display = src === 1 ? '' : 'none';
   if (inputWrap) inputWrap.style.display = src === 3 ? '' : 'none';
-  if (totWrap) totWrap.style.opacity = (hwCfg.sensors?.tot?.enabled || hwCfg.sensors?.tit?.enabled) ? '1' : '.45';
+  if (totWrap) totWrap.style.opacity = (sensorEnabled('tot') || sensorEnabled('tit')) ? '1' : '.45';
   const sourceNote = document.getElementById('ab-entry-source-note');
   if (sourceNote) {
     sourceNote.textContent = src === 0 ? 'Manual trigger selected in Hardware. Entry gate limits below still apply when AB Check Ready is present.'
@@ -1904,7 +1931,7 @@ function setAbEntryNumber(key, rawVal) {
   buildParamVals();
   buildAbCriteriaHtml();
   renderWithLiveIdle('afterburner');
-  setSaveStatus('Afterburner entry conditions edited - save to apply');
+  markSequenceDirty('Afterburner entry conditions edited — save to apply');
 }
 
 function setAbEntryTemp(key, rawVal) {
@@ -1915,7 +1942,7 @@ function setAbEntryTemp(key, rawVal) {
   buildParamVals();
   buildAbCriteriaHtml();
   renderWithLiveIdle('afterburner');
-  setSaveStatus('Afterburner entry conditions edited - save to apply');
+  markSequenceDirty('Afterburner entry conditions edited — save to apply');
 }
 
 function setAbEntryPercent(key, rawVal) {
@@ -1924,7 +1951,7 @@ function setAbEntryPercent(key, rawVal) {
   cfg.afterburner[key] = pct / 100;
   buildParamVals();
   buildAbCriteriaHtml();
-  setSaveStatus('Afterburner entry conditions edited - save to apply');
+  markSequenceDirty('Afterburner entry conditions edited — save to apply');
 }
 
 function setAbInputEntryPercent(rawVal) {
@@ -1932,7 +1959,7 @@ function setAbInputEntryPercent(rawVal) {
   const pct = Math.max(0, Math.min(100, Number(rawVal) || 0));
   hwCfg.ab_trigger.input_threshold = Math.round(pct * 4095 / 100);
   buildAbCriteriaHtml();
-  setSaveStatus('Afterburner entry conditions edited - save to apply');
+  markSequenceDirty('Afterburner entry conditions edited — save to apply');
 }
 
 // Shared HTML-escape for every card/params/selector renderer in this page.
@@ -1946,7 +1973,8 @@ function esc(value) {
 function buildCard(bname, idx, tab, total) {
   const def = BLOCKS[bname] || customBlocks[bname];
   const card = document.createElement('div');
-  card.className = 'block-card';
+  const hardwareMissing = !def || !!(def.visibleIf && !def.visibleIf(hwCfg));
+  card.className = `block-card${hardwareMissing ? ' block-hardware-missing' : ''}`;
   card.dataset.block = bname;
   card.dataset.idx   = idx;
   card.dataset.tab   = tab;
@@ -1981,12 +2009,13 @@ function buildCard(bname, idx, tab, total) {
     <span class="block-name">${esc(def?.label ?? bname)}</span>
     ${condHtml}
     ${toPill}
+    ${hardwareMissing ? `<span class="block-hardware-pill">${def ? 'Missing hardware' : 'Unknown block'}</span>` : ''}
     <div class="block-actions" onclick="event.stopPropagation()">
       ${moveUpHtml}
       ${moveDownHtml}
       ${customBlocks[bname] ? `<button class="blk-btn" onclick="editCustomBlock('${bname}','${tab}')">Edit</button>` : ''}
       ${BLOCK_INFO[bname] ? `<button class="blk-btn bip-btn" title="${(def?.desc || 'What does this block use?').replace(/"/g, '&quot;')}" onclick="showBlockInfo('${bname}')">?</button>` : ''}
-      <button class="blk-btn del" onclick="removeBlock('${tab}',${idx})">x</button>
+      <button class="blk-btn del" title="Remove this sequence block" aria-label="Remove this sequence block" onclick="removeBlock('${tab}',${idx})">Remove</button>
     </div>
   </div>
   ${buildParamsHtml(bname, idx, tab)}`;
@@ -2071,7 +2100,7 @@ function updateSideAction(tab, idx, phase, actionIdx, newAct, newValue) {
     row.value = actionStoredValue(row.act, newValue);
   }
   if (needsRender) renderFast(tab);
-  else setSaveStatus('Sequence edited - save to apply');
+  else markSequenceDirty('Sequence edited — save to apply');
 }
 
 // Flatten relevant hw/config values for condition labels
@@ -2124,11 +2153,12 @@ function isIgnitionBlock(bname) {
 function ignitionTargets() {
   const a = hwCfg.actuators || {};
   const out = [];
-  if (a.igniter?.enabled) out.push({v:0, l:'Igniter 1', info: a.igniter.coil ? 'coil igniter' : (a.igniter.pwm ? 'PWM igniter' : 'relay igniter')});
-  if (a.igniter2?.enabled) out.push({v:1, l:'AB / Pilot Igniter', info: a.igniter2.coil ? 'coil igniter' : (a.igniter2.pwm ? 'PWM igniter' : 'relay igniter')});
-  if (a.glow_plug?.enabled) {
-    const wet = Number(a.glow_plug.type || 0) === 2;
-    const delayS = ((a.glow_plug.fuel_delay_ms ?? 8000) / 1000).toFixed(1);
+  if (actuatorEnabled('igniter')) out.push({v:0, l:'Igniter 1', info: a.igniter?.coil ? 'coil igniter' : (a.igniter?.pwm ? 'PWM igniter' : 'relay igniter')});
+  if (actuatorEnabled('igniter2')) out.push({v:1, l:'AB / Pilot Igniter', info: a.igniter2?.coil ? 'coil igniter' : (a.igniter2?.pwm ? 'PWM igniter' : 'relay igniter')});
+  if (actuatorEnabled('glow_plug')) {
+    const glow = a.glow_plug || {};
+    const wet = Number(glow.type || 0) === 2;
+    const delayS = ((glow.fuel_delay_ms ?? 8000) / 1000).toFixed(1);
     out.push({v:2, l: wet ? 'Wet glow plug' : 'Glow plug',
       info: wet ? `wet glow plug, pilot fuel starts ${delayS} s after ON` : 'glow plug'});
   }
@@ -2192,7 +2222,12 @@ function setIgnitionTarget(tab, idx, value) {
 
 function buildParamsHtml(bname, idx, tab) {
   const def = BLOCKS[bname] || customBlocks[bname];
-  const warningHtml = _buildHwWarningHtml(def);
+  const unavailableHtml = !def
+    ? `<div style="font-size:.7rem;color:#f06060;background:rgba(220,50,50,.1);border:1px solid rgba(220,50,50,.55);border-radius:5px;padding:.35rem .65rem;margin-bottom:.4rem;line-height:1.5">This block is not supported by the current firmware. Remove it before saving.</div>`
+    : def.visibleIf && !def.visibleIf(hwCfg)
+      ? `<div style="font-size:.7rem;color:#f06060;background:rgba(220,50,50,.1);border:1px solid rgba(220,50,50,.55);border-radius:5px;padding:.35rem .65rem;margin-bottom:.4rem;line-height:1.5">This block cannot run with the current Hardware inventory. Restore its required device or remove this block before saving.</div>`
+      : '';
+  const warningHtml = unavailableHtml + _buildHwWarningHtml(def);
   const sideHtml = buildSideActionsHtml(tab, idx);
   const ignitionHtml = buildIgnitionTargetHtml(bname, idx, tab);
   const hasSharedParams = !!def?.params?.some(p => p.configKey && !(bname === 'TimedDelay' && p.key === 'timed_delay_ms'));
@@ -2359,9 +2394,11 @@ function moveBlock(tab, idx, dir) {
   renderFast(tab);
 }
 
-function removeBlock(tab, idx) {
+async function removeBlock(tab, idx) {
   const name = hwCfg[seqKey(tab)]?.[idx] || 'this block';
-  if (!confirm(`Remove "${name}" from this sequence?\n\nThis cannot be undone after you save.`)) return;
+  if (!await OTDialog.confirm(`Remove "${name}" from this sequence?\n\nThis cannot be undone after you save.`, {
+    title: 'Remove sequence block?', confirmText: 'Remove block', danger: true
+  })) return;
   ensureDelaySlots(tab);
   ensureActionSlots(tab);
   ensureIgnitionTargetSlots(tab);
@@ -2438,41 +2475,64 @@ let _cblkSteps    = [];   // [{type:'set_act',act,val} | {type:'delay_ms',val}]
 let _editingKey   = null; // null = new block, string = editing existing
 
 // ------ Sensor / actuator lists from hwCfg ------------------------------------------------------------------------------------------------------------
+function registryChannelInstalled(channel) {
+  if (!channel || channel.installed === false) return false;
+  const tempInterface = Number(channel.temp_interface || 0);
+  if (tempInterface >= 1 && tempInterface <= 3) {
+    return Number(channel.spi_clk) >= 0 && Number(channel.spi_cs) >= 0 &&
+      Number(channel.spi_miso) >= 0 && (tempInterface !== 3 || Number(channel.spi_mosi) >= 0);
+  }
+  return Number(channel.pin) >= 0;
+}
+function registryInputPurpose(purpose) {
+  return (hwCfg.channel_registry?.inputs || []).find(channel =>
+    registryChannelInstalled(channel) && String(channel.purpose || channel.id || '') === purpose) || null;
+}
+function registryOutputPurpose(purpose) {
+  return (hwCfg.channel_registry?.outputs || []).find(channel =>
+    registryChannelInstalled(channel) && String(channel.purpose || channel.id || '') === purpose) || null;
+}
+function sequenceHasAfterburner() {
+  return !!(registryOutputPurpose('ab_igniter') || registryOutputPurpose('ab_pump') || registryOutputPurpose('ab_valve'));
+}
+
 function getEnabledSensors() {
   const s  = hwCfg.sensors    || {};
   const hw = hwCfg;
   const list = [];
-  if (s.oil_temp?.enabled)      list.push({key:'oil_temp',     label:'Oil Temp',         unit:'deg C', def:50,   step:1});
-  if (s.n1_rpm?.enabled)        list.push({key:'n1_rpm',       label:'N1 RPM',           unit:'rpm',  def:5000, step:100});
-  if (hw.has_two_shaft && s.n2_rpm?.enabled)
+  if (registryInputPurpose('oil_temperature'))
+                                  list.push({key:'oil_temp',     label:'Oil Temp',         unit:'deg C', def:50,   step:1});
+  if (registryInputPurpose('n1_speed'))
+                                  list.push({key:'n1_rpm',       label:'N1 RPM',           unit:'rpm',  def:5000, step:100});
+  if (registryInputPurpose('n2_speed'))
                                   list.push({key:'n2_rpm',       label:'N2 RPM',           unit:'rpm',  def:5000, step:100});
-  if (s.tot?.enabled)           list.push({key:'tot',          label:'TOT',              unit:'deg C',   def:200,  step:5});
-  if (s.tit?.enabled)           list.push({key:'tit',          label:'TIT',              unit:'deg C',   def:300,  step:5});
-  if (s.oil_press?.enabled)     list.push({key:'oil_press',    label:'Oil Pressure',     unit:'bar',  def:2.0,  step:0.1});
-  if (s.fuel_press?.enabled)    list.push({key:'fuel_press',   label:'Fuel Pressure',    unit:'bar',  def:1.0,  step:0.1});
-  if (s.batt_voltage?.enabled)  list.push({key:'batt_voltage', label:'Battery Voltage',  unit:'V',    def:10,   step:0.1});
-  if (s.flame?.enabled)         list.push({key:'flame',        label:'Flame Detected',   unit:'',     def:1,    bool:true});
-  if (s.throttle_input?.enabled)list.push({key:'throttle_in',  source:'operator_throttle', label:'Throttle Input', unit:'%', def:0, step:1});
-  if (s.idle_input?.enabled)    list.push({key:'idle_in',      source:'operator_idle',     label:'Idle Input',     unit:'%', def:0, step:1});
-  if (s.p1?.enabled)            list.push({key:'p1',           label:'P1 Pressure',      unit:'bar',  def:0,    step:0.1});
-  if (s.p2?.enabled)            list.push({key:'p2',           label:'P2 Pressure',      unit:'bar',  def:0,    step:0.1});
-  if (s.fuel_flow?.enabled)     list.push({key:'fuel_flow',    label:'Fuel Flow',        unit:'',     def:0,    step:1});
-  if (s.torque?.enabled)        list.push({key:'torque',       label:'Torque',           unit:'',     def:0,    step:1});
+  if (registryInputPurpose('tot')) list.push({key:'tot', label:'TOT', unit:'deg C', def:200, step:5});
+  if (registryInputPurpose('tit')) list.push({key:'tit', label:'TIT', unit:'deg C', def:300, step:5});
+  if (registryInputPurpose('oil_pressure')) list.push({key:'oil_press', label:'Oil Pressure', unit:'bar', def:2.0, step:0.1});
+  if (registryInputPurpose('fuel_pressure')) list.push({key:'fuel_press', label:'Fuel Pressure', unit:'bar', def:1.0, step:0.1});
+  if (registryInputPurpose('battery_voltage')) list.push({key:'batt_voltage', label:'Battery Voltage', unit:'V', def:10, step:0.1});
+  if (registryInputPurpose('flame')) list.push({key:'flame', label:'Flame Detected', unit:'', def:1, bool:true});
+  if (registryInputPurpose('throttle')) list.push({key:'throttle_in', source:'operator_throttle', label:'Throttle Input', unit:'%', def:0, step:1});
+  if (registryInputPurpose('idle')) list.push({key:'idle_in', source:'operator_idle', label:'Idle Input', unit:'%', def:0, step:1});
+  if (registryInputPurpose('p1_pressure')) list.push({key:'p1', label:'P1 Pressure', unit:'bar', def:0, step:0.1});
+  if (registryInputPurpose('p2_pressure')) list.push({key:'p2', label:'P2 Pressure', unit:'bar', def:0, step:0.1});
+  if (registryInputPurpose('fuel_flow')) list.push({key:'fuel_flow', label:'Fuel Flow', unit:'', def:0, step:1});
+  if (registryInputPurpose('torque')) list.push({key:'torque', label:'Torque', unit:'', def:0, step:1});
   (hw.di_channels || []).forEach((ch, idx) => {
     if ((ch?.pin ?? -1) >= 0 && idx < 4) list.push({key:'di' + idx, label:ch.label || `DI Channel ${idx + 1}`, unit:'', def:1, bool:true});
   });
-  if (hw.has_afterburner && hw.ab_flame?.enabled)
+  if (registryInputPurpose('ab_flame'))
                                   list.push({key:'ab_flame',   label:'AB Flame',         unit:'',     def:1,    bool:true});
-  if (hw.has_afterburner && (hw.ab_trigger?.input_pin ?? -1) >= 0)
+  if ((hw.ab_trigger?.input_pin ?? -1) >= 0)
                                   list.push({key:'ab_input',   label:'AB Input',         unit:'%',    def:50,   step:1});
   const a = hw.actuators || {};
-  if (a.glow_plug?.enabled && a.glow_plug?.has_current)
+  if (registryOutputPurpose('glow_plug') && a.glow_plug?.has_current)
                                   list.push({key:'glow_current', label:'Glow Current',   unit:'A',    def:1,    step:0.1});
-  if (a.igniter?.enabled && a.igniter?.has_current)
+  if (registryOutputPurpose('igniter') && a.igniter?.has_current)
                                   list.push({key:'igniter_current', label:'Igniter 1 Current', unit:'A', def:1, step:0.1});
-  if (a.igniter2?.enabled && a.igniter2?.has_current)
+  if (registryOutputPurpose('ab_igniter') && a.igniter2?.has_current)
                                   list.push({key:'igniter2_current', label:'AB / Pilot Igniter Current', unit:'A', def:1, step:0.1});
-  if (a.oil_pump?.enabled && a.oil_pump?.has_current)
+  if (registryOutputPurpose('oil_pump') && a.oil_pump?.has_current)
                                   list.push({key:'oil_pump_current', label:'Oil Pump Current', unit:'A', def:1, step:0.1});
   if ((hw.controls?.start_pin ?? -1) >= 0)
                                   list.push({key:'start_switch', label:'Start Switch',   unit:'',     def:1,    bool:true});
@@ -2492,28 +2552,38 @@ function getEnabledSensors() {
 
 function getEnabledActuators() {
   const a    = hwCfg.actuators || {};
-  const hasAB = hwCfg.has_afterburner || false;
+  const hasAB = sequenceHasAfterburner();
   const list = [];
   const isOnOff = act => !act || act.type === 2;
   const demandLabel = (act, pctLabel, relayLabel) => isOnOff(act) ? relayLabel : pctLabel;
+  const effectiveAct = (legacy, purpose) => {
+    const registry = registryOutputPurpose(purpose);
+    return registry ? { ...legacy, enabled:true, type: Number(registry.driver) === 4 ? 2 : (Number(registry.driver) === 5 ? 1 : 0) } : null;
+  };
+  const throttleAct = effectiveAct(a.throttle, 'main_fuel');
+  const starterAct = effectiveAct(a.starter, 'starter');
+  const oilPumpAct = effectiveAct(a.oil_pump, 'oil_pump');
+  const propPitchAct = effectiveAct(a.prop_pitch, 'prop_pitch');
   // Always-present outputs (if hardware enabled)
-  if (a.throttle?.enabled)       list.push({key:'throttle',       label:demandLabel(a.throttle, 'Throttle %', 'Throttle Relay'), mode: isOnOff(a.throttle) ? 'relay':'pct'});
-  if (a.starter?.enabled)        list.push({key:'starter',        label:demandLabel(a.starter, 'Starter Demand %', 'Starter Relay'), mode: isOnOff(a.starter) ? 'relay':'pct'});
-  if (a.starter_en?.enabled)     list.push({key:'starter_en',     label:'Starter Enable Output',        mode:'relay'});
-  if (a.oil_pump?.enabled)       list.push({key:'oil_pump',       label:demandLabel(a.oil_pump, 'Oil Pump %', 'Oil Pump Relay'), mode: isOnOff(a.oil_pump) ? 'relay':'pct'});
-  if (a.fuel_sol?.enabled)       list.push({key:'fuel_sol',       label:'Fuel Solenoid',                mode:'relay'});
-  if (a.igniter?.enabled)        list.push({key:'igniter',        label:'Igniter 1',                    mode:'relay'});
-  if (a.igniter2?.enabled)       list.push({key:'igniter2',       label: hasAB ? 'Afterburner Igniter' : 'AB / Pilot Igniter', mode:'relay'});
-  if (a.airstarter_sol?.enabled) list.push({key:'airstarter_sol', label:'Airstarter Solenoid',          mode:'relay'});
-  if (a.cool_fan?.enabled)       list.push({key:'cool_fan',       label:'Cooling Fan',                  mode:'relay'});
-  if (a.oil_scavenge_pump?.enabled) list.push({key:'oil_scavenge_pump', label:'Oil Scavenge Pump',      mode:'relay'});
-  if (a.bleed_valve?.enabled)    list.push({key:'bleed_valve',    label:'Bleed Valve',                  mode:'relay'});
-  if (a.glow_plug?.enabled)      list.push({key:'glow_plug',      label:actuatorIsRelay('glow_plug') ? 'Glow Plug Relay' : 'Glow Plug %', mode:actuatorIsRelay('glow_plug') ? 'relay':'pct'});
-  if (a.fuel_pump2?.enabled)     list.push({key:'fuel_pump2',     label:demandLabel(a.fuel_pump2, 'Pilot / Auxiliary Fuel Pump %', 'Pilot / Auxiliary Fuel Pump Relay'), mode: isOnOff(a.fuel_pump2) ? 'relay':'pct'});
-  if (a.prop_pitch?.enabled)     list.push({key:'prop_pitch',     label:demandLabel(a.prop_pitch, 'Prop Pitch %', 'Prop Pitch Relay'), mode: isOnOff(a.prop_pitch) ? 'relay':'pct'});
+  if (throttleAct) list.push({key:'throttle', label:demandLabel(throttleAct, 'Throttle %', 'Throttle Relay'), mode: isOnOff(throttleAct) ? 'relay':'pct'});
+  if (starterAct) list.push({key:'starter', label:demandLabel(starterAct, 'Starter Demand %', 'Starter Relay'), mode: isOnOff(starterAct) ? 'relay':'pct'});
+  if (registryOutputPurpose('starter_enable')) list.push({key:'starter_en', label:'Starter Enable Output', mode:'relay'});
+  if (oilPumpAct) list.push({key:'oil_pump', label:demandLabel(oilPumpAct, 'Oil Pump %', 'Oil Pump Relay'), mode: isOnOff(oilPumpAct) ? 'relay':'pct'});
+  if (registryOutputPurpose('fuel_shutoff')) list.push({key:'fuel_sol', label:'Fuel Solenoid', mode:'relay'});
+  if (registryOutputPurpose('igniter')) list.push({key:'igniter', label:'Igniter 1', mode:'relay'});
+  if (registryOutputPurpose('ab_igniter')) list.push({key:'igniter2', label:hasAB ? 'Afterburner Igniter' : 'AB / Pilot Igniter', mode:'relay'});
+  if (registryOutputPurpose('air_starter')) list.push({key:'airstarter_sol', label:'Airstarter Solenoid', mode:'relay'});
+  if (registryOutputPurpose('cooling_fan')) list.push({key:'cool_fan', label:'Cooling Fan', mode:'relay'});
+  if (registryOutputPurpose('scavenge_pump')) list.push({key:'oil_scavenge_pump', label:'Oil Scavenge Pump', mode:'relay'});
+  if (registryOutputPurpose('bleed_valve') || registryOutputPurpose('valve')?.id === 'bleed_valve') list.push({key:'bleed_valve', label:'Bleed Valve', mode:'relay'});
+  if (registryOutputPurpose('glow_plug')) list.push({key:'glow_plug', label:Number(registryOutputPurpose('glow_plug').driver) === 4 ? 'Glow Plug Relay' : 'Glow Plug %', mode:Number(registryOutputPurpose('glow_plug').driver) === 4 ? 'relay':'pct'});
+  const fuelPump2Act = effectiveAct(a.fuel_pump2, 'fuel_pump');
+  if (fuelPump2Act) list.push({key:'fuel_pump2', label:demandLabel(fuelPump2Act, 'Pilot / Auxiliary Fuel Pump %', 'Pilot / Auxiliary Fuel Pump Relay'), mode:isOnOff(fuelPump2Act) ? 'relay':'pct'});
+  if (propPitchAct) list.push({key:'prop_pitch', label:demandLabel(propPitchAct, 'Prop Pitch %', 'Prop Pitch Relay'), mode: isOnOff(propPitchAct) ? 'relay':'pct'});
   // AB outputs
-  if (hasAB && a.ab_sol?.enabled)list.push({key:'ab_sol',         label:'AB Fuel Solenoid',          mode:'relay'});
-  if (hasAB && a.ab_pump?.enabled)list.push({key:'ab_pump',       label:demandLabel(a.ab_pump, 'AB Fuel Pump %', 'AB Fuel Pump Relay'), mode: isOnOff(a.ab_pump) ? 'relay':'pct'});
+  if (hasAB && registryOutputPurpose('ab_valve')) list.push({key:'ab_sol', label:'Afterburner Fuel Valve', mode:'relay'});
+  const abPumpAct = effectiveAct(a.ab_pump, 'ab_pump');
+  if (hasAB && abPumpAct) list.push({key:'ab_pump', label:demandLabel(abPumpAct, 'AB Fuel Pump %', 'AB Fuel Pump Relay'), mode:isOnOff(abPumpAct) ? 'relay':'pct'});
   (hwCfg.channel_registry?.outputs || []).forEach((c, i) => {
     if (!c || c.installed === false || (c.pin ?? -1) < 0 || registryOutputCoreBound(c)) return;
     const relay = Number(c.driver) === 4;
@@ -2840,67 +2910,60 @@ function _validateSequence(blocks) {
 // ------ Save ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Control rules are edited here because they alter sequence-time actuator behavior.
 const RULE_SENSORS = [
-  {v:0,l:'Oil Temp',u:'deg C',id:'oil_temp',ok:()=>!!hwCfg.sensors?.oil_temp?.enabled},
-  {v:1,l:'TOT',u:'deg C',id:'tot_main',ok:()=>!!hwCfg.sensors?.tot?.enabled},
-  {v:2,l:'N1 RPM',u:'RPM',id:'n1_main',ok:()=>!!hwCfg.sensors?.n1_rpm?.enabled},
-  {v:3,l:'Oil Pressure',u:'bar',id:'oil_pressure_main',ok:()=>!!hwCfg.sensors?.oil_press?.enabled},
-  {v:4,l:'TIT',u:'deg C',id:'tit_main',ok:()=>!!hwCfg.sensors?.tit?.enabled},
-  {v:5,l:'Battery V',u:'V',id:'batt_voltage',ok:()=>!!hwCfg.sensors?.batt_voltage?.enabled},
-  {v:6,l:'N2 RPM',u:'RPM',id:'n2_main',ok:()=>!!(hwCfg.has_two_shaft && hwCfg.sensors?.n2_rpm?.enabled)},
-  {v:7,l:'DI Channel 1',u:'0/1',ok:()=>((hwCfg.di_channels?.[0]?.pin ?? -1) >= 0)},
-  {v:8,l:'DI Channel 2',u:'0/1',ok:()=>((hwCfg.di_channels?.[1]?.pin ?? -1) >= 0)},
-  {v:9,l:'DI Channel 3',u:'0/1',ok:()=>((hwCfg.di_channels?.[2]?.pin ?? -1) >= 0)},
-  {v:10,l:'DI Channel 4',u:'0/1',ok:()=>((hwCfg.di_channels?.[3]?.pin ?? -1) >= 0)},
-  {v:11,l:'Fuel Pressure',u:'bar',id:'fuel_press',ok:()=>!!hwCfg.sensors?.fuel_press?.enabled},
-  {v:12,l:'Fuel Flow',u:'',id:'fuel_flow',ok:()=>!!hwCfg.sensors?.fuel_flow?.enabled},
-  {v:13,l:'P1 Pressure',u:'bar',id:'p1',ok:()=>!!hwCfg.sensors?.p1?.enabled},
-  {v:14,l:'P2 Pressure',u:'bar',id:'p2',ok:()=>!!hwCfg.sensors?.p2?.enabled},
-  {v:15,l:'Torque',u:'',id:'torque',ok:()=>!!hwCfg.sensors?.torque?.enabled},
-  {v:16,l:'Flame Detected',u:'0/1',id:'flame',ok:()=>!!hwCfg.sensors?.flame?.enabled},
-  {v:17,l:'Throttle Input',u:'%',id:'operator_throttle',ok:()=>!!hwCfg.sensors?.throttle_input?.enabled},
-  {v:18,l:'Idle Input',u:'%',id:'operator_idle',ok:()=>!!hwCfg.sensors?.idle_input?.enabled},
-  {v:19,l:'AB Flame',u:'0/1',id:'ab_flame',ok:()=>!!(hwCfg.has_afterburner && hwCfg.ab_flame?.enabled)},
-  {v:20,l:'Glow Current',u:'A',id:'glow_current',ok:()=>!!(hwCfg.actuators?.glow_plug?.enabled && hwCfg.actuators?.glow_plug?.has_current)},
-  {v:21,l:'Igniter 1 Current',u:'A',id:'igniter_current',ok:()=>!!(hwCfg.actuators?.igniter?.enabled && hwCfg.actuators?.igniter?.has_current)},
-  {v:22,l:'AB / Pilot Igniter Current',u:'A',id:'igniter2_current',ok:()=>!!(hwCfg.actuators?.igniter2?.enabled && hwCfg.actuators?.igniter2?.has_current)},
-  {v:23,l:'Oil Pump Current',u:'A',id:'oil_pump_current',ok:()=>!!(hwCfg.actuators?.oil_pump?.enabled && hwCfg.actuators?.oil_pump?.has_current)},
-  {v:24,l:'AB Input',u:'%',id:'ab_input',ok:()=>!!(hwCfg.has_afterburner && (hwCfg.ab_trigger?.input_pin ?? -1) >= 0)},
+  {v:0,l:'Oil Temp',u:'deg C',id:'oil_temp',ok:()=>sensorEnabled('oil_temp')},
+  {v:1,l:'TOT',u:'deg C',id:'tot_main',ok:()=>sensorEnabled('tot')},
+  {v:2,l:'N1 RPM',u:'RPM',id:'n1_main',ok:()=>sensorEnabled('n1_rpm')},
+  {v:3,l:'Oil Pressure',u:'bar',id:'oil_pressure_main',ok:()=>sensorEnabled('oil_press')},
+  {v:4,l:'TIT',u:'deg C',id:'tit_main',ok:()=>sensorEnabled('tit')},
+  {v:5,l:'Battery V',u:'V',id:'batt_voltage',ok:()=>sensorEnabled('batt_voltage')},
+  {v:6,l:'N2 RPM',u:'RPM',id:'n2_main',ok:()=>sensorEnabled('n2_rpm')},
+  {v:7,l:'DI Channel 1',u:'0/1',id:'di0',ok:()=>((hwCfg.di_channels?.[0]?.pin ?? -1) >= 0)},
+  {v:8,l:'DI Channel 2',u:'0/1',id:'di1',ok:()=>((hwCfg.di_channels?.[1]?.pin ?? -1) >= 0)},
+  {v:9,l:'DI Channel 3',u:'0/1',id:'di2',ok:()=>((hwCfg.di_channels?.[2]?.pin ?? -1) >= 0)},
+  {v:10,l:'DI Channel 4',u:'0/1',id:'di3',ok:()=>((hwCfg.di_channels?.[3]?.pin ?? -1) >= 0)},
+  {v:11,l:'Fuel Pressure',u:'bar',id:'fuel_press',ok:()=>sensorEnabled('fuel_press')},
+  {v:12,l:'Fuel Flow',u:'',id:'fuel_flow',ok:()=>sensorEnabled('fuel_flow')},
+  {v:13,l:'P1 Pressure',u:'bar',id:'p1',ok:()=>sensorEnabled('p1')},
+  {v:14,l:'P2 Pressure',u:'bar',id:'p2',ok:()=>sensorEnabled('p2')},
+  {v:15,l:'Torque',u:'',id:'torque',ok:()=>sensorEnabled('torque')},
+  {v:16,l:'Flame Detected',u:'0/1',id:'flame',ok:()=>sensorEnabled('flame')},
+  {v:17,l:'Throttle Input',u:'%',id:'operator_throttle',ok:()=>sensorEnabled('throttle_input')},
+  {v:18,l:'Idle Input',u:'%',id:'operator_idle',ok:()=>sensorEnabled('idle_input')},
+  {v:19,l:'AB Flame',u:'0/1',id:'ab_flame',ok:()=>sensorEnabled('ab_flame')},
+  {v:20,l:'Glow Current',u:'A',id:'glow_current',ok:()=>actuatorEnabled('glow_plug') && !!hwCfg.actuators?.glow_plug?.has_current},
+  {v:21,l:'Igniter 1 Current',u:'A',id:'igniter_current',ok:()=>actuatorEnabled('igniter') && !!hwCfg.actuators?.igniter?.has_current},
+  {v:22,l:'AB / Pilot Igniter Current',u:'A',id:'igniter2_current',ok:()=>actuatorEnabled('igniter2') && !!hwCfg.actuators?.igniter2?.has_current},
+  {v:23,l:'Oil Pump Current',u:'A',id:'oil_pump_current',ok:()=>actuatorEnabled('oil_pump') && !!hwCfg.actuators?.oil_pump?.has_current},
+  {v:24,l:'AB Input',u:'%',id:'ab_input',ok:()=>!!((hwCfg.ab_trigger?.input_pin ?? -1) >= 0)},
   {v:25,l:'Start Switch',u:'0/1',id:'start_switch',ok:()=>((hwCfg.controls?.start_pin ?? -1) >= 0)},
   {v:26,l:'Stop Switch',u:'0/1',id:'stop_switch',ok:()=>((hwCfg.controls?.stop_pin ?? -1) >= 0)}
 ];
 const RULE_OPS = [
-  {v:0,l:'is higher than'},
-  {v:1,l:'is lower than'},
-  {v:2,l:'is equal or higher than'},
-  {v:3,l:'is equal or lower than'},
-  {v:4,l:'is equal to'}
+  {v:0,l:'Goes above'},
+  {v:1,l:'Goes below'}
 ];
 const RULE_OUTPUTS = [
-  {v:0,l:'Cooling Fan',id:'cooling_fan_main',ok:()=>!!hwCfg.actuators?.cool_fan?.enabled},
-  {v:1,l:'Bleed Valve',id:'bleed_valve_main',ok:()=>!!hwCfg.actuators?.bleed_valve?.enabled},
-  {v:2,l:'Pilot / Auxiliary Fuel Pump',id:'fuel_pump',ok:()=>!!hwCfg.actuators?.fuel_pump2?.enabled},
-  {v:3,l:'Oil Scavenge Pump',id:'oil_scavenge_main',ok:()=>!!hwCfg.actuators?.oil_scavenge_pump?.enabled},
-  {v:4,l:'Throttle Demand',id:'main_fuel',ok:()=>!!hwCfg.actuators?.throttle?.enabled},
-  {v:5,l:'Starter Demand',id:'starter_main',ok:()=>!!hwCfg.actuators?.starter?.enabled},
-  {v:6,l:'Starter Enable',id:'starter_enable',ok:()=>!!hwCfg.actuators?.starter_en?.enabled},
-  {v:7,l:'Oil Pump Demand',id:'oil_pump_main',ok:()=>!!hwCfg.actuators?.oil_pump?.enabled},
-  {v:8,l:'Fuel Solenoid',id:'fuel_shutoff',ok:()=>!!hwCfg.actuators?.fuel_sol?.enabled},
-  {v:9,l:'Igniter',id:'igniter',ok:()=>!!hwCfg.actuators?.igniter?.enabled},
-  {v:10,l:'AB / Pilot Igniter',id:'ab_igniter',ok:()=>!!hwCfg.actuators?.igniter2?.enabled},
-  {v:11,l:'AB Solenoid',id:'ab_solenoid',ok:()=>!!(hwCfg.has_afterburner && hwCfg.actuators?.ab_sol?.enabled)},
-  {v:12,l:'AB Pump',id:'ab_pump',ok:()=>!!(hwCfg.has_afterburner && hwCfg.actuators?.ab_pump?.enabled)},
-  {v:13,l:'Request Shutdown',ok:()=>true},
-  {v:14,l:'Fault + Shutdown',ok:()=>true},
-  {v:15,l:'Airstarter Solenoid',id:'air_starter',ok:()=>!!hwCfg.actuators?.airstarter_sol?.enabled},
-  {v:16,l:'Glow Plug',id:'glow_plug',ok:()=>!!hwCfg.actuators?.glow_plug?.enabled},
-  {v:17,l:'Prop Pitch',id:'prop_pitch',ok:()=>!!hwCfg.actuators?.prop_pitch?.enabled}
+  {v:0,l:'Cooling Fan',id:'cooling_fan_main',ok:()=>actuatorEnabled('cool_fan')},
+  {v:1,l:'Bleed Valve',id:'bleed_valve_main',ok:()=>actuatorEnabled('bleed_valve')},
+  {v:2,l:'Pilot / Auxiliary Fuel Pump',id:'fuel_pump',ok:()=>actuatorEnabled('fuel_pump2')},
+  {v:3,l:'Oil Scavenge Pump',id:'oil_scavenge_main',ok:()=>actuatorEnabled('oil_scavenge_pump')},
+  {v:4,l:'Throttle Demand',id:'main_fuel',ok:()=>actuatorEnabled('throttle')},
+  {v:5,l:'Starter Demand',id:'starter_main',ok:()=>actuatorEnabled('starter')},
+  {v:7,l:'Oil Pump Demand',id:'oil_pump_main',ok:()=>actuatorEnabled('oil_pump')},
+  {v:8,l:'Fuel Solenoid',id:'fuel_shutoff',ok:()=>actuatorEnabled('fuel_sol')},
+  {v:9,l:'Igniter',id:'igniter',ok:()=>actuatorEnabled('igniter')},
+  {v:10,l:'AB / Pilot Igniter',id:'ab_igniter',ok:()=>actuatorEnabled('igniter2')},
+  {v:11,l:'Afterburner Fuel Valve',id:'ab_solenoid',ok:()=>actuatorEnabled('ab_sol')},
+  {v:12,l:'Afterburner Fuel Pump',id:'ab_pump',ok:()=>actuatorEnabled('ab_pump')},
+  {v:13,l:'Request Shutdown',id:'request_shutdown',ok:()=>true},
+  {v:14,l:'Fault + Shutdown',id:'request_fault',ok:()=>true},
+  {v:15,l:'Airstarter Solenoid',id:'air_starter',ok:()=>actuatorEnabled('airstarter_sol')},
+  {v:16,l:'Glow Plug',id:'glow_plug',ok:()=>actuatorEnabled('glow_plug')},
+  {v:17,l:'Prop Pitch',id:'prop_pitch',ok:()=>actuatorEnabled('prop_pitch')}
 ];
 const RULE_PRESETS = [
-  {kind:'di_fault', label:'DI fault preset', desc:'Fault shutdown when a configured digital input goes active.'},
-  {kind:'oil_temp_fan', label:'Oil temp fan preset', desc:'Run the cooling fan from oil temperature.'},
-  {kind:'fuel_press_fault', label:'Fuel pressure fault preset', desc:'Fault shutdown when fuel pressure is low.'},
-  {kind:'batt_fault', label:'Battery fault preset', desc:'Fault shutdown when battery voltage is low.'},
-  {kind:'di_shutdown', label:'DI shutdown preset', desc:'Orderly shutdown when a configured digital input goes active.'}
+  {kind:'oil_temp_fan', label:'Cooling fan from oil temperature', desc:'Simple on/off example: run the configured cooling fan above an oil-temperature threshold.'},
+  {kind:'adc_pwm_dimmer', label:'ADC to PWM dimmer example', desc:'Map a fitted generic analog input to a fitted generic PWM output, for example to dim a warning lamp.'}
 ];
 const RULE_REGISTRY_INPUT_BASE = 80;
 const RULE_REGISTRY_OUTPUT_BASE = 64;
@@ -2948,6 +3011,27 @@ function plainRegistryName(raw, fallback = '') {
   }).join(' ');
   return out || fallback;
 }
+
+function validateSequenceHardwareForSave() {
+  const errors = [];
+  const tabs = [
+    ['Startup', 'startup'],
+    ['Shutdown', 'shutdown'],
+    ['Afterburner', 'afterburner'],
+    ['Afterburner shutdown', 'ab-shut']
+  ];
+  tabs.forEach(([tabLabel, tab]) => {
+    (hwCfg[seqKey(tab)] || []).forEach((bname, index) => {
+      const def = BLOCKS[bname] || customBlocks[bname];
+      if (!def) {
+        errors.push(`${tabLabel} block ${index + 1} (${bname}) is unknown to this firmware.`);
+      } else if (def.visibleIf && !def.visibleIf(hwCfg)) {
+        errors.push(`${tabLabel} block ${index + 1} (${def.label || bname}) cannot run with the fitted hardware.`);
+      }
+    });
+  });
+  return errors;
+}
 function registryChannelLabel(c, fallback) {
   const name = (c?.name && c.name.trim()) || c?.id || fallback;
   return String(name || '').includes('_') ? plainRegistryName(name, fallback) : name;
@@ -2964,7 +3048,7 @@ function registryRuleUnit(c) {
   if (c.role === 'flow') return 'L/min';
   if (c.role === 'torque') return 'Nm';
   if (c.role === 'operator') return '%';
-  if (c.role === 'generic') return '0-1';
+  if (c.role === 'generic') return '%';
   return '';
 }
 function registryInputCoreBound(c) {
@@ -3004,8 +3088,8 @@ function ruleEsc(value) {
   return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function ruleOption(item, selected, selectedId = '') {
-  const available = item.ok();
+function ruleOption(item, selected, selectedId = '', allowed = true) {
+  const available = item.ok() && allowed;
   const isSelected = (selectedId && item.id === selectedId) || (!selectedId && item.v === selected);
   const idAttr = item.id ? ` data-id="${ruleEsc(item.id)}"` : '';
   const hidden = !available && !isSelected ? ' hidden style="display:none"' : '';
@@ -3016,18 +3100,22 @@ function missingRuleOption(id, selected, label = 'Missing') {
 }
 function ruleUnit(index) { return ruleSensors().find(s => s.v === index)?.u || ''; }
 function ruleSensorScale(index) { return ruleUnit(index) === '%' ? 100 : 1; }
-function ruleSensorIsNormalized(index) { return ruleUnit(index) === '0-1'; }
+function ruleDisplaySensorValue(sensor, value) {
+  const scale = ruleSensorScale(sensor);
+  const v = Number(value ?? 0) * scale;
+  return Number.isFinite(v) ? +v.toFixed(scale === 100 ? 1 : 3) : 0;
+}
+function ruleSensorValueToStored(sensor, displayValue) {
+  const scale = ruleSensorScale(sensor);
+  const v = Number(displayValue) || 0;
+  return scale === 100 ? Math.max(0, Math.min(100, v)) / 100 : v;
+}
 function ruleDisplayThreshold(rule) {
   const scale = ruleSensorScale(rule.sensor);
   const v = Number(rule.threshold ?? 0) * scale;
   return Number.isFinite(v) ? +v.toFixed(scale === 100 ? 1 : 3) : 0;
 }
-function ruleThresholdToStored(sensor, displayValue) {
-  const scale = ruleSensorScale(sensor);
-  const v = Number(displayValue) || 0;
-  if (ruleSensorIsNormalized(sensor)) return Math.max(0, Math.min(1, v));
-  return scale === 100 ? Math.max(0, Math.min(100, v)) / 100 : v;
-}
+function ruleThresholdToStored(sensor, displayValue) { return ruleSensorValueToStored(sensor, displayValue); }
 function ruleDisplayHysteresis(rule) {
   const scale = ruleSensorScale(rule.sensor);
   const v = Number(rule.hysteresis ?? 0) * scale;
@@ -3036,7 +3124,6 @@ function ruleDisplayHysteresis(rule) {
 function ruleHysteresisToStored(sensor, displayValue) {
   const scale = ruleSensorScale(sensor);
   const v = Math.max(0, Number(displayValue) || 0);
-  if (ruleSensorIsNormalized(sensor)) return Math.min(1, v);
   return scale === 100 ? Math.min(100, v) / 100 : v;
 }
 const RULE_ANALOG_ACTUATOR_KEYS = {
@@ -3049,8 +3136,10 @@ const RULE_ANALOG_ACTUATOR_KEYS = {
 };
 function ruleOutputIsAnalog(actuator) {
   const act = +actuator;
-  const reg = ruleOutputs().find(o => o.v === act && o.id);
-  if (reg) return reg.driver === 5 || reg.driver === 6;
+  if (act >= RULE_REGISTRY_OUTPUT_BASE) {
+    const reg = ruleOutputs().find(o => o.v === act);
+    return reg?.driver === 5 || reg?.driver === 6;
+  }
   if (act === 16) return !actuatorIsRelay('glow_plug');
   const key = RULE_ANALOG_ACTUATOR_KEYS[act];
   if (!key) return false;
@@ -3058,96 +3147,129 @@ function ruleOutputIsAnalog(actuator) {
 }
 function ruleDisplayOutput(actuator, value) {
   const v = Number(value ?? 0);
-  if (v < 0) return '';
   return ruleOutputIsAnalog(actuator) ? +(v * 100).toFixed(1) : (v >= 0.5 ? 1 : 0);
 }
 function ruleOutputToStored(actuator, value) {
-  if (value === '') return -1;
   const v = Number(value) || 0;
   return ruleOutputIsAnalog(actuator) ? Math.max(0, Math.min(100, v)) / 100 : (v >= 0.5 ? 1 : 0);
 }
-function updateRuleThreshold(index) {
-  const sensor = document.getElementById('rule-sensor-' + index);
-  const threshold = document.getElementById('rule-thresh-' + index);
-  const hysteresis = document.getElementById('rule-hyst-' + index);
-  const unit = document.getElementById('rule-unit-' + index);
-  const hUnit = document.getElementById('rule-hyst-unit-' + index);
-  if (!sensor || !threshold) return;
-  const binary = ruleUnit(+sensor.value) === '0/1';
-  const normalized = ruleUnit(+sensor.value) === '0-1';
-  if (unit) unit.textContent = ruleUnit(+sensor.value);
-  if (hUnit) hUnit.textContent = ruleUnit(+sensor.value);
-  threshold.min = binary || normalized ? '0' : '';
-  threshold.max = binary || normalized ? '1' : (ruleUnit(+sensor.value) === '%' ? '100' : '');
-  threshold.step = binary ? '1' : (normalized ? '0.01' : (ruleUnit(+sensor.value) === '%' ? '1' : 'any'));
-  if (binary) threshold.value = (+threshold.value < 0.5) ? '0' : '1';
-  if (hysteresis) {
-    hysteresis.disabled = binary;
-    hysteresis.value = binary ? '0' : hysteresis.value;
-    hysteresis.max = normalized ? '1' : (ruleUnit(+sensor.value) === '%' ? '100' : '');
-  }
-  markRulesEdited();
+function updateRuleAndRender(index) {
+  collectRules();
+  renderRules(index);
+  markRulesEdited(index);
 }
-function updateRuleOutput(index) {
-  const act = +(document.getElementById('rule-act-' + index)?.value || 0);
-  const analog = ruleOutputIsAnalog(act);
-  ['on','off'].forEach(which => {
-    const input = document.getElementById(`rule-${which}-${index}`);
-    const label = document.getElementById(`rule-${which}-label-${index}`);
-    const unit  = document.getElementById(`rule-${which}-unit-${index}`);
+function changeRuleSource(index) {
+  collectRules();
+  const rule = cfg.rules?.[index];
+  if (!rule) return;
+  rule.threshold = 0;
+  rule.hysteresis = 0;
+  rule.input_min = 0;
+  rule.input_max = 1;
+  renderRules(index);
+  markRulesEdited(index);
+}
+function changeRuleOutput(index) {
+  collectRules();
+  const rule = cfg.rules?.[index];
+  if (!rule) return;
+  rule.on_value = 1;
+  rule.off_value = 0;
+  rule.output_min = 0;
+  rule.output_max = 1;
+  renderRules(index);
+  markRulesEdited(index);
+}
+function setRuleAllStates(index) {
+  const all = document.getElementById('rule-mode-all-' + index)?.checked;
+  ['startup','running','shutdown'].forEach(name => {
+    const input = document.getElementById(`rule-mode-${name}-${index}`);
     if (!input) return;
-    input.min = '0';
-    input.max = analog ? '100' : '1';
-    input.step = analog ? '1' : '1';
-    if (label) label.textContent = which === 'on' ? 'to' : 'otherwise';
-    if (unit) unit.textContent = analog ? '%' : '0/1';
-    if (input.value !== '') {
-      input.value = analog ? Math.max(0, Math.min(100, Number(input.value)||0))
-                           : ((Number(input.value)||0) >= 0.5 ? '1' : '0');
-    }
+    input.disabled = !!all;
+    if (all) input.checked = true;
   });
-  markRulesEdited();
+  markRulesEdited(index);
 }
-function buildRuleRow(rule, index) {
+function ruleStateSummary(mask) {
+  if ((mask & 15) === 15) return 'All states';
+  const states = [];
+  if (mask & 2) states.push('Starting');
+  if (mask & 4) states.push('Running');
+  if (mask & 8) states.push('Shutdown');
+  return states.join(' + ') || 'No states';
+}
+function ruleSentence(rule) {
+  const source = ruleSensors().find(s => (rule.source && s.id === rule.source) || (!rule.source && s.v === Number(rule.sensor)))?.l || 'Input';
+  const target = ruleOutputs().find(o => (rule.target && o.id === rule.target) || (!rule.target && o.v === Number(rule.actuator)))?.l || 'Output';
+  const states = ruleStateSummary(rule.mode_mask ?? 15);
+  if (Number(rule.kind || 0) === 1) {
+    return `${source} ${ruleDisplaySensorValue(rule.sensor, rule.input_min ?? 0)}–${ruleDisplaySensorValue(rule.sensor, rule.input_max ?? 1)} ${ruleUnit(rule.sensor)} → ${target} ${ruleDisplayOutput(rule.actuator, rule.output_min ?? 0)}–${ruleDisplayOutput(rule.actuator, rule.output_max ?? 1)}${ruleOutputIsAnalog(rule.actuator) ? '%' : ''} · ${states}`;
+  }
+  const op = Number(rule.op || 0) === 1 ? 'below' : 'above';
+  return `${source} ${op} ${ruleDisplayThreshold(rule)} ${ruleUnit(rule.sensor)} → ${target} ${ruleDisplayOutput(rule.actuator, rule.on_value ?? 1)}${ruleOutputIsAnalog(rule.actuator) ? '%' : ''} · ${states}`;
+}
+function buildRuleRow(rule, index, forceOpen = false) {
   const binary = ruleUnit(rule.sensor) === '0/1';
-  const normalized = ruleUnit(rule.sensor) === '0-1';
   const pctSensor = ruleUnit(rule.sensor) === '%';
   const analogOut = ruleOutputIsAnalog(rule.actuator);
+  const isMap = Number(rule.kind || 0) === 1;
   const sourceId = rule.source || '';
   const targetId = rule.target || '';
   let sensors = ruleSensors().map(s => ruleOption(s, rule.sensor, sourceId)).join('');
-  let outputs = ruleOutputs().map(a => ruleOption(a, rule.actuator, targetId)).join('');
+  let outputs = ruleOutputs().map(a => ruleOption(a, rule.actuator, targetId, !isMap || ruleOutputIsAnalog(a.v))).join('');
   if (sourceId && !ruleSensors().some(s => s.id === sourceId)) sensors += missingRuleOption(sourceId, rule.sensor);
   if (targetId && !ruleOutputs().some(a => a.id === targetId)) outputs += missingRuleOption(targetId, rule.actuator);
   if (!sourceId && !ruleSensors().some(s => s.v === Number(rule.sensor))) sensors += missingRuleOption('sensor ' + rule.sensor, rule.sensor, 'Unavailable');
   if (!targetId && !ruleOutputs().some(a => a.v === Number(rule.actuator))) outputs += missingRuleOption('output ' + rule.actuator, rule.actuator, 'Unavailable');
   const ops = RULE_OPS.map(o => `<option value="${o.v}"${o.v === rule.op ? ' selected' : ''}>${o.l}</option>`).join('');
-  const modeMask = rule.mode_mask ?? 6;
-  const hystDisabled = binary ? ' disabled' : '';
-  return `<div class="rules-row">
-    <input type="checkbox" id="rule-en-${index}" ${rule.enabled ? 'checked' : ''} onchange="markRulesEdited()">
-    <input type="text" id="rule-name-${index}" maxlength="23" value="${ruleEsc(rule.name || '')}" placeholder="Name" oninput="markRulesEdited()" style="width:7rem">
-    <span class="rule-dim">When</span><select id="rule-sensor-${index}" onchange="updateRuleThreshold(${index})">${sensors}</select>
-    <select id="rule-op-${index}" onchange="markRulesEdited()">${ops}</select>
-    <input type="number" id="rule-thresh-${index}" value="${ruleDisplayThreshold(rule)}" ${binary ? 'min="0" max="1" step="1"' : (normalized ? 'min="0" max="1" step="0.01"' : (pctSensor ? 'min="0" max="100" step="1"' : 'step="any"'))} oninput="markRulesEdited()" style="width:4.5rem;text-align:right">
-    <span class="rule-dim" id="rule-unit-${index}">${ruleUnit(rule.sensor)}</span>
-    <span class="rule-dim" title="Deadband before the rule returns false. Example: higher than 70 with deadband 5 turns off again below 65.">deadband</span><input type="number" id="rule-hyst-${index}" value="${ruleDisplayHysteresis(rule)}" min="0" ${normalized ? 'max="1"' : (pctSensor ? 'max="100"' : '')} step="${normalized ? '0.01' : (pctSensor ? '1' : 'any')}"${hystDisabled} oninput="markRulesEdited()" style="width:3.8rem;text-align:right">
-    <span class="rule-dim" id="rule-hyst-unit-${index}">${ruleUnit(rule.sensor)}</span>
-    <span class="rule-dim">drive</span><select id="rule-act-${index}" onchange="updateRuleOutput(${index})">${outputs}</select>
-    <span class="rule-dim" id="rule-on-label-${index}">to</span><input type="number" id="rule-on-${index}" value="${ruleDisplayOutput(rule.actuator, rule.on_value ?? 1)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" oninput="markRulesEdited()" style="width:3.2rem"><span class="rule-dim" id="rule-on-unit-${index}">${analogOut ? '%' : '0/1'}</span>
-    <span class="rule-dim" id="rule-off-label-${index}" title="Value used after the condition clears past the deadband. Leave blank for no change.">otherwise</span><input type="number" id="rule-off-${index}" value="${ruleDisplayOutput(rule.actuator, rule.off_value ?? 0)}" min="0" max="${analogOut ? 100 : 1}" step="${analogOut ? 1 : 1}" placeholder="no change" oninput="markRulesEdited()" style="width:4.2rem"><span class="rule-dim" id="rule-off-unit-${index}">${analogOut ? '%' : '0/1'}</span>
-    <label class="rule-dim" title="Rule is evaluated during startup"><input type="checkbox" id="rule-mode-startup-${index}" ${(modeMask & 2) ? 'checked' : ''} onchange="markRulesEdited()">START</label>
-    <label class="rule-dim" title="Rule is evaluated while running"><input type="checkbox" id="rule-mode-running-${index}" ${(modeMask & 4) ? 'checked' : ''} onchange="markRulesEdited()">RUN</label>
-    <button class="blk-btn del icon-btn" title="Remove this control rule" aria-label="Remove this control rule" onclick="removeRule(${index})">x</button>
-  </div>`;
+  const modeMask = rule.mode_mask ?? 15;
+  const allStates = (modeMask & 15) === 15;
+  const sourceAttrs = binary ? 'min="0" max="1" step="1"' : (pctSensor ? 'min="0" max="100" step="1"' : 'step="any"');
+  const outputAttrs = `min="0" max="${analogOut ? 100 : 1}" step="1"`;
+  const inputUnit = ruleUnit(rule.sensor);
+  const outputUnit = analogOut ? '%' : '0/1';
+  const mapFields = `<div class="automation-field"><label>Input minimum</label><div class="automation-unit-input"><input id="rule-in-min-${index}" type="number" value="${ruleDisplaySensorValue(rule.sensor, rule.input_min ?? 0)}" ${sourceAttrs} oninput="markRulesEdited(${index})"><span class="automation-unit">${inputUnit}</span></div></div>
+    <div class="automation-field"><label>Input maximum</label><div class="automation-unit-input"><input id="rule-in-max-${index}" type="number" value="${ruleDisplaySensorValue(rule.sensor, rule.input_max ?? 1)}" ${sourceAttrs} oninput="markRulesEdited(${index})"><span class="automation-unit">${inputUnit}</span></div></div>
+    <div class="automation-field"><label>Output at minimum</label><div class="automation-unit-input"><input id="rule-out-min-${index}" type="number" value="${ruleDisplayOutput(rule.actuator, rule.output_min ?? 0)}" ${outputAttrs} oninput="markRulesEdited(${index})"><span class="automation-unit">${outputUnit}</span></div></div>
+    <div class="automation-field"><label>Output at maximum</label><div class="automation-unit-input"><input id="rule-out-max-${index}" type="number" value="${ruleDisplayOutput(rule.actuator, rule.output_max ?? 1)}" ${outputAttrs} oninput="markRulesEdited(${index})"><span class="automation-unit">${outputUnit}</span></div></div>`;
+  const switchFields = `<div class="automation-field"><label>Switch when input</label><select id="rule-op-${index}" onchange="markRulesEdited(${index})">${ops}</select></div>
+    <div class="automation-field"><label>Threshold</label><div class="automation-unit-input"><input id="rule-thresh-${index}" type="number" value="${ruleDisplayThreshold(rule)}" ${sourceAttrs} oninput="markRulesEdited(${index})"><span id="rule-unit-${index}" class="automation-unit">${inputUnit}</span></div></div>
+    <div class="automation-field"><label>Hysteresis <span class="automation-tip" title="Prevents rapid on/off switching near the threshold. Example: with 'Goes above 100 °C' and 5 °C hysteresis, the output turns on above 100 °C and stays on until the input falls to 95 °C.">(what is this?)</span></label><div class="automation-unit-input"><input id="rule-hyst-${index}" type="number" value="${ruleDisplayHysteresis(rule)}" min="0" ${pctSensor ? 'max="100"' : ''} step="${pctSensor ? '1' : 'any'}"${binary ? ' disabled' : ''} oninput="markRulesEdited(${index})"><span id="rule-hyst-unit-${index}" class="automation-unit">${inputUnit}</span></div></div>
+    <div class="automation-field"><label>Output when on</label><div class="automation-unit-input"><input id="rule-on-${index}" type="number" value="${ruleDisplayOutput(rule.actuator, rule.on_value ?? 1)}" ${outputAttrs} oninput="markRulesEdited(${index})"><span class="automation-unit">${outputUnit}</span></div></div>`;
+  return `<details class="automation-card" data-rule-index="${index}"${forceOpen || index === 0 ? ' open' : ''}>
+    <summary><span class="automation-summary"><span id="rule-title-${index}" class="automation-title">${ruleEsc(rule.name || `Control rule ${index + 1}`)}</span><span id="rule-summary-${index}" class="automation-sentence">${ruleEsc(ruleSentence(rule))}</span></span><span class="automation-kind">${isMap ? 'Map' : 'On / Off'}</span><span class="automation-chevron">›</span></summary>
+    <div class="automation-body">
+      <div class="automation-topline">
+        <div class="automation-field"><label for="rule-name-${index}">Rule name</label><input type="text" id="rule-name-${index}" maxlength="23" value="${ruleEsc(rule.name || '')}" placeholder="Example: Starter test" oninput="markRulesEdited(${index})"></div>
+        <div class="automation-field"><label for="rule-kind-${index}">Behaviour</label><select id="rule-kind-${index}" onchange="updateRuleAndRender(${index})"><option value="0"${isMap ? '' : ' selected'}>On / Off</option><option value="1"${isMap ? ' selected' : ''}>Map input to output</option></select></div>
+        <label class="automation-enabled"><input type="checkbox" id="rule-en-${index}" ${rule.enabled ? 'checked' : ''} onchange="markRulesEdited(${index})"> Rule enabled</label>
+      </div>
+      <div class="automation-grid">
+        <div class="automation-field wide"><label for="rule-sensor-${index}">Input</label><select id="rule-sensor-${index}" onchange="changeRuleSource(${index})">${sensors}</select></div>
+        <div class="automation-field wide"><label for="rule-act-${index}">Output</label><select id="rule-act-${index}" onchange="changeRuleOutput(${index})">${outputs}</select></div>
+        ${isMap ? mapFields : switchFields}
+        <div class="automation-field"><label>Off value</label><div class="automation-unit-input"><input id="rule-off-${index}" type="number" value="${ruleDisplayOutput(rule.actuator, rule.off_value ?? 0)}" ${outputAttrs} oninput="markRulesEdited(${index})"><span class="automation-unit">${outputUnit}</span></div></div>
+        <div class="automation-field wide"><span class="automation-label">Active engine states</span><div class="automation-states"><label class="automation-state"><input id="rule-mode-all-${index}" type="checkbox" ${allStates ? 'checked' : ''} onchange="setRuleAllStates(${index})">All states</label><label class="automation-state"><input id="rule-mode-startup-${index}" type="checkbox" ${(modeMask & 2) ? 'checked' : ''}${allStates ? ' disabled' : ''} onchange="markRulesEdited(${index})">Starting</label><label class="automation-state"><input id="rule-mode-running-${index}" type="checkbox" ${(modeMask & 4) ? 'checked' : ''}${allStates ? ' disabled' : ''} onchange="markRulesEdited(${index})">Running</label><label class="automation-state"><input id="rule-mode-shutdown-${index}" type="checkbox" ${(modeMask & 8) ? 'checked' : ''}${allStates ? ' disabled' : ''} onchange="markRulesEdited(${index})">Shutdown</label></div></div>
+      </div>
+      <div class="automation-actions"><span class="automation-help">${isMap ? 'Values between the input limits are mapped linearly. Outside them, output is clamped.' : 'Hysteresis prevents the output chattering near the threshold.'}</span><button class="blk-btn del" title="Remove this control rule" onclick="removeRule(${index})">Remove</button></div>
+    </div>
+  </details>`;
 }
-function renderRules() {
+function resolveRuleDisplayHandles(rule) {
+  if (!rule) return;
+  const source = ruleSensors().find(item => item.id && item.id === String(rule.source || ''));
+  const target = ruleOutputs().find(item => item.id && item.id === String(rule.target || ''));
+  if (source) rule.sensor = source.v;
+  if (target) rule.actuator = target.v;
+}
+function renderRules(forceOpen = -1) {
   const list = document.getElementById('rules-list');
   if (!list) return;
   const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
-  list.innerHTML = rules.length ? rules.map(buildRuleRow).join('') :
-    '<div style="font-size:.78rem;color:var(--dim)">No control rules configured.</div>';
-  document.getElementById('rules-count-label').textContent = `${rules.length} / 8`;
+  rules.forEach(resolveRuleDisplayHandles);
+  list.innerHTML = rules.length ? rules.map((rule,index) => buildRuleRow(rule,index,index === forceOpen)).join('') :
+    '<div style="padding:1rem;border:1px dashed var(--border);border-radius:10px;font-size:.78rem;color:var(--dim)">No control rules yet. Add one below or choose a ready-made example.</div>';
+  document.getElementById('rules-count-label').textContent = `${rules.length} / 8 rules`;
   const addBtn = document.getElementById('btn-add-rule');
   if (addBtn) addBtn.disabled = rules.length >= 8 || !hasAvailableRuleSensor() || !hasAvailableRuleOutput();
   renderRulePresets();
@@ -3158,6 +3280,16 @@ function hasAvailableRuleOutput() { return ruleOutputs().some(item => item.ok())
 function firstAvailable(list) {
   const item = list.find(item => item.ok());
   return item ? item.v : null;
+}
+function firstUnclaimedRuleOutput() {
+  const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
+  return ruleOutputs().find(item => {
+    if (!item.ok()) return false;
+    if (Number(item.v) === 13 || Number(item.v) === 14) return true;
+    return !rules.some(rule => item.id
+      ? String(rule.target || '') === String(item.id)
+      : !rule.target && Number(rule.actuator) === Number(item.v));
+  })?.v ?? null;
 }
 function ruleSensorAvailable(v) {
   return !!ruleSensors().find(s => Number(s.v) === Number(v))?.ok();
@@ -3171,25 +3303,32 @@ function ruleSensorLabel(v) {
 function ruleOutputLabel(v) {
   return ruleOutputs().find(o => Number(o.v) === Number(v))?.l || `output ${v}`;
 }
-function firstConfiguredDigitalInputRuleSensor() {
-  return [7,8,9,10].find(v => ruleSensorAvailable(v));
+function firstGenericAnalogRuleSensor() {
+  const inputs = hwCfg.channel_registry?.inputs || [];
+  const index = inputs.findIndex(c => c?.installed !== false && (c?.pin ?? -1) >= 0 &&
+    Number(c.driver) === 1 && c.role === 'generic' && !registryInputCoreBound(c));
+  return index >= 0 ? RULE_REGISTRY_INPUT_BASE + index : undefined;
+}
+function firstGenericPwmRuleOutput() {
+  const outputs = hwCfg.channel_registry?.outputs || [];
+  const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
+  const index = outputs.findIndex((c, i) => c?.installed !== false && (c?.pin ?? -1) >= 0 &&
+    Number(c.driver) === 5 && c.role === 'generic' && !registryOutputCoreBound(c) &&
+    !rules.some(rule => String(rule.target || '') === String(c.id || '') ||
+      (!rule.target && Number(rule.actuator) === RULE_REGISTRY_OUTPUT_BASE + i)));
+  return index >= 0 ? RULE_REGISTRY_OUTPUT_BASE + index : undefined;
 }
 function rulePresetStatus(kind) {
   const missing = [];
   if ((cfg.rules || []).length >= 8) missing.push('maximum of 8 control rules reached');
   const needSensor = v => { if (!ruleSensorAvailable(v)) missing.push(`${ruleSensorLabel(v)} input in Hardware`); };
   const needOutput = v => { if (!ruleOutputAvailable(v)) missing.push(`${ruleOutputLabel(v)} output in Hardware`); };
-  if (kind === 'di_fault' || kind === 'di_shutdown') {
-    if (firstConfiguredDigitalInputRuleSensor() === undefined) missing.push('Digital input channel 1-4 in Hardware');
+  if (kind === 'adc_pwm_dimmer') {
+    if (firstGenericAnalogRuleSensor() === undefined) missing.push('fitted generic analog input in Hardware');
+    if (firstGenericPwmRuleOutput() === undefined) missing.push('fitted generic PWM output in Hardware');
   } else if (kind === 'oil_temp_fan') {
     needSensor(0);
     needOutput(0);
-  } else if (kind === 'fuel_press_fault') {
-    needSensor(11);
-    needOutput(14);
-  } else if (kind === 'batt_fault') {
-    needSensor(5);
-    needOutput(14);
   }
   return {available: missing.length === 0, missing};
 }
@@ -3211,7 +3350,7 @@ function addRule() {
   cfg.rules = cfg.rules || [];
   if (cfg.rules.length >= 8) return;
   const sensor = firstAvailable(ruleSensors());
-  const actuator = firstAvailable(ruleOutputs());
+  const actuator = firstUnclaimedRuleOutput();
   if (sensor === null) {
     alert('No configured sensor is available for a control rule.');
     return;
@@ -3220,9 +3359,10 @@ function addRule() {
     alert('No configured output is available for a control rule.');
     return;
   }
-  cfg.rules.push({enabled:true,name:'',sensor,op:0,threshold:0,
-                  actuator,on_value:1,off_value:0,hysteresis:0,mode_mask:6});
-  renderRules(); markRulesEdited();
+  cfg.rules.push({enabled:true,name:'',kind:0,sensor,op:0,threshold:0,
+                  actuator,on_value:1,off_value:0,hysteresis:0,
+                  input_min:0,input_max:1,output_min:0,output_max:1,mode_mask:4});
+  renderRules(cfg.rules.length - 1); markRulesEdited(cfg.rules.length - 1);
 }
 function addRulePreset(kind) {
   collectRules();
@@ -3230,38 +3370,34 @@ function addRulePreset(kind) {
   if (cfg.rules.length >= 8) return;
   const preset = rulePresetStatus(kind);
   if (!preset.available) return;
-  const diSensor = firstConfiguredDigitalInputRuleSensor();
   const add = rule => {
-    cfg.rules.push(Object.assign({enabled:true,hysteresis:0,mode_mask:6,on_value:1,off_value:-1}, rule));
-    renderRules(); markRulesEdited();
+    cfg.rules.push(Object.assign({enabled:true,kind:0,hysteresis:0,mode_mask:4,on_value:1,off_value:0,input_min:0,input_max:1,output_min:0,output_max:1}, rule));
+    renderRules(cfg.rules.length - 1); markRulesEdited(cfg.rules.length - 1);
   };
-  if (kind === 'di_fault') {
-    const idx = diSensor - 7;
-    const label = hwCfg.di_channels?.[idx]?.label || `DI Channel ${idx + 1}`;
-    return add({name:'DI fault',sensor:diSensor,op:0,threshold:0.5,actuator:14,on_value:1,off_value:-1,mode_mask:6});
-  }
-  if (kind === 'di_shutdown') {
-    return add({name:'DI shutdown',sensor:diSensor,op:0,threshold:0.5,actuator:13,on_value:1,off_value:-1,mode_mask:6});
+  if (kind === 'adc_pwm_dimmer') {
+    const sensor = firstGenericAnalogRuleSensor();
+    const actuator = firstGenericPwmRuleOutput();
+    const source = ruleSensors().find(item => item.v === sensor)?.id || '';
+    const target = ruleOutputs().find(item => item.v === actuator)?.id || '';
+    const rule = {name:'Warning light dimmer',kind:1,sensor,source,actuator,target,on_value:1,off_value:0,
+      input_min:0,input_max:1,output_min:0,output_max:1,mode_mask:15};
+    return add(rule);
   }
   if (kind === 'oil_temp_fan') {
     return add({name:'Oil temp fan',sensor:0,op:0,threshold:100,actuator:0,on_value:1,off_value:0,hysteresis:5,mode_mask:6});
   }
-  if (kind === 'fuel_press_fault') {
-    return add({name:'Fuel pressure low',sensor:11,op:1,threshold:1.0,actuator:14,on_value:1,off_value:-1,hysteresis:0.2,mode_mask:4});
-  }
-  if (kind === 'batt_fault') {
-    return add({name:'Battery low',sensor:5,op:1,threshold:10.5,actuator:14,on_value:1,off_value:-1,hysteresis:0.5,mode_mask:6});
-  }
 }
-function removeRule(index) {
+async function removeRule(index) {
   collectRules();
   const name = cfg.rules?.[index]?.name || `rule ${index + 1}`;
-  if (!confirm(`Remove ${name}?\n\nThe rule will be deleted when you save.`)) return;
+  if (!await OTDialog.confirm(`Remove ${name}?\n\nThe rule will be deleted when you save.`, {
+    title: 'Remove control rule?', confirmText: 'Remove rule', danger: true
+  })) return;
   cfg.rules.splice(index, 1);
   renderRules(); markRulesEdited();
 }
 function collectRules() {
-  const rows = document.querySelectorAll('#rules-list .rules-row');
+  const rows = document.querySelectorAll('#rules-list .automation-card');
   if (!rows.length) { cfg.rules = []; return; }
   cfg.rules = Array.from(rows).map((_, i) => {
     const sensorSel = document.getElementById('rule-sensor-' + i);
@@ -3270,19 +3406,27 @@ function collectRules() {
     const actuator = +actSel.value;
     const source = sensorSel.selectedOptions?.[0]?.dataset?.id || '';
     const target = actSel.selectedOptions?.[0]?.dataset?.id || '';
+    const kind = +(document.getElementById('rule-kind-' + i)?.value || 0);
+    const allStates = document.getElementById('rule-mode-all-' + i)?.checked;
     const startMode = document.getElementById('rule-mode-startup-' + i)?.checked ? 2 : 0;
     const runMode = document.getElementById('rule-mode-running-' + i)?.checked ? 4 : 0;
+    const shutdownMode = document.getElementById('rule-mode-shutdown-' + i)?.checked ? 8 : 0;
     const out = {
       enabled: document.getElementById('rule-en-' + i).checked,
       name: document.getElementById('rule-name-' + i).value.substring(0, 23),
+      kind,
       sensor,
-      op: +document.getElementById('rule-op-' + i).value,
-      threshold: ruleThresholdToStored(sensor, document.getElementById('rule-thresh-' + i).value),
-      hysteresis: ruleHysteresisToStored(sensor, document.getElementById('rule-hyst-' + i)?.value),
+      op: +(document.getElementById('rule-op-' + i)?.value || 0),
+      threshold: ruleThresholdToStored(sensor, document.getElementById('rule-thresh-' + i)?.value || 0),
+      hysteresis: ruleHysteresisToStored(sensor, document.getElementById('rule-hyst-' + i)?.value || 0),
       actuator,
-      on_value: ruleOutputToStored(actuator, document.getElementById('rule-on-' + i).value),
+      on_value: ruleOutputToStored(actuator, document.getElementById('rule-on-' + i)?.value ?? 1),
       off_value: ruleOutputToStored(actuator, document.getElementById('rule-off-' + i).value),
-      mode_mask: startMode | runMode
+      input_min: ruleSensorValueToStored(sensor, document.getElementById('rule-in-min-' + i)?.value ?? 0),
+      input_max: ruleSensorValueToStored(sensor, document.getElementById('rule-in-max-' + i)?.value ?? (ruleSensorScale(sensor) === 100 ? 100 : 1)),
+      output_min: ruleOutputToStored(actuator, document.getElementById('rule-out-min-' + i)?.value ?? 0),
+      output_max: ruleOutputToStored(actuator, document.getElementById('rule-out-max-' + i)?.value ?? (ruleOutputIsAnalog(actuator) ? 100 : 1)),
+      mode_mask: allStates ? 15 : (startMode | runMode | shutdownMode)
     };
     if (source) out.source = source;
     if (target) out.target = target;
@@ -3294,15 +3438,16 @@ function ruleWarnings(rules) {
   const byAct = new Map();
   rules.forEach((rule, index) => {
     if (!rule.enabled) return;
+    if (Number(rule.actuator) === 13 || Number(rule.actuator) === 14) return;
     const list = byAct.get(rule.actuator) || [];
     list.push(index + 1);
     byAct.set(rule.actuator, list);
-    if (!rule.mode_mask) warnings.push(`Rule ${rule.name || '#' + (index + 1)} has no active mode selected.`);
+    if (!Number(rule.mode_mask ?? 15)) warnings.push(`Rule ${rule.name || '#' + (index + 1)} has no active mode selected.`);
   });
   byAct.forEach((list, act) => {
     if (list.length > 1) {
       const out = ruleOutputs().find(o => o.v === Number(act))?.l || ('output ' + act);
-      warnings.push(`${list.length} enabled rules drive ${out}; lower rules override earlier rules.`);
+      warnings.push(`${list.length} enabled rules target ${out}. Give each output only one rule.`);
     }
   });
   return warnings;
@@ -3314,15 +3459,22 @@ function renderRuleWarnings() {
   box.style.display = warnings.length ? '' : 'none';
   box.innerHTML = warnings.map(w => 'Warning: ' + ruleEsc(w)).join('<br>');
 }
-function markRulesEdited() {
+function markRulesEdited(index = -1) {
   collectRules();
+  if (index >= 0 && cfg.rules?.[index]) {
+    const title = document.getElementById('rule-title-' + index);
+    const summary = document.getElementById('rule-summary-' + index);
+    if (title) title.textContent = cfg.rules[index].name || `Control rule ${index + 1}`;
+    if (summary) summary.textContent = ruleSentence(cfg.rules[index]);
+  }
   renderRuleWarnings();
-  setSaveStatus('Control rules edited - save to apply');
+  markSequenceDirty('Control rules edited — save to apply');
 }
 
 function validateRulesForSave() {
   const rules = Array.isArray(cfg.rules) ? cfg.rules : [];
   const errors = [];
+  const targets = new Map();
   if (rules.length > 8) errors.push(`Control rules: ${rules.length}/8. Remove ${rules.length - 8} rule(s).`);
   rules.forEach((rule, index) => {
     const sensor = rule.source
@@ -3334,7 +3486,16 @@ function validateRulesForSave() {
     const name = rule.name ? `"${rule.name}"` : `#${index + 1}`;
     if (!sensor || !sensor.ok()) errors.push(`Rule ${name}: selected sensor is not configured.`);
     if (!output || !output.ok()) errors.push(`Rule ${name}: selected output is not configured.`);
-    if (!Number(rule.mode_mask || 0)) errors.push(`Rule ${name}: select Startup, Running, or both.`);
+    if (!Number(rule.mode_mask || 0)) errors.push(`Rule ${name}: select All states or at least one engine state.`);
+    if (Number(rule.kind || 0) === 1) {
+      if (!ruleOutputIsAnalog(rule.actuator)) errors.push(`Rule ${name}: mapping requires a variable PWM or servo output.`);
+      if (!(Number(rule.input_max) > Number(rule.input_min))) errors.push(`Rule ${name}: input maximum must be greater than input minimum.`);
+    }
+    if (Number(rule.actuator) !== 13 && Number(rule.actuator) !== 14) {
+      const targetKey = rule.target || `#${rule.actuator}`;
+      if (targets.has(targetKey)) errors.push(`Rules ${targets.get(targetKey)} and ${name} target the same output. Keep one rule per output.`);
+      else targets.set(targetKey, name);
+    }
   });
   return errors;
 }
@@ -3385,6 +3546,7 @@ function validateCustomBlockLimits() {
 }
 
 async function saveAll() {
+  if (!_seqDirty) return;
   await refreshEngineStatus();
   if (engineMode !== 'STANDBY') {
     setSaveStatus('Warning: Engine must be in STANDBY to save');
@@ -3406,6 +3568,14 @@ async function saveAll() {
       '\n\nFix these before saving so firmware and hardware stay matched.');
     return;
   }
+  const sequenceHardwareErrors = validateSequenceHardwareForSave();
+  if (sequenceHardwareErrors.length) {
+    setSaveStatus('Warning: Sequence contains blocks with missing hardware');
+    await OTDialog.alert('Sequence hardware mismatch:\n\n' + sequenceHardwareErrors.map(e => '- ' + e).join('\n') +
+      '\n\nRestore the required devices in Hardware or remove these blocks before saving.',
+      { title: 'Sequence needs hardware' });
+    return;
+  }
   // Validate that the startup sequence is not empty
   const startupBlocks = hwCfg['startup_seq'] || [];
   if (startupBlocks.length === 0) {
@@ -3416,9 +3586,10 @@ async function saveAll() {
   // Validate sequence safety: warn if critical blocks are missing
   const seqWarnings = _validateSequence(startupBlocks);
   if (seqWarnings.length > 0) {
-    const proceed = confirm(
+    const proceed = await OTDialog.confirm(
       'Warning: Sequence warnings:\n\n' + seqWarnings.map(w => '- ' + w).join('\n') +
-      '\n\nSave anyway?'
+      '\n\nSaving anyway may create an unsafe or non-starting sequence.',
+      { title: 'Sequence safety warnings', confirmText: 'Save anyway', danger: true }
     );
     if (!proceed) return;
   }
@@ -3434,6 +3605,8 @@ async function saveAll() {
       setSaveStatus('Warning: Save failed: ' + (resp.error || cfgRes.status));
       return;
     }
+    if (window.OTSetup) OTSetup.mark('sequence');
+    clearSequenceDirty('Saved — rebooting…');
     if (resp.reboot) startRebootCountdown();
   } catch(e) { setSaveStatus('Warning: ' + e.message); }
 }
@@ -3469,18 +3642,47 @@ function setSaveStatus(msg) {
   document.getElementById('save-status').textContent = msg;
 }
 
+function updateSequenceSaveControls() {
+  const canSave = _seqDirty && engineMode === 'STANDBY';
+  const save = document.getElementById('save-btn');
+  const discard = document.getElementById('seq-discard-btn');
+  if (save) save.disabled = !canSave;
+  if (discard) discard.disabled = !_seqDirty;
+}
+
+function markSequenceDirty(message) {
+  _seqDirty = true;
+  document.getElementById('sequence-save-bar')?.classList.add('is-dirty');
+  setSaveStatus(message || 'Unsaved changes — save to apply');
+  updateSequenceSaveControls();
+}
+
+function clearSequenceDirty(message) {
+  _seqDirty = false;
+  document.getElementById('sequence-save-bar')?.classList.remove('is-dirty');
+  setSaveStatus(message || 'No unsaved changes');
+  updateSequenceSaveControls();
+}
+
+async function discardSequenceChanges() {
+  if (!_seqDirty) return;
+  if (!await OTDialog.confirm('Discard every unsaved sequence and control-rule change?', {
+    title: 'Discard changes?', confirmText: 'Discard', danger: true
+  })) return;
+  await loadAll();
+}
+
 // ------ WebSocket for engine mode ------------------------------------------------------------------------------------------------------------------------------------------
 function updateEngineMode(mode) {
   engineMode = mode;
-  const btn = document.getElementById('save-btn');
   const active = (engineMode === 'STANDBY');
-  if (btn) btn.disabled = !active;
+  updateSequenceSaveControls();
   if (!active) {
     setSaveStatus(`Warning: Engine is ${engineMode} - stop engine to save`);
   } else {
     const status = document.getElementById('save-status');
     if (status && /Engine is .*stop engine/.test(status.textContent)) {
-      setSaveStatus('Ready - edit parameters then save');
+      setSaveStatus(_seqDirty ? 'Unsaved changes — save to apply' : 'No unsaved changes');
     }
   }
 }

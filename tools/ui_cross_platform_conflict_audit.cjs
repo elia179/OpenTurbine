@@ -48,22 +48,26 @@ async function hasOption(page, selector, value) {
     await reset(page);
     await patchHardware(page, { platform: 'esp32' });
     await gotoHardware(page);
-    assert.equal(await hasOption(page, '#f-led-pin', 34), 0, 'ESP32 output selector must reject input-only GPIO34');
-    assert.equal(await hasOption(page, '#f-led-pin', 6), 0, 'ESP32 output selector must reject flash GPIO6');
-    assert.equal(await hasOption(page, '#f-buzzer-pin', 34), 0, 'ESP32 buzzer selector must reject input-only GPIO34');
-    assert.equal(await hasOption(page, '#f-oilpress-pin', 34), 1, 'ESP32 ADC selector must allow ADC1 GPIO34');
-    assert.equal(await hasOption(page, '#f-oilpress-pin', 25), 0, 'ESP32 ADC selector must reject non-ADC1 GPIO25');
+    const esp32Pins = await page.evaluate(() => ({
+      out34: buildPinOptions(-1, 'out').includes('value="34"'),
+      out6: buildPinOptions(-1, 'out').includes('value="6"'),
+      adc34: buildPinOptions(-1, 'adc').includes('value="34"'),
+      adc25: buildPinOptions(-1, 'adc').includes('value="25"')
+    }));
+    assert.deepEqual(esp32Pins, {out34:false, out6:false, adc34:true, adc25:false});
     results.push('ESP32 pin selectors match firmware GPIO, output and ADC limits');
 
     await reset(page);
     await patchHardware(page, { platform: 'esp32s3' });
     await gotoHardware(page);
-    assert.equal(await hasOption(page, '#f-led-pin', 46), 0, 'ESP32-S3 output selector must reject input-only GPIO46');
-    assert.equal(await hasOption(page, '#f-led-pin', 22), 0, 'ESP32-S3 output selector must reject absent/flash GPIO22');
-    assert.equal(await hasOption(page, '#f-buzzer-pin', 46), 0, 'ESP32-S3 buzzer selector must reject input-only GPIO46');
+    const s3Pins = await page.evaluate(() => ({
+      out46: buildPinOptions(-1, 'out').includes('value="46"'),
+      out22: buildPinOptions(-1, 'out').includes('value="22"'),
+      adc10: buildPinOptions(-1, 'adc').includes('value="10"'),
+      adc11: buildPinOptions(-1, 'adc').includes('value="11"')
+    }));
+    assert.deepEqual(s3Pins, {out46:false, out22:false, adc10:true, adc11:false});
     assert.equal(await hasOption(page, '#f-cl-rx', 46), 1, 'ESP32-S3 input selector may allow input-only GPIO46');
-    assert.equal(await hasOption(page, '#f-oilpress-pin', 10), 1, 'ESP32-S3 ADC selector must allow ADC1 GPIO10');
-    assert.equal(await hasOption(page, '#f-oilpress-pin', 11), 0, 'ESP32-S3 ADC selector must reject non-ADC1 GPIO11');
     results.push('ESP32-S3 pin selectors match firmware GPIO, output and ADC limits');
 
     const conflictMatrix = await page.evaluate(() => {
@@ -74,6 +78,7 @@ async function hasOption(page, selector, value) {
         item.enabled = false;
         item.has_current = false;
       }
+      cfg.channel_registry = {version:1, bindings:[], inputs:[], outputs:[]};
       cfg.has_afterburner = false;
       cfg.di_channels = [];
       cfg.actuators.status_led = { enabled: true, pin: 4 };
@@ -90,35 +95,47 @@ async function hasOption(page, selector, value) {
         c.pin === 4 && c.names.includes('Status LED') && c.names.includes('MAVLink TX'));
 
       cfg.mavlink.enabled = false;
-      cfg.sensors.tot = { enabled: true, chip: 'max31856', clk: 40, cs: 37, miso: 41, mosi: 42 };
-      cfg.sensors.tit = { enabled: true, chip: 'max31856', clk: 40, cs: 38, miso: 41, mosi: 42 };
-      cfg.sensors.oil_temp = { enabled: true, chip: 'max31856', clk: 40, cs: 39, miso: 41, mosi: 42 };
+      cfg.channel_registry.inputs = [
+        {installed:true,id:'tot_main',name:'TOT',purpose:'tot',role:'temperature',driver:1,pin:-1,temp_interface:3,spi_clk:40,spi_cs:37,spi_miso:41,spi_mosi:42},
+        {installed:true,id:'tit_main',name:'TIT',purpose:'tit',role:'temperature',driver:1,pin:-1,temp_interface:3,spi_clk:40,spi_cs:38,spi_miso:41,spi_mosi:42},
+        {installed:true,id:'oil_temp',name:'Oil Temp',purpose:'oil_temperature',role:'temperature',driver:1,pin:-1,temp_interface:3,spi_clk:40,spi_cs:39,spi_miso:41,spi_mosi:42}
+      ];
       const sharedSpiBusOk = !_checkGpioConflicts().some(c => [40, 41, 42].includes(c.pin));
       const spiClkAsSpi = optionState(buildPinOptions(-1, 'spi-clk'), 40);
       const spiClkAsOrdinaryOutput = optionState(buildPinOptions(-1, 'out'), 40);
 
-      cfg.sensors.tit.cs = 37;
+      cfg.channel_registry.inputs.find(c => c.purpose === 'tit').spi_cs = 37;
       const sharedCsBlocked = _checkGpioConflicts().some(c =>
         c.pin === 37 && c.names.includes('TOT CS') && c.names.includes('TIT CS'));
 
-      cfg.sensors.tit.cs = 16;
+      cfg.channel_registry.inputs.find(c => c.purpose === 'tit').spi_cs = 16;
       cfg.cluster_serial.tx_pin = 4;
       cfg.actuators.status_led.enabled = false;
       const released = _releaseInactivePinConflicts();
       const statusLedReleased = cfg.actuators.status_led.pin === -1 && released;
 
-      return { statusLedMav, sharedSpiBusOk, sharedCsBlocked, statusLedReleased, usedOutputPin, spiClkAsSpi, spiClkAsOrdinaryOutput };
+      cfg.channel_registry = {version:1, bindings:[], outputs:[], inputs:[
+        {installed:true,id:'oil_pressure_main',name:'Oil Pressure',purpose:'oil_pressure',role:'pressure',driver:1,pin:10},
+        {installed:true,id:'ab_flame_main',name:'AB Flame',purpose:'ab_flame',role:'flame',driver:1,pin:10}
+      ]};
+      cfg.ab_flame = {enabled:false,pin:-1};
+      const registryOnlyConflict = _checkGpioConflicts().some(c =>
+        c.pin === 10 && c.names.includes('Oil Pressure') && c.names.includes('AB Flame'));
+
+      return { statusLedMav, sharedSpiBusOk, sharedCsBlocked, statusLedReleased, registryOnlyConflict, usedOutputPin, spiClkAsSpi, spiClkAsOrdinaryOutput };
     });
     assert.deepEqual({
       statusLedMav: conflictMatrix.statusLedMav,
       sharedSpiBusOk: conflictMatrix.sharedSpiBusOk,
       sharedCsBlocked: conflictMatrix.sharedCsBlocked,
-      statusLedReleased: conflictMatrix.statusLedReleased
+      statusLedReleased: conflictMatrix.statusLedReleased,
+      registryOnlyConflict: conflictMatrix.registryOnlyConflict
     }, {
       statusLedMav: true,
       sharedSpiBusOk: true,
       sharedCsBlocked: true,
-      statusLedReleased: true
+      statusLedReleased: true,
+      registryOnlyConflict: true
     });
     assert.equal(conflictMatrix.usedOutputPin.disabled, true, 'ordinary used output pin must be disabled in selectors');
     assert.match(conflictMatrix.usedOutputPin.text, /used by Status LED/i);

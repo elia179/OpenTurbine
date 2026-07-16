@@ -33,7 +33,7 @@ public:
         if (HardwareConfig::hasOilLoop && !available("oil_loop"))
             return "Oil control loop requires an oil pressure input and oil pump output";
         if (HardwareConfig::hasDynamicIdle && !available("dynamic_idle"))
-            return "Dynamic idle requires an RPM input and throttle output";
+            return "Automatic idle speed control requires an RPM input and fuel/throttle output";
         if (HardwareConfig::hasGovernor && !available("n2_governor"))
             return "Governor requires N2 RPM feedback and a throttle or prop-pitch output";
         if ((HardwareConfig::safetyOverspeed || HardwareConfig::safetySurge) && !available("n1_safety"))

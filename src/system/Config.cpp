@@ -9,65 +9,6 @@
 #include "FlightRecorder.h"
 
 namespace {
-const char* ruleSourceId(uint8_t sensor) {
-    if (ChannelRegistry::isInputSensor(sensor)) {
-        uint8_t idx = ChannelRegistry::inputIndexFromSensor(sensor);
-        if (idx < HardwareConfig::channelRegistry.inputCount)
-            return HardwareConfig::channelRegistry.inputs[idx].id;
-    }
-    switch (sensor) {
-        case RulesEngine::OIL_TEMP: return "oil_temp";
-        case RulesEngine::TOT: return "tot_main";
-        case RulesEngine::N1_RPM: return "n1_main";
-        case RulesEngine::N2_RPM: return "n2_main";
-        case RulesEngine::OIL_PRESS: return "oil_pressure_main";
-        case RulesEngine::TIT: return "tit_main";
-        case RulesEngine::BATT_V: return "batt_voltage";
-        case RulesEngine::FUEL_PRESS: return "fuel_press";
-        case RulesEngine::FUEL_FLOW: return "fuel_flow";
-        case RulesEngine::P1: return "p1";
-        case RulesEngine::P2: return "p2";
-        case RulesEngine::TORQUE: return "torque";
-        case RulesEngine::FLAME: return "flame";
-        case RulesEngine::THROTTLE_INPUT: return "operator_throttle";
-        case RulesEngine::IDLE_INPUT: return "operator_idle";
-        case RulesEngine::AB_FLAME: return "ab_flame";
-        case RulesEngine::GLOW_CURRENT: return "glow_current";
-        case RulesEngine::IGNITER_CURRENT: return "igniter_current";
-        case RulesEngine::IGNITER2_CURRENT: return "igniter2_current";
-        case RulesEngine::OIL_PUMP_CURRENT: return "oil_pump_current";
-        case RulesEngine::AB_INPUT: return "ab_input";
-        case RulesEngine::START_SWITCH: return "start_switch";
-        case RulesEngine::STOP_SWITCH: return "stop_switch";
-        default: return "";
-    }
-}
-const char* ruleTargetId(uint8_t actuator) {
-    if (ChannelRegistry::isOutputActuator(actuator)) {
-        uint8_t idx = ChannelRegistry::outputIndexFromActuator(actuator);
-        if (idx < HardwareConfig::channelRegistry.outputCount)
-            return HardwareConfig::channelRegistry.outputs[idx].id;
-    }
-    switch (actuator) {
-        case RulesEngine::THROTTLE: return "main_fuel";
-        case RulesEngine::STARTER: return "starter_main";
-        case RulesEngine::OIL_PUMP: return "oil_pump_main";
-        case RulesEngine::COOL_FAN: return "cooling_fan_main";
-        case RulesEngine::BLEED_VALVE: return "bleed_valve_main";
-        case RulesEngine::OIL_SCAVENGE: return "oil_scavenge_main";
-        case RulesEngine::FUEL_PUMP2: return "fuel_pump";
-        case RulesEngine::STARTER_ENABLE: return "starter_enable";
-        case RulesEngine::FUEL_SOL: return "fuel_shutoff";
-        case RulesEngine::IGNITER: return "igniter";
-        case RulesEngine::IGNITER2: return "ab_igniter";
-        case RulesEngine::AB_SOL: return "ab_solenoid";
-        case RulesEngine::AB_PUMP: return "ab_pump";
-        case RulesEngine::AIRSTARTER: return "air_starter";
-        case RulesEngine::GLOW_PLUG: return "glow_plug";
-        case RulesEngine::PROP_PITCH: return "prop_pitch";
-        default: return "";
-    }
-}
 int8_t ruleSourceHandle(const char* id) {
     if (!id || !id[0]) return -1;
     if (!strcmp(id, "oil_temp") || !strcmp(id, "oil_temp_main")) return RulesEngine::OIL_TEMP;
@@ -96,6 +37,10 @@ int8_t ruleSourceHandle(const char* id) {
     if (!strcmp(id, "ab_input") || !strcmp(id, "ab_input_main")) return RulesEngine::AB_INPUT;
     if (!strcmp(id, "start_switch")) return RulesEngine::START_SWITCH;
     if (!strcmp(id, "stop_switch")) return RulesEngine::STOP_SWITCH;
+    if (!strcmp(id, "di0")) return RulesEngine::DI_CH0;
+    if (!strcmp(id, "di1")) return RulesEngine::DI_CH1;
+    if (!strcmp(id, "di2")) return RulesEngine::DI_CH2;
+    if (!strcmp(id, "di3")) return RulesEngine::DI_CH3;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i) {
         const auto& in = HardwareConfig::channelRegistry.inputs[i];
         if (strcmp(in.id, id) != 0) continue;
@@ -112,7 +57,6 @@ int8_t ruleTargetHandle(const char* id) {
     if (!strcmp(id, "bleed_valve_main") || !strcmp(id, "bleed_valve")) return RulesEngine::BLEED_VALVE;
     if (!strcmp(id, "oil_scavenge_main") || !strcmp(id, "scavenge_pump") || !strcmp(id, "oil_scavenge_pump")) return RulesEngine::OIL_SCAVENGE;
     if (!strcmp(id, "fuel_pump") || !strcmp(id, "fuel_pump2") || !strcmp(id, "fuel_pump2_main")) return RulesEngine::FUEL_PUMP2;
-    if (!strcmp(id, "starter_enable") || !strcmp(id, "starter_en") || !strcmp(id, "starter_enable_main")) return RulesEngine::STARTER_ENABLE;
     if (!strcmp(id, "main_fuel_shutoff") || !strcmp(id, "fuel_shutoff") || !strcmp(id, "fuel_sol")) return RulesEngine::FUEL_SOL;
     if (!strcmp(id, "igniter") || !strcmp(id, "igniter_main")) return RulesEngine::IGNITER;
     if (!strcmp(id, "ab_igniter") || !strcmp(id, "igniter2_main") || !strcmp(id, "igniter2")) return RulesEngine::IGNITER2;
@@ -121,6 +65,8 @@ int8_t ruleTargetHandle(const char* id) {
     if (!strcmp(id, "air_starter") || !strcmp(id, "airstarter_sol") || !strcmp(id, "airstarter_main")) return RulesEngine::AIRSTARTER;
     if (!strcmp(id, "glow_plug") || !strcmp(id, "glow_plug_main")) return RulesEngine::GLOW_PLUG;
     if (!strcmp(id, "prop_pitch") || !strcmp(id, "prop_pitch_main")) return RulesEngine::PROP_PITCH;
+    if (!strcmp(id, "request_shutdown")) return RulesEngine::REQUEST_SHUTDOWN;
+    if (!strcmp(id, "request_fault")) return RulesEngine::REQUEST_FAULT;
     for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
         const auto& out = HardwareConfig::channelRegistry.outputs[i];
         if (strcmp(out.id, id) != 0) continue;
@@ -265,10 +211,10 @@ uint32_t Config::snapshotIntervalMs = 10000;
 uint32_t Config::controlLoopHz      = 400;
 bool     Config::logStandby         = false;
 
-float    Config::starterAssistPct    = 15.0f;
-float    Config::starterAssistExitRpm = 1000.0f;
+float    Config::starterLowRpmSupportPct = 15.0f;
+float    Config::starterLowRpmSupportDisengageRpm = 1000.0f;
 
-float    Config::starterRampPctPerSec = 10.0f;
+float    Config::starterStartupRampPctPerSec = 10.0f;
 float    Config::starterDemand        = 60.0f;  // %
 int      Config::starterTimeoutMs     = 8000;
 
@@ -495,7 +441,6 @@ bool ruleActuatorAvailable(uint8_t a) {
         case 3:  return HardwareConfig::hasOilScavengePump;
         case 4:  return HardwareConfig::hasThrottle;
         case 5:  return HardwareConfig::hasStarter;
-        case 6:  return HardwareConfig::hasStarterEn;
         case 7:  return HardwareConfig::hasOilPump;
         case 8:  return HardwareConfig::hasFuelSol;
         case 9:  return HardwareConfig::hasIgniter;
@@ -531,34 +476,16 @@ bool validInt(JsonVariantConst v, long minValue, long maxValue) {
     return value >= minValue && value <= maxValue;
 }
 
-bool validActuatorHandle(JsonVariantConst v) {
-    if (!present(v)) return true;
-    if (!v.is<int>() && !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
-    long value = v.as<long>();
-    return (value >= 0 && value <= 17) ||
-           (value >= ChannelRegistry::OUTPUT_ACTUATOR_BASE &&
-            value < ChannelRegistry::OUTPUT_ACTUATOR_BASE + ChannelRegistry::MAX_OUTPUT_CHANNELS);
-}
-
-bool validSensorHandle(JsonVariantConst v) {
-    if (!present(v)) return true;
-    if (!v.is<int>() && !v.is<long>() && !v.is<unsigned int>() && !v.is<unsigned long>()) return false;
-    long value = v.as<long>();
-    return (value >= 0 && value <= 26) ||
-           (value >= ChannelRegistry::INPUT_SENSOR_BASE &&
-            value < ChannelRegistry::INPUT_SENSOR_BASE + ChannelRegistry::MAX_INPUT_CHANNELS);
-}
-
 bool validBool(JsonVariantConst v) { return !present(v) || v.is<bool>(); }
 
 bool validRuleId(JsonVariantConst v, size_t maxLen,
                  int8_t (*resolve)(const char*),
                  bool (*available)(uint8_t)) {
-    if (!present(v)) return true;
+    if (!present(v)) return false;
     if (!v.is<const char*>()) return false;
     const char* id = v.as<const char*>();
     if (!id) return false;
-    if (!id[0]) return true; // empty keeps the numeric legacy handle path
+    if (!id[0]) return false;
     if (strlen(id) >= maxLen) return false;
     int8_t handle = resolve(id);
     return handle >= 0 && available((uint8_t)handle);
@@ -847,11 +774,11 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validInt(tmv["control_loop_hz"], 50, 1000) ||
         !validBool(tmv["log_standby"]))) return false;
 
-    JsonVariantConst sav = doc["starter_assist"];
+    JsonVariantConst sav = doc["starter_control"];
     if (present(sav) && (!sav.is<JsonObjectConst>() ||
-        !validNumber(sav["pct"], 0.0f, 100.0f) ||
-        !validNumber(sav["exit_rpm"], 0.0f, 1000000.0f) ||
-        !validNumber(sav["ramp_pct_per_s"], 0.0f, 1000.0f))) return false;
+        !validNumber(sav["low_rpm_support_pct"], 0.0f, 100.0f) ||
+        !validNumber(sav["low_rpm_support_disengage_rpm"], 0.0f, 1000000.0f) ||
+        !validNumber(sav["startup_ramp_pct_per_s"], 0.0f, 1000.0f))) return false;
 
     JsonVariantConst oilxv = doc["oil_advanced"];
     if (present(oilxv) && (!oilxv.is<JsonObjectConst>() ||
@@ -881,15 +808,17 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         if (!rules.is<JsonArrayConst>() || rules.size() > Config::MAX_RULES) return false;
         for (JsonObjectConst rule : rules.as<JsonArrayConst>()) {
             if (!validBool(rule["enabled"]) ||
-                !validSensorHandle(rule["sensor"]) ||
-                !validInt(rule["op"], 0, 4) ||
+                !validInt(rule["kind"], 0, 1) ||
+                !validInt(rule["op"], 0, 1) ||
                 !validNumber(rule["threshold"], -1000000.0f, 1000000.0f) ||
-                !validActuatorHandle(rule["actuator"]) ||
-                // canonical unit is fraction -1..1 (negative = leave unchanged)
-                !validNumber(rule["on_value"], -1.0f, 1.0f) ||
-                !validNumber(rule["off_value"], -1.0f, 1.0f) ||
+                !validNumber(rule["on_value"], 0.0f, 1.0f) ||
+                !validNumber(rule["off_value"], 0.0f, 1.0f) ||
                 !validNumber(rule["hysteresis"], 0.0f, 1000000.0f) ||
-                !validInt(rule["mode_mask"], 0, 31) ||
+                !validNumber(rule["input_min"], -1000000.0f, 1000000.0f) ||
+                !validNumber(rule["input_max"], -1000000.0f, 1000000.0f) ||
+                !validNumber(rule["output_min"], 0.0f, 1.0f) ||
+                !validNumber(rule["output_max"], 0.0f, 1.0f) ||
+                !validInt(rule["mode_mask"], 1, 15) ||
                 !validRuleId(rule["source"], sizeof(Config::Rule::sourceId), ruleSourceHandle, ruleSensorAvailable) ||
                 !validRuleId(rule["target"], sizeof(Config::Rule::targetId), ruleTargetHandle, ruleActuatorAvailable)) return false;
         }
@@ -1138,16 +1067,29 @@ void Config::sanitizeForHardware() {
     if (!HardwareConfig::hasOilPump) sessionLogMask &= ~SLOG_OIL_PCT;
 
     int out = 0;
+    uint8_t claimedTargets[MAX_RULES] = {};
+    int claimedTargetCount = 0;
     for (int i = 0; i < ruleCount; i++) {
         Rule r = rules[i];
         if (!ruleSensorAvailable(r.sensor) || !ruleActuatorAvailable(r.actuator)) continue;
-        r.onValue = constrain(r.onValue, -1.0f, 1.0f);
-        r.offValue = constrain(r.offValue, -1.0f, 1.0f);
-        if (r.hysteresis < 0.0f) r.hysteresis = 0.0f;
-        r.modeMask &= 0x1F;
-        if (r.modeMask == 0) {
-            r.modeMask = (uint8_t)((1u << (int)SysMode::STARTUP) | (1u << (int)SysMode::RUNNING));
+        bool duplicateTarget = false;
+        if (r.actuator != 13 && r.actuator != 14) {
+            for (int j = 0; j < claimedTargetCount; ++j)
+                if (claimedTargets[j] == r.actuator) { duplicateTarget = true; break; }
         }
+        if (duplicateTarget) continue;
+        r.kind = constrain(r.kind, 0, 1);
+        r.op = constrain(r.op, 0, 1);
+        r.onValue = constrain(r.onValue, 0.0f, 1.0f);
+        r.offValue = constrain(r.offValue, 0.0f, 1.0f);
+        r.outputMin = constrain(r.outputMin, 0.0f, 1.0f);
+        r.outputMax = constrain(r.outputMax, 0.0f, 1.0f);
+        if (r.kind == 1 && (!isfinite(r.inputMin) || !isfinite(r.inputMax) || r.inputMax <= r.inputMin)) continue;
+        if (r.hysteresis < 0.0f) r.hysteresis = 0.0f;
+        r.modeMask &= 0x0F;
+        if (r.modeMask == 0) continue;
+        if (r.actuator != 13 && r.actuator != 14)
+            claimedTargets[claimedTargetCount++] = r.actuator;
         rules[out++] = r;
     }
     for (int i = out; i < MAX_RULES; i++) rules[i] = {};
@@ -1517,7 +1459,7 @@ void Config::_applyDefaults() {
     toolStarterEnTestMs = 1000; toolPropPitchTestMs = 3000; toolPropPitchTestPct = 50.0f;
     wsIntervalMs = 333; snapshotIntervalMs = 10000; controlLoopHz = 400; logStandby = false;
     strcpy(uiTheme, "carbon");
-    starterAssistPct = 15.0f; starterAssistExitRpm = 1000.0f; starterRampPctPerSec = 10.0f;
+    starterLowRpmSupportPct = 15.0f; starterLowRpmSupportDisengageRpm = 1000.0f; starterStartupRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
     standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
     standbyOilFeedBar = 0.0f;
@@ -1595,7 +1537,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
     oilMinPct          = oil["min_pct"]            | oilMinPct;
     oilFailsafeDelayMs = oil["failsafe_delay_ms"]  | oilFailsafeDelayMs;
     oilFailsafePct     = oil["failsafe_pct"]       | oilFailsafePct;
-    oilZeroBar         = oil["zero_bar"]           | oilZeroBar; // compatibility with older UI saves
 
     auto su = doc["sequence"]["startup"];
     startupOilArmTimeoutMs = su["oil_arm_timeout_ms"]      | startupOilArmTimeoutMs;
@@ -1792,10 +1733,10 @@ void Config::_fromDoc(const JsonDocument& doc) {
     controlLoopHz      = tm["control_loop_hz"]      | controlLoopHz;
     if (!tm["log_standby"].isNull()) logStandby = tm["log_standby"].as<bool>();
 
-    auto sa = doc["starter_assist"];
-    starterAssistPct      = sa["pct"]           | starterAssistPct;
-    starterAssistExitRpm  = sa["exit_rpm"]      | starterAssistExitRpm;
-    starterRampPctPerSec  = sa["ramp_pct_per_s"]| starterRampPctPerSec;
+    auto sa = doc["starter_control"];
+    starterLowRpmSupportPct = sa["low_rpm_support_pct"] | starterLowRpmSupportPct;
+    starterLowRpmSupportDisengageRpm = sa["low_rpm_support_disengage_rpm"] | starterLowRpmSupportDisengageRpm;
+    starterStartupRampPctPerSec = sa["startup_ramp_pct_per_s"] | starterStartupRampPctPerSec;
 
     auto oilx = doc["oil_advanced"];
     oilZeroBar          = oilx["zero_bar"]      | oilZeroBar;
@@ -1814,13 +1755,6 @@ void Config::_fromDoc(const JsonDocument& doc) {
     cooldownSkipHoldMs = misc["cooldown_skip_hold_ms"] | cooldownSkipHoldMs;
     if (!misc["igniter_on_start"].isNull()) igniterOnStart = misc["igniter_on_start"].as<bool>();
     manualRelightIgnitionTarget = misc["igniter_on_start_target"] | manualRelightIgnitionTarget;
-
-    // Legacy migration: fuel_pump.idle_max_pct was merged into
-    // throttle.idle_max_pct (both drove the idle ceiling). Adopt the old value
-    // if a pre-merge config still carries it, so running idle isn't reset.
-    auto fpLegacy = doc["fuel_pump"];
-    if (!fpLegacy["idle_max_pct"].isNull())
-        throttleIdleMaxPct = fpLegacy["idle_max_pct"] | throttleIdleMaxPct;
 
     auto rh = doc["rpm_health"];
     rpmJumpThreshold  = rh["jump_threshold"]   | rpmJumpThreshold;
@@ -1915,25 +1849,28 @@ void Config::_fromDoc(const JsonDocument& doc) {
             if (ruleCount >= MAX_RULES) break;
             Rule& r = rules[ruleCount++];
             r.enabled   = jr["enabled"]   | false;
-            r.sensor    = (uint8_t)(jr["sensor"]    | 0);
+            r.kind      = (uint8_t)(jr["kind"]      | 0);
             r.op        = (uint8_t)(jr["op"]        | 0);
             r.threshold = jr["threshold"] | 0.0f;
-            r.actuator  = (uint8_t)(jr["actuator"]  | 0);
             r.onValue   = jr["on_value"]  | 1.0f;
             r.offValue  = jr["off_value"] | 0.0f;
             r.hysteresis= jr["hysteresis"] | 0.0f;
-            r.modeMask  = (uint8_t)(jr["mode_mask"] | ((1u << (int)SysMode::STARTUP) | (1u << (int)SysMode::RUNNING)));
+            r.inputMin  = jr["input_min"]  | 0.0f;
+            r.inputMax  = jr["input_max"]  | 1.0f;
+            r.outputMin = jr["output_min"] | 0.0f;
+            r.outputMax = jr["output_max"] | 1.0f;
+            r.modeMask  = (uint8_t)(jr["mode_mask"] | 0x0F);
             const char* n = jr["name"] | "";
             strncpy(r.name, n, sizeof(r.name) - 1);
             r.name[sizeof(r.name) - 1] = '\0';
             const char* source = jr["source"] | "";
             const char* target = jr["target"] | "";
-            if (!source[0]) source = ruleSourceId(r.sensor);
-            if (!target[0]) target = ruleTargetId(r.actuator);
             strlcpy(r.sourceId, source, sizeof(r.sourceId));
             strlcpy(r.targetId, target, sizeof(r.targetId));
-            if (r.sourceId[0]) { int8_t h = ruleSourceHandle(r.sourceId); if (h < 0) r.enabled = false; else r.sensor = (uint8_t)h; }
-            if (r.targetId[0]) { int8_t h = ruleTargetHandle(r.targetId); if (h < 0) r.enabled = false; else r.actuator = (uint8_t)h; }
+            int8_t sourceHandle = ruleSourceHandle(r.sourceId);
+            int8_t targetHandle = ruleTargetHandle(r.targetId);
+            if (sourceHandle < 0 || targetHandle < 0) r.enabled = false;
+            else { r.sensor = (uint8_t)sourceHandle; r.actuator = (uint8_t)targetHandle; }
         }
     }
 
@@ -2001,23 +1938,26 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (relightMinRpm < 0.0f) relightMinRpm = 0.0f;
     if (relightConfirmRpm < 0.0f) relightConfirmRpm = 0.0f;
     if (relightTotRiseC < 0.0f) relightTotRiseC = 0.0f;
-    if (starterAssistExitRpm < 0.0f) starterAssistExitRpm = 0.0f;
-    if (starterRampPctPerSec < 0.0f) starterRampPctPerSec = 0.0f;
+    if (starterLowRpmSupportDisengageRpm < 0.0f) starterLowRpmSupportDisengageRpm = 0.0f;
+    if (starterStartupRampPctPerSec < 0.0f) starterStartupRampPctPerSec = 0.0f;
     standbyOilSource = constrain(standbyOilSource, 0, 2);
     manualRelightIgnitionTarget = constrain(manualRelightIgnitionTarget, 0, 2);
     for (int i = 0; i < ruleCount; i++) {
         if (rules[i].sensor > 26 && !ChannelRegistry::isInputSensor(rules[i].sensor))
             rules[i].enabled = false;
-        rules[i].op = constrain(rules[i].op, 0, 4);
+        rules[i].kind = constrain(rules[i].kind, 0, 1);
+        rules[i].op = constrain(rules[i].op, 0, 1);
         if (rules[i].actuator > 17 && !ChannelRegistry::isOutputActuator(rules[i].actuator))
             rules[i].enabled = false;
         if (rules[i].hysteresis < 0.0f) rules[i].hysteresis = 0.0f;
-        rules[i].onValue = constrain(rules[i].onValue, -1.0f, 1.0f);
-        rules[i].offValue = constrain(rules[i].offValue, -1.0f, 1.0f);
-        rules[i].modeMask &= 0x1F;
-        if (rules[i].modeMask == 0) {
-            rules[i].modeMask = (uint8_t)((1u << (int)SysMode::STARTUP) | (1u << (int)SysMode::RUNNING));
-        }
+        rules[i].onValue = constrain(rules[i].onValue, 0.0f, 1.0f);
+        rules[i].offValue = constrain(rules[i].offValue, 0.0f, 1.0f);
+        rules[i].outputMin = constrain(rules[i].outputMin, 0.0f, 1.0f);
+        rules[i].outputMax = constrain(rules[i].outputMax, 0.0f, 1.0f);
+        if (!isfinite(rules[i].inputMin)) rules[i].inputMin = 0.0f;
+        if (!isfinite(rules[i].inputMax) || rules[i].inputMax <= rules[i].inputMin) rules[i].inputMax = rules[i].inputMin + 1.0f;
+        rules[i].modeMask &= 0x0F;
+        if (rules[i].modeMask == 0) rules[i].enabled = false;
     }
     if (standbyOilRpmLimit < 0.0f) standbyOilRpmLimit = 0.0f;
     auto clampToolMs = [](uint32_t& value, uint32_t fallback, uint32_t minMs) {
@@ -2097,7 +2037,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (idleLearnAccelMax < 0.0f) idleLearnAccelMax = 0.0f;
     glowPreheatMaxPct = constrain(glowPreheatMaxPct, 0.0f, 100.0f);
     glowHoldPct = constrain(glowHoldPct, 0.0f, 100.0f);
-    starterAssistPct = constrain(starterAssistPct, 0.0f, 100.0f);
+    starterLowRpmSupportPct = constrain(starterLowRpmSupportPct, 0.0f, 100.0f);
     standbyOilFeedPct = constrain(standbyOilFeedPct, 0.0f, 100.0f);
     standbyOilFeedBar = constrain(standbyOilFeedBar, 0.0f, 20.0f);
     if (modifiedIdleMultiplier < 0.0f) modifiedIdleMultiplier = 0.0f;
@@ -2418,10 +2358,10 @@ void Config::_toDoc(JsonDocument& doc) {
     tm["control_loop_hz"]      = controlLoopHz;
     tm["log_standby"]          = logStandby;
 
-    auto sa = doc["starter_assist"].to<JsonObject>();
-    sa["pct"]            = starterAssistPct;
-    sa["exit_rpm"]       = starterAssistExitRpm;
-    sa["ramp_pct_per_s"] = starterRampPctPerSec;
+    auto sa = doc["starter_control"].to<JsonObject>();
+    sa["low_rpm_support_pct"] = starterLowRpmSupportPct;
+    sa["low_rpm_support_disengage_rpm"] = starterLowRpmSupportDisengageRpm;
+    sa["startup_ramp_pct_per_s"] = starterStartupRampPctPerSec;
 
     auto oilx = doc["oil_advanced"].to<JsonObject>();
     oilx["zero_bar"]     = oilZeroBar;
@@ -2519,17 +2459,20 @@ void Config::_toDoc(JsonDocument& doc) {
             const Rule& r = rules[i];
             auto jr = arr.add<JsonObject>();
             jr["enabled"]   = r.enabled;
-            jr["sensor"]    = r.sensor;
+            jr["kind"]      = r.kind;
             jr["op"]        = r.op;
             jr["threshold"] = r.threshold;
-            jr["actuator"]  = r.actuator;
             jr["on_value"]  = r.onValue;
             jr["off_value"] = r.offValue;
             jr["hysteresis"]= r.hysteresis;
+            jr["input_min"] = r.inputMin;
+            jr["input_max"] = r.inputMax;
+            jr["output_min"]= r.outputMin;
+            jr["output_max"]= r.outputMax;
             jr["mode_mask"] = r.modeMask;
             jr["name"]      = r.name;
-            jr["source"]    = r.sourceId[0] ? r.sourceId : ruleSourceId(r.sensor);
-            jr["target"]    = r.targetId[0] ? r.targetId : ruleTargetId(r.actuator);
+            jr["source"]    = r.sourceId;
+            jr["target"]    = r.targetId;
         }
     }
 }

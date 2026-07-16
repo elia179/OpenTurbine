@@ -326,62 +326,6 @@ void normalizeS3StatusLedDefault(JsonDocument& doc) {
 #endif
 }
 
-void normalizeChannelRegistryForBoot(JsonDocument& doc) {
-    JsonVariant registryVar = doc["channel_registry"];
-    if (!registryVar.is<JsonObject>()) return;
-    JsonObject registry = registryVar.as<JsonObject>();
-    auto normalizeArray = [](JsonArray arr, bool input) {
-        for (int i = (int)arr.size() - 1; i >= 0; --i) {
-            JsonObject ch = arr[i].as<JsonObject>();
-            const int pin = ch["pin"] | -1;
-            const int temperatureInterface = input ? (ch["temp_interface"] | 0) : 0;
-            const bool spiThermocouple = temperatureInterface >= 1 && temperatureInterface <= 3;
-            if (pin < 0 && !spiThermocouple) {
-                arr.remove(i);
-                continue;
-            }
-            const int driver = ch["driver"] | (input ? (int)ChannelRegistry::Digital : (int)ChannelRegistry::Relay);
-            float minValue = ch["min"] | 0.0f;
-            float maxValue = ch["max"] | 1.0f;
-            if (input) {
-                if (driver == ChannelRegistry::Analog &&
-                    (minValue < 0.0f || maxValue > 4095.0f || maxValue <= minValue)) {
-                    ch["min"] = 0.0f;
-                    ch["max"] = 4095.0f;
-                } else if (driver == ChannelRegistry::Pulse &&
-                           (minValue < 0.0f || maxValue <= minValue)) {
-                    ch["min"] = 0.0f;
-                    ch["max"] = 100.0f;
-                } else if (driver == ChannelRegistry::RcPwm &&
-                           (minValue < 500.0f || maxValue > 2500.0f || maxValue <= minValue)) {
-                    ch["min"] = 1000.0f;
-                    ch["max"] = 2000.0f;
-                } else if (driver == ChannelRegistry::PwmDuty &&
-                           (minValue < 0.0f || maxValue > 1.0f || maxValue <= minValue)) {
-                    ch["min"] = 0.0f;
-                    ch["max"] = 1.0f;
-                }
-                if ((ch["pullup"] | false) && (ch["pulldown"] | false)) ch["pulldown"] = false;
-            } else {
-                if (driver == ChannelRegistry::Servo &&
-                    (minValue < 500.0f || maxValue > 2500.0f || maxValue <= minValue)) {
-                    ch["min"] = 1000.0f;
-                    ch["max"] = 2000.0f;
-                } else if (driver == ChannelRegistry::Pwm) {
-                    if (minValue < 0.0f) ch["min"] = 0.0f;
-                    if (maxValue > 1.0f) ch["max"] = 1.0f;
-                    if ((ch["max"] | 1.0f) < (ch["min"] | 0.0f)) {
-                        ch["min"] = 0.0f;
-                        ch["max"] = 1.0f;
-                    }
-                }
-            }
-        }
-    };
-    if (registry["inputs"].is<JsonArray>()) normalizeArray(registry["inputs"].as<JsonArray>(), true);
-    if (registry["outputs"].is<JsonArray>()) normalizeArray(registry["outputs"].as<JsonArray>(), false);
-}
-
 bool gpioAllowed(int pin) {
     if (pin < 0) return true;
 #if defined(OT_PLATFORM_ESP32S3)
@@ -475,10 +419,9 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
     const bool hasN1 = docSensorEnabled(doc, "n1_rpm") ||
                        registryHasBinding(registry, "primary_n1", ChannelRegistry::Input) ||
                        registryHasRole(registry, ChannelRegistry::Input, "speed");
-    const bool hasN2 = (doc["has_two_shaft"] | false) &&
-                       (docSensorEnabled(doc, "n2_rpm") ||
+    const bool hasN2 = docSensorEnabled(doc, "n2_rpm") ||
                         registryHasBinding(registry, "primary_n2", ChannelRegistry::Input) ||
-                        registryHasRole(registry, ChannelRegistry::Input, "speed"));
+                        registryHasRole(registry, ChannelRegistry::Input, "speed");
     const bool hasEgt = docSensorEnabled(doc, "tot") || docSensorEnabled(doc, "tit") ||
                         registryHasBinding(registry, "primary_egt", ChannelRegistry::Input) ||
                         registryHasRole(registry, ChannelRegistry::Input, "temperature");
@@ -506,7 +449,7 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
     if ((controllers["throttle_slew"] | false) && !hasThrottle) return false;
     if ((controllers["dynamic_idle"] | false) && (!hasThrottle || (!hasN1 && !hasN2))) return false;
     if ((controllers["governor"] | false) && (!hasN2 || (!hasThrottle && !hasProportionalPropPitch))) return false;
-    if ((doc["actuators"]["starter"]["assist_enabled"] | false) &&
+    if ((doc["actuators"]["starter"]["low_rpm_support_enabled"] | false) &&
         (!docActuatorEnabled(doc, "starter") || !hasN1)) return false;
 
     JsonVariantConst safety = doc["safety"];
@@ -614,7 +557,7 @@ const char* customSensorKey(uint8_t sensor) {
         if (idx < HardwareConfig::channelRegistry.inputCount)
             return HardwareConfig::channelRegistry.inputs[idx].id;
     }
-    static const char* keys[] = {
+    static const char* const keys[] = {
         "oil_temp", "tot", "n1_rpm", "oil_press", "tit", "batt_voltage",
         "n2_rpm", "di0", "di1", "di2", "di3", "fuel_press", "fuel_flow",
         "p1", "p2", "torque", "flame", "throttle_in", "idle_in",
@@ -1268,7 +1211,7 @@ bool stagedOutputAvailable(JsonVariantConst doc, const ChannelRegistry* registry
     if (!id || !id[0]) return true;
     auto act = doc["actuators"];
     auto enabled = [&](const char* key) { return act[key]["enabled"].as<bool>(); };
-    auto abEnabled = [&](const char* key) { return doc["has_afterburner"].as<bool>() && enabled(key); };
+    auto abEnabled = [&](const char* key) { return enabled(key); };
     if (!strcmp(id, "request_shutdown") || !strcmp(id, "request_fault")) return true;
     if (!strcmp(id, "cooling_fan_main") || !strcmp(id, "cooling_fan") || !strcmp(id, "cool_fan")) return enabled("cool_fan");
     if (!strcmp(id, "bleed_valve_main") || !strcmp(id, "bleed_valve")) return enabled("bleed_valve");
@@ -1307,7 +1250,7 @@ bool stagedInputAvailable(JsonVariantConst doc, const ChannelRegistry* registry,
     if (!strcmp(id, "oil_pressure_main") || !strcmp(id, "oil_press")) return enabled("oil_press");
     if (!strcmp(id, "tit_main") || !strcmp(id, "tit")) return enabled("tit");
     if (!strcmp(id, "batt_voltage_main") || !strcmp(id, "batt_voltage")) return enabled("batt_voltage");
-    if (!strcmp(id, "n2_main") || !strcmp(id, "n2_rpm") || !strcmp(id, "primary_n2")) return doc["has_two_shaft"].as<bool>() && enabled("n2_rpm");
+    if (!strcmp(id, "n2_main") || !strcmp(id, "n2_rpm") || !strcmp(id, "primary_n2")) return enabled("n2_rpm");
     if (!strcmp(id, "di0")) return diPin(0);
     if (!strcmp(id, "di1")) return diPin(1);
     if (!strcmp(id, "di2")) return diPin(2);
@@ -1320,12 +1263,12 @@ bool stagedInputAvailable(JsonVariantConst doc, const ChannelRegistry* registry,
     if (!strcmp(id, "flame_main") || !strcmp(id, "flame")) return enabled("flame");
     if (!strcmp(id, "throttle_input_main") || !strcmp(id, "throttle_in") || !strcmp(id, "operator_throttle")) return enabled("throttle_input");
     if (!strcmp(id, "idle_input_main") || !strcmp(id, "idle_in") || !strcmp(id, "idle_input") || !strcmp(id, "operator_idle")) return enabled("idle_input");
-    if (!strcmp(id, "ab_flame_main") || !strcmp(id, "ab_flame")) return doc["has_afterburner"].as<bool>() && enabled("ab_flame");
+    if (!strcmp(id, "ab_flame_main") || !strcmp(id, "ab_flame")) return enabled("ab_flame");
     if (!strcmp(id, "glow_current_main") || !strcmp(id, "glow_current")) return doc["actuators"]["glow_plug"]["enabled"].as<bool>() && doc["actuators"]["glow_plug"]["has_current"].as<bool>();
     if (!strcmp(id, "igniter_current_main") || !strcmp(id, "igniter_current")) return doc["actuators"]["igniter"]["enabled"].as<bool>() && doc["actuators"]["igniter"]["has_current"].as<bool>();
     if (!strcmp(id, "igniter2_current_main") || !strcmp(id, "igniter2_current")) return doc["actuators"]["igniter2"]["enabled"].as<bool>() && doc["actuators"]["igniter2"]["has_current"].as<bool>();
     if (!strcmp(id, "oil_pump_current_main") || !strcmp(id, "oil_pump_current")) return doc["actuators"]["oil_pump"]["enabled"].as<bool>() && doc["actuators"]["oil_pump"]["has_current"].as<bool>();
-    if (!strcmp(id, "ab_input_main") || !strcmp(id, "ab_input")) return doc["has_afterburner"].as<bool>() && (doc["ab_trigger"]["input_pin"] | -1) >= 0;
+    if (!strcmp(id, "ab_input_main") || !strcmp(id, "ab_input")) return (doc["ab_trigger"]["input_pin"] | -1) >= 0;
     if (!strcmp(id, "start_switch")) return (doc["controls"]["start_pin"] | -1) >= 0;
     if (!strcmp(id, "stop_switch")) return (doc["controls"]["stop_pin"] | -1) >= 0;
     if (!registry) return false;
@@ -1401,8 +1344,11 @@ bool optionalPinAllowed(JsonVariantConst object, const char* field, bool (*allow
 
 bool validatePlatformPins(const JsonDocument& doc,
                           const ChannelRegistry* parsedRegistry = nullptr) {
-    const bool hasAfterburner = doc["has_afterburner"] | false;
-    const bool hasTwoShaft = doc["has_two_shaft"] | false;
+    const bool hasAfterburner = enabled(doc["actuators"]["ab_sol"]) ||
+        enabled(doc["actuators"]["ab_pump"]) ||
+        enabled(doc["ab_flame"]) || jsonPin(doc["ab_trigger"], "switch_pin") >= 0 ||
+        jsonPin(doc["ab_trigger"], "input_pin") >= 0;
+    const bool hasTwoShaft = enabled(doc["sensors"]["n2_rpm"]);
     JsonVariantConst controls = doc["controls"];
     const int stopPin = jsonPin(controls, "stop_pin");
     const int startPin = jsonPin(controls, "start_pin");
@@ -1770,9 +1716,39 @@ bool validatePlatformPins(const JsonDocument& doc,
         const ChannelRegistry& registry = *parsedRegistry;
         for (uint8_t i = 0; i < registry.inputCount; i++) {
             const auto& ch = registry.inputs[i];
+            const bool hx711Torque = !strcmp(ch.role, "torque") && ch.torqueInterface == 1;
+            if (hx711Torque) {
+                if (!gpioAllowed(ch.pin) || !outputGpioAllowed(ch.hx711Clk) ||
+                    ch.pin == ch.hx711Clk) return false;
+                // Core torque pins are mirrored into the runtime adapter and
+                // validated there when present. Canonical-only documents still
+                // need both physical pins entered into the collision set.
+                JsonVariantConst legacyTorque = doc["sensors"]["torque"];
+                const bool mirrored = (legacyTorque["enabled"] | false) &&
+                    (legacyTorque["hx711"] | false) &&
+                    jsonPin(legacyTorque, "dt_pin") == ch.pin &&
+                    jsonPin(legacyTorque, "clk_pin") == ch.hx711Clk;
+                if (!mirrored && (!addPin(ch.pin) || !addPin(ch.hx711Clk))) return false;
+                continue;
+            }
             const bool thermocouple = strcmp(ch.role, "temperature") == 0 &&
                                       ch.temperatureInterface >= 1 && ch.temperatureInterface <= 3;
             if (thermocouple) {
+                // Core TOT/TIT channels are serialized both in the canonical
+                // registry and in the legacy runtime adapter.  The legacy copy
+                // has already claimed these pins above, so do not count the
+                // same physical thermocouple a second time as a CS collision.
+                const char* legacyKey = !strcmp(ch.purpose, "tot") ? "tot" :
+                                        !strcmp(ch.purpose, "tit") ? "tit" : nullptr;
+                if (legacyKey) {
+                    JsonVariantConst legacy = doc["sensors"][legacyKey];
+                    const bool mirrored = (legacy["enabled"] | false) &&
+                        jsonPin(legacy, "clk") == ch.spiClk &&
+                        jsonPin(legacy, "cs") == ch.spiCs &&
+                        jsonPin(legacy, "miso") == ch.spiMiso &&
+                        (ch.temperatureInterface != 3 || jsonPin(legacy, "mosi") == ch.spiMosi);
+                    if (mirrored) continue;
+                }
                 // A registry thermocouple has no generic GPIO.  Validate its
                 // actual SPI wiring here, using the same shared-bus rule as
                 // the established TOT/TIT hardware: CLK/MISO/MOSI may share,
@@ -2019,7 +1995,7 @@ int   HardwareConfig::starterLedcFreqHz   = 5000;
 int   HardwareConfig::starterLedcBits     = 12;
 float HardwareConfig::starterPwmMinPct    = 0.0f;
 float HardwareConfig::starterPwmMaxPct    = 100.0f;
-bool  HardwareConfig::starterAssistEnabled = true;   // enabled by default for servo/PWM types
+bool  HardwareConfig::starterLowRpmSupportEnabled = true;
 
 int   HardwareConfig::oilPumpPin       = OT_OIL_PUMP_PIN;
 #ifdef OT_OIL_PUMP_ONOFF
@@ -2315,49 +2291,25 @@ void HardwareConfig::load() {
         return;
     }
     normalizeS3StatusLedDefault(workDoc);
-    normalizeChannelRegistryForBoot(workDoc);
+    if (!workDoc["channel_registry"].is<JsonObjectConst>()) {
+        inhibitStartForHardwareConfigFailure(
+            "Cannot start: hardware channel registry is missing or invalid.");
+        Serial.println("[HWCfg] Hardware channel registry is missing or invalid - START inhibited");
+        return;
+    }
     if (!validatePlatformPins(workDoc)) {
         inhibitStartForHardwareConfigFailure(
             "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");
         Serial.println("[HWCfg] Hardware GPIO validation failed - START inhibited");
         return;
     }
-    if (!workDoc["channel_registry"].isNull() &&
-        (workDoc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) {
+    if ((workDoc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) {
         inhibitStartForHardwareConfigFailure(
             "Cannot start: hardware channel registry was written by newer firmware.");
         Serial.println("[HWCfg] Future channel registry version - START inhibited");
         return;
     }
     _fromDoc(workDoc);
-    bool registryBootMigration = false;
-    auto addBootOperatorInput = [&](const char* id, const char* name, int pin, bool rcPwm) {
-        if (pin < 0 || channelRegistry.find(id, ChannelRegistry::Input)) return;
-        ChannelRegistry::Channel c;
-        c.installed = true;
-        c.direction = ChannelRegistry::Input;
-        c.driver = rcPwm ? ChannelRegistry::RcPwm : ChannelRegistry::Analog;
-        c.pin = pin;
-        strlcpy(c.id, id, sizeof(c.id));
-        strlcpy(c.name, name, sizeof(c.name));
-        strlcpy(c.role, "operator", sizeof(c.role));
-        if (c.driver == ChannelRegistry::Analog) { c.minValue = 0.0f; c.maxValue = 4095.0f; }
-        if (c.driver == ChannelRegistry::RcPwm) { c.minValue = 1000.0f; c.maxValue = 2000.0f; }
-        registryBootMigration |= channelRegistry.add(c);
-    };
-    if (hasThrottleInput)
-        addBootOperatorInput("operator_throttle", "Throttle Input", throttleInputPin, throttleInputRcPwm);
-    if (hasIdleInput)
-        addBootOperatorInput("operator_idle", "Idle Input", idleInputPin, idleInputRcPwm);
-    if (registryBootMigration) {
-        Serial.println("[HWCfg] Persisting derived operator input registry channels");
-        if (!save()) {
-            inhibitStartForHardwareConfigFailure(
-                "Cannot start: hardware registry migration could not be saved.", true);
-            Serial.println("[HWCfg] Registry migration save failed - START inhibited");
-            return;
-        }
-    }
     Serial.printf("[HWCfg] Loaded OK - profile: %s\n", profileId);
 }
 
@@ -2554,7 +2506,7 @@ void HardwareConfig::applyDefaults() {
     starterEnPin     = OT_STARTER_EN_PIN;
     starterEnActiveH = OT_STARTER_EN_ACTIVE_H;
     starterEnDelayMs = 1000;             // mirror static-init default (was missing here)
-    starterAssistEnabled = true;         // mirror static-init default; sanitizeForHardware
+    starterLowRpmSupportEnabled = true;
                                          // disables it if no starter + N1 sensor
 
     igniter2Pin = -1; igniter2ActiveH = true; igniter2Pwm = false;
@@ -2712,15 +2664,20 @@ void HardwareConfig::applyDefaults() {
     // A factory reset must describe the fitted profile on the Hardware page,
     // not leave the modern inventory empty while only legacy fields are live.
     channelRegistry.clear();
-    auto addDefaultInput = [](const char* id, const char* name, const char* purpose,
-                              int pin, ChannelRegistry::Driver driver) {
+    auto addDefaultInput = [](const char* id, const char* name, const char* role, const char* purpose,
+                              int pin, ChannelRegistry::Driver driver, float pulsesPerUnit = 1.0f,
+                              float analogMvPerUnit = 1000.0f, float analogDivider = 1.0f) {
         if (pin < 0) return;
         ChannelRegistry::Channel c;
         c.installed = true; c.direction = ChannelRegistry::Input;
         c.driver = driver; c.pin = pin;
         strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, name, sizeof(c.name));
-        strlcpy(c.role, "operator", sizeof(c.role)); strlcpy(c.purpose, purpose, sizeof(c.purpose));
+        strlcpy(c.role, role, sizeof(c.role)); strlcpy(c.purpose, purpose, sizeof(c.purpose));
+        c.pulsesPerUnit = pulsesPerUnit > 0.0f ? pulsesPerUnit : 1.0f;
+        c.analogMvPerUnit = analogMvPerUnit > 0.0f ? analogMvPerUnit : 1000.0f;
+        c.analogDivider = analogDivider >= 1.0f ? analogDivider : 1.0f;
         if (driver == ChannelRegistry::Analog) { c.minValue = 0.0f; c.maxValue = 4095.0f; }
+        else if (driver == ChannelRegistry::Pulse) { c.minValue = 0.0f; c.maxValue = 100000.0f; }
         else if (driver == ChannelRegistry::RcPwm) { c.minValue = 1000.0f; c.maxValue = 2000.0f; }
         channelRegistry.add(c);
     };
@@ -2739,16 +2696,89 @@ void HardwareConfig::applyDefaults() {
         c.safeDemand = 0.0f;
         channelRegistry.add(c);
     };
-    if (hasThrottleInput) addDefaultInput("operator_throttle", "Throttle Input", "throttle", throttleInputPin,
+    auto addDefaultTemperature = [](const char* id, const char* name, const char* purpose,
+                                    const char* chip, const char* tcType,
+                                    int pin, int clk, int cs, int miso, int mosi,
+                                    int resolution, float beta, float r0, float rFixed) {
+        ChannelRegistry::Channel c;
+        c.installed = true; c.direction = ChannelRegistry::Input; c.driver = ChannelRegistry::Analog;
+        c.minValue = 0.0f; c.maxValue = 4095.0f; c.pin = pin;
+        strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, name, sizeof(c.name));
+        strlcpy(c.role, "temperature", sizeof(c.role)); strlcpy(c.purpose, purpose, sizeof(c.purpose));
+        if (!strcmp(chip, "max6675")) c.temperatureInterface = 1;
+        else if (!strcmp(chip, "max31855")) c.temperatureInterface = 2;
+        else if (!strcmp(chip, "max31856")) c.temperatureInterface = 3;
+        else if (!strcmp(chip, "ntc")) c.temperatureInterface = 4;
+        else if (!strcmp(chip, "ds18b20")) c.temperatureInterface = 5;
+        if (c.temperatureInterface >= 1 && c.temperatureInterface <= 3) {
+            c.pin = -1; c.spiClk = clk; c.spiCs = cs; c.spiMiso = miso; c.spiMosi = mosi;
+            strlcpy(c.tcType, tcType && tcType[0] ? tcType : "K", sizeof(c.tcType));
+        }
+        c.temperatureResolution = resolution;
+        c.thermistorBeta = beta; c.thermistorR0 = r0; c.thermistorRFixed = rFixed;
+        channelRegistry.add(c);
+    };
+    if (hasN1Rpm) addDefaultInput("n1_main", "N1 Speed", "speed", "n1_speed", n1RpmPin, ChannelRegistry::Pulse, n1RpmPpr);
+    if (hasN2Rpm) addDefaultInput("n2_main", "N2 Speed", "speed", "n2_speed", n2RpmPin, ChannelRegistry::Pulse, n2RpmPpr);
+    if (hasTot) addDefaultTemperature("tot_main", "Main TOT", "tot", totChip, totTcType, -1, totClk, totCs, totMiso, totMosi, 12, 3950, 10000, 10000);
+    if (hasTit) addDefaultTemperature("tit_main", "Main TIT", "tit", titChip, titTcType, -1, titClk, titCs, titMiso, titMosi, 12, 3950, 10000, 10000);
+    if (hasOilPress) addDefaultInput("oil_pressure_main", "Oil Pressure", "pressure", "oil_pressure", oilPressPin, ChannelRegistry::Analog);
+    if (hasFlame) addDefaultInput("flame_main", "Flame", "flame", "flame", flamePin, ChannelRegistry::Analog);
+    if (hasFuelFlow) addDefaultInput("fuel_flow", "Fuel Flow", "flow", "fuel_flow", fuelFlowPin,
+        fuelFlowType == 1 ? ChannelRegistry::Pulse : ChannelRegistry::Analog, fuelFlowPulsesPerLitre, 330.0f);
+    if (hasFuelPress) addDefaultInput("fuel_pressure", "Fuel Pressure", "pressure", "fuel_pressure", fuelPressPin, ChannelRegistry::Analog, 1.0f, 330.0f);
+    if (hasP1) addDefaultInput("p1_main", "P1 Pressure", "pressure", "p1_pressure", p1Pin, ChannelRegistry::Analog, 1.0f, 330.0f);
+    if (hasP2) addDefaultInput("p2_main", "P2 Pressure", "pressure", "p2_pressure", p2Pin, ChannelRegistry::Analog, 1.0f, 330.0f);
+    if (hasOilTemp) addDefaultTemperature("oil_temperature", "Oil Temperature", "oil_temperature", oilTempChip, oilTempTcType,
+        oilTempPin, oilTempPin, oilTempCs, oilTempMiso, oilTempMosi, oilTempResolution, ntcBeta, ntcR0, ntcRFixed);
+    if (hasBattVoltage) addDefaultInput("battery_voltage", "Battery Voltage", "voltage", "battery_voltage", battVoltPin, ChannelRegistry::Analog, 1.0f, 1000.0f, battVoltDivider);
+    if (hasTorque && !torqueHx711) addDefaultInput("torque_main", "Torque", "torque", "torque", torquePin, ChannelRegistry::Analog, 1.0f,
+        torqueScale > 0.0f ? 1000.0f / torqueScale : 1000.0f);
+    if (hasTorque && torqueHx711 && torqueDtPin >= 0 && torqueClkPin >= 0) {
+        ChannelRegistry::Channel c;
+        c.installed = true; c.direction = ChannelRegistry::Input; c.driver = ChannelRegistry::Analog;
+        c.pin = torqueDtPin; c.minValue = 0.0f; c.maxValue = 4095.0f;
+        c.torqueInterface = 1; c.hx711Clk = torqueClkPin;
+        c.hx711Scale = torqueHxScale; c.hx711Zero = torqueHxZero;
+        strlcpy(c.id, "torque_main", sizeof(c.id)); strlcpy(c.name, "Torque", sizeof(c.name));
+        strlcpy(c.role, "torque", sizeof(c.role)); strlcpy(c.purpose, "torque", sizeof(c.purpose));
+        channelRegistry.add(c);
+    }
+    if (hasAbFlame) addDefaultInput("ab_flame_main", "AB Flame", "flame", "ab_flame", abFlamePin, ChannelRegistry::Analog);
+    if (hasThrottleInput) addDefaultInput("operator_throttle", "Throttle Input", "operator", "throttle", throttleInputPin,
         throttleInputRcPwm ? ChannelRegistry::RcPwm : ChannelRegistry::Analog);
-    if (hasIdleInput) addDefaultInput("operator_idle", "Idle Input", "idle", idleInputPin,
+    if (hasIdleInput) addDefaultInput("operator_idle", "Idle Input", "operator", "idle", idleInputPin,
         idleInputRcPwm ? ChannelRegistry::RcPwm : ChannelRegistry::Analog);
     if (hasThrottle) addDefaultOutput("main_fuel", "Main Fuel Pump", "fuel", "main_fuel", throttlePin, throttleType, throttleLedcFreqHz, throttleLedcBits);
     if (hasStarter) addDefaultOutput("starter", "Starter", "starter", "starter", starterPin, starterType, starterLedcFreqHz, starterLedcBits);
-    if (hasStarterEn) addDefaultOutput("starter_enable", "Starter Enable", "starter_en", "starter_enable", starterEnPin, 2);
     if (hasOilPump) addDefaultOutput("oil_pump_main", "Oil Pump", "oil_pump", "oil_pump", oilPumpPin, oilPumpType, oilPumpFreqHz, oilPumpResBits);
     if (hasFuelSol) addDefaultOutput("fuel_shutoff", "Fuel Shutoff", "fuel_shutoff", "fuel_shutoff", fuelSolPin, 2);
     if (hasIgniter) addDefaultOutput("igniter", "Igniter", "igniter", "igniter", igniterPin, igniterPwm ? 1 : 2);
+    if (hasIgniter2) addDefaultOutput("ab_igniter", "AB Igniter", "ab_igniter", "ab_igniter", igniter2Pin, igniter2Pwm ? 1 : 2);
+    if (hasStarterEn) addDefaultOutput("starter_enable", "Starter Enable", "starter_en", "starter_enable", starterEnPin, 2);
+    if (hasAbSol) addDefaultOutput("ab_solenoid", "Afterburner Fuel Valve", "valve", "ab_valve", abSolPin, 2);
+    if (hasAirstarterSol) addDefaultOutput("air_starter", "Air Starter", "starter", "air_starter", airstarterSolPin, 2);
+    if (hasCoolFan) addDefaultOutput("cooling_fan", "Cooling Fan", "cooling_fan", "cooling_fan", coolFanPin, coolFanType, coolFanFreqHz, coolFanResBits);
+    if (hasAbPump) addDefaultOutput("ab_pump", "AB Fuel Pump", "ab_pump", "ab_pump", abPumpPin, abPumpType, abPumpFreqHz, abPumpResBits);
+    if (hasOilScavengePump) addDefaultOutput("scavenge_pump", "Scavenge Pump", "scavenge_pump", "scavenge_pump", oilScavPumpPin, oilScavPumpType, oilScavPumpFreqHz, oilScavPumpResBits);
+    if (hasFuelPump2) addDefaultOutput("fuel_pump", "Aux Fuel Pump", "fuel_pump", "fuel_pump", fuelPump2Pin, fuelPump2Type, fuelPump2FreqHz, fuelPump2ResBits);
+    if (hasBleedValve) addDefaultOutput("bleed_valve", "Bleed Valve", "valve", "valve", bleedValvePin, bleedValveType, bleedValveFreqHz, bleedValveResBits);
+    if (hasPropPitch) addDefaultOutput("prop_pitch", "Prop Pitch", "prop_pitch", "prop_pitch", propPitchPin, propPitchType, propPitchFreqHz, propPitchResBits);
+    if (hasGlowPlug) addDefaultOutput("glow_plug", "Glow Plug", "glow_plug", "glow_plug", glowPlugPin, glowPlugOutputType == 1 ? 2 : 1, glowPlugFreqHz, glowPlugResBits);
+    auto addDefaultBinding = [](const char* key, const char* channelId, ChannelRegistry::Direction direction) {
+        if (channelRegistry.bindingCount >= ChannelRegistry::MAX_BINDINGS ||
+            !channelRegistry.find(channelId, direction)) return;
+        auto& b = channelRegistry.bindings[channelRegistry.bindingCount++];
+        strlcpy(b.key, key, sizeof(b.key));
+        strlcpy(b.channelId, channelId, sizeof(b.channelId));
+    };
+    addDefaultBinding("primary_n1", "n1_main", ChannelRegistry::Input);
+    addDefaultBinding("primary_n2", "n2_main", ChannelRegistry::Input);
+    addDefaultBinding("primary_egt", "tot_main", ChannelRegistry::Input);
+    addDefaultBinding("operator_throttle", "operator_throttle", ChannelRegistry::Input);
+    addDefaultBinding("main_fuel_output", "main_fuel", ChannelRegistry::Output);
+    addDefaultBinding("main_fuel_shutoff", "fuel_shutoff", ChannelRegistry::Output);
+    addDefaultBinding("main_starter", "starter", ChannelRegistry::Output);
 }
 
 // ── toJson ────────────────────────────────────────────────────
@@ -2785,6 +2815,7 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     }
     if (!validateDisplayLabels(doc["labels"])) return false;
     if (!validateCustomBlockStrings(doc["custom_blocks"])) return false;
+    if (doc["channel_registry"].isNull()) return false;
     const ChannelRegistry* registryForValidation = nullptr;
     // Keep the expanded registry off the AsyncWebServer task stack without
     // permanently reserving a second registry in DRAM.
@@ -2804,7 +2835,7 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
         if (n1["ppr"].isNull() || n1["ppr"].as<float>() <= 0.0f) return false;
     }
     auto n2 = sensors["n2_rpm"];
-    if (doc["has_two_shaft"].as<bool>() && n2["enabled"].as<bool>()) {
+    if (n2["enabled"].as<bool>()) {
         if (n2["ppr"].isNull() || n2["ppr"].as<float>() <= 0.0f) return false;
     }
     if (!validatePlatformPins(doc, registryForValidation)) return false;
@@ -2830,8 +2861,6 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     doc["profile_desc"]     = profileDesc;
     doc["wifi_password"]    = wifiPassword;
     doc["wifi_tx_power_dbm"] = wifiTxPowerDbm;
-    doc["has_afterburner"]  = hasAfterburner;
-    doc["has_two_shaft"]    = hasTwoShaft;
 
     auto ctrl = doc["controls"].to<JsonObject>();
     ctrl["stop_pin"]      = stopPin;
@@ -2928,7 +2957,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     str["active_h"]         = starterActiveH;
     str["ledc_freq"]        = starterLedcFreqHz; str["ledc_bits"] = starterLedcBits;
     str["pwm_min_pct"]      = starterPwmMinPct; str["pwm_max_pct"] = starterPwmMaxPct;
-    str["assist_enabled"]   = starterAssistEnabled;
+    str["low_rpm_support_enabled"] = starterLowRpmSupportEnabled;
 
     auto oilp = acts["oil_pump"].to<JsonObject>();
     oilp["enabled"] = hasOilPump; oilp["pin"] = oilPumpPin;
@@ -3097,7 +3126,6 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     saf["oil_zero"]   = safetyOilZero;
     saf["flameout"]   = safetyFlameout;
     saf["hot_start"]      = safetyHotStart;
-    saf["tit_overtemp"]   = false; // legacy key; overtemp now covers TOT and TIT
     saf["oil_temp_high"]  = safetyOilTempHigh;
     saf["fuel_press_low"] = safetyFuelPressLow;
     saf["batt_low"]       = safetyBattLow;
@@ -3194,14 +3222,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
 // ── _fromDoc ─────────────────────────────────────────────────
 void HardwareConfig::_fromDoc(const JsonDocument& doc) {
-    // Legacy configurations have no registry.  Their singleton fields remain
-    // the boot-time compatibility source until the registry migration is
-    // complete; an empty inventory is deliberately not interpreted as an
-    // instruction to remove legacy hardware.
-    if (!doc["channel_registry"].isNull())
-        channelRegistry.fromJson(doc["channel_registry"].as<JsonObjectConst>());
-    else
-        channelRegistry.clear();
+    channelRegistry.fromJson(doc["channel_registry"].as<JsonObjectConst>());
     const char* id   = doc["profile_id"]    | profileId;
     const char* desc = doc["profile_desc"]  | profileDesc;
     const char* pwd  = doc["wifi_password"] | (const char*)wifiPassword;
@@ -3217,8 +3238,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         Serial.println("[HWCfg] Invalid WiFi password length; using open access point");
         wifiPassword[0] = '\0';
     }
-    if (!doc["has_afterburner"].isNull()) hasAfterburner = doc["has_afterburner"].as<bool>();
-    if (!doc["has_two_shaft"].isNull())   hasTwoShaft    = doc["has_two_shaft"].as<bool>();
+    hasAfterburner = false;
+    hasTwoShaft = false;
 
     auto ctrl = doc["controls"];
     stopPin  = ctrl["stop_pin"]  | stopPin;
@@ -3241,7 +3262,6 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto n2 = s["n2_rpm"];
     if (!n2["enabled"].isNull()) hasN2Rpm = n2["enabled"].as<bool>();
-    hasN2Rpm = hasTwoShaft && hasN2Rpm;
     n2RpmPin = n2["pin"] | n2RpmPin;
     n2RpmPpr = n2["ppr"] | n2RpmPpr;
 
@@ -3365,7 +3385,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     starterPwmMaxPct   = str["pwm_max_pct"] | starterPwmMaxPct;
     starterMinUs = str["min_us"] | starterMinUs;
     starterMaxUs = str["max_us"] | starterMaxUs;
-    if (!str["assist_enabled"].isNull()) starterAssistEnabled = str["assist_enabled"].as<bool>();
+    if (!str["low_rpm_support_enabled"].isNull()) starterLowRpmSupportEnabled = str["low_rpm_support_enabled"].as<bool>();
 
     auto op = a["oil_pump"];
     if (!op["enabled"].isNull())  hasOilPump  = op["enabled"].as<bool>();
@@ -3424,7 +3444,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     starterEnDelayMs   = sen["delay_ms"]  | starterEnDelayMs;
 
     auto abs2 = a["ab_sol"];
-    if (!abs2["enabled"].isNull()) hasAbSol   = hasAfterburner && abs2["enabled"].as<bool>();
+    if (!abs2["enabled"].isNull()) hasAbSol   = abs2["enabled"].as<bool>();
     abSolPin   = abs2["pin"]      | abSolPin;
     if (!abs2["active_h"].isNull()) abSolActiveH = abs2["active_h"].as<bool>();
 
@@ -3446,7 +3466,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     coolFanPwmMaxPct = fan["pwm_max_pct"] | coolFanPwmMaxPct;
 
     auto abp = a["ab_pump"];
-    if (!abp["enabled"].isNull()) hasAbPump = hasAfterburner && abp["enabled"].as<bool>();
+    if (!abp["enabled"].isNull()) hasAbPump = abp["enabled"].as<bool>();
     abPumpPin    = abp["pin"]      | abPumpPin;
     abPumpType   = abp["type"]     | abPumpType;
     if (!abp["active_h"].isNull()) abPumpActiveH = abp["active_h"].as<bool>();
@@ -3611,7 +3631,16 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     mavlinkBaud     = mvl["baud"]        | mavlinkBaud;
     mavlinkIntervalMs = mvl["interval_ms"] | mavlinkIntervalMs;
 
-    if (channelRegistry.inputCount || channelRegistry.outputCount) {
+    if (doc["channel_registry"].is<JsonObjectConst>()) {
+        // The registry is the fitted-hardware authority. Legacy objects below
+        // retain electrical/calibration details for existing runtime drivers,
+        // but they cannot keep a removed device enabled.
+        hasN1Rpm = hasN2Rpm = hasTot = hasTit = hasOilPress = hasFlame = false;
+        hasFuelFlow = hasFuelPress = hasP1 = hasP2 = false;
+        hasThrottleInput = hasIdleInput = hasOilTemp = hasBattVoltage = hasTorque = false;
+        hasThrottle = hasStarter = hasOilPump = hasFuelSol = hasIgniter = hasIgniter2 = false;
+        hasStarterEn = hasAbSol = hasAirstarterSol = hasCoolFan = hasAbPump = false;
+        hasOilScavengePump = hasFuelPump2 = hasBleedValve = hasPropPitch = hasGlowPlug = false;
         auto bound = [](const char* key, ChannelRegistry::Direction dir) -> const ChannelRegistry::Channel* {
             for (uint8_t i = 0; i < HardwareConfig::channelRegistry.bindingCount; i++)
                 if (strcmp(HardwareConfig::channelRegistry.bindings[i].key, key) == 0)
@@ -3649,6 +3678,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
                 else if (!strcmp(id, "cooling_fan") || !strcmp(id, "cooling_fan_main")) purpose = "cooling_fan";
                 else if (!strcmp(id, "igniter")) purpose = "igniter";
                 else if (!strcmp(id, "ab_igniter") || !strcmp(id, "igniter2_main")) purpose = "ab_igniter";
+                else if (!strcmp(id, "ab_solenoid")) purpose = "ab_valve";
                 else if (!strcmp(id, "glow_plug")) purpose = "glow_plug";
                 else if (!strcmp(id, "fuel_pump")) purpose = "fuel_pump";
                 else if (!strcmp(id, "ab_pump")) purpose = "ab_pump";
@@ -3707,7 +3737,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         };
         auto applyVariableOutput = [&](const ChannelRegistry::Channel* c, bool& has, int& pin, int& type,
                                        int& minUs, int& maxUs, float& pwmMinPct, float& pwmMaxPct,
-                                       bool& activeH) {
+                                       bool& activeH, bool* inverted = nullptr) {
             if (!c || c->pin < 0) return;
             has = true; pin = c->pin; type = outputType(c->driver);
             if (c->driver == ChannelRegistry::Servo) {
@@ -3716,6 +3746,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             } else if (c->driver == ChannelRegistry::Pwm) {
                 pwmMinPct = constrain(c->minValue, 0.0f, 1.0f) * 100.0f;
                 pwmMaxPct = constrain(c->maxValue, 0.0f, 1.0f) * 100.0f;
+                if (inverted) *inverted = c->inverted;
             } else {
                 activeH = !c->inverted;
             }
@@ -3750,7 +3781,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
                                    char* tcType, size_t tcTypeLen, int& clk, int& cs, int& miso, int& mosi) {
             if (!c || c->driver != ChannelRegistry::Analog) return;
             if (c->temperatureInterface == 0) { if (c->pin >= 0) has = true; return; }
-            static const char* names[] = { "", "max6675", "max31855", "max31856" };
+            static const char* const names[] = { "", "max6675", "max31855", "max31856" };
             if (c->temperatureInterface > 3 || c->spiClk < 0 || c->spiCs < 0 || c->spiMiso < 0 ||
                 (c->temperatureInterface == 3 && c->spiMosi < 0)) return;
             has = true; strlcpy(chip, names[c->temperatureInterface], chipLen);
@@ -3768,7 +3799,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (const auto* oilTemp = byIdOrRole(ChannelRegistry::Input, "oil_temperature", nullptr)) {
             const uint8_t iface = oilTemp->temperatureInterface;
             if (iface >= 1 && iface <= 3) {
-                static const char* names[] = { "", "max6675", "max31855", "max31856" };
+                static const char* const names[] = { "", "max6675", "max31855", "max31856" };
                 hasOilTemp = true; strlcpy(oilTempChip, names[iface], sizeof(oilTempChip));
                 strlcpy(oilTempTcType, oilTemp->tcType[0] ? oilTemp->tcType : "K", sizeof(oilTempTcType));
                 oilTempPin = oilTemp->spiClk; oilTempCs = oilTemp->spiCs; oilTempMiso = oilTemp->spiMiso; oilTempMosi = oilTemp->spiMosi;
@@ -3797,7 +3828,15 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         applyAnalog(byIdOrRole(ChannelRegistry::Input, "p2_main", nullptr), hasP2, p2Pin);
         applyAnalog(byIdOrRole(ChannelRegistry::Input, "flame_main", nullptr), hasFlame, flamePin);
         if (const auto* torque = byIdOrRole(ChannelRegistry::Input, "torque_main", nullptr)) {
-            if (torque->pin >= 0 && torque->driver == ChannelRegistry::Analog) {
+            if (torque->pin >= 0 && torque->driver == ChannelRegistry::Analog && torque->torqueInterface == 1) {
+                hasTorque = true;
+                torqueHx711 = true;
+                torqueDtPin = torque->pin;
+                torqueClkPin = torque->hx711Clk;
+                torqueHxScale = torque->hx711Scale;
+                torqueHxZero = torque->hx711Zero;
+                torquePin = -1;
+            } else if (torque->pin >= 0 && torque->driver == ChannelRegistry::Analog) {
                 hasTorque = true;
                 torqueHx711 = false;
                 torquePin = torque->pin;
@@ -3824,14 +3863,14 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (!mainFuel) mainFuel = byIdOrRole(ChannelRegistry::Output, "main_fuel", nullptr);
         applyVariableOutput(mainFuel, hasThrottle, throttlePin, throttleType,
                              throttleMinUs, throttleMaxUs, throttlePwmMinPct, throttlePwmMaxPct,
-                             throttleActiveH);
+                             throttleActiveH, &throttleInverted);
         applyPwmTiming(mainFuel, throttleLedcFreqHz, throttleLedcBits);
         const auto* starter = bound("main_starter", ChannelRegistry::Output);
         if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter_main", nullptr);
         if (!starter) starter = byIdOrRole(ChannelRegistry::Output, "starter", nullptr);
         applyVariableOutput(starter, hasStarter, starterPin, starterType,
                              starterMinUs, starterMaxUs, starterPwmMinPct, starterPwmMaxPct,
-                             starterActiveH);
+                             starterActiveH, &starterInverted);
         applyPwmTiming(starter, starterLedcFreqHz, starterLedcBits);
         applyVariableOutput(byIdOrRole(ChannelRegistry::Output, "oil_pump_main", nullptr),
                             hasOilPump, oilPumpPin, oilPumpType,
@@ -3886,6 +3925,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         applyPwmTiming(byIdOrRole(ChannelRegistry::Output, "prop_pitch", nullptr), propPitchFreqHz, propPitchResBits);
         applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "ab_igniter", nullptr),
                            hasIgniter2, igniter2Pin, igniter2Pwm);
+        if (const auto* c = byIdOrRole(ChannelRegistry::Output, "ab_igniter", nullptr))
+            if (c->pin >= 0) hasAfterburner = true;
         applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "igniter2_main", nullptr),
                            hasIgniter2, igniter2Pin, igniter2Pwm);
         applyIgniterOutput(byIdOrRole(ChannelRegistry::Output, "igniter", nullptr),
@@ -3915,6 +3956,10 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         if (const auto* c = bound("main_fuel_shutoff", ChannelRegistry::Output)) {
             if (c->pin >= 0) { hasFuelSol = true; fuelSolPin = c->pin; fuelSolActiveH = !c->inverted; }
         }
+        hasOilPumpCurrentSensor = hasOilPump && (op["has_current"] | false);
+        hasIgniterCurrentSensor = hasIgniter && (ign["has_current"] | false);
+        hasIgniter2CurrentSensor = hasIgniter2 && (ign2["has_current"] | false);
+        hasGlowCurrentSensor = hasGlowPlug && (glw["has_current"] | false);
     }
 
     auto contrl = doc["controllers"];
@@ -3969,7 +4014,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         hasThrottleSlew = false;
     }
     if (hasDynamicIdle && (!hasThrottle || (!hasN1Rpm && !hasN2Rpm))) {
-        Serial.println("[HWCfg] Dynamic idle disabled: requires throttle output and an RPM sensor");
+        Serial.println("[HWCfg] Automatic idle speed control disabled: requires fuel/throttle output and an RPM sensor");
         hasDynamicIdle = false;
     }
     const bool hasProportionalPropPitch = hasPropPitch && propPitchType != 2;
@@ -3977,9 +4022,9 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         Serial.println("[HWCfg] Governor disabled: requires N2 RPM and throttle or proportional prop pitch output");
         hasGovernor = false;
     }
-    if (starterAssistEnabled && (!hasStarter || !hasN1Rpm)) {
-        Serial.println("[HWCfg] Starter assist disabled: requires starter output and N1 RPM feedback");
-        starterAssistEnabled = false;
+    if (starterLowRpmSupportEnabled && (!hasStarter || !hasN1Rpm)) {
+        Serial.println("[HWCfg] Low-RPM starter support disabled: requires starter output and N1 RPM feedback");
+        starterLowRpmSupportEnabled = false;
     }
 
     auto saf = doc["safety"];
@@ -4087,9 +4132,24 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     abInputThreshold   = abt["input_threshold"] | abInputThreshold;
 
     auto abfl = doc["ab_flame"];
-    if (!abfl["enabled"].isNull()) hasAbFlame   = hasAfterburner && abfl["enabled"].as<bool>();
+    hasAbFlame = false;
     abFlamePin         = abfl["pin"]       | abFlamePin;
     abFlameThreshold   = abfl["threshold"] | abFlameThreshold;
+    for (uint8_t i = 0; i < channelRegistry.inputCount; ++i) {
+        const auto& c = channelRegistry.inputs[i];
+        if (!c.installed || c.pin < 0) continue;
+        if (!strcmp(c.purpose, "ab_flame") || !strcmp(c.id, "ab_flame_main")) {
+            hasAbFlame = true;
+            abFlamePin = c.pin;
+            break;
+        }
+    }
+
+    // Legacy master switches are no longer authoritative. Topology is derived
+    // from the fitted devices so registry and legacy channels behave the same.
+    hasTwoShaft = hasN2Rpm;
+    hasAfterburner = hasAfterburner || hasAbSol || hasAbPump || hasAbFlame ||
+                     abSwitchPin >= 0 || abInputPin >= 0;
 
     if (doc["ab_seq"].is<JsonArrayConst>()) {
         JsonArrayConst as = doc["ab_seq"];
@@ -4357,69 +4417,6 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     sanitizeServoRange(bleedValveMinUs, bleedValveMaxUs);
     sanitizeServoRange(propPitchMinUs, propPitchMaxUs);
 
-    // Deterministic compatibility migration.  The old singleton fields remain
-    // live adapters for this release, but all generated IDs are stable so
-    // callers can begin persisting references without relying on labels.
-    if (channelRegistry.inputCount == 0 && channelRegistry.outputCount == 0) {
-        auto addInput = [](const char* id, const char* role, int pin, ChannelRegistry::Driver driver) {
-            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::Input;
-            c.driver = driver; c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
-            HardwareConfig::channelRegistry.add(c);
-        };
-        auto addOutput = [](const char* id, const char* role, int pin, int legacyType) {
-            ChannelRegistry::Channel c; c.installed = true; c.direction = ChannelRegistry::Output;
-            c.driver = legacyType == 0 ? ChannelRegistry::Servo : legacyType == 1 ? ChannelRegistry::Pwm : ChannelRegistry::Relay;
-            c.pin = pin; strlcpy(c.id, id, sizeof(c.id)); strlcpy(c.name, id, sizeof(c.name)); strlcpy(c.role, role, sizeof(c.role));
-            if (c.driver == ChannelRegistry::Servo) { c.minValue = 1000.0f; c.maxValue = 2000.0f; }
-            else { c.minValue = 0.0f; c.maxValue = 1.0f; }
-            HardwareConfig::channelRegistry.add(c);
-        };
-        if (hasN1Rpm) addInput("n1_main", "speed", n1RpmPin, ChannelRegistry::Pulse);
-        if (hasN2Rpm) addInput("n2_main", "speed", n2RpmPin, ChannelRegistry::Pulse);
-        if (hasOilPress) addInput("oil_pressure_main", "pressure", oilPressPin, ChannelRegistry::Analog);
-        if (hasThrottle) addOutput("main_fuel", "fuel", throttlePin, throttleType);
-        if (hasStarter) addOutput("starter_main", "starter", starterPin, starterType);
-        if (hasOilPump) addOutput("oil_pump_main", "oil_pump", oilPumpPin, oilPumpType);
-        if (hasCoolFan) addOutput("cooling_fan_main", "cooling_fan", coolFanPin, coolFanType);
-        if (hasBleedValve) addOutput("bleed_valve_main", "valve", bleedValvePin, bleedValveType);
-        if (hasOilScavengePump) addOutput("oil_scavenge_main", "scavenge_pump", oilScavPumpPin, oilScavPumpType);
-        if (hasIgniter) addOutput("igniter", "igniter", igniterPin, igniterPwm ? 1 : 2);
-        if (hasIgniter2) addOutput("ab_igniter", "ab_igniter", igniter2Pin, igniter2Pwm ? 1 : 2);
-        for (int i = 0; i < MAX_DI; ++i) {
-            if (diCh[i].pin < 0) continue;
-            char id[20];
-            snprintf(id, sizeof(id), "di_%d", i + 1);
-            ChannelRegistry::Channel c;
-            c.installed = true;
-            c.direction = ChannelRegistry::Input;
-            c.driver = ChannelRegistry::Digital;
-            c.pin = diCh[i].pin;
-            strlcpy(c.id, id, sizeof(c.id));
-            strlcpy(c.name, diCh[i].label[0] ? diCh[i].label : id, sizeof(c.name));
-            strlcpy(c.role, strcmp(diCh[i].role, "none") == 0 ? "digital_switch" : diCh[i].role, sizeof(c.role));
-            HardwareConfig::channelRegistry.add(c);
-        }
-    }
-    auto addMissingInput = [](const char* id, const char* role, int pin, ChannelRegistry::Driver driver) {
-        if (pin < 0 || HardwareConfig::channelRegistry.find(id, ChannelRegistry::Input)) return;
-        ChannelRegistry::Channel c;
-        c.installed = true;
-        c.direction = ChannelRegistry::Input;
-        c.driver = driver;
-        c.pin = pin;
-        strlcpy(c.id, id, sizeof(c.id));
-        strlcpy(c.name, id, sizeof(c.name));
-        strlcpy(c.role, role, sizeof(c.role));
-        if (driver == ChannelRegistry::Analog) { c.minValue = 0.0f; c.maxValue = 4095.0f; }
-        if (driver == ChannelRegistry::RcPwm) { c.minValue = 1000.0f; c.maxValue = 2000.0f; }
-        HardwareConfig::channelRegistry.add(c);
-    };
-    if (hasThrottleInput)
-        addMissingInput("operator_throttle", "operator", throttleInputPin,
-                        throttleInputRcPwm ? ChannelRegistry::RcPwm : ChannelRegistry::Analog);
-    if (hasIdleInput)
-        addMissingInput("operator_idle", "operator", idleInputPin,
-                        idleInputRcPwm ? ChannelRegistry::RcPwm : ChannelRegistry::Analog);
     if (oilLoopCount == 0 && hasOilLoop && hasOilPress && hasOilPump) {
         const ChannelRegistry::Channel* pressure = channelRegistry.find("oil_pressure_main", ChannelRegistry::Input);
         const ChannelRegistry::Channel* pump = channelRegistry.find("oil_pump_main", ChannelRegistry::Output);
@@ -4439,4 +4436,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             l.maxDemandPct = 100;
         }
     }
+}
+
+void HardwareConfig::applyValidatedJsonRuntimeOnly(const JsonDocument& doc) {
+    _fromDoc(doc);
 }
