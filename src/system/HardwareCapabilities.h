@@ -15,6 +15,8 @@ public:
                    (HardwareConfig::hasOilPress && HardwareConfig::hasOilPump);
         if (!strcmp(feature, "n1_safety"))
             return hasInputBindingOrRole("primary_n1", "speed") || HardwareConfig::hasN1Rpm;
+        if (!strcmp(feature, "n2_safety"))
+            return hasInputBindingOrRole("primary_n2", "speed") || HardwareConfig::hasN2Rpm;
         if (!strcmp(feature, "n2_governor"))
             return (hasInputBindingOrRole("primary_n2", "speed") &&
                     (hasOutputRole("fuel") || hasOutputRole("prop_pitch"))) ||
@@ -38,6 +40,8 @@ public:
             return "Governor requires N2 RPM feedback and a throttle or prop-pitch output";
         if ((HardwareConfig::safetyOverspeed || HardwareConfig::safetySurge) && !available("n1_safety"))
             return "Overspeed/surge safety requires N1 RPM feedback";
+        if (HardwareConfig::safetyN2Overspeed && !available("n2_safety"))
+            return "N2 overspeed safety requires N2 RPM feedback";
         if ((HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart) && !available("egt_safety"))
             return "Temperature safety requires a selected EGT/TIT input";
         if (HardwareConfig::safetyLowOil && !hasOilSafetyInput("low_oil_switch"))
@@ -65,6 +69,7 @@ public:
             if (!hasOilPumpOutput()) addMissing(missing, "oil_pump_output", "Add an oil-pump output");
         }
         else if (!strcmp(feature, "n1_safety")) addMissing(missing, "primary_n1", "Bind or add an N1 speed input");
+        else if (!strcmp(feature, "n2_safety")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
         else if (!strcmp(feature, "n2_governor")) {
             if (!hasInputBindingOrRole("primary_n2", "speed")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
             if (!hasOutputRole("fuel") && !hasOutputRole("prop_pitch") && !HardwareConfig::hasThrottle && !HardwareConfig::hasPropPitch)

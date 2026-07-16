@@ -76,7 +76,7 @@ async function goto(page, route, waitSelector) {
       function setSensor(key, enabled) {
         cfg.sensors[key].enabled = enabled;
         const purpose = ({
-          n1_rpm:'n1_speed', tot:'tot', tit:'tit', flame:'flame', oil_press:'oil_pressure',
+          n1_rpm:'n1_speed', n2_rpm:'n2_speed', tot:'tot', tit:'tit', flame:'flame', oil_press:'oil_pressure',
           fuel_press:'fuel_pressure', batt_voltage:'battery_voltage', oil_temp:'oil_temperature'
         })[key];
         cfg.channel_registry.inputs.forEach(channel => {
@@ -88,6 +88,12 @@ async function goto(page, route, waitSelector) {
       setSensor('n1_rpm', false);
       updateSafetyPrerequisites(true);
       const n1Off = { overspeed: sst('overspeed'), surge: sst('surge') };
+
+      cfg.safety.n2_overspeed = true;
+      setSensor('n2_rpm', false);
+      updateSafetyPrerequisites(true);
+      const n2Off = { n2Overspeed: sst('n2_overspeed') };
+      setSensor('n2_rpm', true);
 
       cfg.safety.overtemp = true;
       cfg.safety.hot_start = true;
@@ -129,7 +135,7 @@ async function goto(page, route, waitSelector) {
         batt: sst('batt_low'),
         oilTemp: sst('oil_temp_high')
       };
-      return { n1Off, totOff, combustionOff, oilOff, optionalOff };
+      return { n1Off, n2Off, totOff, combustionOff, oilOff, optionalOff };
     });
     assert.equal(await page.locator('#f-saf-titovertemp').count(), 0);
     for (const [groupName, group] of Object.entries(safetyMatrix)) {
@@ -255,6 +261,27 @@ async function goto(page, route, waitSelector) {
     assert.ok(await page.locator('.cfg-help').count() > 100,
       'Long engineering help should remain available through progressive disclosure');
     results.push('config workspace groups settings and searches field metadata without losing detailed help');
+    const n2RelationshipWarnings = await page.evaluate(() => {
+      const setNumber = (key, value) => { const el = document.getElementById('cf-' + key); if (el) el.value = String(value); };
+      const setCheck = (key, value) => { const el = document.getElementById('cf-' + key); if (el) el.checked = value; };
+      hwCfg.safety.n2_overspeed = true;
+      hwCfg.controllers.governor = true;
+      hwCfg.controllers.dynamic_idle = true;
+      setNumber('n2_rpm_limit', 30000);
+      setCheck('pb_n2e', true); setNumber('pb_n2s', 30000); setNumber('pb_n2h', 32000);
+      setNumber('gv_tr', 29000); setNumber('gv_bd', 1500);
+      setCheck('di_n2', true); setNumber('di_tr', 30000);
+      setNumber('cl_n2', 30000);
+      runValidation();
+      return Array.from(document.querySelectorAll('.cfg-inline-warn')).map(el => el.textContent);
+    });
+    const n2WarningDetail = JSON.stringify(n2RelationshipWarnings);
+    assert.ok(n2RelationshipWarnings.some(text => /pullback/i.test(text)), n2WarningDetail);
+    assert.ok(n2RelationshipWarnings.some(text => /Governor target/i.test(text)), n2WarningDetail);
+    assert.ok(n2RelationshipWarnings.some(text => /Idle target/i.test(text)), n2WarningDetail);
+    assert.ok(n2RelationshipWarnings.some(text => /Cluster N2 warning/i.test(text)), n2WarningDetail);
+    results.push('config warns when N2 pullback, governor, idle, or display values do not leave margin below the hard trip');
+    await goto(page, 'config.html', '#cf-tot_limit');
     assert.equal(await page.locator('#dev-mode-tools-link').getAttribute('href'), '/tools.html#card-dev-mode');
     assert.equal(await page.locator('#btn-dev-mode').count(), 0,
       'Config must not bypass the guarded Developer Mode control on Tools');

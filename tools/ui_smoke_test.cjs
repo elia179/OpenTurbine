@@ -83,6 +83,16 @@ function installedBrowser() {
       ['tot-sparkline', 'tit-sparkline', 'n1-sparkline', 'n2-sparkline'].every(id =>
         document.getElementById(id) instanceof HTMLCanvasElement)), true);
     assert.equal(await page.evaluate(() =>
+      ['gauge-bar', 'abs-label', 'approach-warn'].every(suffix =>
+        document.getElementById(`n1-${suffix}`) && document.getElementById(`n2-${suffix}`))), true);
+    assert.equal(await text(page, '#n2-abs-label'), '24,200 / 30,000 RPM');
+    await page.evaluate(() => _showRunSummary({
+      mode: 'STANDBY', has_n1: true, max_n1: 67100,
+      has_n2: true, max_n2: 24900
+    }, 65000));
+    assert.match(await text(page, '#run-summary-stats'), /Peak N2:\s+24,900 RPM/);
+    await page.locator('#run-summary-card button').click();
+    assert.equal(await page.evaluate(() =>
       ['oil-card', 'oil-temp-card', 'oilpump-current-card'].every(id =>
         document.querySelector('#speed-cards').contains(document.getElementById(id)))), true);
     assert.equal(await page.evaluate(() => {
@@ -142,6 +152,7 @@ function installedBrowser() {
 
     await page.request.post(`${base}/__sim/data`, { data: {
       mode: 'RUNNING',
+      n2_limit: 0,
       oil_running_min: 0,
       fuel_press_min: 0,
       batt_volt_min: 0,
@@ -155,6 +166,7 @@ function installedBrowser() {
     assert.match(await text(page, '#fuel-press-abs-label'), /\/ OFF$/);
     assert.equal(await text(page, '#batt-volt-min'), 'OFF');
     assert.match(await text(page, '#tit-abs-label'), /\/ OFF$/);
+    assert.match(await text(page, '#n2-abs-label'), /RPM \/ OFF$/);
     results.push('dashboard zero-disabled thresholds clear stale gauge limits instead of retaining old values');
     await scenario(page, 'full');
     await page.locator('#unit-temp-btn').click();

@@ -12,7 +12,14 @@ python safety_B.py     # EGT rate-of-rise, low-oil
 python safety_C.py     # RUNNING-mode: oil-zero, flameout
 python safety_D.py     # pin-reuse: oil-temp-high, batt-low
 python ctrl_slew.py    # throttle-slew rate limiting
+python phase2_safety_hil.py  # registry-native 1.9+ safety trips + physical fuel/ignition cut
 ```
+
+The legacy `safety_A.py` through `safety_D.py` fixtures predate the canonical
+channel registry. Do not use their result as a 1.9+ safety sign-off unless their
+hardware setup reports every required registry channel and safety enable as
+verified. `phase2_safety_hil.py` performs those checks and aborts before START
+when the profile is incomplete.
 
 Prereqs: DUT (ESP32-S3) reachable at `http://192.168.4.1`, OTBench tester on a
 COM port (edit the `Tester("COM3")` port if different), `pip install pyserial`.

@@ -969,6 +969,12 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["max_p2"]                = (float)(int)(std::max(0.0f, maxP2Bar) * 100) / 100.0f;
         // Safety limits (for color gauge thresholds)
         doc["rpm_limit"]             = (int)Config::rpmLimit;
+        // Independent hard N2 shutdown limit. Gradual pullback points are sent
+        // separately so clients cannot mistake a controller setting for a trip.
+        doc["n2_limit"]              = HardwareConfig::safetyN2Overspeed
+                                         ? (int)Config::n2RpmLimit : 0;
+        doc["n2_pullback_soft"]      = Config::pullbackN2Enabled ? (int)Config::pullbackN2SoftRpm : 0;
+        doc["n2_pullback_hard"]      = Config::pullbackN2Enabled ? (int)Config::pullbackN2HardRpm : 0;
         doc["tot_limit"]             = Config::totLimit;
         doc["egt_source"]            = Config::effectiveEgtSource();
         doc["egt_limit"]             = Config::primaryEgtLimitC();

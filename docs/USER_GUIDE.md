@@ -77,7 +77,7 @@ The exact equipment depends on the engine. At minimum, a real installation needs
 
 OpenTurbine can execute a purely timed sequence without sensors, but that is **not a recommendation for a fueled test**. For a responsible first run, fit feedback that can detect the failures relevant to your engine. Usually this means:
 
-- Shaft RPM for overspeed protection
+- N1/core RPM for gas-generator overspeed protection and, on a two-shaft engine, a separate N2 pickup for power-turbine overspeed protection
 - TOT/EGT or TIT for over-temperature and hot-start protection
 - Oil pressure when the engine uses a pressure-fed lubrication system
 - A combustion indication such as flame sensing, RPM behavior, or EGT behavior
@@ -174,6 +174,8 @@ Sensor supply           -> voltage required by sensor
 - An open-collector/open-drain sensor needs a pull-up to 3.3 V.
 - A magnetic pickup normally needs a dedicated zero-crossing/comparator conditioner; do not connect an unbounded pickup waveform directly.
 - Set pulses per revolution from the actual target geometry and verify displayed RPM with an independent tachometer before enabling overspeed protection.
+- N1 and N2 are independent shafts with independent limits. Never copy an N1 limit into N2, or vice versa, unless the engine manufacturer explicitly specifies that value for that measurement point.
+- Test each input from zero through its expected operating range. A plausible idle reading alone does not prove the pulses-per-revolution setting is correct.
 
 ### TOT/EGT or TIT thermocouple
 
@@ -289,9 +291,61 @@ Review at least:
 - Hot-start threshold
 - Every fitted optional safety threshold
 
+For a two-shaft engine, also review the hard N2 shutdown limit, N2 gradual-pullback points, governor target/band, any N2-based idle target, and the external-cluster N2 warning. OpenTurbine warns when those values do not leave sensible ordering below the hard trip, but the operator remains responsible for the actual margins.
+
 If using multiple oil systems, define each oil loop with its pressure input, pump output, target pressure, deadband, and min/max demand. The first enabled loop feeds the primary oil controller; additional enabled loops drive their own selected registry pump outputs before rules run.
 
 `0` can mean disabled, automatic, or unlimited depending on the field. Read the description beside that specific control.
+
+### Two-shaft N2 protection and governor setup
+
+Treat N2 protection as a chain of separate functions, not one interchangeable RPM setting:
+
+1. **Calibrate the N2 input.** Enter the real pulses per revolution and compare Dashboard N2 against an independent tachometer at several speeds.
+2. **Enter Maximum N2 Speed.** This is the independent hard shutdown trip for the free power-turbine/output shaft. Use only an authoritative engine, gearbox, driven-load, or propeller-system limit referred to the same measurement point.
+3. **Configure gradual N2 pullback if used.** `Begin N2 Throttle Reduction` should be below `Full N2 Throttle Reduction`, and both should normally be below Maximum N2 Speed. Pullback reduces fuel as the shaft approaches the limit; it is not the shutdown itself.
+4. **Configure the governor if used.** The governor target plus its no-correction band must leave operating margin below Maximum N2 Speed. In fuel-control mode the governor adjusts fuel directly. In propeller-pitch mode it changes propeller load while the pilot/operator retains fuel authority.
+5. **Check other N2 consumers.** An N2-based automatic-idle target and an external-cluster N2 warning should also remain below the hard trip.
+6. **Enable N2 overspeed in Hardware.** Hardware owns whether the safety is armed; Config owns its RPM limit. START is blocked if the safety is enabled with no fitted N2 source or a zero hard limit.
+7. **Prove the shutdown path without fuel.** Drive or simulate N2 first below and then above the configured trip. Verify the ECU enters shutdown/fault and physically removes fuel, ignition, and relevant actuator demand.
+
+The Dashboard N2 gauge uses the hard shutdown limit. `OFF` means the hard N2 safety is not active; it does not mean the governor or gradual pullback is disabled. The Event Log records an N2 over-speed fault separately from N1 overspeed.
+
+### Controller and limiter behavior
+
+- **Throttle slew** limits how quickly effective fuel/throttle demand can rise or fall. Verify both directions with the turbine unfueled. Emergency shutdown bypasses normal gradual movement and commands the safe state immediately.
+- **N1, N2, and EGT pullback** are gradual control limiters. Their soft point begins intervention and their full point applies the configured maximum authority, subject to the minimum reliable fuel command. They reduce the chance of reaching a trip but do not replace hard safety shutdowns.
+- **Predictive RPM limiting** estimates RPM acceleration and begins a gentler approach before the current reading reaches the soft point. Start with reactive/simple behavior unless predictive tuning has been validated on the engine.
+- **Automatic idle speed control** trims fuel near idle using N1 or N2 feedback. Configure target, response ramps, deadband, disengagement limit, and multiplier bounds. Verify it cannot command an unsafe fuel increase after a sensor disconnect or load step.
+- **Automatic N2 speed control** uses either fuel or proportional propeller pitch. Start response gains low, verify correction direction with a simulated speed error, and increase gains only while watching for hunting.
+- **Oil-pressure control** adjusts the selected pump to the configured target. Its target must remain above the low-pressure shutdown threshold. Sensor failure uses the configured delay and fallback demand; validate that fallback physically.
+- **Reduced-power mode** caps throttle after its configured digital input or rule requests it. Treat it as a degraded-operation feature, not a substitute for stopping after a mechanical or lubrication fault.
+- **Low-RPM starter support** is manually armed from Tools and assists only in its configured N1 range. Confirm direction, disengagement speed, and automatic disarm at shutdown before using it on a live engine.
+- **Windmilling oil protection** can run the oil pump in STANDBY while N1 or N2 remains above its threshold. Verify the selected shaft, fixed-demand or pressure-target mode, and that the pump releases after rotation stops.
+
+### Flameout detection and relight
+
+Flameout can use a flame input, N1 underspeed, or a drop in the selected EGT source. Select a source that can distinguish actual combustion loss from normal throttle reduction on the installation.
+
+Automatic relight always requires healthy N1 feedback to prove adequate windmilling airflow and requires the selected ignition output to be fitted. Configure the minimum N1, attempt count, ignition target, timeout, and recovery evidence. A failed relight proceeds to shutdown. Test relight only on a controlled stand with explicit abort criteria; repeated fuel without ignition can create an explosive accumulation.
+
+Manual relight and cooldown override are operator tools. They remain subject to fitted-hardware and mode gates but require the same fuel-vapor precautions as a normal start.
+
+### Afterburner installations
+
+Afterburner support is shown only when the corresponding fuel and ignition hardware is fitted. Review the trigger source, arm requirement, ignition method, flame/EGT confirmation, pump range, main-fuel offset, stabilization time, and shutdown order.
+
+- AB arm is permission, not a fire command.
+- Confirm the AB valve and pump close immediately on STOP or fault.
+- Use flame confirmation or a defensible EGT-rise method where possible.
+- A zero stabilization EGT cap disables that protection.
+- Test the complete AB shutdown sequence without fuel before any light attempt.
+
+### Dashboard, health indications, and logs
+
+Dashboard health dots show whether fitted sensors are currently usable; a plausible retained number with a red/failed health indication must not be trusted. N1 and N2 gauges show their hard limits, while temperature and oil gauges use their applicable configured thresholds. Optional P1, P2, fuel pressure, fuel flow, torque, oil temperature, battery, current, and shaft-power cards appear only when their sources are fitted.
+
+After a run, the summary reports available duration and peaks, including peak N1/N2 and selected temperatures. Use **Logs** to review Event Log fault/configuration records and Session Data CSV channels. Session logging interval and channel selection affect storage use and loop load; record only the channels and loop diagnostics needed for the test. Export important evidence before factory reset or a clean installation.
 
 ### 3. Calibration
 
@@ -324,6 +378,8 @@ Confirm that:
 
 Use dry runs with fuel physically disconnected before a fueled test.
 
+The editor also supports entry conditions, per-step enter/exit side actions, afterburner sequences, and bounded custom blocks. A custom block can command configured actuators, wait, or gate on a fitted sensor. Red structural errors block START; yellow warnings describe arrangements that may be intentional but require review. Never use Bench Mode to make an invalid real-engine sequence appear acceptable.
+
 ### 5. Simple control rules
 
 Open **Sequence → Control Rules** for small automations that do not belong in the ordered startup or shutdown sequence. A rule can switch one output at a threshold with hysteresis, or map a fitted input range linearly to a variable PWM/servo output range.
@@ -333,6 +389,8 @@ Open **Sequence → Control Rules** for small automations that do not belong in 
 - Hysteresis prevents rapid switching near a threshold. For “above 100 °C” with 5 °C hysteresis, the output turns on above 100 °C and stays on until the input falls to 95 °C.
 - Mapping clamps below/above its input limits and is useful for testing proportional outputs from a potentiometer.
 - Keep one enabled rule per output. Hardware fault-safe behavior still owns faults.
+- Give registry channels stable IDs before rules reference them. Removing a referenced source or target is rejected rather than leaving an orphaned automation.
+- After saving, test minimum, midpoint, maximum, mode exit, sensor loss, reboot persistence, and physical output direction.
 
 ### 6. Bench-test outputs
 
@@ -349,6 +407,8 @@ Test outputs individually:
 
 The browser is not the emergency stop. Verify the independent physical stop before continuing.
 
+Developer Mode exposes diagnostics and allows Bench Mode. Bench Mode bypasses safety shutdowns and sensor waits for dry testing; it must never be enabled for a fueled or mechanically powered engine. `Skip safety checks` is similarly a development-only control, not an operating mode.
+
 ## Pre-start review
 
 Before every first fueled run or major configuration change:
@@ -357,6 +417,7 @@ Before every first fueled run or major configuration change:
 - Confirm Hardware has no pin or dependency errors.
 - Confirm every safety-critical sensor is healthy and calibrated.
 - Compare Config limits against authoritative engine and sensor information.
+- On two-shaft engines, confirm N2 pullback, governor band, N2-based idle, and display warning all leave margin below the hard N2 trip.
 - Run the startup sequence dry.
 - Confirm STOP cuts every fuel path from web, physical input, and any external controller.
 - Confirm loss of browser/Wi-Fi cannot leave a manual test running indefinitely.
@@ -376,6 +437,8 @@ In **Tools**, download the full engine file before an update. It contains hardwa
 Use **OpenTurbine Setup Tool → Update and keep my setup** for normal Wi-Fi updates. It backs up the engine settings and does not perform a factory reset. Use **Clean install / reinstall** for a blank board, corrupted installation, intentional clean start, or partition-table change; that USB path erases everything on the selected board.
 
 Do not interrupt power during firmware or web-asset installation.
+
+After an update, reconnect to the ECU, verify the displayed firmware version, open every main page once, confirm the hardware/profile identity still matches, and repeat a dry STOP/output-safety check before introducing fuel. A normal update preserves configuration; it cannot prove that an old configuration is safe for newly added features.
 
 ### Recovery
 
@@ -403,6 +466,8 @@ Use Ctrl+F for the symptom or keyword.
 | Calibration command rejected | ECU must be STANDBY/FAULT, required hardware must be fitted, and no other actuator test may be active. |
 | Sensor reads zero/full-scale/fault | Verify supply, common ground, signal voltage, selected pin/type, ADC1 use, divider, polarity, and calibration. |
 | RPM is wrong | Verify pulse conditioning, 3.3 V level, pulses per revolution, target geometry, and independent tachometer reading. |
+| N2 gauge says OFF | Hard N2 overspeed shutdown is not active. Verify the N2 channel and limit, then enable N2 overspeed in Hardware if the engine requires it. Governor and pullback settings are separate. |
+| N2 configuration warning | Put pullback points, governor target/band, N2 idle target, and display warning below the authoritative hard N2 trip with suitable operating margin. |
 | Temperature is wrong | Verify converter chip, thermocouple type/polarity/location, shared SPI wiring, unique CS, and cold-junction/module supply. |
 | Pump/servo moves backward | Remove fuel/load, correct active level or servo/PWM endpoints/direction, then repeat Tools testing. |
 | Engine enters FAULT at boot | Read the visible fault/config warning; Hardware, Config, Calibration, Tools, and restore remain available for repair. |

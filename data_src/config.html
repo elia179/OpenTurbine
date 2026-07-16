@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Config</title>
-<link rel="stylesheet" href="/style.css?v=20260716a">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <style>
 :root{--bg:#101012;--surface:#17171a;--surface-2:#1d1d20;--surface-3:#262629;--border:#313135;--border-light:#42424a;--text:#f5f5f7;--text-2:#cecdd4;--dim:#a0a0a8;--green:#33cf7a;--red:#ff4d5f;--yellow:#ffcf4d;--blue:#5ab8ca;--accent:#ee7620;--font-ui:system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'SF Mono','Menlo','Consolas',monospace}
 *,*::before,*::after{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.5}nav{height:48px;display:flex;align-items:center;padding:0 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}nav a{height:48px;line-height:48px;padding:0 .9rem;color:var(--dim);text-decoration:none;text-transform:uppercase;letter-spacing:.06em;font-size:.75rem;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}nav a.active{color:var(--text);border-bottom-color:var(--accent)}.conn-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:auto}.conn-dot.connected{background:var(--green);box-shadow:0 0 6px var(--green)}.conn-dot.disconnected{background:var(--red)}.conn-label{font-size:.63rem;color:var(--dim);margin-left:.4rem;text-transform:uppercase;letter-spacing:.05em}main{padding:1.5rem;max-width:920px;margin:0 auto}button{font-family:var(--font-ui);font-size:.78rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;min-height:44px;padding:.42rem 1.1rem;border-radius:6px;border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer}button:hover{color:var(--text);background:var(--surface-2)}button:disabled{opacity:.3;cursor:default}button.primary{background:var(--accent);border-color:var(--accent);color:#2b1405}.view-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-2)}.view-toggle button{border:0;border-radius:0;background:transparent}.view-toggle button.active{background:var(--accent);color:#2b1405}select,input{font-family:var(--font-mono);font-size:.82rem;padding:.32rem .55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}input[type=checkbox]{width:auto;accent-color:var(--accent)}.cfg-section{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:1rem 1.2rem;margin-bottom:.85rem}.cfg-title{font-size:.68rem;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.7rem}.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.75rem}.cfg-field{display:flex;flex-direction:column;gap:.22rem;min-width:0}.cfg-label{font-size:.65rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-weight:700}.cfg-desc{font-size:.72rem;color:var(--dim);line-height:1.45}.cfg-field input,.cfg-field select{width:100%;max-width:100%}.cfg-field input:focus,.cfg-field select:focus{outline:none;border-color:var(--accent)}.cfg-field input:disabled,.cfg-field select:disabled{opacity:.45}.error-banner{border-radius:9px;padding:.7rem 1rem;margin-bottom:.85rem;font-size:.82rem;background:color-mix(in srgb,var(--red) 8%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}.save-bar{position:sticky;bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:1rem;display:flex;align-items:center;gap:.75rem;margin-top:1rem}.save-bar a{color:var(--dim)}.save-msg{font-size:.78rem;color:var(--dim)}.live-val{font-size:.72rem;color:var(--accent);margin-left:.5rem}.field-changed{border-color:var(--yellow)!important;box-shadow:0 0 0 1px var(--yellow)}.save-recap-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:999}.save-recap-card{width:min(720px,92vw);max-height:82vh;background:var(--surface);border:1px solid var(--border-light);border-radius:9px;overflow:hidden}.save-recap-header,.save-recap-footer{display:flex;align-items:center;gap:.7rem;padding:.85rem 1rem;border-bottom:1px solid var(--border)}.save-recap-footer{border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end}.save-recap-body{padding:1rem;overflow:auto;max-height:55vh}.save-recap-subtitle{padding:.75rem 1rem;color:var(--dim);font-size:.78rem;border-bottom:1px solid var(--border)}@media(max-width:700px){main{padding:1rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{position:static;flex-wrap:wrap}nav{overflow-x:auto}.conn-dot{margin-left:.75rem}}
@@ -19,7 +19,7 @@ main{max-width:1380px;padding:1.1rem 1.5rem 5.5rem}
 .cfg-search-wrap{position:relative}.cfg-search{width:100%;height:48px;padding:.65rem 5.2rem .65rem 2.7rem!important;border-color:var(--border-light);background:var(--bg);font-family:var(--font-ui);font-size:.92rem}.cfg-search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}.cfg-search-icon{position:absolute;left:.95rem;top:50%;transform:translateY(-50%);color:var(--dim);font-size:1rem;pointer-events:none}.cfg-search-key{position:absolute;right:.75rem;top:50%;transform:translateY(-50%);font:600 .68rem var(--font-mono);color:var(--dim);border:1px solid var(--border);border-radius:4px;padding:.08rem .35rem}
 .cfg-toolbar{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;margin-top:.7rem}.cfg-filters{display:flex;gap:.35rem;overflow:auto}.cfg-filter{min-height:34px;padding:.28rem .72rem;border-radius:999px;font-size:.68rem;white-space:nowrap;text-transform:none;letter-spacing:.01em}.cfg-filter.active{background:var(--accent);border-color:var(--accent);color:#271306}.cfg-result-count{margin-left:auto;font-size:.72rem;color:var(--dim)}
 .preset-panel{margin:.75rem 0 1rem;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.preset-panel>summary{cursor:pointer;list-style:none;padding:.75rem 1rem;font-weight:700;color:var(--text-2)}.preset-panel>summary::-webkit-details-marker{display:none}.preset-panel>summary::after{content:'›';float:right;color:var(--dim);transform:rotate(90deg)}.preset-panel[open]>summary::after{transform:rotate(-90deg)}.preset-body{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;padding:0 1rem 1rem}.preset-body select{min-height:40px;flex:1;min-width:260px}.preset-note{font-size:.72rem;color:var(--yellow);flex-basis:100%}
-.config-group{display:block;margin-bottom:.75rem;border:1px solid var(--border);border-radius:13px;background:var(--surface);overflow:hidden;content-visibility:auto;contain-intrinsic-size:84px 720px}.config-group.group-changed{border-color:var(--yellow);box-shadow:0 0 0 2px color-mix(in srgb,var(--yellow) 16%,transparent)}.config-group>summary{display:flex;align-items:center;gap:.65rem;min-height:78px;padding:.85rem 1rem;cursor:pointer;list-style:none;user-select:none}.config-group>summary::-webkit-details-marker{display:none}.config-group>summary:hover{background:color-mix(in srgb,var(--surface-3) 45%,transparent)}.group-heading{display:block;min-width:0;flex:1}.group-title,.group-desc{display:block}.group-title{font-size:.88rem;font-weight:750}.group-desc{font-size:.72rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.group-meta{font-size:.68rem;color:var(--dim);white-space:nowrap}.group-chevron{font-size:1.15rem;color:var(--dim);transition:transform .15s}.config-group[open] .group-chevron{transform:rotate(90deg)}.group-content{padding:0 .8rem .8rem;border-top:1px solid var(--border)}
+.config-group{display:block;margin-bottom:.75rem;border:1px solid var(--border);border-radius:13px;background:var(--surface);overflow:hidden}.config-group.group-changed{border-color:var(--yellow);box-shadow:0 0 0 2px color-mix(in srgb,var(--yellow) 16%,transparent)}.config-group>summary{display:flex;align-items:center;gap:.65rem;min-height:78px;padding:.85rem 1rem;cursor:pointer;list-style:none;user-select:none}.config-group>summary::-webkit-details-marker{display:none}.config-group>summary:hover{background:color-mix(in srgb,var(--surface-3) 45%,transparent)}.group-heading{display:block;min-width:0;flex:1}.group-title,.group-desc{display:block}.group-title{font-size:.88rem;font-weight:750}.group-desc{font-size:.72rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.group-meta{font-size:.68rem;color:var(--dim);white-space:nowrap}.group-chevron{font-size:1.15rem;color:var(--dim);transition:transform .15s}.config-group[open] .group-chevron{transform:rotate(90deg)}.group-content{padding:0 .8rem .8rem;border-top:1px solid var(--border)}
 .cfg-section{background:transparent;border:0;border-radius:0;padding:.85rem .25rem .2rem;margin:0}.cfg-section+.cfg-section{border-top:1px solid var(--border)}.cfg-title{font-size:.72rem;color:var(--text-2);margin:0 0 .65rem;display:flex;align-items:center;gap:.45rem}.cfg-title-count{font-size:.63rem;color:var(--dim);font-weight:500;letter-spacing:0;text-transform:none}.cfg-grid{grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:.65rem}
 .cfg-field{position:relative;gap:.38rem;padding:.75rem;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);transition:border-color .15s,opacity .15s,transform .15s}.cfg-field:hover{border-color:var(--border-light)}.cfg-field.search-hit{border-color:color-mix(in srgb,var(--accent) 65%,var(--border));box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent)}.cfg-field-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.65rem;min-width:0}.cfg-label{font-size:.68rem;color:var(--text-2);letter-spacing:.055em;min-height:1.05rem;min-width:0}.cfg-field input,.cfg-field select{min-height:42px;font-size:.86rem;background:var(--bg)}.cfg-field input[type=checkbox]{width:22px;height:22px;min-height:22px;align-self:flex-start}.cfg-help{font-size:.69rem;color:var(--dim)}.cfg-help summary{cursor:pointer;display:inline;color:var(--dim);list-style:none}.cfg-help summary::-webkit-details-marker{display:none}.cfg-help summary::before{content:'ⓘ ';color:var(--accent)}.cfg-help[open] summary{color:var(--text-2)}.cfg-desc{padding-top:.35rem;font-size:.72rem;line-height:1.45}.field-level{flex:0 0 auto;font-size:.58rem;text-transform:uppercase;letter-spacing:.05em;color:var(--blue)}.cfg-empty{padding:2.5rem 1rem;text-align:center;border:1px dashed var(--border-light);border-radius:12px;color:var(--dim)}
 .save-bar{position:fixed;z-index:90;left:50%;bottom:14px;transform:translateX(-50%);width:min(1340px,calc(100% - 2rem));padding:.65rem .8rem;border-radius:12px;box-shadow:0 16px 45px rgba(0,0,0,.45)}.save-bar .save-spacer{flex:1}.save-change-count{font-size:.76rem;color:var(--text-2);font-weight:650}.save-bar:not(.is-dirty) .save-change-count{color:var(--dim)}.save-bar a{font-size:.72rem}.save-msg{margin-left:auto}.filter-hidden{display:none!important}
@@ -123,12 +123,13 @@ main{max-width:1380px;padding:1.1rem 1.5rem 5.5rem}
   </div>
 </main>
 
-<script src="/app.js?v=20260716a"></script>
+<script src="/app.js?v=20260716b"></script>
 <script>
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
   { title: 'Engine Protection Limits', id: 'engine-limits', sectionNote:'N1 is the gas-generator or core shaft speed. TOT is turbine-outlet temperature; TIT is turbine-inlet temperature. Choose the temperature measurement used by your engine documentation.', fields: [
     { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'Maximum N1 Speed', unit:'RPM', desc:'Hard overspeed limit for the gas-generator/core shaft. Used only when an N1 sensor is fitted.', step:1000, min:1000, basic:true },
+    { key:'n2_rpm_limit',       path:['engine','n2_rpm_limit'],       label:'Maximum N2 Speed', unit:'RPM', zeroOff:true, desc:'Independent hard shutdown limit for the free power-turbine/output shaft. This is separate from gradual N2 throttle pullback. Used only when N2 overspeed safety is enabled in Hardware.', step:1000, min:0, basic:true },
     { key:'min_rpm',            path:['engine','min_rpm'],            label:'Minimum Running N1 Speed', unit:'RPM', desc:'Lowest N1 speed accepted after startup. Falling below it while running can indicate a flameout or stall.', step:1000, min:0, basic:true },
     { key:'eg_src',             path:['safety','egt_source'],         label:'Primary Engine Temperature', type:'select', options:[{v:0,l:'Automatic: TOT if fitted, otherwise TIT'},{v:1,l:'Turbine outlet temperature (TOT)'},{v:2,l:'Turbine inlet temperature (TIT)'}], desc:'Temperature used for over-temperature protection, hot-start prevention, cooldown, throttle reduction, and flame confirmation.', basic:true },
     { key:'tot_limit',          path:['engine','tot_limit'],          label:'Outlet Temperature Limit (TOT)', unitType:'temp', zeroOff:true, desc:'Hard limit for turbine-outlet temperature. Active only when TOT is the primary engine temperature. 0 disables this limit.', step:10, min:0, basic:true },
@@ -884,6 +885,7 @@ function runValidation() {
 
   const idleTargetRpm  = fv('di_tr');          // dynamic_idle.target_rpm
   const rpmLimit       = fv('rpm_limit');
+  const n2RpmLimit     = fv('n2_rpm_limit');
 
   // Compute startup values from cfg (these live in sequence/hardware, not config form)
   const startupCfg  = cfg?.sequence?.startup ?? {};
@@ -896,7 +898,7 @@ function runValidation() {
   if (computedPreIgnRpm !== undefined && computedSpoolRpmTarget !== undefined
       && computedPreIgnRpm > computedSpoolRpmTarget) {
     warnings.push({
-      section: 'Engine Limits',
+      section: 'Engine Protection Limits',
       key:     'warn-preignrpm',
       msg:     '⚠ Pre-ignition RPM is above spool target — engine will never reach spool'
     });
@@ -920,13 +922,37 @@ function runValidation() {
     });
   }
 
-  // 4. idleTargetRpm >= rpmLimit
-  if (idleTargetRpm !== undefined && rpmLimit !== undefined && idleTargetRpm >= rpmLimit) {
+  // 4. Idle target must remain below the shaft limit it actually uses.
+  const idleUsesN2 = !!document.getElementById('cf-di_n2')?.checked;
+  const idleComparisonLimit = idleUsesN2 ? n2RpmLimit : rpmLimit;
+  if (idleTargetRpm !== undefined && idleComparisonLimit !== undefined &&
+      idleComparisonLimit > 0 && idleTargetRpm >= idleComparisonLimit) {
     warnings.push({
       section: 'Automatic Idle Speed Control',
       key:     'warn-idlelimit',
-      msg:     '⚠ Idle RPM at or above RPM limit'
+      msg:     '⚠ Idle target is at or above the selected shaft hard limit.'
     });
+  }
+
+  // N2 control targets should leave operating margin below the independent trip.
+  if (hwCfg.safety?.n2_overspeed && n2RpmLimit > 0) {
+    const pbEnabled = !!document.getElementById('cf-pb_n2e')?.checked;
+    const pbSoft = fv('pb_n2s'), pbFull = fv('pb_n2h');
+    if (pbEnabled && ((pbSoft > 0 && pbSoft >= n2RpmLimit) ||
+                      (pbFull > 0 && pbFull >= n2RpmLimit))) {
+      warnings.push({section:'Throttle', key:'warn-n2-pullback-trip',
+        msg:'⚠ N2 pullback starts or reaches full authority at/above the hard N2 shutdown limit. Set both pullback points below the trip.'});
+    }
+    const govTarget = fv('gv_tr'), govBand = fv('gv_bd') || 0;
+    if (hwCfg.controllers?.governor && govTarget > 0 && govTarget + govBand >= n2RpmLimit) {
+      warnings.push({section:'Automatic N2 Speed Control', key:'warn-n2-governor-trip',
+        msg:'⚠ Governor target plus its no-correction band reaches the hard N2 shutdown limit. Leave operating margin below the trip.'});
+    }
+    const n2Warn = fv('cl_n2');
+    if (n2Warn > 0 && n2Warn >= n2RpmLimit) {
+      warnings.push({section:'External Instrument Cluster Display', key:'warn-n2-cluster-trip',
+        msg:'⚠ Cluster N2 warning is at/above the hard shutdown limit, so the display may not warn before the ECU trips.'});
+    }
   }
 
   const egtSourceVal = Number((document.getElementById('cf-eg_src') || {}).value || cfg?.safety?.egt_source || 0);
@@ -944,7 +970,7 @@ function runValidation() {
   const titLimitCanonical = titLimitVal !== undefined ? _fieldFromDisplay(_fieldDef('sf_tit') || {}, titLimitVal) : undefined;
   if (effectiveEgt === 1 && totLimitCanonical !== undefined && Math.abs(totLimitCanonical) < 0.001) {
     warnings.push({
-      section: 'Engine Limits',
+      section: 'Engine Protection Limits',
       key:     'warn-tot-zero',
       msg:     '⚠ TOT Limit is 0 - overtemperature protection is DISABLED for the selected engine temperature source.'
     });
@@ -1013,16 +1039,39 @@ async function validateBeforeSave(cfg) {
   }
 
   const rpmLimit   = gv(cfg, 'engine', 'rpm_limit');
+  const n2RpmLimit = gv(cfg, 'engine', 'n2_rpm_limit');
   const minRpm     = gv(cfg, 'engine', 'min_rpm');
   const idleTarget = gv(cfg, 'dynamic_idle', 'target_rpm');
+  const idleUseN2  = !!gv(cfg, 'dynamic_idle', 'use_n2');
   const hasN1 = hasRegistryInput('n1_speed');
-  const hasAnyIdleRpm = hasN1 || hasRegistryInput('n2_speed');
+  const hasN2 = hasRegistryInput('n2_speed');
+  const hasAnyIdleRpm = hasN1 || hasN2;
 
   if (hasN1 && rpmLimit !== undefined && minRpm !== undefined && minRpm >= rpmLimit)
     errors.push('Min RPM (' + minRpm + ') must be below RPM Limit (' + rpmLimit + ').');
+  if (hwCfg.safety?.n2_overspeed && (!hasN2 || !(Number(n2RpmLimit) > 0)))
+    errors.push('N2 overspeed safety requires a fitted N2 RPM input and a Maximum N2 Speed above 0.');
 
   if (hasAnyIdleRpm && idleTarget !== undefined && minRpm !== undefined && idleTarget < minRpm)
     warns.push('Idle target RPM (' + idleTarget + ') is below Min RPM (' + minRpm + '). Engine may fault at idle.');
+
+  if (hwCfg.safety?.n2_overspeed && Number(n2RpmLimit) > 0) {
+    const pbN2Enabled = !!gv(cfg, 'throttle', 'pullback_n2');
+    const pbN2Soft = Number(gv(cfg, 'throttle', 'pullback_n2_soft_rpm') || 0);
+    const pbN2Full = Number(gv(cfg, 'throttle', 'pullback_n2_hard_rpm') || 0);
+    if (pbN2Enabled && ((pbN2Soft > 0 && pbN2Soft >= n2RpmLimit) ||
+                        (pbN2Full > 0 && pbN2Full >= n2RpmLimit)))
+      warns.push('N2 pullback should begin and reach full authority below Maximum N2 Speed (' + n2RpmLimit + ' RPM), otherwise the hard shutdown can occur before gradual reduction is effective.');
+    const governorTarget = Number(gv(cfg, 'governor', 'target_rpm') || 0);
+    const governorBand = Number(gv(cfg, 'governor', 'band_rpm') || 0);
+    if (hwCfg.controllers?.governor && governorTarget > 0 && governorTarget + governorBand >= n2RpmLimit)
+      warns.push('Governor target plus no-correction band (' + (governorTarget + governorBand) + ' RPM) reaches Maximum N2 Speed (' + n2RpmLimit + ' RPM). Leave operating margin below the hard trip.');
+    if (hwCfg.controllers?.dynamic_idle && idleUseN2 && Number(idleTarget) >= n2RpmLimit)
+      warns.push('N2-based idle target (' + idleTarget + ' RPM) is at or above Maximum N2 Speed (' + n2RpmLimit + ' RPM).');
+    const clusterN2Warn = Number(gv(cfg, 'cluster', 'n2_warn_rpm') || 0);
+    if (clusterN2Warn > 0 && clusterN2Warn >= n2RpmLimit)
+      warns.push('Cluster N2 warning (' + clusterN2Warn + ' RPM) is at or above Maximum N2 Speed (' + n2RpmLimit + ' RPM), so the display may not warn before shutdown.');
+  }
 
   // Oil system cross-checks
   const oilRunning   = gv(cfg, 'oil', 'running_min');
@@ -1300,6 +1349,8 @@ function liveSensorFitted(d, telemetryKey, sensorKey, hwFlatKey) {
 const LIVE_BADGE_KEYS = {
   'rpm_limit': d => liveSensorFitted(d, 'has_n1', 'n1_rpm', 'has_n1_rpm') && d.n1 !== undefined
     ? 'live: ' + fmtInt(d.n1) + ' RPM' : null,
+  'n2_rpm_limit': d => liveSensorFitted(d, 'has_n2', 'n2_rpm', 'has_n2_rpm') && d.n2 !== undefined
+    ? 'live: ' + fmtInt(d.n2) + ' RPM' : null,
   'tot_limit': d => liveSensorFitted(d, 'has_tot', 'tot', 'has_tot') && d.tot !== undefined
     ? 'live: ' + toDispTemp(Number(d.tot)).toFixed(1) + '\u00a0' + dispTempUnit() : null,
   'sf_tit': d => liveSensorFitted(d, 'has_tit', 'tit', 'has_tit') && d.tit !== undefined
@@ -1856,6 +1907,7 @@ function applyHwConditions() {
   ghostField('cl_en', hasClusterSerial, 'Cluster serial output is not fitted/enabled in Hardware.');
   ['rpm_limit','min_rpm','cl_n1'].forEach(k =>
     ghostField(k, hasN1, 'N1 RPM sensor is not configured in Hardware. Standard timer/TOT setup does not use this value.'));
+  ghostField('n2_rpm_limit', hasN2, 'N2 RPM sensor is not configured in Hardware. This hard power-turbine shutdown limit does not apply.');
   ghostField('cl_tw', hasEgt, 'Cluster EGT warning needs a fitted TOT or TIT sensor.');
   ghostField('cl_ow', hasOilPress, 'Cluster oil warning needs a fitted oil pressure sensor.');
 

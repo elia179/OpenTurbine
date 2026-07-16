@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine</title>
-<link rel="stylesheet" href="/style.css?v=20260716a">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <script src="/theme.js?v=20260711f"></script>
 <script src="/ui_dialog.js?v=20260715a"></script>
@@ -193,10 +193,13 @@
 
   <!-- N2 + Oil + Flame row -->
   <section class="grid-3 telemetry-card-bin">
-    <div class="card big" id="n2-card" style="display:none" title="Power turbine spool speed. Present on two-shaft engines. The governor (if enabled) targets a set N2 RPM by adjusting prop pitch or load.">
+    <div class="card big" id="n2-card" style="display:none" title="Power-turbine/output-shaft speed. The gauge limit is the independent hard N2 shutdown setting, not the gradual governor or pullback target.">
       <div class="label"><span id="lbl-n2">N2 RPM</span> <span id="n2-health" class="dot"></span></div>
       <div class="value" id="n2">—</div>
       <div class="peak-val">max <span id="max-n2">—</span></div>
+      <div class="gauge-bar-wrap"><div class="gauge-bar" id="n2-gauge-bar" style="width:0%"></div></div>
+      <span id="n2-abs-label" class="gauge-abs-label">— / — RPM</span>
+      <span id="n2-approach-warn" class="gauge-approach-warn" style="display:none">⚠ approaching hard limit</span>
       <canvas class="sparkline" id="n2-sparkline"></canvas>
     </div>
     <div class="card" id="oil-card" style="display:none" title="Bearing oil pressure. 'demand' is the ECU target pressure; output pump speed is adjusted to maintain it. Low oil pressure during RUNNING triggers an immediate fault shutdown.">
@@ -228,12 +231,12 @@
   <!-- P1 / P2 pressure sensors (shown only when fitted in Hardware) -->
   <section id="pressure-card-bin" class="grid-2 telemetry-card-bin" style="display:none">
     <div class="card" id="p1-card" style="display:none">
-      <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span></div>
+      <div class="label"><span id="lbl-p1">P1</span> <span data-unit="press">bar</span> <span id="p1-health" class="dot"></span></div>
       <div class="value small" id="p1">—</div>
       <div class="peak-val">max <span id="max-p1">—</span></div>
     </div>
     <div class="card" id="p2-card" style="display:none">
-      <div class="label"><span id="lbl-p2">P2</span> <span data-unit="press">bar</span></div>
+      <div class="label"><span id="lbl-p2">P2</span> <span data-unit="press">bar</span> <span id="p2-health" class="dot"></span></div>
       <div class="value small" id="p2">—</div>
       <div class="peak-val">max <span id="max-p2">—</span></div>
     </div>
@@ -282,9 +285,9 @@
       <div class="peak-val">A &nbsp;·&nbsp; <span id="oilpump-oc-label" style="color:var(--dim)">—</span></div>
     </div>
     <div class="card" id="fuel-flow-card" style="display:none">
-      <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span></div>
+      <div class="label"><span id="lbl-fuel-flow">Fuel Flow</span> <span id="fuel-flow-health" class="dot"></span></div>
       <div class="value small" id="fuel-flow-val">—</div>
-      <div class="peak-val">units/min</div>
+      <div class="peak-val">L/min</div>
     </div>
     <div class="card big" id="tit-card" style="display:none" title="Turbine Inlet Temperature — hot-gas temperature measured upstream of the turbine wheel. It is the primary thermal limit when Engine Temp Source selects TIT.">
       <div class="label"><span id="lbl-tit">TIT</span> <span data-unit="temp">°C</span> <span id="tit-health" class="dot"></span></div>
@@ -701,6 +704,6 @@ function dismissCaptiveBanner() {
 })();
 </script>
 
-<script src="/app.js?v=20260716a"></script>
+<script src="/app.js?v=20260716b"></script>
 </body>
 </html>

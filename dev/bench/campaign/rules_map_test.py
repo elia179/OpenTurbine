@@ -123,6 +123,15 @@ try:
     tester.set("THROTTLE_IN", 0.0)
     time.sleep(1.0)
     rebooted, data_after_reboot = usb_reset_and_wait()
+    if rebooted:
+        # The first HTTP frame after Wi-Fi returns can precede the first fresh
+        # post-boot ADC/rules tick. Require the persisted map to settle at the
+        # already-driven safe minimum instead of comparing that stale frame to
+        # a newer physical pulse sample.
+        _, data_after_reboot = dut.poll_until(
+            lambda d: float(d.get("starter_demand") or 0) <= 0.03,
+            timeout=3, interval=0.05,
+        )
     saved_after_reboot = dut.config().get("rules", []) if rebooted else []
     pwm_after_reboot = tester.get("THROTTLE_OUT") if rebooted else {}
     record(

@@ -10,6 +10,21 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.1] — 2026-07-16
+
+### Added
+- Independent, configurable hard N2 overspeed shutdown for two-shaft turbines. It confirms raw RPM samples, remains effective during sensor jump faults, requires a fitted N2 channel, and is separate from gradual N2 pullback/governor control.
+
+### Fixed
+- The dashboard N2 card now matches the N1 card with a limit gauge, absolute RPM/limit readout, and approaching-limit warning based on the independent hard N2 shutdown setting.
+- Settings-only safety corrections now refresh cached startup-readiness issues immediately, so clearing an invalid limit does not leave START blocked until reboot.
+- Two-shaft configuration now warns when N2 pullback, governor band, N2-based idle, or cluster warning settings do not leave margin below the hard N2 shutdown limit.
+- The dashboard post-run summary now includes peak N2 when an N2 sensor is fitted.
+- Mobile Configuration groups no longer reserve large blank off-screen placeholders, and mobile Log run summaries use the same full-width statistics layout for short and long outcomes.
+- Dashboard P1, P2, and fuel-flow cards now show their available sensor-health state; fuel flow is labelled consistently as L/min across Dashboard and Calibration.
+- Hardware unit controls now retain a usable compact touch target, and Save & Reboot uses the same primary-action styling as the other editors.
+- The detailed user guide now covers hard-versus-gradual N2 protection, controllers and limiters, relight, afterburner, logging, custom sequence behavior, update verification, and turbine-safe dry testing in the current UI.
+
 ## [1.9.0] — 2026-07-16
 
 ### Added

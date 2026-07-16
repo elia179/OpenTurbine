@@ -1373,6 +1373,14 @@ select option.pin-inonly { color: #5ba3e0; }
   .tab-btn { flex: 0 0 auto; padding-left: .75rem; padding-right: .75rem; }
   .run-header { align-items: flex-start; gap: .5rem; padding: .7rem; }
   .run-outcome { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+  .run-stats {
+    order: 2;
+    flex: 1 0 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .7rem 1rem;
+  }
+  .run-expand-btn { order: 1; }
   #tools-status-row { flex-wrap: wrap; }
   #tools-page-head { align-items: flex-start !important; }
   #btn-test-settings { flex: 0 0 auto; max-width: 55%; }

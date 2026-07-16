@@ -21,6 +21,7 @@ public:
 
     // ── Engine parameters ─────────────────────────────────────
     static float rpmLimit;
+    static float n2RpmLimit;       // hard power-turbine overspeed shutdown; 0 = disabled
     static float minRpm;
     static float totLimit;
     static float totCooldownTarget;

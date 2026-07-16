@@ -667,6 +667,8 @@ function applyData(d) {
   setDot('n2-health',  d.n2_healthy ? true : (engineOp ? false : null), lbl('n2') + ' RPM');
   setDot('tot-health', d.tot_healthy, lbl('tot'));
   setDot('oil-health', d.oil_healthy, lbl('oil_press'));
+  setDot('p1-health', d.p1_healthy, lbl('p1'));
+  setDot('p2-health', d.p2_healthy, lbl('p2'));
   // Flame dot: green = flame confirmed; red = no flame while the engine is
   // operating (running flameout cue); neutral = no flame otherwise (normal
   // at standby). Title set manually below to bypass setDot's generic
@@ -845,6 +847,24 @@ function applyData(d) {
     }
     const absLbl = document.getElementById('n1-abs-label');
     if (absLbl) absLbl.textContent = fmtInt(d.n1) + ' / ' + fmtInt(d.rpm_limit) + ' RPM';
+  }
+  if (d.n2 !== undefined) {
+    // This is the independent hard N2 shutdown limit. Gradual N2 pullback
+    // points are separate control settings and must not be shown as a trip.
+    const n2Limit = Number(d.n2_limit || 0);
+    const pct = n2Limit > 0 ? Math.min(100, (Number(d.n2) / n2Limit) * 100) : 0;
+    setGaugeBar('n2-gauge-bar', pct);
+    const warn = document.getElementById('n2-approach-warn');
+    if (warn) {
+      const show = n2Limit > 0 && pct >= 85;
+      warn.style.display = show ? '' : 'none';
+      if (show) warn.textContent = '⚠ N2 at ' + pct.toFixed(0) + '% of hard limit — '
+        + fmtInt(d.n2) + ' / ' + fmtInt(n2Limit) + ' RPM';
+    }
+    const absLbl = document.getElementById('n2-abs-label');
+    if (absLbl) absLbl.textContent = n2Limit > 0
+      ? fmtInt(d.n2) + ' / ' + fmtInt(n2Limit) + ' RPM'
+      : fmtInt(d.n2) + ' RPM / OFF';
   }
   const selectedEgtSource = selectedEgtKey(d);
   const isPrimaryTot = selectedEgtSource === 'tot';
@@ -1133,6 +1153,7 @@ function applyData(d) {
     if (d.has_fuel_flow) {
       const ffOk = d.fuel_flow_healthy !== false;
       setText('fuel-flow-val', d.fuel_flow !== undefined && ffOk ? Number(d.fuel_flow).toFixed(2) : '—');
+      setDot('fuel-flow-health', d.fuel_flow_healthy, lbl('fuel_flow'));
       const ffEl = document.getElementById('fuel-flow-val');
       if (ffEl) ffEl.title = ffOk ? '' : 'Fuel flow sensor fault (railed/disconnected) — check wiring';
     }
@@ -1474,6 +1495,7 @@ function _showRunSummary(d, durationMs) {
   const stats = [
     { label: 'Duration', value: durStr },
     (d.has_n1 && d.max_n1 !== undefined) ? { label: 'Peak N1',  value: fmtInt(d.max_n1) + ' RPM' } : null,
+    (d.has_n2 && d.max_n2 !== undefined) ? { label: 'Peak N2',  value: fmtInt(d.max_n2) + ' RPM' } : null,
     (d.has_tot && d.max_tot !== undefined) ? { label: 'Peak TOT', value: toDispTemp(Number(d.max_tot)).toFixed(0) + ' ' + dispTempUnit() } : null,
     (d.has_tit && d.max_tit !== undefined) ? { label: 'Peak TIT', value: toDispTemp(Number(d.max_tit)).toFixed(0) + ' ' + dispTempUnit() } : null,
     (d.has_oil_press && d.oil_min_bar !== undefined && Number(d.oil_min_bar) > 0)

@@ -882,6 +882,25 @@ static void validateSequences() {
 
     if (hw.safetyOverspeed && !hw.hasN1Rpm)
         addIssue("Overspeed", "Overspeed safety is enabled but no N1 RPM sensor is configured", true);
+    if (hw.safetyN2Overspeed) {
+        if (!hw.hasN2Rpm)
+            addIssue("N2 Overspeed", "N2 overspeed safety is enabled but no N2 RPM sensor is configured", true);
+        else if (Config::n2RpmLimit <= 0.0f)
+            addIssue("N2 Overspeed", "N2 overspeed safety is enabled but the hard N2 RPM limit is 0", true);
+        else {
+            if (Config::pullbackN2Enabled &&
+                ((Config::pullbackN2SoftRpm > 0.0f && Config::pullbackN2SoftRpm >= Config::n2RpmLimit) ||
+                 (Config::pullbackN2HardRpm > 0.0f && Config::pullbackN2HardRpm >= Config::n2RpmLimit)))
+                addIssue("N2 Pullback", "N2 gradual pullback starts or reaches full authority at/above the hard N2 shutdown limit", false);
+            if (hw.hasGovernor && Config::governorTargetRpm > 0.0f &&
+                Config::governorTargetRpm + Config::governorBandRpm >= Config::n2RpmLimit)
+                addIssue("N2 Governor", "Governor target plus no-correction band reaches the hard N2 shutdown limit", false);
+            if (hw.hasDynamicIdle && Config::idleUseN2 && Config::idleTargetRpm >= Config::n2RpmLimit)
+                addIssue("DynamicIdle", "N2-based idle target is at/above the hard N2 shutdown limit", false);
+            if (Config::clusterEnabled && Config::n2WarnRpm > 0.0f && Config::n2WarnRpm >= Config::n2RpmLimit)
+                addIssue("N2 Cluster Warning", "Cluster N2 warning is at/above the hard N2 shutdown limit", false);
+        }
+    }
     if (hw.safetyOvertemp) {
         if (Config::effectiveEgtSource() == 0)
             addIssue("Overtemp", "Overtemp safety is enabled but no selected TOT/TIT source is configured", true);
@@ -2418,6 +2437,11 @@ static void handleCommand(const OTPacket& pkt) {
             // instances and reinitialises actuator mappings.
             if (standbyLike) {
                 Hardware::applyConfig();
+                // Readiness issues include setting-dependent checks (for
+                // example a newly configured hard N2 safety limit). Rebuild
+                // them after every live settings apply so a valid correction
+                // cannot remain blocked by the pre-save cache until reboot.
+                validateSequences();
                 // Cluster serial can be enabled live in Config, but begin()
                 // only ran at boot (and early-returned if disabled then) —
                 // without this the setting looks saved while the UART stays

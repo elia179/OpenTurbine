@@ -367,6 +367,7 @@ public:
 
     // ── Safety enables ────────────────────────────────────────
     static bool safetyOverspeed;
+    static bool safetyN2Overspeed;
     static bool safetyOvertemp;
     static bool safetyLowOil;
     static bool safetyOilZero;

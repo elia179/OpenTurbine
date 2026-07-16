@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css?v=20260716a">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <script src="/ui_dialog.js?v=20260715a"></script>
 </head>
@@ -64,9 +64,9 @@
       <div style="display:flex;align-items:center;gap:.35rem;font-size:.7rem;color:var(--dim)">
       Units:
       <button id="unit-temp-btn" type="button" onclick="setHardwareTempUnit(tempUnit()==='C'?'F':'C')"
-        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit;min-height:0">&deg;C</button>
+        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit;min-height:34px">&deg;C</button>
       <button id="unit-press-btn" type="button" onclick="setHardwarePressUnit(pressUnit()==='bar'?'psi':'bar')"
-        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit;min-height:0">bar</button>
+        style="font-size:.7rem;padding:.15rem .55rem;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--dim);cursor:pointer;font-family:inherit;min-height:34px">bar</button>
       </div>
     </div>
   </div>
@@ -275,7 +275,7 @@
   <div class="save-bar">
     <button id="btn-discard" onclick="resetDefaults()" disabled>Discard</button>
     <span class="save-msg" id="save-msg">Loading hardware config…</span>
-    <button id="btn-save" onclick="saveHardware()" disabled>Save &amp; Reboot</button>
+    <button id="btn-save" class="primary" onclick="saveHardware()" disabled>Save &amp; Reboot</button>
   </div>
 </main>
 
@@ -1097,8 +1097,8 @@ const SEQ_ACTION_KEYS = [
 const SENSOR_DEPENDENCIES = {
   n1_rpm: { name:'N1 RPM sensor', safety:['overspeed','surge'], logs:['n1'], rules:[2],
             functions:['N1 overspeed protection','Surge protection','automatic idle speed feedback','windmilling oil protection source','automatic relight windmilling check','flameout detection','startup RPM checks','N1 session logging','rules using N1 RPM'] },
-  n2_rpm: { name:'N2 RPM sensor', logs:['n2'], rules:[6],
-            functions:['Automatic N2 speed control','automatic idle N2 feedback','windmilling oil protection source','shaft power calculation with torque sensor','N2 session logging','rules using N2 RPM'] },
+  n2_rpm: { name:'N2 RPM sensor', safety:['n2_overspeed'], logs:['n2'], rules:[6],
+            functions:['N2 hard overspeed protection','Automatic N2 speed control','automatic idle N2 feedback','windmilling oil protection source','shaft power calculation with torque sensor','N2 session logging','rules using N2 RPM'] },
   tot: { name:'TOT sensor', safety:['overtemp','hot_start'], logs:['tot'], rules:[1],
          functions:['Primary EGT safety when selected','Hot-start guard','TOT session logging','rules using TOT'] },
   tit: { name:'TIT sensor', safety:['overtemp','hot_start'], logs:['tit'], rules:[4],
@@ -2459,6 +2459,7 @@ function registryRoleUsage(direction, c) {
       if (cfg.safety?.surge) uses.add('Safety: surge detection');
       if (cfg.controllers?.dynamic_idle) uses.add('Controller: automatic idle speed control');
     } else if (purpose === 'n2_speed') {
+      if (cfg.safety?.n2_overspeed) uses.add('Safety: N2 overspeed');
       if (cfg.controllers?.governor) uses.add('Controller: N2 governor');
       if (cfg.controllers?.dynamic_idle) uses.add('Controller: automatic idle speed control');
     } else if (purpose === 'tot' || purpose === 'tit') {
@@ -2798,6 +2799,7 @@ function renderControllerSummary() {
 }
 function safetyAvailability(key) {
   const hasSpeed = registryHasPurpose('input','n1_speed');
+  const hasN2Speed = registryHasPurpose('input','n2_speed');
   const hasTot = registryHasPurpose('input','tot');
   const hasTit = registryHasPurpose('input','tit');
   const hasEgt = hasTot || hasTit;
@@ -2810,6 +2812,7 @@ function safetyAvailability(key) {
   const hasFlameConfirm = registryHasPurpose('input','flame') || hasSpeed || hasEgt;
   const map = {
     overspeed: [hasSpeed, 'Requires primary N1 speed input.'],
+    n2_overspeed: [hasN2Speed, 'Requires N2 power-turbine speed input.'],
     overtemp: [hasEgt, 'Requires a TOT or TIT temperature input.'],
     low_oil: [hasOilPress || hasLowOilSwitch, 'Requires oil-pressure input or low-oil switch.'],
     oil_zero: [hasOilPress || hasOilZeroSwitch, 'Requires oil-pressure input or zero-oil switch.'],
@@ -2838,6 +2841,7 @@ function safetyInlineEditor() {
   };
   return `<div class="registry-card-editor" style="display:block">
     ${cb('overspeed', 'N1 overspeed', 'Requires primary N1 speed input.', s.overspeed !== false)}
+    ${cb('n2_overspeed', 'N2 overspeed', 'Independent hard shutdown for the free power-turbine/output shaft. Set its RPM limit in Config.', !!s.n2_overspeed)}
     ${cb('overtemp', 'Turbine gas overtemperature', 'Watches the configured TOT/TIT temperature limits.', s.overtemp !== false)}
     ${cb('low_oil', 'Low oil pressure', 'Requires oil-pressure input or low-oil switch.', s.low_oil !== false)}
     ${cb('oil_zero', 'Zero oil pressure', 'Requires oil-pressure input or zero-oil switch.', s.oil_zero !== false)}
@@ -2855,6 +2859,7 @@ function renderSafetySummary() {
   const s = cfg.safety || {};
   const rows = [
     ['overspeed', 'N1 overspeed', 'Requires primary N1 speed input', s.overspeed !== false],
+    ['n2_overspeed', 'N2 overspeed', 'Hard power-turbine shaft shutdown; limit is set in Config', !!s.n2_overspeed],
     ['overtemp', 'Turbine gas overtemperature', 'Watches configured TOT/TIT limits', s.overtemp !== false],
     ['low_oil', 'Low oil pressure', 'Requires oil-pressure input or low-oil switch', s.low_oil !== false],
     ['oil_zero', 'Zero oil pressure', 'Requires oil-pressure input or zero-oil switch', s.oil_zero !== false],
@@ -3558,6 +3563,7 @@ function setSafety(key, val, cardId) {
 function setSafetyUI(key, val, cardId) {
   const map = {
     overspeed:'f-saf-overspeed', overtemp:'f-saf-overtemp', low_oil:'f-saf-lowoil',
+    n2_overspeed:'f-saf-n2overspeed',
     oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout',
     hot_start:'f-saf-hotstart', oil_temp_high:'f-saf-oiltemphi',
     fuel_press_low:'f-saf-fuelpresslo', batt_low:'f-saf-battlo', surge:'f-saf-surge',
@@ -3570,6 +3576,7 @@ function setSafetyUI(key, val, cardId) {
 function updateSafetyPrerequisites(markDirty) {
   const requirements = {
     overspeed: ['n1_rpm', 'sc-overspeed', 'N1 RPM sensor required'],
+    n2_overspeed: ['n2_rpm', 'sc-n2overspeed', 'N2 RPM sensor required'],
     overtemp: ['egt_source', 'sc-overtemp', 'TOT or TIT sensor required'],
     low_oil: ['oil_safety_low', 'sc-lowoil', 'Oil pressure sensor or low-oil switch required'],
     oil_zero: ['oil_safety_zero', 'sc-oilzero', 'Oil pressure sensor or zero-oil switch required'],
@@ -3582,6 +3589,7 @@ function updateSafetyPrerequisites(markDirty) {
   };
   const inputs = {
     overspeed:'f-saf-overspeed', overtemp:'f-saf-overtemp', low_oil:'f-saf-lowoil',
+    n2_overspeed:'f-saf-n2overspeed',
     oil_zero:'f-saf-oilzero', flameout:'f-saf-flameout',
     hot_start:'f-saf-hotstart',
     oil_temp_high:'f-saf-oiltemphi', fuel_press_low:'f-saf-fuelpresslo',
@@ -3598,6 +3606,7 @@ function updateSafetyPrerequisites(markDirty) {
     if (sensor === 'n1_rpm') {
       return registryHasPurpose('input','n1_speed');
     }
+    if (sensor === 'n2_rpm') return registryHasPurpose('input','n2_speed');
     if (sensor === 'oil_press') {
       return registryHasPurpose('input','oil_pressure');
     }
@@ -4339,7 +4348,7 @@ function _workflowDiffRows() {
   const labels = {
     oil_loop:'Automatic oil-pressure control', throttle_slew:'Smooth fuel/throttle movement',
     dynamic_idle:'Automatic idle speed control', governor:'Automatic N2 speed control',
-    overspeed:'N1 overspeed safety', overtemp:'Turbine overtemperature safety',
+    overspeed:'N1 overspeed safety', n2_overspeed:'N2 overspeed safety', overtemp:'Turbine overtemperature safety',
     low_oil:'Low-oil safety', oil_zero:'Zero-oil safety', flameout:'Flameout safety',
     hot_start:'Hot-start safety', oil_temp_high:'Oil-temperature safety',
     fuel_press_low:'Fuel-pressure safety', batt_low:'Battery-undervoltage safety',

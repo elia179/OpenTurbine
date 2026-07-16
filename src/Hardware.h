@@ -1153,8 +1153,9 @@ namespace Hardware {
                            g_sensorN1Rpm.rpmLimit       = Config::rpmLimit; }
         if (hw.hasN2Rpm) { g_sensorN2Rpm.jumpThreshold  = Config::rpmJumpThreshold;
                            g_sensorN2Rpm.zeroStuckLimit = Config::rpmZeroStuckTicks;
-                           g_sensorN2Rpm.rpmLimit       = Config::rpmLimit; }
+                           g_sensorN2Rpm.rpmLimit       = Config::n2RpmLimit > 0.0f ? Config::n2RpmLimit : Config::rpmLimit; }
         g_safety.rpmLimit              = Config::rpmLimit;
+        g_safety.n2RpmLimit            = Config::n2RpmLimit;
         g_safety.minRpm               = Config::minRpm;
         g_safety.titLimit             = Config::titLimit;
         g_safety.oilTempLimit         = Config::oilTempLimit;

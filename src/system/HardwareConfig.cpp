@@ -454,6 +454,7 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
 
     JsonVariantConst safety = doc["safety"];
     if ((safety["overspeed"] | false) && !hasN1) return false;
+    if ((safety["n2_overspeed"] | false) && !hasN2) return false;
     if ((safety["surge"] | false) && !hasN1) return false;
     if ((safety["overtemp"] | false) && !hasEgt) return false;
     if ((safety["hot_start"] | false) && !hasEgt) return false;
@@ -2128,6 +2129,7 @@ uint8_t HardwareConfig::oilLoopCount = 0;
 
 // Safety enables
 bool  HardwareConfig::safetyOverspeed  = DEFAULT_SAFETY_OVERSPEED;
+bool  HardwareConfig::safetyN2Overspeed = false;
 bool  HardwareConfig::safetyOvertemp   = DEFAULT_SAFETY_OVERTEMP;
 bool  HardwareConfig::safetyLowOil     = DEFAULT_SAFETY_LOW_OIL;
 bool  HardwareConfig::safetyOilZero    = DEFAULT_SAFETY_OIL_ZERO;
@@ -2598,6 +2600,7 @@ void HardwareConfig::applyDefaults() {
     if (hasDynamicIdle && !hasN1Rpm && !hasN2Rpm) hasDynamicIdle = false;
 
     safetyOverspeed = DEFAULT_SAFETY_OVERSPEED;
+    safetyN2Overspeed = false;
     safetyOvertemp  = DEFAULT_SAFETY_OVERTEMP;
     safetyLowOil    = DEFAULT_SAFETY_LOW_OIL;
     safetyOilZero   = DEFAULT_SAFETY_OIL_ZERO;
@@ -3121,6 +3124,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
 
     auto saf = doc["safety"].to<JsonObject>();
     saf["overspeed"]  = safetyOverspeed;
+    saf["n2_overspeed"] = safetyN2Overspeed;
     saf["overtemp"]   = safetyOvertemp;
     saf["low_oil"]    = safetyLowOil;
     saf["oil_zero"]   = safetyOilZero;
@@ -4029,6 +4033,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
 
     auto saf = doc["safety"];
     if (!saf["overspeed"].isNull()) safetyOverspeed = saf["overspeed"].as<bool>();
+    if (!saf["n2_overspeed"].isNull()) safetyN2Overspeed = saf["n2_overspeed"].as<bool>();
     if (!saf["overtemp"].isNull())  safetyOvertemp  = saf["overtemp"].as<bool>();
     if (saf["tit_overtemp"] | false) safetyOvertemp = true;
     if (!saf["low_oil"].isNull())   safetyLowOil    = saf["low_oil"].as<bool>();
@@ -4044,6 +4049,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         safetyOverspeed = false;
         safetySurge = false;
     }
+    if (!hasN2Rpm) safetyN2Overspeed = false;
     if (!hasTot && !hasTit) {
         safetyOvertemp = false;
         safetyHotStart = false;

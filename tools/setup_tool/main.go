@@ -1614,7 +1614,7 @@ func (j *Job) runExistingUpdate() {
 		return
 	}
 
-	j.set(7, total, 94, "Reconnect for final verification", "The dashboard files were accepted and the board is restarting.\n\nWindows may have switched back to another network. Connect to this OpenTurbine board's Wi-Fi again, wait a few seconds, then click Continue.", "The tool will verify the firmware version and all ten dashboard files; it will not report success merely because upload returned quickly.", true)
+	j.set(7, total, 94, "Reconnect for final verification", "The dashboard files were accepted and the board is restarting.\n\nWindows may have switched back to another network. Connect to this OpenTurbine board's Wi-Fi again, wait a few seconds, then click Continue.", "The tool will verify the firmware version and all eleven web assets; it will not report success merely because upload returned quickly.", true)
 	j.waitContinue()
 	if err := waitForECU(75 * time.Second); err != nil {
 		j.fail(errors.New("The files were uploaded, but the tool could not reconnect for final verification. Reconnect to the board Wi-Fi and run Update and keep my setup again; it is safe to repeat."))

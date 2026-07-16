@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Calibration</title>
-<link rel="stylesheet" href="/style.css?v=20260716a">
+<link rel="stylesheet" href="/style.css?v=20260716b">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <script src="/ui_dialog.js?v=20260715a"></script>
 </head>
@@ -496,7 +496,7 @@
   <div class="sensor-row" id="fuelflow-cal-row" style="display:none">
     <div class="sensor-name">Fuel Flow Sensor (Analog)</div>
     <div class="sensor-vals">
-      <div class="sv-item"><div class="sv-label">Flow (units/min)</div><div class="sv-val" id="cal-ff">—</div></div>
+      <div class="sv-item"><div class="sv-label">Flow (L/min)</div><div class="sv-val" id="cal-ff">—</div></div>
       <div class="sv-item"><div class="sv-label">Raw ADC</div><div class="sv-val" id="cal-ff-raw">—</div></div>
     </div>
     <div class="bar-track"><div class="bar-fill" id="bar-ff" style="width:0%"></div></div>
@@ -508,7 +508,7 @@
         <button onclick="ffCaptureZero()">Capture Zero Flow</button>
         <span id="ff-zero-captured" style="color:var(--green);margin-left:.4rem"></span><br><br>
         <b>Step 2 — Reference flow:</b> Set a known flow rate through the sensor.<br>
-        Known flow: <input type="number" id="ff-ref-val" min="0.01" max="1000" step="0.01" placeholder="units/min" style="width:7rem;margin:0 .3rem">
+        Known flow: <input type="number" id="ff-ref-val" min="0.01" max="1000" step="0.01" placeholder="L/min" style="width:7rem;margin:0 .3rem">
         <button onclick="ffCaptureRef()">Capture Reference</button>
         <span id="ff-ref-captured" style="color:var(--green);margin-left:.4rem"></span>
       </div>
@@ -635,7 +635,7 @@
 
 </main>
 
-<script src="/app.js?v=20260716a"></script>
+<script src="/app.js?v=20260716b"></script>
 <script>
 let live = {};
 let oilPts = [];
@@ -1068,7 +1068,7 @@ window.applyData = function(d) {
     setText('cal-ff-raw', d.fuel_flow_raw ?? '—');
     if (d.fuel_flow !== undefined) {
       const ffValMax = cfg.calibration?.fuel_flow_val_max ?? 10;
-      setText('cal-ff', Number(d.fuel_flow).toFixed(3) + ' units/min');
+      setText('cal-ff', Number(d.fuel_flow).toFixed(3) + ' L/min');
       bar('bar-ff', d.fuel_flow, 0, ffValMax, true);
     }
   }

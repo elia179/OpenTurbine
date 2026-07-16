@@ -88,6 +88,7 @@ static constexpr bool kIdleUseN2Default = false;
 
 // ── Static member definitions ─────────────────────────────────
 float Config::rpmLimit              = 100000;
+float Config::n2RpmLimit            = 0;
 float Config::minRpm                = 30000;
 float Config::totLimit              = 750;
 float Config::totCooldownTarget     = 150;
@@ -516,6 +517,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     // recommended caps (rpm_limit 500000, tot_limit 1400) are accepted and
     // flagged via Config::loadWarning instead of rejected (warn, don't block).
     if (!validNumber(eng["rpm_limit"], 1000.0f, 1000000000.0f) ||
+        !validNumber(eng["n2_rpm_limit"], 0.0f, 1000000000.0f) ||
         !validNumber(eng["min_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(eng["tot_limit"], 0.0f, 100000.0f) ||
         !validNumber(eng["tot_cooldown_target"], 0.0f, 100000.0f) ||
@@ -1400,7 +1402,7 @@ void Config::_applyDefaults() {
     // Re-assign every field to its compile-time default so that load() is
     // idempotent: missing JSON keys restore to the default rather than
     // keeping a stale runtime value from a previous load() call.
-    rpmLimit = 100000; minRpm = 30000; totLimit = 750;
+    rpmLimit = 100000; n2RpmLimit = 0; minRpm = 30000; totLimit = 750;
     totCooldownTarget = 150; totSafeMargin = 50;
     oilStartupPressure = 2.5f; oilStartupPct = 80.0f; oilStartupMinBar = 1.5f;
     oilRunningMin = 2.8f; oilMapMin = 3.6f; oilMapMax = 4.4f;
@@ -1520,6 +1522,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
 
     auto eng = doc["engine"];
     rpmLimit          = eng["rpm_limit"]          | rpmLimit;
+    n2RpmLimit        = eng["n2_rpm_limit"]       | n2RpmLimit;
     minRpm            = eng["min_rpm"]             | minRpm;
     totLimit          = eng["tot_limit"]           | totLimit;
     totCooldownTarget = eng["tot_cooldown_target"] | totCooldownTarget;
@@ -1878,6 +1881,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     // to defaults; out-of-range-HIGH safety limits are accepted and warned
     // about below instead (never block the informed user).
     if (!isfinite(rpmLimit) || rpmLimit <= 0.0f) rpmLimit = 100000.0f;
+    if (!isfinite(n2RpmLimit) || n2RpmLimit < 0.0f) n2RpmLimit = 0.0f;
     if (minRpm <= 0.0f) minRpm = 30000.0f;
     if (minRpm >= rpmLimit) minRpm = rpmLimit * 0.3f;
     if (!isfinite(totLimit) || totLimit < 0.0f) totLimit = 750.0f;
@@ -2116,6 +2120,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
         appendLoadWarning(warnBuf);
     };
     if (rpmLimit > 500000.0f)  warnHighLimit("rpm_limit", rpmLimit, 500000.0f);
+    if (n2RpmLimit > 500000.0f) warnHighLimit("n2_rpm_limit", n2RpmLimit, 500000.0f);
     if (totLimit > 1400.0f)    warnHighLimit("tot_limit", totLimit, 1400.0f);
     if (titLimit > 1400.0f)    warnHighLimit("tit_limit_c", titLimit, 1400.0f);
     if (oilTempLimit > 300.0f) warnHighLimit("oil_temp_limit_c", oilTempLimit, 300.0f);
@@ -2148,6 +2153,7 @@ void Config::_toDoc(JsonDocument& doc) {
 
     auto eng = doc["engine"].to<JsonObject>();
     eng["rpm_limit"]          = rpmLimit;
+    eng["n2_rpm_limit"]       = n2RpmLimit;
     eng["min_rpm"]            = minRpm;
     eng["tot_limit"]          = totLimit;
     eng["tot_cooldown_target"]= totCooldownTarget;
