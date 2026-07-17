@@ -62,7 +62,7 @@ public:
             _maxDuty = (1u << _resBits) - 1;
         }
 
-        bool ok = ledcAttach(_pin, _freqHz, _resBits);
+        bool ok = _pin >= 0 && _freqHz > 0 && ledcAttach(_pin, _freqHz, _resBits);
         while (!ok && _resBits > MIN_RES_BITS) {
             _resBits--;
             _maxDuty = (1u << _resBits) - 1;
@@ -71,8 +71,9 @@ public:
         Serial.printf("[%s] LEDC attach pin=%d freq=%luHz bits=%u %s\n",
                       _name, _pin, (unsigned long)_freqHz, (unsigned)_resBits,
                       ok ? "OK" : "FAILED");
+        _ready = ok;
         _lastDuty = NO_DUTY;
-        writeDuty(_inverted ? _maxDuty : 0);  // off on boot
+        if (_ready) writeDuty(_inverted ? _maxDuty : 0);  // off on boot
     }
 
     void set(float value) override {
@@ -92,6 +93,7 @@ public:
     }
 
     const char* name() override { return _name; }
+    bool isReady() const override { return _ready; }
 
 private:
     static constexpr uint32_t NO_DUTY = UINT32_MAX;
@@ -105,6 +107,7 @@ private:
     static constexpr uint8_t  MIN_RES_BITS = 8;
 
     void writeDuty(uint32_t duty) {
+        if (!_ready) return;
         duty = (uint32_t)constrain((int)duty, 0, (int)_maxDuty);
         if (duty == _lastDuty) return;
 
@@ -131,4 +134,5 @@ private:
     bool        _inverted = false;
     float       _minOutput = 0.0f;
     float       _maxOutput = 1.0f;
+    bool        _ready = false;
 };

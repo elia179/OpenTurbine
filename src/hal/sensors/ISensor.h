@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 // ── Sensor interface ─────────────────────────────────────────
 // All sensors implement this. The ECU loop calls update() every
@@ -12,4 +13,5 @@ public:
     virtual float       getValue()  = 0;   // last good calibrated reading
     virtual bool        isHealthy() = 0;   // false = reading not trustworthy
     virtual const char* name()      = 0;   // e.g. "N1_RPM" — for logging / web UI
+    virtual uint32_t    sampleSequence() { return 0; }
 };

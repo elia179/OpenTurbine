@@ -359,6 +359,26 @@ static const char* _startPreflightRejectReason() {
     if (!Config::profileMatch || ed.configLocked) {
         return "Configuration is locked or profile ID does not match";
     }
+    if (!ed.startReleasedSinceBoot) {
+        return "Release the physical START input once after boot before starting";
+    }
+    if (ed.recoveryLockout && !ed.skipSafetyChecks) {
+        return "Abnormal-reset recovery is locked: release START, verify the engine is safe, then press STOP to acknowledge";
+    }
+    if ((!ed.hardwareReady || !ed.watchdogReady) && !ed.skipSafetyChecks) {
+        return !ed.watchdogReady ? "Control-loop watchdog is not ready"
+                                 : (ed.hardwareFault[0] ? ed.hardwareFault : "Configured hardware failed to initialize");
+    }
+    if (!ed.skipSafetyChecks && !ed.benchMode) {
+        const uint32_t now = millis();
+        const bool rpmFresh = (!HardwareConfig::hasN1Rpm || (ed.n1Healthy && now - ed.n1SampleMs <= 500UL)) &&
+                              (!HardwareConfig::hasN2Rpm || (ed.n2Healthy && now - ed.n2SampleMs <= 500UL));
+        const bool egtRequired = (HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart) &&
+                                 Config::effectiveEgtSource() != 0;
+        const uint32_t egtMs = Config::effectiveEgtSource() == 2 ? ed.titSampleMs : ed.totSampleMs;
+        if (!rpmFresh || (egtRequired && (!Config::primaryEgtHealthy(ed) || now - egtMs > 1000UL)))
+            return "Configured shaft or EGT feedback is unhealthy or stale";
+    }
     if (ed.stopSwitchActive) {
         return "STOP switch is active. Release STOP before pressing START.";
     }
@@ -799,6 +819,8 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["loop_logging_ms"]       = ed.loopLoggingMs;
     doc["loop_led_ms"]           = ed.loopLedMs;
     doc["session_dropped_rows"]  = SessionLogger::droppedRows();
+    doc["session_logger_healthy"] = SessionLogger::healthy();
+    doc["session_logger_error"]   = SessionLogger::errorCode();
     doc["flight_dropped_events"] = FlightRecorder::droppedEvents();
     doc["log_records"]           = FlightRecorder::recordCount();
     doc["max_n1"]                = (int)ed.maxN1;
@@ -943,7 +965,11 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
         doc["flameout_tot_drop_c"]   = Config::flameoutTotDropC;
         doc["dev_mode_fw"]           = true;
         doc["config_locked"]         = Config::isLocked();
-        doc["config_storage_fault"]  = ed.configStorageFault;
+    doc["config_storage_fault"]  = ed.configStorageFault;
+    doc["hardware_ready"]        = ed.hardwareReady;
+    doc["watchdog_ready"]        = ed.watchdogReady;
+    doc["recovery_lockout"]      = ed.recoveryLockout;
+    doc["hardware_fault"]        = ed.hardwareFault;
         // Boot-load accept+warn notice (out-of-cap safety limits etc.)
         doc["config_load_warning"]   = Config::loadWarning[0] ? Config::loadWarning : nullptr;
         doc["ui_theme"]              = Config::uiTheme;
@@ -1352,6 +1378,10 @@ void WebServer::_setupRoutes() {
                 req->send(400, "application/json", "{\"error\":\"request body too large\"}");
                 return;
             }
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                req->send(409, "application/json", "{\"error\":\"engine must be idle in STANDBY to change config\"}");
+                return;
+            }
             if (!Config::isLocked()) {
                 bool ok = Config::fromJson(g_webRxBuf, g_webRxLen);
                 // If fromJson succeeds it already saves; do NOT save on failure — it would
@@ -1397,6 +1427,10 @@ void WebServer::_setupRoutes() {
             WebRxRelease release(req);
             if (g_webRxOverflow) {
                 req->send(400, "application/json", "{\"error\":\"request body too large\"}");
+                return;
+            }
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                req->send(409, "application/json", "{\"error\":\"engine must be idle in STANDBY to change config\"}");
                 return;
             }
             if (Config::isLocked()) {

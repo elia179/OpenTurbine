@@ -29,4 +29,6 @@ public:
     static void tick();          // Core 1: snapshot → queue push (no file I/O)
     static void drainQueue();    // Core 0: write queued rows to flash
     static uint32_t droppedRows();
+    static bool healthy();
+    static uint8_t errorCode();  // 0=ok, 1=queue, 2=open, 3=header, 4=backlog, 5=space, 6=write
 };

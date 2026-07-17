@@ -61,6 +61,16 @@ struct EngineData {
     volatile int      torqueRaw       = 0;      // raw ADC counts (ADC torque sensor only)
     volatile int      throttleInputRaw = 0;     // ADC counts (ADC mode) or pulse width us (servo mode)
     volatile int      idleInputRaw     = 0;     // ADC counts (ADC mode) or pulse width us (servo mode)
+    volatile bool     throttleInputValid = false;
+    volatile bool     idleInputValid     = false;
+    volatile uint32_t n1SampleSeq      = 0;
+    volatile uint32_t n2SampleSeq      = 0;
+    volatile uint32_t totSampleSeq     = 0;
+    volatile uint32_t titSampleSeq     = 0;
+    volatile uint32_t n1SampleMs       = 0;
+    volatile uint32_t n2SampleMs       = 0;
+    volatile uint32_t totSampleMs      = 0;
+    volatile uint32_t titSampleMs      = 0;
 
     // ── Sensor health ─────────────────────────────────────────
     volatile bool     n1Healthy       = false;
@@ -140,6 +150,11 @@ struct EngineData {
     volatile bool     devMode            = false;
     volatile bool     configLocked       = false;
     volatile bool     configStorageFault = false;
+    volatile bool     hardwareReady      = true;
+    volatile bool     watchdogReady      = false;
+    volatile bool     recoveryLockout    = false;
+    volatile bool     startReleasedSinceBoot = false;
+    char              hardwareFault[128] = {};
 
     // ── Runtime flags (toggleable via web UI) ─────────────────
     volatile bool     skipSafetyChecks   = false;  // DEV_MODE only

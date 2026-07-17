@@ -63,7 +63,8 @@ public:
     void tick() override {
         auto& ed     = EngineData::instance();
         unsigned long now = millis();
-        float dt          = (now - _lastMs) / 1000.0f;
+        float actualDt    = (now - _lastMs) / 1000.0f;
+        float dt          = actualDt;
         _lastMs           = now;
         if (dt <= 0.0f) dt = 0.001f;
         else if (dt > 0.05f) dt = 0.05f;
@@ -73,6 +74,7 @@ public:
         // feedback. In normal operation this interlock must still prevent a
         // fuel increase with missing speed or temperature feedback.
         if (!ed.benchMode && ((HardwareConfig::hasN1Rpm && !ed.n1Healthy) ||
+            (HardwareConfig::hasN2Rpm && !ed.n2Healthy) ||
             (Config::effectiveEgtSource() != 0 && !Config::primaryEgtHealthy(ed)))) {
             if (target > _current) target = _current;
         }
@@ -119,7 +121,8 @@ public:
         if (target > _current) {
             maxStep = effRampUpMs > 0.0f ? dt / (effRampUpMs / 1000.0f) : 1.0f;
         } else {
-            maxStep = rampDownMs > 0.0f ? dt / (rampDownMs / 1000.0f) : 1.0f;
+            float closeDt = fmaxf(dt, actualDt);
+            maxStep = rampDownMs > 0.0f ? closeDt / (rampDownMs / 1000.0f) : 1.0f;
         }
         _current = constrain(_current + constrain(target - _current, -maxStep, maxStep),
                              0.0f, 1.0f);

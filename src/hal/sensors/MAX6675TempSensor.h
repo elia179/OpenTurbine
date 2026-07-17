@@ -41,6 +41,7 @@ public:
         _temp    = 0;
         _healthy = false;
         _lastMs  = 0;
+        _sampleSeq = 0;
     }
 
     void update() override {
@@ -49,6 +50,7 @@ public:
         if (now - _lastMs < READ_INTERVAL_MS) return;
         _lastMs = now;
         float t = _tc->readCelsius();
+        ++_sampleSeq;
         // NaN = the chip's open-thermocouple bit (D2) — the reliable fault
         // indication (a disconnected converter reads all-1s via the MISO
         // pull-up, which also sets D2).  0 °C is the range floor and a
@@ -75,10 +77,11 @@ public:
     float       getValue()  override { return _temp; }
     bool        isHealthy() override { return _healthy; }
     const char* name()      override { return _name; }
+    uint32_t sampleSequence() override { return _sampleSeq; }
 
 private:
     static constexpr unsigned long READ_INTERVAL_MS = 250; // MAX6675 min ~220 ms
-    static constexpr int           NUM_AVG          = 6;   // ~1.5 s of smoothing
+    static constexpr int           NUM_AVG          = 4;   // ~1.0 s of smoothing
 
     int8_t      _clkPin;
     int8_t      _csPin;
@@ -95,4 +98,5 @@ private:
     float       _temp         = 0;
     bool        _healthy      = false;
     unsigned long _lastMs     = 0;
+    uint32_t      _sampleSeq  = 0;
 };

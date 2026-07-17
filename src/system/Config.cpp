@@ -226,6 +226,7 @@ float    Config::rpmZeroThreshold     = 100.0f;
 
 float    Config::oilZeroBar          = 0.1f;
 float    Config::oilPressureDeadband = 0.2f;
+uint32_t Config::oilPumpOvercurrentDelayMs = 5000;
 
 int      Config::standbyOilSource    = 0;
 float    Config::standbyOilRpmLimit  = 100.0f;
@@ -785,7 +786,8 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     JsonVariantConst oilxv = doc["oil_advanced"];
     if (present(oilxv) && (!oilxv.is<JsonObjectConst>() ||
         !validNumber(oilxv["zero_bar"], 0.0f, 100.0f) ||
-        !validNumber(oilxv["deadband_bar"], 0.0f, 100.0f))) return false;
+        !validNumber(oilxv["deadband_bar"], 0.0f, 100.0f) ||
+        !validNumber(oilxv["pump_overcurrent_delay_ms"], 100.0f, 60000.0f))) return false;
     // (standby_oil is validated once above near the top of this function.)
 
     JsonVariantConst limpv = doc["limp_mode"];
@@ -1462,7 +1464,7 @@ void Config::_applyDefaults() {
     wsIntervalMs = 333; snapshotIntervalMs = 10000; controlLoopHz = 400; logStandby = false;
     strcpy(uiTheme, "carbon");
     starterLowRpmSupportPct = 15.0f; starterLowRpmSupportDisengageRpm = 1000.0f; starterStartupRampPctPerSec = 10.0f;
-    oilZeroBar = 0.1f; oilPressureDeadband = 0.2f;
+    oilZeroBar = 0.1f; oilPressureDeadband = 0.2f; oilPumpOvercurrentDelayMs = 5000;
     standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
     standbyOilFeedBar = 0.0f;
     limpMaxThrottlePct = 50.0f; igniterOnStart = true; manualRelightIgnitionTarget = 0;
@@ -1744,6 +1746,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     auto oilx = doc["oil_advanced"];
     oilZeroBar          = oilx["zero_bar"]      | oilZeroBar;
     oilPressureDeadband = oilx["deadband_bar"]  | oilPressureDeadband;
+    oilPumpOvercurrentDelayMs = oilx["pump_overcurrent_delay_ms"] | oilPumpOvercurrentDelayMs;
 
     auto sob = doc["standby_oil"];
     standbyOilSource   = sob["source"]    | standbyOilSource;
@@ -1900,6 +1903,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (oilAdjustScale < 0.0f) oilAdjustScale = 0.0f;
     if (oilZeroBar < 0.0f) oilZeroBar = 0.0f;
     if (oilPressureDeadband < 0.0f) oilPressureDeadband = 0.0f;
+    oilPumpOvercurrentDelayMs = constrain(oilPumpOvercurrentDelayMs, 100UL, 60000UL);
     if (safetyCheckIntervalMs < 10) safetyCheckIntervalMs = 10;
     if (flameoutShutdownMs < 100.0f) flameoutShutdownMs = 100.0f;
     flameoutSource = constrain(flameoutSource, 0, 3);
@@ -2372,6 +2376,7 @@ void Config::_toDoc(JsonDocument& doc) {
     auto oilx = doc["oil_advanced"].to<JsonObject>();
     oilx["zero_bar"]     = oilZeroBar;
     oilx["deadband_bar"] = oilPressureDeadband;
+    oilx["pump_overcurrent_delay_ms"] = oilPumpOvercurrentDelayMs;
 
 
     auto sob = doc["standby_oil"].to<JsonObject>();

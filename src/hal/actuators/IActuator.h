@@ -11,4 +11,5 @@ public:
     virtual void        set(float value)  = 0;  // 0.0 = off/min, 1.0 = on/max
     virtual void        off()             = 0;  // immediate safe-off
     virtual const char* name()            = 0;
+    virtual bool        isReady() const    = 0;
 };

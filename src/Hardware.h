@@ -19,6 +19,7 @@
 
 #include "../hardware_profile.h"
 #include "system/HardwareConfig.h"
+#include "soc/soc_caps.h"
 
 // ── All sensor headers — always included ──────────────────────
 #include "hal/sensors/PCNTRpmSensor.h"
@@ -428,6 +429,7 @@ namespace Hardware {
     inline PCNTRpmSensor     g_registryPcnt[MAX_REGISTRY_PCNT] = {
         PCNTRpmSensor(-1, 1.0f, "REG_PCNT_1"), PCNTRpmSensor(-1, 1.0f, "REG_PCNT_2")
     };
+    inline bool              g_pcntResourcePlanValid = true;
     inline int8_t            g_registryPcntSlot[ChannelRegistry::MAX_INPUT_CHANNELS] = {};
     static constexpr uint8_t MAX_REGISTRY_ONEWIRE = 4;
     inline DS18B20TempSensor g_registryDs18[MAX_REGISTRY_ONEWIRE] = {
@@ -623,7 +625,7 @@ namespace Hardware {
             }
             if (c.installed && c.pin >= 0 && c.driver == ChannelRegistry::Pulse &&
                 !strcmp(c.role, "speed")) {
-                if (pcntCount < MAX_REGISTRY_PCNT) {
+                if (g_pcntResourcePlanValid && pcntCount < MAX_REGISTRY_PCNT) {
                     g_registryPcntSlot[i] = (int8_t)pcntCount;
                     g_registryPcnt[pcntCount].rpmLimit = c.maxValue > 0.0f ? c.maxValue : 60000.0f;
                     g_registryPcnt[pcntCount++].begin(c.pin, c.pulsesPerUnit);
@@ -878,9 +880,15 @@ namespace Hardware {
             } else if (c.driver == ChannelRegistry::Pwm) {
                 const uint32_t freq = c.pwmTimingConfigured ? constrain(c.pwmFrequency, 1U, 100000U) : 5000U;
                 const uint8_t bits = c.pwmTimingConfigured ? constrain(c.pwmResolution, 8, 14) : 10;
-                ledcAttach(c.pin, freq, bits);
+                if (!ledcAttach(c.pin, freq, bits)) {
+                    ed.hardwareReady = false;
+                    snprintf(ed.hardwareFault, sizeof(ed.hardwareFault), "Registry PWM attach failed: %s", c.id);
+                }
             } else if (c.driver == ChannelRegistry::Servo) {
-                ledcAttach(c.pin, 50, 14);
+                if (!ledcAttach(c.pin, 50, 14)) {
+                    ed.hardwareReady = false;
+                    snprintf(ed.hardwareFault, sizeof(ed.hardwareFault), "Registry servo attach failed: %s", c.id);
+                }
             }
             writeRegistryOutput(c, fallbackDemand >= 0.0f ? fallbackDemand : c.safeDemand);
         }
@@ -953,6 +961,30 @@ namespace Hardware {
             } else if (!strcmp(p, "bleed_valve")) {
                 ed.bleedValveDemand = safe; ed.bleedValveOpen = safe >= 0.5f;
             }
+        }
+    }
+
+    inline void applyShutdownCombustionInvariant() {
+        auto& ed = EngineData::instance();
+        if (ed.mode != SysMode::SHUTDOWN) return;
+        ed.throttleDemand = 0.0f;
+        ed.abFuelOffset = 0.0f;
+        ed.fuelSolOpen = false;
+        ed.fuelPump2Demand = 0.0f;
+        ed.igniterOn = false;
+        ed.igniter2On = false;
+        ed.glowPlugDemand = 0.0f;
+        ed.wetGlowFuelDemand = 0.0f;
+        ed.abSolOpen = false;
+        ed.abPumpDemand = 0.0f;
+        auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.outputCount; ++i) {
+            const char* p = reg.outputs[i].purpose;
+            if (!strcmp(p, "main_fuel") || !strcmp(p, "fuel_shutoff") ||
+                !strcmp(p, "fuel_pump") || !strcmp(p, "igniter") ||
+                !strcmp(p, "ab_igniter") || !strcmp(p, "ab_valve") ||
+                !strcmp(p, "ab_pump") || !strcmp(p, "glow_plug") ||
+                !strcmp(p, "wet_glow_fuel")) ed.registryOutputDemand[i] = 0.0f;
         }
     }
 
@@ -1208,13 +1240,19 @@ namespace Hardware {
     }
 
     // Filtered RPM-acceleration state (single instance; reset in initSensors()).
-    inline unsigned long _accelLastMs = 0;
+    inline unsigned long _accelLastN1Ms = 0;
+    inline unsigned long _accelLastN2Ms = 0;
+    inline uint32_t      _accelSeenN1Seq = 0;
+    inline uint32_t      _accelSeenN2Seq = 0;
     inline float         _accelPrevN1 = 0.0f;
     inline float         _accelPrevN2 = 0.0f;
 
     // ── Sensor init ───────────────────────────────────────────
     inline void initSensors() {
         auto& hw = HardwareConfig::instance();
+        auto& ed = EngineData::instance();
+        ed.hardwareReady = true;
+        ed.hardwareFault[0] = '\0';
         const bool n1RegistryAnalog = registryAnalogInputIndex("n1_main", "primary_n1", "n1_speed") >= 0;
         const bool n2RegistryAnalog = registryAnalogInputIndex("n2_main", "primary_n2", "n2_speed") >= 0;
         const bool totRegistryAnalog = registryAnalogInputIndex("tot_main", nullptr, "tot") >= 0;
@@ -1224,9 +1262,44 @@ namespace Hardware {
         const bool p2RegistryAnalog = registryAnalogInputIndex("p2_main", nullptr, "p2_pressure") >= 0;
         const bool idleRegistryInput = registryPurposeInputIndex("idle") >= 0;
         const bool throttleRegistryInput = registryPurposeInputIndex("throttle", "operator_throttle") >= 0;
-        if (hw.hasN1Rpm && !n1RegistryAnalog) g_sensorN1Rpm.begin(hw.n1RpmPin, hw.n1RpmPpr);
-        if (hw.hasN2Rpm && !n2RegistryAnalog) g_sensorN2Rpm.begin(hw.n2RpmPin, hw.n2RpmPpr);
-        _accelLastMs = 0; _accelPrevN1 = 0.0f; _accelPrevN2 = 0.0f;   // clean RPM-accel start
+        uint8_t pcntNeeded = (hw.hasN1Rpm && !n1RegistryAnalog ? 1 : 0) +
+                             (hw.hasN2Rpm && !n2RegistryAnalog ? 1 : 0) +
+                             (hw.hasFuelFlow && hw.fuelFlowType == 1 ? 1 : 0);
+        uint8_t registryPcntNeeded = 0;
+        for (uint8_t i = 0; i < HardwareConfig::channelRegistry.inputCount; ++i) {
+            const auto& c = HardwareConfig::channelRegistry.inputs[i];
+            if (c.installed && c.driver == ChannelRegistry::Pulse && !strcmp(c.role, "speed") &&
+                !registryCoreInputKind(c) &&
+                strcmp(c.purpose, "fuel_flow") != 0 && strcmp(c.id, "fuel_flow") != 0) {
+                ++pcntNeeded;
+                ++registryPcntNeeded;
+            }
+        }
+        #if defined(SOC_PCNT_GROUPS)
+        constexpr uint8_t pcntAvailable = SOC_PCNT_GROUPS * SOC_PCNT_UNITS_PER_GROUP;
+        #else
+        constexpr uint8_t pcntAvailable = SOC_PCNT_UNITS_PER_GROUP;
+        #endif
+        g_pcntResourcePlanValid = pcntNeeded <= pcntAvailable &&
+                                  registryPcntNeeded <= MAX_REGISTRY_PCNT;
+        if (!g_pcntResourcePlanValid) {
+            ed.hardwareReady = false;
+            snprintf(ed.hardwareFault, sizeof(ed.hardwareFault),
+                     "PCNT overcommit: %u total/%u available, %u registry/%u supported",
+                     pcntNeeded, pcntAvailable, registryPcntNeeded, MAX_REGISTRY_PCNT);
+            Serial.printf("[HW] %s\n", ed.hardwareFault);
+        }
+        if (hw.hasN1Rpm && !n1RegistryAnalog && g_pcntResourcePlanValid) {
+            g_sensorN1Rpm.begin(hw.n1RpmPin, hw.n1RpmPpr);
+            if (!g_sensorN1Rpm.hardwareReady()) { ed.hardwareReady = false; strlcpy(ed.hardwareFault, "N1 PCNT initialization failed", sizeof(ed.hardwareFault)); }
+        }
+        if (hw.hasN2Rpm && !n2RegistryAnalog && g_pcntResourcePlanValid) {
+            g_sensorN2Rpm.begin(hw.n2RpmPin, hw.n2RpmPpr);
+            if (!g_sensorN2Rpm.hardwareReady()) { ed.hardwareReady = false; strlcpy(ed.hardwareFault, "N2 PCNT initialization failed", sizeof(ed.hardwareFault)); }
+        }
+        _accelLastN1Ms = 0; _accelLastN2Ms = 0;
+        _accelSeenN1Seq = 0; _accelSeenN2Seq = 0;
+        _accelPrevN1 = 0.0f; _accelPrevN2 = 0.0f;
         if (hw.hasTot && !totRegistryAnalog) {
             if (strncmp(hw.totChip, "max31856", 8) == 0) {
                 g_sensorTot31856 = MAX31856TempSensor(hw.totClk, hw.totCs, hw.totMiso, hw.totMosi, hw.totTcType, "TOT_31856");
@@ -1299,7 +1372,7 @@ namespace Hardware {
         if (hw.hasFuelFlow) {
             if (hw.fuelFlowType == 1) {
                 // Pulse / frequency type — reuse PCNT infrastructure (pulsesPerRev=1 → RPM = pulses/min)
-                g_sensorFuelFlowPulse.begin(hw.fuelFlowPin, 1.0f);
+                if (g_pcntResourcePlanValid) g_sensorFuelFlowPulse.begin(hw.fuelFlowPin, 1.0f);
             } else {
                 // Analog voltage type
                 g_sensorFuelFlow.begin(hw.fuelFlowPin);
@@ -1332,9 +1405,9 @@ namespace Hardware {
             (hw.abTriggerSource == 3 || Config::abPumpControlMode == 2))
             g_sensorAbInput.begin(hw.abInputPin);
         if (hw.abRequiresArmSwitch && hw.abArmSwitchPin >= 0)
-            pinMode(hw.abArmSwitchPin, hw.abArmSwitchActiveH ? INPUT : INPUT_PULLUP);
+            pinMode(hw.abArmSwitchPin, hw.abArmSwitchActiveH ? INPUT_PULLDOWN : INPUT_PULLUP);
         if (hw.abTriggerSource == 2 && hw.abSwitchPin >= 0)
-            pinMode(hw.abSwitchPin, hw.abSwitchActiveH ? INPUT : INPUT_PULLUP);
+            pinMode(hw.abSwitchPin, hw.abSwitchActiveH ? INPUT_PULLDOWN : INPUT_PULLUP);
         if (hw.hasGlowCurrentSensor && hw.glowCurrentPin >= 0) {
             g_sensorGlowCurrent.begin(hw.glowCurrentPin);
             applyCurrentSensorCal(g_sensorGlowCurrent, hw.glowCurrentZeroV, hw.glowCurrentMvPerA);
@@ -1368,10 +1441,18 @@ namespace Hardware {
         if (idleRegistry >= 0 && ed.registryInputHealthy[idleRegistry]) {
             float norm = constrain(ed.registryInputValue[idleRegistry], 0.0f, 1.0f);
             ed.idleInputRaw = (int)(Config::idleMinRaw + norm * (Config::idleMaxRaw - Config::idleMinRaw));
+            ed.idleInputValid = true;
+        } else if (idleRegistry >= 0) {
+            ed.idleInputRaw = Config::idleMinRaw;
+            ed.idleInputValid = false;
         }
         if (throttleRegistry >= 0 && ed.registryInputHealthy[throttleRegistry]) {
             float norm = constrain(ed.registryInputValue[throttleRegistry], 0.0f, 1.0f);
             ed.throttleInputRaw = (int)(Config::throttleMinRaw + norm * (Config::throttleMaxRaw - Config::throttleMinRaw));
+            ed.throttleInputValid = true;
+        } else if (throttleRegistry >= 0) {
+            ed.throttleInputRaw = Config::throttleMinRaw;
+            ed.throttleInputValid = false;
         }
         const int8_t n1Analog = registryAnalogInputIndex("n1_main", "primary_n1", "n1_speed") >= 0
             ? registryAnalogInputIndex("n1_main", "primary_n1", "n1_speed") : registryAnalogInputIndex("primary_n1", nullptr, "n1_speed");
@@ -1393,52 +1474,68 @@ namespace Hardware {
             if (n1Analog >= 0) {
                 ed.n1Rpm = ed.registryInputValue[n1Analog];
                 ed.n1Healthy = ed.registryInputHealthy[n1Analog];
+                if (g_registryAnalogLastMs[n1Analog] != ed.n1SampleMs) {
+                    ed.n1SampleSeq = ed.n1SampleSeq + 1U;
+                    ed.n1SampleMs = g_registryAnalogLastMs[n1Analog];
+                }
             } else {
                 g_sensorN1Rpm.update();
                 ed.n1Rpm     = g_sensorN1Rpm.getValue();
                 ed.n1Healthy = g_sensorN1Rpm.isHealthy();
+                uint32_t seq = g_sensorN1Rpm.sampleSequence();
+                if (seq != ed.n1SampleSeq) { ed.n1SampleSeq = seq; ed.n1SampleMs = millis(); }
             }
         }
         if (hw.hasN2Rpm) {
             if (n2Analog >= 0) {
                 ed.n2Rpm = ed.registryInputValue[n2Analog];
                 ed.n2Healthy = ed.registryInputHealthy[n2Analog];
+                if (g_registryAnalogLastMs[n2Analog] != ed.n2SampleMs) {
+                    ed.n2SampleSeq = ed.n2SampleSeq + 1U;
+                    ed.n2SampleMs = g_registryAnalogLastMs[n2Analog];
+                }
             } else {
                 g_sensorN2Rpm.update();
                 ed.n2Rpm     = g_sensorN2Rpm.getValue();
                 ed.n2Healthy = g_sensorN2Rpm.isHealthy();
+                uint32_t seq = g_sensorN2Rpm.sampleSequence();
+                if (seq != ed.n2SampleSeq) { ed.n2SampleSeq = seq; ed.n2SampleMs = millis(); }
             }
         }
         // Filtered RPM acceleration (RPM/s) — one trustworthy source for the
         // predictive RPM limiter and advanced dynamic-idle. Follows the RPM read
         // cadence; unhealthy shaft ⇒ 0; a >1 s gap resets (never integrate a stall).
         {
-            unsigned long anow = millis();
-            float adt = (anow - _accelLastMs) / 1000.0f;
-            if (_accelLastMs != 0 && adt > 0.0f && adt < 1.0f) {
-                if (ed.n1Healthy) {
-                    float raw = (ed.n1Rpm - _accelPrevN1) / adt;
+            if (ed.n1SampleSeq != _accelSeenN1Seq) {
+                float dt = _accelLastN1Ms ? (ed.n1SampleMs - _accelLastN1Ms) / 1000.0f : 0.0f;
+                if (ed.n1Healthy && dt > 0.0f && dt < 1.0f) {
+                    float raw = (ed.n1Rpm - _accelPrevN1) / dt;
                     ed.n1RpmAccel += (raw - ed.n1RpmAccel) * Config::rpmAccelFilter;
                 } else ed.n1RpmAccel = 0;
-                if (ed.n2Healthy) {
-                    float raw = (ed.n2Rpm - _accelPrevN2) / adt;
+                _accelPrevN1 = ed.n1Rpm; _accelLastN1Ms = ed.n1SampleMs; _accelSeenN1Seq = ed.n1SampleSeq;
+            }
+            if (ed.n2SampleSeq != _accelSeenN2Seq) {
+                float dt = _accelLastN2Ms ? (ed.n2SampleMs - _accelLastN2Ms) / 1000.0f : 0.0f;
+                if (ed.n2Healthy && dt > 0.0f && dt < 1.0f) {
+                    float raw = (ed.n2Rpm - _accelPrevN2) / dt;
                     ed.n2RpmAccel += (raw - ed.n2RpmAccel) * Config::rpmAccelFilter;
                 } else ed.n2RpmAccel = 0;
-            } else if (adt >= 1.0f) {
-                ed.n1RpmAccel = 0;
-                ed.n2RpmAccel = 0;
+                _accelPrevN2 = ed.n2Rpm; _accelLastN2Ms = ed.n2SampleMs; _accelSeenN2Seq = ed.n2SampleSeq;
             }
-            _accelPrevN1 = ed.n1Rpm;
-            _accelPrevN2 = ed.n2Rpm;
-            _accelLastMs = anow;
         }
         if (totAnalog >= 0) {
             ed.tot = ed.registryInputValue[totAnalog];
             ed.totHealthy = ed.registryInputHealthy[totAnalog];
+            if (g_registryAnalogLastMs[totAnalog] != ed.totSampleMs) {
+                ed.totSampleSeq = ed.totSampleSeq + 1U;
+                ed.totSampleMs = g_registryAnalogLastMs[totAnalog];
+            }
         } else if (hw.hasTot && g_pSensorTot) {
             g_pSensorTot->update();
             ed.tot        = g_pSensorTot->getValue();
             ed.totHealthy = g_pSensorTot->isHealthy();
+            uint32_t seq = g_pSensorTot->sampleSequence();
+            if (seq != ed.totSampleSeq) { ed.totSampleSeq = seq; ed.totSampleMs = millis(); }
         }
         if (totSpecial >= 0) {
             ed.registryInputValue[totSpecial] = ed.tot;
@@ -1447,10 +1544,16 @@ namespace Hardware {
         if (titAnalog >= 0) {
             ed.tit = ed.registryInputValue[titAnalog];
             ed.titHealthy = ed.registryInputHealthy[titAnalog];
+            if (g_registryAnalogLastMs[titAnalog] != ed.titSampleMs) {
+                ed.titSampleSeq = ed.titSampleSeq + 1U;
+                ed.titSampleMs = g_registryAnalogLastMs[titAnalog];
+            }
         } else if (hw.hasTit && g_pSensorTit) {
             g_pSensorTit->update();
             ed.tit        = g_pSensorTit->getValue();
             ed.titHealthy = g_pSensorTit->isHealthy();
+            uint32_t seq = g_pSensorTit->sampleSequence();
+            if (seq != ed.titSampleSeq) { ed.titSampleSeq = seq; ed.titSampleMs = millis(); }
         }
         if (titSpecial >= 0) {
             ed.registryInputValue[titSpecial] = ed.tit;
@@ -1484,11 +1587,15 @@ namespace Hardware {
         if (hw.hasIdleInput && !hw.idleInputRcPwm && idleRegistry < 0) {
             g_sensorIdleInput.update();
             ed.idleInputRaw = g_sensorIdleInput.rawCounts();
+            ed.idleInputValid = g_sensorIdleInput.railHealthy();
+            if (!ed.idleInputValid) ed.idleInputRaw = Config::idleMinRaw;
         }
         // Throttle input — ADC path; RC PWM path writes throttleInputRaw via RCInput::tick()
         if (hw.hasThrottleInput && !hw.throttleInputRcPwm && throttleRegistry < 0) {
             g_sensorThrottleInput.update();
             ed.throttleInputRaw = g_sensorThrottleInput.rawCounts();
+            ed.throttleInputValid = g_sensorThrottleInput.railHealthy();
+            if (!ed.throttleInputValid) ed.throttleInputRaw = Config::throttleMinRaw;
         }
         // AB flame sensor (dedicated, optional)
         if (hw.hasAbFlame && hw.abFlamePin >= 0) {
@@ -1501,7 +1608,8 @@ namespace Hardware {
             g_sensorAbInput.update();
             ed.abInputRaw = g_sensorAbInput.rawCounts();
             ed.abInputNorm = constrain(ed.abInputRaw / 4095.0f, 0.0f, 1.0f);
-            ed.abInputValid = true;
+            ed.abInputValid = g_sensorAbInput.railHealthy();
+            if (!ed.abInputValid) { ed.abInputRaw = 0; ed.abInputNorm = 0.0f; }
         }
         // AB arm switch
         if (hw.abRequiresArmSwitch && hw.abArmSwitchPin >= 0) {
@@ -1632,9 +1740,24 @@ namespace Hardware {
         auto& hw = HardwareConfig::instance();
         auto driveInactive = [](int pin, bool activeH) {
             if (pin < 0) return;
-            pinMode(pin, OUTPUT);
             digitalWrite(pin, activeH ? LOW : HIGH);
+            pinMode(pin, OUTPUT);
         };
+        auto parkProportional = [&](bool fitted, int pin, int type, bool relayActiveH, bool pwmInverted = false) {
+            if (!fitted || pin < 0) return;
+            if (type == 2) driveInactive(pin, relayActiveH);
+            else driveInactive(pin, !pwmInverted); // no pulse/duty is the safe pre-attach state
+        };
+        parkProportional(hw.hasThrottle, hw.throttlePin, hw.throttleType, hw.throttleActiveH, hw.throttleInverted);
+        parkProportional(hw.hasStarter, hw.starterPin, hw.starterType, hw.starterActiveH, hw.starterInverted);
+        parkProportional(hw.hasOilPump, hw.oilPumpPin, hw.oilPumpType, hw.oilPumpActiveH);
+        parkProportional(hw.hasFuelPump2, hw.fuelPump2Pin, hw.fuelPump2Type, hw.fuelPump2ActiveH);
+        parkProportional(hw.hasAbPump, hw.abPumpPin, hw.abPumpType, hw.abPumpActiveH);
+        parkProportional(hw.hasOilScavengePump, hw.oilScavPumpPin, hw.oilScavPumpType, hw.oilScavPumpActiveH);
+        if (hw.hasGlowPlug && hw.glowPlugType == 2 && hw.wetGlowFuelPin >= 0) {
+            if (hw.wetGlowFuelType == 0) driveInactive(hw.wetGlowFuelPin, hw.wetGlowFuelActiveH);
+            else driveInactive(hw.wetGlowFuelPin, true);
+        }
         if (hw.hasFuelSol)   driveInactive(hw.fuelSolPin, hw.fuelSolActiveH);
         // PWM igniter drive is active-high (LEDC duty 0 = pin LOW);
         // igniterActiveH applies in relay/coil mode only.
@@ -1645,12 +1768,22 @@ namespace Hardware {
         if (hw.hasGlowPlug)  driveInactive(hw.glowPlugPin,
                                            hw.glowPlugOutputType == 1 ? hw.glowPlugActiveH : true);
         if (hw.hasStarterEn) driveInactive(hw.starterEnPin, hw.starterEnActiveH);
-        initRegistryOutputs(-1.0f);
+        if (hw.hasAbSol) driveInactive(hw.abSolPin, hw.abSolActiveH);
+        if (hw.hasAirstarterSol) driveInactive(hw.airstarterSolPin, hw.airstarterSolActiveH);
+        for (uint8_t i = 0; i < HardwareConfig::channelRegistry.outputCount; ++i) {
+            const auto& c = HardwareConfig::channelRegistry.outputs[i];
+            if (!registryOutputManaged(c)) continue;
+            const float safe = constrain(c.safeDemand, 0.0f, 1.0f);
+            const bool high = (c.inverted ? 1.0f - safe : safe) >= 0.5f;
+            digitalWrite(c.pin, high ? HIGH : LOW);
+            pinMode(c.pin, OUTPUT);
+        }
     }
 
     // ── Actuator init ─────────────────────────────────────────
     inline void initActuators() {
         auto& hw = HardwareConfig::instance();
+        auto& ed = EngineData::instance();
         if (hw.hasThrottle) {
             if (hw.throttleType == 1) {
                 g_actThrottleLedc.setInverted(hw.throttleInverted);
@@ -1835,6 +1968,32 @@ namespace Hardware {
             }
         }
         initRegistryOutputs(-1.0f);
+        auto requireReady = [&](bool fitted, IActuator* actuator, const char* label) {
+            if (!fitted || (actuator && actuator->isReady())) return;
+            ed.hardwareReady = false;
+            snprintf(ed.hardwareFault, sizeof(ed.hardwareFault), "%s output failed to initialize", label);
+        };
+        requireReady(hw.hasThrottle, g_actThrottle, "Main fuel/throttle");
+        requireReady(hw.hasStarter, g_actStarter, "Starter");
+        requireReady(hw.hasOilPump, g_actOilPump, "Oil pump");
+        requireReady(hw.hasFuelPump2, g_actFuelPump2, "Secondary fuel pump");
+        requireReady(hw.hasAfterburner && hw.hasAbPump, g_actAbPump, "Afterburner pump");
+        if (hw.hasFuelSol && !g_actFuelSol.isReady()) requireReady(true, &g_actFuelSol, "Fuel shutoff");
+        requireReady(hw.hasIgniter, g_actIgniter, "Primary igniter");
+        requireReady(hw.hasIgniter2, g_actIgniter2, "Secondary igniter");
+        requireReady(hw.hasStarterEn && (!registryStarterEnableOutput() || registryStarterEnableOutput()->driver == ChannelRegistry::Relay),
+                     &g_actStarterEn, "Starter enable");
+        requireReady(hw.hasAbSol, &g_actAbSol, "Afterburner shutoff");
+        requireReady(hw.hasAirstarterSol, &g_actAirstarterSol, "Air starter valve");
+        requireReady(hw.hasCoolFan, g_pActCoolFan, "Cooling fan");
+        requireReady(hw.hasOilScavengePump, g_actOilScavPump, "Oil scavenge pump");
+        requireReady(hw.hasBleedValve, g_actBleedValve, "Bleed valve");
+        requireReady(hw.hasPropPitch, g_actPropPitch, "Propeller pitch");
+        requireReady(hw.hasGlowPlug,
+                     hw.glowPlugOutputType == 1 ? (IActuator*)&g_actGlowPlugRelay : (IActuator*)&g_actGlowPlug,
+                     "Glow plug");
+        requireReady(hw.hasGlowPlug && hw.glowPlugType == 2, g_actWetGlowFuel, "Wet-glow fuel");
+        if (!ed.hardwareReady) Serial.printf("[HW] START readiness fault: %s\n", ed.hardwareFault);
     }
 
     // ── Actuator update: EngineData demands → physical signals ─
@@ -1842,6 +2001,7 @@ namespace Hardware {
         auto& hw = HardwareConfig::instance();
         auto& ed = EngineData::instance();
         applyFaultSafeOutputs();
+        applyShutdownCombustionInvariant();
         // AB main-fuel offset is added here at the actuator write, NOT to throttleDemand,
         // so ThrottleSlew's feedback loop never sees the inflated value.
         if (hw.hasThrottle && g_actThrottle) {
@@ -2090,7 +2250,11 @@ namespace Hardware {
         auto& ed = EngineData::instance();
         if (!hw.hasOilLoop || ed.benchMode) return;
 
-        constexpr float dt = 1.0f / 400.0f;
+        static unsigned long lastMs = 0;
+        unsigned long now = millis();
+        float dt = lastMs ? (now - lastMs) / 1000.0f : 1.0f / 400.0f;
+        lastMs = now;
+        dt = constrain(dt, 0.0005f, 0.05f);
 
         bool legacyLoopSkipped = false;
         for (uint8_t i = 0; i < HardwareConfig::oilLoopCount; ++i) {
@@ -2150,6 +2314,7 @@ namespace Hardware {
         // so the input mapping still applies there. DynamicIdle (ticked after the
         // governor) still enforces the running idle floor either way.
         const bool governorOwnsThrottle = hw.hasGovernor && hw.hasN2Rpm &&
+                                          ed.n2Healthy &&
                                           Config::governorTargetRpm > 0.0f &&
                                           !g_ctrlGovernor.usePropPitch;
         const int8_t registryThrottle = registryPurposeInputIndex("throttle", "operator_throttle");
@@ -2159,6 +2324,8 @@ namespace Hardware {
                 norm = ed.registryInputHealthy[registryThrottle] ? ed.registryInputValue[registryThrottle] : 0.0f;
             } else if (hw.throttleInputRcPwm) {
                 norm = (ed.rcThrottleValid) ? ed.rcThrottleNorm : 0.0f;
+            } else if (!ed.throttleInputValid) {
+                norm = 0.0f;
             } else {
                 int range = Config::throttleMaxRaw - Config::throttleMinRaw;
                 norm = (range != 0)

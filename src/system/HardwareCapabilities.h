@@ -14,19 +14,19 @@ public:
             return (hasInputRole("pressure") && hasOutputRole("oil_pump")) ||
                    (HardwareConfig::hasOilPress && HardwareConfig::hasOilPump);
         if (!strcmp(feature, "n1_safety"))
-            return hasInputBindingOrRole("primary_n1", "speed") || HardwareConfig::hasN1Rpm;
+            return hasInputBindingOrPurpose("primary_n1", "n1_speed") || HardwareConfig::hasN1Rpm;
         if (!strcmp(feature, "n2_safety"))
-            return hasInputBindingOrRole("primary_n2", "speed") || HardwareConfig::hasN2Rpm;
+            return hasInputBindingOrPurpose("primary_n2", "n2_speed") || HardwareConfig::hasN2Rpm;
         if (!strcmp(feature, "n2_governor"))
-            return (hasInputBindingOrRole("primary_n2", "speed") &&
+            return (hasInputBindingOrPurpose("primary_n2", "n2_speed") &&
                     (hasOutputRole("fuel") || hasOutputRole("prop_pitch"))) ||
                    (HardwareConfig::hasN2Rpm && (HardwareConfig::hasThrottle || HardwareConfig::hasPropPitch));
         if (!strcmp(feature, "egt_safety"))
-            return hasInputBindingOrRole("primary_egt", "temperature") ||
+            return (hasInputBindingOrPurpose("primary_egt", "tot") || hasInputPurpose("tit")) ||
                    HardwareConfig::hasTot || HardwareConfig::hasTit;
         if (!strcmp(feature, "dynamic_idle"))
-            return ((hasInputBindingOrRole("primary_n1", "speed") ||
-                     hasInputBindingOrRole("primary_n2", "speed")) &&
+            return ((hasInputBindingOrPurpose("primary_n1", "n1_speed") ||
+                     hasInputBindingOrPurpose("primary_n2", "n2_speed")) &&
                     hasOutputRole("fuel")) ||
                    ((HardwareConfig::hasN1Rpm || HardwareConfig::hasN2Rpm) && HardwareConfig::hasThrottle);
         return false;
@@ -71,7 +71,7 @@ public:
         else if (!strcmp(feature, "n1_safety")) addMissing(missing, "primary_n1", "Bind or add an N1 speed input");
         else if (!strcmp(feature, "n2_safety")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
         else if (!strcmp(feature, "n2_governor")) {
-            if (!hasInputBindingOrRole("primary_n2", "speed")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
+            if (!hasInputBindingOrPurpose("primary_n2", "n2_speed")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
             if (!hasOutputRole("fuel") && !hasOutputRole("prop_pitch") && !HardwareConfig::hasThrottle && !HardwareConfig::hasPropPitch)
                 addMissing(missing, "governor_output", "Add a fuel or prop-pitch output");
         }
@@ -118,6 +118,12 @@ private:
         const ChannelRegistry& r = HardwareConfig::channelRegistry;
         for (uint8_t i=0;i<r.bindingCount;i++) if (!strcmp(r.bindings[i].key,key) && r.find(r.bindings[i].channelId, ChannelRegistry::Input)) return true;
         return hasInputRole(role);
+    }
+    static bool hasInputBindingOrPurpose(const char* key, const char* purpose) {
+        const ChannelRegistry& r = HardwareConfig::channelRegistry;
+        for (uint8_t i=0;i<r.bindingCount;i++)
+            if (!strcmp(r.bindings[i].key,key) && r.find(r.bindings[i].channelId, ChannelRegistry::Input)) return true;
+        return hasPurpose(ChannelRegistry::Input, purpose);
     }
     static bool hasOutputBindingOrRole(const char* key, const char* role) {
         const ChannelRegistry& r = HardwareConfig::channelRegistry;

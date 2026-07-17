@@ -49,12 +49,17 @@ public:
         _temp    = 0;
         _healthy = false;
         _lastMs  = 0;
+        _startedMs = millis();
+        _sampleSeq = 0;
     }
 
     void update() override {
         unsigned long now = millis();
+        // Continuous conversion is not valid immediately after CR0 is written.
+        if (now - _startedMs < FIRST_CONVERSION_MS) return;
         if (now - _lastMs < READ_INTERVAL_MS) return;
         _lastMs = now;
+        ++_sampleSeq;
 
         // Chip never accepted its configuration (miswired/absent MOSI) —
         // retry so a fixed wiring fault recovers without a reboot, and stay
@@ -96,9 +101,11 @@ public:
     float       getValue()  override { return _temp; }
     bool        isHealthy() override { return _healthy; }
     const char* name()      override { return _name; }
+    uint32_t sampleSequence() override { return _sampleSeq; }
 
 private:
     static constexpr unsigned long READ_INTERVAL_MS = 100;
+    static constexpr unsigned long FIRST_CONVERSION_MS = 250;
 
     int         _clk, _cs, _miso, _mosi;
     const char* _name;
@@ -107,6 +114,8 @@ private:
     bool        _healthy = false;
     bool        _configOk = false;
     unsigned long _lastMs = 0;
+    unsigned long _startedMs = 0;
+    uint32_t      _sampleSeq = 0;
 
     // Write CR0/CR1 and verify by readback.  If MOSI is miswired or absent
     // the writes fail silently and the chip would otherwise sit in its

@@ -143,7 +143,10 @@ public:
                 // Learn the hold only when genuinely settled and not accelerating.
                 if (fabsf(rpm - targetRpm) <= idleSettleBandRpm &&
                     fabsf(accel) <= idleLearnAccelMax) {
-                    _learnedHold += (_idleFloor - _learnedHold) * idleLearnRate;
+                    float nominalAlpha = constrain(idleLearnRate, 0.0f, 1.0f);
+                    float alpha = nominalAlpha >= 1.0f ? 1.0f
+                                : 1.0f - powf(1.0f - nominalAlpha, dt * 400.0f);
+                    _learnedHold += (_idleFloor - _learnedHold) * alpha;
                     _learnedHoldValid = true;
                 }
             }

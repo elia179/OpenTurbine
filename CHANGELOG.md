@@ -10,6 +10,12 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.3] — 2026-07-17
+
+### Fixed
+- Hardened fresh-sample safety calculations, turbine shutdown fuel/ignition cuts, shaft-sensor limp behavior, actuator and PCNT initialization, boot-safe output parking, watchdog recovery, and analog command-input failsafes.
+- Reduced thermocouple filtering to four real samples and made the oil overcurrent shutdown delay configurable (5 seconds by default).
+
 ## [1.9.2] — 2026-07-16
 
 ### Changed

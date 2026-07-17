@@ -769,8 +769,8 @@ void ClusterSerial::tick() {
     SysMode m = ed.mode;
     unsigned long now = millis();
 
-    if (_schemaDirty && now >= _nextSchemaMs) _sendSchema();
-    else if (HardwareConfig::clusterRxPin < 0 && now >= _nextSchemaMs) {
+    if (_schemaDirty && (int32_t)(now - _nextSchemaMs) >= 0) _sendSchema();
+    else if (HardwareConfig::clusterRxPin < 0 && (int32_t)(now - _nextSchemaMs) >= 0) {
         _sendSchema();
         _nextSchemaMs = now + 10000UL;
     }

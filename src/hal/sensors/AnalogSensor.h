@@ -65,6 +65,7 @@ public:
     }
 
     int         rawCounts()  const { return (int)_avg.avg(); }
+    bool        railHealthy() const { return _railCheck(); }
     const char* name()       override { return _name; }
 
 protected:

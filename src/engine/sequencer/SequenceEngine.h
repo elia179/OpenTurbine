@@ -41,9 +41,11 @@ public:
         // Without this, interrupting mid-sequence (e.g. fault during AB ignition)
         // leaves actuators in whatever state the block had set them.
         // Configured exit side-actions run too — same pairing as the Complete path.
+        const uint32_t operation = ++_generation;
         if (_running && _blocks && _idx < _count) {
             _blocks[_idx]->onExit();
             _applyActions(_exitActions, _idx);
+            if (_generation != operation) return;
         }
         _blocks  = blocks;
         _count   = count;
@@ -58,9 +60,11 @@ public:
     }
 
     void stopSequence() {
+        const uint32_t operation = ++_generation;
         if (_running && _idx < _count) {
             _blocks[_idx]->onExit();
             _applyActions(_exitActions, _idx);
+            if (_generation != operation) return;
         }
         _running = false;
         _blocks  = nullptr;
@@ -76,8 +80,10 @@ public:
 
     void tick() {
         if (!_running || !_blocks || _idx >= _count) return;
+        const uint32_t operation = _generation;
 
         BlockResult r = _blocks[_idx]->tick();
+        if (_generation != operation) return;
 
         switch (r) {
             case BlockResult::Running:
@@ -87,6 +93,7 @@ public:
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "ok");
                 _blocks[_idx]->onExit();
                 _applyActions(_exitActions, _idx);
+                if (_generation != operation) return;
                 _idx++;
                 if (_idx >= _count) {
                     _running = false;
@@ -103,6 +110,7 @@ public:
                     FlightRecorder::logBlockExit(_blocks[_idx]->name(), "bench_mode_skip");
                     _blocks[_idx]->onExit();
                     _applyActions(_exitActions, _idx);
+                    if (_generation != operation) return;
                     _idx++;
                     if (_idx >= _count) { _running = false; if (_done) _done(); }
                     else { _enter(_idx); }
@@ -111,6 +119,7 @@ public:
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "abort");
                 _blocks[_idx]->onExit();
                 _applyActions(_exitActions, _idx);
+                if (_generation != operation) return;
                 _running = false;
                 if (_abort) _abort();
                 break;
@@ -121,6 +130,7 @@ public:
                     FlightRecorder::logBlockExit(_blocks[_idx]->name(), "bench_mode_skip");
                     _blocks[_idx]->onExit();
                     _applyActions(_exitActions, _idx);
+                    if (_generation != operation) return;
                     _idx++;
                     if (_idx >= _count) { _running = false; if (_done) _done(); }
                     else { _enter(_idx); }
@@ -129,6 +139,7 @@ public:
                 FlightRecorder::logBlockExit(_blocks[_idx]->name(), "fault");
                 _blocks[_idx]->onExit();
                 _applyActions(_exitActions, _idx);
+                if (_generation != operation) return;
                 _running = false;
                 if (_fault) _fault();
                 break;
@@ -149,6 +160,7 @@ private:
     const HardwareConfig::SeqSideAction (*_enterActions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS] = nullptr;
     const HardwareConfig::SeqSideAction (*_exitActions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS] = nullptr;
     bool      _running = false;
+    uint32_t  _generation = 0;
     DoneFn    _done    = nullptr;
     AbortFn   _abort   = nullptr;
     FaultFn   _fault   = nullptr;
@@ -165,6 +177,9 @@ private:
         FlightRecorder::logBlockEnter(bname);
         _blocks[i]->onEnter();
         _applyActions(_enterActions, i);
+        // A configurable side action must never be able to re-energize a
+        // combustion or starter output in the hard-cut shutdown block.
+        if (strcmp(bname, "ImmediateCut") == 0) _blocks[i]->onEnter();
     }
 
     void _applyActions(const HardwareConfig::SeqSideAction (*actions)[HardwareConfig::MAX_SEQ_SIDE_ACTIONS], size_t i) {

@@ -376,6 +376,7 @@ static void validateSequences() {
     };
 
     auto addIssue = [&](const char* block, const char* reason, bool isError) {
+        if (isError) ed.seqHasErrors = true;
         if (ed.seqIssueCount >= EngineData::MAX_SEQ_ISSUES) return;
         auto& iss = ed.seqIssues[ed.seqIssueCount++];
         strncpy(iss.blockName, block, sizeof(iss.blockName) - 1);
@@ -383,7 +384,6 @@ static void validateSequences() {
         strncpy(iss.reason, reason, sizeof(iss.reason) - 1);
         iss.reason[sizeof(iss.reason) - 1] = '\0';
         iss.isError = isError;
-        if (isError) ed.seqHasErrors = true;
         Serial.printf("[VALIDATE] %s %s: %s\n",
                       isError ? "ERROR" : "WARN", block, reason);
     };
@@ -1033,6 +1033,17 @@ static void enterShutdown();
 static void enterFaultShutdown();
 static void handleCommand(const OTPacket& pkt);
 
+static void cutCombustionAndStarterNow() {
+    auto& ed = EngineData::instance();
+    ed.throttleDemand = 0.0f; ed.abFuelOffset = 0.0f;
+    ed.fuelSolOpen = false; ed.fuelPump2Demand = 0.0f;
+    ed.igniterOn = false; ed.igniter2On = false;
+    ed.glowPlugDemand = 0.0f; ed.wetGlowFuelDemand = 0.0f;
+    ed.abSolOpen = false; ed.abPumpDemand = 0.0f;
+    ed.starterDemand = 0.0f; ed.starterEnabled = false;
+    ed.airstarterOpen = false;
+}
+
 // ── General-purpose DI debounce state ────────────────────────
 static unsigned long _diLastChange[HardwareConfig::MAX_DI] = {};
 static bool          _diRawLast[HardwareConfig::MAX_DI]    = {};
@@ -1056,7 +1067,7 @@ static bool          _buzzerToneOn          = false;
 static void buzzerTick() {
     if (!HardwareConfig::hasBuzzer || HardwareConfig::buzzerPin < 0) return;
     unsigned long now = millis();
-    if (now < _buzzerNextMs) return;
+    if ((int32_t)(now - _buzzerNextMs) < 0) return;
     if (_buzzerPattern == 0) {
         if (_buzzerToneOn) { noTone(HardwareConfig::buzzerPin); _buzzerToneOn = false; }
         return;
@@ -1530,6 +1541,10 @@ static void enterABShutdown() {
     ed.abFuelOffset = 0.0f;
     // Cut igniter immediately
     ed.igniter2On = false;
+    // AB fuel is never left to configurable shutdown timing. The custom
+    // sequence may still run purge/cooling actions after this hard boundary.
+    ed.abSolOpen = false;
+    ed.abPumpDemand = 0.0f;
 
     Serial.println("[AB] Entering shutdown sequence");
     if (_abShutCount == 0) {
@@ -1810,6 +1825,10 @@ static void enterRunning() {
     // Spool would silently leave flameMonitorActive=false and flameout would
     // never be detected in RUNNING mode.
     ed.flameMonitorActive = true;
+    // Custom startup sequences may omit Spool/SafetyHold. Never enter RUNNING
+    // with configured low-oil protection silently disarmed.
+    if (HardwareConfig::safetyLowOil && HardwareConfig::hasOilPress)
+        ed.oilMinBar = fmaxf(ed.oilMinBar, Config::oilRunningMin);
     ed.lastRunFlameAvg = 0;
     ed.lastRunFlameSamples = 0;
     _runStartMs        = millis();
@@ -1825,6 +1844,7 @@ static void enterShutdown() {
     auto& ed = EngineData::instance();
     if (ed.mode == SysMode::SHUTDOWN) return;  // already shutting down
     ed.mode = SysMode::SHUTDOWN;
+    cutCombustionAndStarterNow();
     ed.faultShutdownActive = false;
     _buzzerPattern = 4; _buzzerStep = 0;  // single low beep: normal stop
     // Clear operator-hold states so igniter/flags don't persist into cooldown.
@@ -1870,6 +1890,7 @@ static void enterFaultShutdown() {
     FlightRecorder::logFault(fault);           // sensor snapshot at moment of fault
     FlightRecorder::logFaultShutdown(fault);   // shutdown event record
     ed.mode = SysMode::SHUTDOWN;
+    cutCombustionAndStarterNow();
     ed.faultShutdownActive = true;
     // Synchronously stop any active AB sequence so igniter2, solenoid and
     // AB pump are cut immediately rather than waiting for the next
@@ -1905,6 +1926,7 @@ static void enterFaultShutdown() {
 
 static void enterStandby() {
     auto& ed = EngineData::instance();
+    ResetRecovery::markSafe();
     SessionLogger::endSession();   // close session log for this run
     // Accumulate engine-on time (only if we actually entered RUNNING this session)
     if (_runStartMs > 0) {
@@ -2015,6 +2037,7 @@ static void enterAbortStandby() {
         // Run the full shutdown sequence (ImmediateCut → RPMDrop → CooldownSpin → FinalStop)
         // to keep bearings oiled through spindown and cool the turbine before standby.
         ed.mode = SysMode::SHUTDOWN;
+        cutCombustionAndStarterNow();
         ed.faultShutdownActive = true;
         FlightRecorder::logFaultShutdown("STARTUP_ABORT");
         g_sequencer.startSequence(_shutdownBlocks, _shutdownCount,
@@ -2065,6 +2088,44 @@ static void handleCommand(const OTPacket& pkt) {
     // dev mode behave exactly as in STANDBY so the user can diagnose and fix.
     const bool standbyLike = (ed.mode == SysMode::STANDBY || ed.mode == SysMode::FAULT);
 
+    auto mayEnergizeOutput = [](OTCommand cmd) {
+        switch (cmd) {
+            case OTCommand::SET_OIL_DEMAND:
+            case OTCommand::SET_OIL_PCT:
+            case OTCommand::SET_THROTTLE_PCT:
+            case OTCommand::FUEL_PRIME:
+            case OTCommand::OIL_PRIME:
+            case OTCommand::IGN_TEST:
+            case OTCommand::IGN2_TEST:
+            case OTCommand::START_TEST:
+            case OTCommand::FUEL_SOL_TEST:
+            case OTCommand::IDLE_TEST:
+            case OTCommand::EXTRA_COOLDOWN:
+            case OTCommand::STARTER_LOW_RPM_SUPPORT:
+            case OTCommand::AB_FIRE:
+            case OTCommand::OIL_SCAV_TEST:
+            case OTCommand::COOL_FAN_TEST:
+            case OTCommand::AIRSTARTER_TEST:
+            case OTCommand::BLEED_VALVE_TEST:
+            case OTCommand::GLOW_TEST:
+            case OTCommand::FUEL_PUMP2_TEST:
+            case OTCommand::AB_SOL_TEST:
+            case OTCommand::AB_PUMP_TEST:
+            case OTCommand::STARTER_EN_TEST:
+            case OTCommand::PROP_PITCH_TEST:
+            case OTCommand::REGISTRY_OUTPUT_TEST:
+                return true;
+            default:
+                return false;
+        }
+    };
+    if (mayEnergizeOutput(pkt.cmd) &&
+        (!Config::profileMatch || ed.configLocked || ed.configStorageFault)) {
+        strncpy(ed.lastEvent, "Output blocked: repair configuration first", sizeof(ed.lastEvent) - 1);
+        Serial.println("[OT] Output command blocked: configuration is not trusted");
+        return;
+    }
+
     if (WebServer::otaInProgress() &&
         pkt.cmd != OTCommand::STOP && pkt.cmd != OTCommand::AB_STOP) {
         if (pkt.cmd == OTCommand::START) {
@@ -2096,6 +2157,37 @@ static void handleCommand(const OTPacket& pkt) {
                 break;
             }
             if (ed.mode == SysMode::STANDBY && Config::profileMatch && !ed.configLocked) {
+                if (!ed.startReleasedSinceBoot) {
+                    strncpy(ed.lastEvent, "START blocked: release START after boot", sizeof(ed.lastEvent) - 1);
+                    break;
+                }
+                if (ed.recoveryLockout && !ed.skipSafetyChecks) {
+                    strncpy(ed.lastEvent, "START blocked: abnormal-reset recovery", sizeof(ed.lastEvent) - 1);
+                    break;
+                }
+                if ((!ed.hardwareReady || !ed.watchdogReady) && !ed.skipSafetyChecks) {
+                    snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: hardware readiness fault");
+                    snprintf(ed.faultDescription, sizeof(ed.faultDescription), "Cannot start: %s%s",
+                             !ed.watchdogReady ? "control watchdog is not ready" : ed.hardwareFault,
+                             ". Enable the explicit safety-check override only for controlled diagnostics.");
+                    break;
+                }
+                if (!ed.skipSafetyChecks && !ed.benchMode) {
+                    unsigned long sn = millis();
+                    bool rpmFresh = (!HardwareConfig::hasN1Rpm || (ed.n1Healthy && sn - ed.n1SampleMs <= 500UL)) &&
+                                    (!HardwareConfig::hasN2Rpm || (ed.n2Healthy && sn - ed.n2SampleMs <= 500UL));
+                    bool egtRequired = (HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart) &&
+                                       Config::effectiveEgtSource() != 0;
+                    unsigned long egtMs = Config::effectiveEgtSource() == 2 ? ed.titSampleMs : ed.totSampleMs;
+                    bool egtFresh = !egtRequired || (Config::primaryEgtHealthy(ed) && sn - egtMs <= 1000UL);
+                    if (!rpmFresh || !egtFresh) {
+                        strncpy(ed.lastEvent, "START blocked: critical feedback not fresh", sizeof(ed.lastEvent) - 1);
+                        strncpy(ed.faultDescription,
+                                "Cannot start: configured shaft or EGT feedback is unhealthy or stale. Check wiring and wait for a fresh reading.",
+                                sizeof(ed.faultDescription) - 1);
+                        break;
+                    }
+                }
                 if (ed.stopSwitchActive) {
                     snprintf(ed.lastEvent, sizeof(ed.lastEvent), "START blocked: stop switch active");
                     snprintf(ed.faultDescription, sizeof(ed.faultDescription),
@@ -2191,6 +2283,7 @@ static void handleCommand(const OTPacket& pkt) {
                     break;
                 }
                 ed.mode = SysMode::STARTUP;
+                ResetRecovery::markActive();
                 ed.faultShutdownActive = false;
                 _buzzerPattern = 3; _buzzerStep = 0;  // double chirp: sequence starting
                 ed.faultDescription[0] = '\0';  // clear previous fault/abort description
@@ -2576,10 +2669,17 @@ static void checkStopSwitch() {
     static bool          _rawLast    = false;
     static bool          _debounced  = false;
     static unsigned long _lastChange = 0;
+    static bool          _wasDebounced = false;
     unsigned long now = millis();
     if (raw != _rawLast) { _lastChange = now; _rawLast = raw; }
     if (now - _lastChange >= SWITCH_DEBOUNCE_MS) _debounced = raw;
     ed.stopSwitchActive = _debounced;
+    if (_debounced && !_wasDebounced && ed.recoveryLockout && ed.startReleasedSinceBoot) {
+        ed.recoveryLockout = false;
+        ed.faultDescription[0] = '\0';
+        strncpy(ed.lastEvent, "Recovery lockout acknowledged", sizeof(ed.lastEvent) - 1);
+    }
+    _wasDebounced = _debounced;
     if (_debounced) {
         if (ed.mode == SysMode::RUNNING || ed.mode == SysMode::STARTUP) {
             enterShutdown();
@@ -2599,15 +2699,28 @@ static void checkStartSwitch() {
     static bool          _rawLast    = false;
     static bool          _pressed    = false;
     static unsigned long _lastChange = 0;
+    static bool          _initialized = false;
     unsigned long nowSw = millis();
+    static int _last = HIGH;
+    if (!_initialized) {
+        _rawLast = rawPressed;
+        _pressed = rawPressed;
+        _lastChange = nowSw;
+        _last = rawPressed ? LOW : HIGH;
+        _initialized = true;
+        auto& ed0 = EngineData::instance();
+        ed0.startSwitchActive = rawPressed;
+        ed0.startReleasedSinceBoot = !rawPressed;
+        return;
+    }
     if (rawPressed != _rawLast) { _lastChange = nowSw; _rawLast = rawPressed; }
     if (nowSw - _lastChange >= SWITCH_DEBOUNCE_MS) _pressed = rawPressed;
     const bool pressed = _pressed;
     // Represent as a synthetic LOW/HIGH for the _last comparison below
     int cur = pressed ? LOW : HIGH;
-    static int _last = HIGH;  // start in "released" (HIGH) state
     auto& ed = EngineData::instance();
     ed.startSwitchActive = pressed;
+    if (!pressed) ed.startReleasedSinceBoot = true;
 
     if (_last == HIGH && cur == LOW) {
         // Only send START command in STANDBY — in RUNNING the hold logic below handles it.
@@ -2834,7 +2947,9 @@ void setup() {
                       HardwareConfig::mavlinkTxPin, HardwareConfig::mavlinkBaud);
     }
 
-    Watchdog::begin();
+    EngineData::instance().watchdogReady = Watchdog::begin();
+    if (!EngineData::instance().watchdogReady)
+        Serial.println("[OT] ERROR: control-loop watchdog initialization failed; START inhibited");
 
     Serial.println("[OT] Setup complete");
 }
@@ -2845,7 +2960,7 @@ void loop() {
     static uint32_t loopWindowStartMs = 0;
     static uint32_t loopWindowMaxUs = 0;
     static float loopExecAvgUs = 0.0f;
-    Watchdog::feed();
+    if (!Watchdog::feed()) EngineData::instance().watchdogReady = false;
 
     checkStopSwitch();
     checkStartSwitch();

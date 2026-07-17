@@ -84,7 +84,7 @@ public:
             break;
 
         case ST_CONVERTING:
-            if (now < _convReadyMs) return;   // conversion still in progress
+            if ((int32_t)(now - _convReadyMs) < 0) return; // wrap-safe deadline check
             // Address the cached device and issue READ SCRATCHPAD; the nine
             // data bytes are clocked out over the following ticks (1-Wire
             // tolerates idle gaps between byte slots).

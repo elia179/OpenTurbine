@@ -99,9 +99,18 @@ public:
             }
             return;
         }
+        if (!ed.n2Healthy) {
+            ed.limpMode = true;
+            _wasActive = false;
+            if (usePropPitch) {
+                float maxStep = pitchRampSec > 0.0f ? dt / pitchRampSec : 1.0f;
+                _pitchCurrent = constrain(_pitchCurrent - maxStep, 0.0f, 1.0f);
+                ed.propPitchDemand = _pitchCurrent;
+            }
+            return;
+        }
         _wasActive = true;
         _releasing = false;   // active governor owns pitch from here
-        if (!ed.n2Healthy) return;
 
         float error = targetRpm - ed.n2Rpm;
         if (fabsf(error) <= bandRpm) return;   // inside deadband — no action

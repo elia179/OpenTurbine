@@ -34,6 +34,8 @@ static volatile bool     _acceptRows = false;
 static uint32_t          _lastMs    = 0;
 static uint32_t          _rowCount  = 0;
 static volatile uint32_t _droppedRows = 0;
+static volatile bool     _healthy = true;
+static volatile uint8_t  _errorCode = 0;
 static char              _currentPath[40] = {};
 static QueueHandle_t     _rowQueue  = nullptr;
 static volatile bool     _startPending = false;
@@ -48,6 +50,8 @@ static uint32_t          _lastFlushMs = 0;
 const char* SessionLogger::currentPath() { return _currentPath; }
 
 uint32_t SessionLogger::droppedRows() { return _droppedRows; }
+bool SessionLogger::healthy() { return _healthy; }
+uint8_t SessionLogger::errorCode() { return _errorCode; }
 
 static void _evictOldSessions();
 
@@ -160,11 +164,15 @@ static void _writeRow(const SessionRow& row) {
         _lowSpaceDropActive = (LittleFS.totalBytes() - LittleFS.usedBytes()) < SESSION_MIN_FREE_BYTES;
         if (_lowSpaceDropActive) {
             _droppedRows = _droppedRows + 1;
+            _healthy = false;
+            _errorCode = 5;
             return;
         }
     }
     if (_file.println(r) == 0) {
         _droppedRows = _droppedRows + 1;
+        _healthy = false;
+        _errorCode = 6;
         _lowSpaceDropActive = true;
         return;
     }
@@ -175,7 +183,9 @@ static void _writeRow(const SessionRow& row) {
 bool SessionLogger::begin() {
     if (!LittleFS.exists("/logs")) LittleFS.mkdir("/logs");
     if (!_rowQueue) _rowQueue = xQueueCreate(20, sizeof(SessionRow));
-    return _rowQueue != nullptr;
+    _healthy = _rowQueue != nullptr;
+    _errorCode = _healthy ? 0 : 1;
+    return _healthy;
 }
 
 // ── Evict oldest session files if flash is low ────────────────
@@ -243,6 +253,8 @@ static void _openSession() {
     if (!_file) {
         Serial.printf("[SessionLogger] Failed to create %s\n", _currentPath);
         _currentPath[0] = '\0';
+        _healthy = false;
+        _errorCode = 2;
         return;
     }
 
@@ -277,10 +289,14 @@ static void _openSession() {
         _file.close();
         _currentPath[0] = '\0';
         _droppedRows = _droppedRows + 1;
+        _healthy = false;
+        _errorCode = 3;
         return;
     }
     _rowCount = 0;
     _droppedRows = 0;
+    _healthy = true;
+    _errorCode = 0;
     _lastMs   = 0;
     _lastFreeCheckMs = 0;
     _lowSpaceDropActive = false;
@@ -368,6 +384,8 @@ void SessionLogger::tick() {
     // Non-blocking — drops silently if Core 0 is behind by more than 20 rows
     if (xQueueSendToBack(_rowQueue, &row, 0) != pdTRUE) {
         _droppedRows = _droppedRows + 1;
+        _healthy = false;
+        _errorCode = 4;
     }
 }
 

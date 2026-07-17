@@ -173,6 +173,7 @@ public:
 
     // ── Oil controller deadband ───────────────────────────────
     static float oilPressureDeadband;    // bar: suppress output change when |error| < this
+    static uint32_t oilPumpOvercurrentDelayMs; // continuous overcurrent before shutdown
 
     // ── Standby oil feed (windmill protection) ────────────────
     static int   standbyOilSource;       // 0=N1, 1=N2, 2=either shaft

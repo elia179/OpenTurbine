@@ -162,7 +162,7 @@ inline void tick() {
     int pin = _statusPin();
     if (pin < 0) return;
     unsigned long now = millis();
-    if (now < _nextMs) return;
+    if ((int32_t)(now - _nextMs) < 0) return;
 
     SysMode mode = EngineData::instance().mode;
 

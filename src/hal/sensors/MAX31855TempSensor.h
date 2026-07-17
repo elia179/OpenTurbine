@@ -36,6 +36,7 @@ public:
         _temp    = 0;
         _healthy = false;
         _lastMs  = 0;
+        _sampleSeq = 0;
     }
 
     void update() override {
@@ -44,6 +45,7 @@ public:
         _lastMs = now;
 
         uint32_t raw = _read32();
+        ++_sampleSeq;
 
         if (raw == 0x00000000UL || raw == 0xFFFFFFFFUL) {
             _healthy = false;
@@ -75,6 +77,7 @@ public:
     float       getValue()  override { return _temp; }
     bool        isHealthy() override { return _healthy; }
     const char* name()      override { return _name; }
+    uint32_t sampleSequence() override { return _sampleSeq; }
 
 private:
     static constexpr unsigned long READ_INTERVAL_MS = 100;
@@ -84,6 +87,7 @@ private:
     float       _temp    = 0;
     bool        _healthy = false;
     unsigned long _lastMs = 0;
+    uint32_t      _sampleSeq = 0;
 
     uint32_t _read32() {
         uint32_t val = 0;

@@ -30,6 +30,8 @@ public:
     }
 
     void begin() override {
+        _ready = false;
+        if (_pin < 0) return;
         if (_ppr <= 0.0f) {
             Serial.printf("[%s] Invalid pulses/rev %.3f; using 1.0\n", _name, (double)_ppr);
             _ppr = 1.0f;
@@ -43,7 +45,11 @@ public:
             // accumulator is int32, which wraps after ~14 days at max RPM).
             .flags = { .accum_count = 0 }
         };
-        ESP_ERROR_CHECK(pcnt_new_unit(&unitCfg, &_unit));
+        esp_err_t allocErr = pcnt_new_unit(&unitCfg, &_unit);
+        if (allocErr != ESP_OK) {
+            Serial.printf("[%s] PCNT allocation failed: %s\n", _name, esp_err_to_name(allocErr));
+            return;
+        }
 
         // Glitch filter: ignore pulses shorter than 1000 ns (1 µs)
         pcnt_glitch_filter_config_t flt = { .max_glitch_ns = 1000 };
@@ -71,9 +77,12 @@ public:
         _accumPulses = 0;
         _rpm       = 0;
         _health.clear();
+        _sampleSeq = 0;
+        _ready = true;
     }
 
     void update() override {
+        if (!_ready) return;
         unsigned long now = millis();
         unsigned long dt  = now - _lastMs;
         if (dt < UPDATE_INTERVAL_MS) return;
@@ -104,12 +113,15 @@ public:
         _rpm       = newRpm;
         _lastMs    = now;
         _lastCount = (int64_t)rawInt;
+        ++_sampleSeq;
     }
 
     float       getValue()  override { return _rpm; }
     // ZERO_GLITCH alone does not fail health — see RpmHealth::isTrustworthy().
     bool        isHealthy() override { return _health.isTrustworthy(); }
     const char* name()      override { return _name; }
+    uint32_t sampleSequence() override { return _sampleSeq; }
+    bool hardwareReady() const { return _ready; }
 
     void resetHealth() {
         _health.clear();
@@ -140,6 +152,8 @@ private:
     float              _holdRpm  = 0;   // last real (non-glitch) reading, held during ZERO_GLITCH
     int                _zeroCount= 0;
     RpmHealth          _health;
+    uint32_t           _sampleSeq = 0;
+    bool               _ready = false;
 
     void _updateHealth(float rpm, unsigned long dt) {
         _health.clear();

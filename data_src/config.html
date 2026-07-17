@@ -148,6 +148,7 @@ const SCHEMA = [
     { key:'oil_as',  path:['oil','adjust_scale'],       label:'Oil Pressure Response Gain', desc:'How strongly pump output reacts to pressure error. Higher responds faster but can oscillate. Technical name: proportional or P gain.', step:0.05,min:0 },
     { key:'oil_mp',  path:['oil','min_pct'],            label:'Minimum Automatic Pump Output (%)', desc:'Lowest output used by automatic pressure regulation. Startup steps can still command a higher output.', step:1, min:0, max:100 },
     { key:'oa_db',   path:['oil_advanced','deadband_bar'], label:'No-Correction Pressure Band', unitType:'press', desc:'No small pump corrections are made while pressure is within this distance of the target. Technical name: deadband.', step:0.05, min:0 },
+    { key:'oil_ocd', path:['oil_advanced','pump_overcurrent_delay_ms'], label:'Continuous Pump Overcurrent Shutdown Delay (ms)', desc:'Warn immediately, then shut down only if the configured oil-pump current limit remains exceeded for this long.', step:100, min:100, max:60000 },
     { key:'oil_fd',  path:['oil','failsafe_delay_ms'],  label:'Sensor-Fault Fallback Delay (ms)', desc:'How long pressure feedback may remain invalid before the pump changes to the fixed fallback output.', step:100, min:0 },
     { key:'oil_fp',  path:['oil','failsafe_pct'],       label:'Pump Output After Sensor Failure (%)', desc:'Fixed pump output used when pressure feedback is unavailable.', step:5, min:0, max:100 },
   ]},

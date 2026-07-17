@@ -28,7 +28,7 @@ public:
         // actually used so the duty scaling stays correct.
         _resBits = MAX_RES_BITS;
         _maxDuty = (1UL << _resBits) - 1UL;
-        bool ok = ledcAttach(_pin, PWM_FREQ_HZ, _resBits);
+        bool ok = _pin >= 0 && ledcAttach(_pin, PWM_FREQ_HZ, _resBits);
         while (!ok && _resBits > MIN_RES_BITS) {
             _resBits--;
             _maxDuty = (1UL << _resBits) - 1UL;
@@ -37,8 +37,9 @@ public:
         Serial.printf("[%s] servo attach pin=%d freq=%uHz bits=%u %s\n",
                       _name, _pin, (unsigned)PWM_FREQ_HZ, (unsigned)_resBits,
                       ok ? "OK" : "FAILED");
+        _ready = ok;
         _lastUs = -1;
-        writePulse(_minUs); // safe low on boot
+        if (_ready) writePulse(_minUs); // safe low on boot
     }
 
     void set(float value) override {
@@ -51,6 +52,7 @@ public:
     }
 
     const char* name() override { return _name; }
+    bool isReady() const override { return _ready; }
 
 private:
     static constexpr uint32_t PWM_FREQ_HZ  = 50;
@@ -60,6 +62,7 @@ private:
     static constexpr uint8_t  MIN_RES_BITS = 12;
 
     void writePulse(int us) {
+        if (!_ready) return;
         us = constrain(us, _minUs, _maxUs);
         if (us == _lastUs) return;
         uint32_t duty = ((uint64_t)us * PWM_FREQ_HZ * _maxDuty) / 1000000ULL;
@@ -74,4 +77,5 @@ private:
     const char* _name;
     uint8_t     _resBits = MAX_RES_BITS;
     uint32_t    _maxDuty = (1UL << MAX_RES_BITS) - 1UL;
+    bool        _ready = false;
 };

@@ -63,6 +63,7 @@ public:
         auto& hw = HardwareConfig::instance();
         if (hw.hasIdleInput && hw.idleInputRcPwm) {
             _updateCh(_idle, ed.rcIdleValid, ed.rcIdleNorm);
+            ed.idleInputValid = ed.rcIdleValid;
             if (ed.rcIdleValid) {
                 ed.idleInputRaw = (int)_idle.acceptedUs;
             } else {
@@ -72,6 +73,7 @@ public:
 
         if (hw.hasThrottleInput && hw.throttleInputRcPwm) {
             _updateCh(_thr, ed.rcThrottleValid, ed.rcThrottleNorm);
+            ed.throttleInputValid = ed.rcThrottleValid;
             if (ed.rcThrottleValid) {
                 ed.throttleInputRaw = (int)_thr.acceptedUs;
             } else {

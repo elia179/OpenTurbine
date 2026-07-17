@@ -371,7 +371,7 @@ function enumNames(source, marker) {
     assert.match(abIgnite, /_useIgniterEff = useIgniter;\s*_hasIgnitionAction = _doTorch \|\| _useIgniterEff/);
     assert.doesNotMatch(abIgnite, /falling back to the fitted AB igniter/,
       'an unchecked AB igniter option must never energize the fitted igniter');
-    assert.match(mainSource, /ed\.mode = SysMode::SHUTDOWN;\s*ed\.faultShutdownActive = true/);
+    assert.match(mainSource, /ed\.mode = SysMode::SHUTDOWN;\s*cutCombustionAndStarterNow\(\);\s*ed\.faultShutdownActive = true/);
     assert.match(mainSource, /Hardware::allOff\(\);\s*ed\.faultShutdownActive = false/);
     const webSource = fs.readFileSync(path.join('src', 'system', 'web', 'WebServer.cpp'), 'utf8');
     assert.match(webSource, /doc\["has_ab_flame"\]\s+=\s+HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame/);

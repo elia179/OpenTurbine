@@ -52,6 +52,7 @@ public:
         _overspeedPending = false;
         _n2OverspeedPending = false;
         _resetEgtRing();
+        _resetSurge();
         _refWindowOpen    = false;
     }
 
@@ -81,8 +82,10 @@ public:
             _refWindowOpen   = false;
             _overspeedPending = false;
             _n2OverspeedPending = false;
+            _oilOvercurrentSinceMs = 0;
             _lastEgt        = -1.0f;
             _lastEgtMs      = 0;
+            _lastEgtSampleSeq = 0;
             ed.totRiseRate  = 0.0f;
             // Surge buffer is only reset on STANDBY entry — not on every non-op
             // mode change (e.g. SHUTDOWN) — so the buffer isn't wiped mid-spindown.
@@ -92,6 +95,7 @@ public:
                 _startupSpooled = false;  // reset for next startup
             }
             ed.surgeDetected = false;
+            _resetSurge();
             return;
         }
 
@@ -100,6 +104,7 @@ public:
             // which monitoring was deliberately suspended.
             _overspeedPending = false;
             _n2OverspeedPending = false;
+            _resetSurge();
             return;
         }
 
@@ -170,25 +175,41 @@ public:
         }
         _lastCheckMs = now;
 
+        if (HardwareConfig::hasOilPumpCurrentSensor && ed.oilPumpOvercurrent) {
+            if (_oilOvercurrentSinceMs == 0) {
+                _oilOvercurrentSinceMs = now;
+                strncpy(ed.lastEvent, "WARNING: oil pump overcurrent", sizeof(ed.lastEvent) - 1);
+            } else if (now - _oilOvercurrentSinceMs >= Config::oilPumpOvercurrentDelayMs) {
+                _trigger("OIL_PUMP_OVERCURRENT");
+                return;
+            }
+        } else {
+            _oilOvercurrentSinceMs = 0;
+        }
+
         // EGT rate-of-rise.
-        if (Config::primaryEgtHealthy(ed)) {
+        uint32_t egtSeq = Config::effectiveEgtSource() == 2 ? ed.titSampleSeq : ed.totSampleSeq;
+        unsigned long egtMs = Config::effectiveEgtSource() == 2 ? ed.titSampleMs : ed.totSampleMs;
+        if (Config::primaryEgtHealthy(ed) && egtSeq != _lastEgtSampleSeq) {
             float currentEgt = Config::primaryEgtC(ed);
             if (_lastEgt >= 0.0f && _lastEgtMs > 0) {
-                float dtSec = (now - _lastEgtMs) / 1000.0f;
+                float dtSec = (egtMs - _lastEgtMs) / 1000.0f;
                 if (dtSec > 0.0f) {
                     ed.totRiseRate = (currentEgt - _lastEgt) / dtSec;
                 }
             }
             _lastEgt   = currentEgt;
-            _lastEgtMs = now;
+            _lastEgtMs = egtMs;
+            _lastEgtSampleSeq = egtSeq;
 
             if (totRiseRateLimit > 0.0f && ed.totRiseRate > totRiseRateLimit) {
                 _trigger("TOT_RISE");
                 return;
             }
-        } else {
+        } else if (!Config::primaryEgtHealthy(ed)) {
             _lastEgt   = -1.0f;
             _lastEgtMs = 0;
+            _lastEgtSampleSeq = 0;
             ed.totRiseRate = 0.0f;
         }
 
@@ -301,18 +322,40 @@ public:
             if (_n1BufCount < SURGE_BUF) _n1BufCount++;
 
             if (_n1BufCount >= SURGE_BUF) {
-                // Compute mean then variance
+                // Detrend before measuring oscillation energy. A monotonic RPM
+                // ramp is normal turbine behavior, not compressor surge.
                 float sum = 0.0f;
                 for (uint8_t i = 0; i < SURGE_BUF; i++) sum += _n1Buf[i];
                 float mean = sum / SURGE_BUF;
-                float var  = 0.0f;
+                const float xMean = (SURGE_BUF - 1) * 0.5f;
+                float slopeNum = 0.0f, slopeDen = 0.0f;
                 for (uint8_t i = 0; i < SURGE_BUF; i++) {
-                    float d = _n1Buf[i] - mean;
+                    float x = i - xMean;
+                    slopeNum += x * (_n1Buf[(_n1BufIdx + i) % SURGE_BUF] - mean);
+                    slopeDen += x * x;
+                }
+                float slope = slopeDen > 0.0f ? slopeNum / slopeDen : 0.0f;
+                float var = 0.0f, prevDelta = 0.0f;
+                uint8_t reversals = 0;
+                for (uint8_t i = 0; i < SURGE_BUF; i++) {
+                    float sample = _n1Buf[(_n1BufIdx + i) % SURGE_BUF];
+                    float d = sample - (mean + slope * (i - xMean));
                     var += d * d;
+                    if (i > 0) {
+                        float prev = _n1Buf[(_n1BufIdx + i - 1) % SURGE_BUF];
+                        float delta = sample - prev;
+                        if (fabsf(delta) > 1.0f && fabsf(prevDelta) > 1.0f &&
+                            ((delta > 0.0f) != (prevDelta > 0.0f))) ++reversals;
+                        if (fabsf(delta) > 1.0f) prevDelta = delta;
+                    }
                 }
                 var /= SURGE_BUF;
 
-                ed.surgeDetected = (var > surgeRpmVariance);
+                bool candidate = var > surgeRpmVariance && reversals >= 2;
+                _surgeConfirmWindows = candidate
+                    ? (uint8_t)(_surgeConfirmWindows < 2 ? _surgeConfirmWindows + 1 : 2)
+                    : 0;
+                ed.surgeDetected = _surgeConfirmWindows >= 2;
                 if (ed.surgeDetected) {
                     _trigger("SURGE");
                     return;
@@ -320,6 +363,7 @@ public:
             }
         } else {
             ed.surgeDetected = false;
+            _resetSurge();
         }
 
         // ── Underspeed ────────────────────────────────────────
@@ -341,6 +385,26 @@ public:
                 // (RpmHealth::isTrustworthy — PCNTRpmSensor holds the last real
                 // reading), so this only latches on persistent sensor faults.
                 ed.limpMode = true;  // RPM sensor lost → limp
+            }
+        }
+        if (HardwareConfig::hasN2Rpm && m == SysMode::RUNNING && !ed.n2Healthy && !ed.limpMode) {
+            ed.limpMode = true;
+            strncpy(ed.lastEvent, "LIMP: N2 feedback lost", sizeof(ed.lastEvent) - 1);
+        }
+
+        // If an enabled hard protection loses its sensor, do not silently
+        // remove that protection. Enter the configurable degraded-mode cap;
+        // the operator can still explicitly override limp when appropriate.
+        if (m == SysMode::RUNNING && !ed.limpMode) {
+            bool protectionBlind =
+                (HardwareConfig::safetyOvertemp && Config::effectiveEgtSource() != 0 && !Config::primaryEgtHealthy(ed)) ||
+                ((HardwareConfig::safetyLowOil || HardwareConfig::safetyOilZero) && HardwareConfig::hasOilPress && !ed.oilHealthy) ||
+                (HardwareConfig::safetyOilTempHigh && HardwareConfig::hasOilTemp && !ed.oilTempHealthy) ||
+                (HardwareConfig::safetyFuelPressLow && HardwareConfig::hasFuelPress && !ed.fuelPressHealthy) ||
+                (HardwareConfig::safetyBattLow && HardwareConfig::hasBattVoltage && !ed.battHealthy);
+            if (protectionBlind) {
+                ed.limpMode = true;
+                strncpy(ed.lastEvent, "LIMP: safety sensor lost", sizeof(ed.lastEvent) - 1);
             }
         }
         if (HardwareConfig::hasN1Rpm && m == SysMode::STARTUP && ed.n1Healthy) {
@@ -392,6 +456,7 @@ private:
     const char*   _lastFault      = nullptr;
     float         _lastEgt        = -1.0f;   // for dEGT/dt calculation
     unsigned long _lastEgtMs      = 0;
+    uint32_t      _lastEgtSampleSeq = 0;
     float         _runningEgtRef  = -1.0f;
     float         _refDemand      = 0.0f;    // throttleDemand captured when the ref was (re)baselined
     bool          _refWindowOpen  = false;   // follow-down window latched open until EGT re-stabilizes
@@ -403,10 +468,18 @@ private:
     unsigned long _overspeedSinceMs = 0;     // millis() when the overspeed reading began
     bool          _n2OverspeedPending = false;
     unsigned long _n2OverspeedSinceMs = 0;
+    unsigned long _oilOvercurrentSinceMs = 0;
     bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
     uint8_t       _n1BufIdx       = 0;
     uint8_t       _n1BufCount     = 0;
+    uint8_t       _surgeConfirmWindows = 0;
+
+    void _resetSurge() {
+        _n1BufIdx = 0;
+        _n1BufCount = 0;
+        _surgeConfirmWindows = 0;
+    }
 
     void _resetEgtRing() {
         _egtRingIdx    = 0;
@@ -585,6 +658,9 @@ private:
             "Oil pressure read near zero - possible pump failure or broken fitting.\n"
             "What to do: Inspect oil pump, lines, and fittings before any restart. "
             "Do not run the engine until oil supply is confirmed.";
+        else if (strcmp(code, "OIL_PUMP_OVERCURRENT") == 0) desc =
+            "Oil pump current remained above its configured limit.\n"
+            "What to do: Check the pump, driver, wiring, oil viscosity and current-sensor calibration before restarting.";
         else if (strcmp(code, "FLAMEOUT")   == 0) desc =
             "Flameout: combustion was lost according to the configured flameout source, and relight was not possible.\n"
             "What to do: Check fuel supply, fuel valve, and the selected flameout sensor/source. "

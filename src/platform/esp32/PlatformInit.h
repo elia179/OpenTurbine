@@ -6,6 +6,15 @@
 #include "../../../hardware_profile.h"
 #include "../../engine/EngineData.h"
 
+namespace ResetRecovery {
+    RTC_DATA_ATTR inline uint32_t activeMagic = 0;
+    RTC_DATA_ATTR inline uint32_t activeMagicInv = 0;
+    static constexpr uint32_t MAGIC = 0x4F545255UL;
+    inline void markActive() { activeMagic = MAGIC; activeMagicInv = ~MAGIC; }
+    inline void markSafe() { activeMagic = 0; activeMagicInv = ~0UL; }
+    inline bool wasActive() { return activeMagic == MAGIC && activeMagicInv == ~MAGIC; }
+}
+
 // ============================================================
 //  PlatformInit — one-time ESP32 board bring-up
 //
@@ -88,6 +97,18 @@ public:
             default: break;
         }
         Serial.printf("[OT] Reset reason: %s (%d)\n", rrStr, (int)rr);
+        const bool abnormal = rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT ||
+                              rr == ESP_RST_TASK_WDT || rr == ESP_RST_WDT ||
+                              rr == ESP_RST_BROWNOUT;
+        if (abnormal && ResetRecovery::wasActive()) {
+            auto& ed = EngineData::instance();
+            ed.recoveryLockout = true;
+            strncpy(ed.faultDescription,
+                    "Abnormal reset occurred while the engine was active. Release START, verify shaft speed/temperature, then press STOP to acknowledge.",
+                    sizeof(ed.faultDescription) - 1);
+            Serial.println("[OT] Recovery lockout armed: abnormal reset while active");
+        }
+        ResetRecovery::markSafe();
 
         // Stop pin pull-up
         pinMode(OT_STOP_PIN, INPUT_PULLUP);
