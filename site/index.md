@@ -1,28 +1,44 @@
 ---
 layout: landing
 title: Open-source ESP32 turbine ECU
-description: OpenTurbine is an open-source ESP32 turbine ECU with guided Windows setup, hardware-aware configuration, control rules, calibration, monitoring, logs, and a browser dashboard.
+description: OpenTurbine is open-source ESP32 turbine ECU software with guided Windows setup, hardware-aware configuration, editable sequences, calibration, monitoring and logging.
 ---
 
 <section class="hero"><div class="shell hero-grid"><div>
 <p class="eyebrow">Open-source ESP32 turbine ECU</p>
-<h1>Open-source turbine ECU software for ESP32</h1>
-<p class="lede">Guided Windows setup, hardware-aware configuration, editable engine sequences, simple control rules, calibration, monitoring, and run logging.</p>
+<h1>Build the turbine controller your system needs</h1>
+<p class="lede">Configure sensors, actuators, sequences, limits and control rules from a browser. No source-code build is required for the normal Windows setup.</p>
 {% include download-cta.html %}
-<p>For turbojets, APUs, generators, turboshafts, turboprops, and turbine test rigs.</p>
-{% include safety-note.html %}
-</div><div><img class="screenshot" src="{{ '/assets/images/hero-dashboard.png' | relative_url }}?v=20260718b" width="1800" height="1050" alt="OpenTurbine dashboard during a representative simulated single-shaft turbine run, showing N1 at 58,200 RPM, TOT at 592 degrees Celsius, oil pressure, oil temperature, battery voltage and actuator demand"></div></div></section>
+<p class="quiet">For turbojets, APUs, generators, turboshafts, turboprops and turbine test rigs.</p>
+</div><div><img class="screenshot" src="{{ '/assets/images/hero-dashboard.png' | relative_url }}?v=20260718b" width="1800" height="1050" alt="OpenTurbine dashboard during a representative simulated single-shaft turbine run, showing N1, turbine temperature, oil pressure, oil temperature, battery voltage and actuator demand"></div></div></section>
 
-<section class="section alt"><div class="shell"><h2>Start with a supported board</h2><div class="steps"><div class="step"><h3>Connect</h3><p>Connect a supported ESP32 board with a USB data cable. Windows should detect the connected USB bridge or the Setup Tool will offer the matching driver.</p></div><div class="step"><h3>Install</h3><p>Run the Windows Setup Tool for a clean install, or use its update path to preserve a working controller setup.</p></div><div class="step"><h3>Configure</h3><p>Connect to the board Wi-Fi, open the dashboard in a browser, and complete dry setup before adding fuel.</p></div></div><p class="source-note"><strong>For normal Windows setup, download OpenTurbineSetupTool.exe.</strong> Do not use GitHub’s <em>Download ZIP</em> source-code button.</p></div></section>
+<section class="section alt"><div class="shell"><h2>Start where you are</h2><div class="card-grid three">
+<a class="card" href="{{ '/get-started/' | relative_url }}"><h3>Install on a board</h3><p>Use the Windows Setup Tool, connect to the ECU Wi-Fi and open the dashboard.</p></a>
+<a class="card" href="{{ '/user-guide/' | relative_url }}"><h3>Build and configure an ECU</h3><p>Read the complete guide for wiring, Hardware, Config, calibration, sequences and dry testing.</p></a>
+<a class="card" href="{{ '/troubleshooting/' | relative_url }}"><h3>Fix a problem</h3><p>Go directly to help for USB, flashing, Wi-Fi, dashboard and update problems.</p></a>
+</div></div></section>
 
-<section class="section"><div class="shell"><h2>What OpenTurbine controls</h2><div class="card-grid three"><div class="card"><h3>Sequences and control rules</h3><p>Build startup and shutdown sequences, then add simple threshold or input-to-output mapping rules for fitted hardware.</p></div><div class="card"><h3>Monitoring and protection</h3><p>Monitor N1/N2 speed, temperature, pressure and fitted sensors; define protection limits and review event and per-run logs.</p></div><div class="card"><h3>Configuration without compiling</h3><p>Describe installed channels, search hardware-aware settings, calibrate inputs and outputs, back up the complete engine file, and update over Wi-Fi.</p></div></div></div></section>
+<section class="section"><div class="shell split"><div>
+<p class="eyebrow">What it provides</p>
+<h2>One configurable ECU platform</h2>
+<p>OpenTurbine describes the hardware actually fitted to the engine, exposes the relevant settings, and keeps unrelated options out of the way.</p>
+<ul class="plain-feature-list">
+  <li>Editable startup and shutdown sequences</li>
+  <li>Sensor calibration and actuator testing</li>
+  <li>Speed, temperature, pressure and controller limits</li>
+  <li>Threshold and input-to-output control rules</li>
+  <li>Browser monitoring, backups, event logs and run logs</li>
+</ul>
+</div><figure><img class="screenshot" src="{{ '/assets/images/hardware-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine Hardware page showing a conflict-free example turbine channel inventory"><figcaption>Hardware contains only the sensors and actuators fitted to this example. Values shown throughout the documentation are examples, not settings to copy.</figcaption></figure></div></section>
 
-<section class="section alt"><div class="shell split"><div><h2>What the Setup Tool does</h2><p>The Windows Setup Tool detects a supported board, offers the matching CP210x or WCH driver when the connected bridge has no COM port, and can flash a new board or update an existing setup.</p><p>Driver and boot-mode advice is based on the connected device: a bridge already assigned a COM port receives BOOT/RESET guidance instead of a redundant driver prompt.</p><a class="button secondary" href="{{ '/get-started/' | relative_url }}">Read Windows setup steps</a></div><div class="card"><h3>Before you click</h3><p>Clean install/reinstall erases the selected board. Update and keep my setup is the normal path for a working ECU; back up first.</p><p>Windows may warn when a release is new or unsigned. Verify the official release and its checksum.</p></div></div></section>
+<section class="section alt"><div class="shell"><div class="compact-callout"><div><h2>Check compatibility before installing</h2><p>Normal setup supports Classic ESP32 boards with at least 4 MB flash and the ESP32-S3 DevKitC-1 N16R8 target. The guided installer currently requires Windows.</p></div><a class="button secondary" href="{{ '/hardware/' | relative_url }}">Read hardware requirements</a></div></div></section>
 
-<section class="section"><div class="shell"><h2>Configuration screens</h2><div class="image-grid"><figure><img class="screenshot" src="{{ '/assets/images/hardware-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine Hardware page showing a conflict-free example single-shaft turbine channel inventory"><figcaption>Start with a coherent fitted system: N1, TOT, oil and throttle inputs plus only the actuators the example uses.</figcaption></figure><figure><img class="screenshot" src="{{ '/assets/images/config-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine configuration workspace showing example N1, temperature, cooldown and throttle fields"><figcaption>See how the fitted hardware exposes relevant limits and hides unrelated settings; all displayed values are examples.</figcaption></figure><figure><img class="screenshot" src="{{ '/assets/images/calibration-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine Calibration page showing fuel pump, oil pressure and throttle calibration in standby"><figcaption>Calibrate one real signal path at a time while the ECU is in Standby and hazardous energy is isolated.</figcaption></figure><figure><img class="screenshot" src="{{ '/assets/images/sequence-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine Sequence editor showing an example oil-prime, crank, ignition, fuel, combustion-confirmation, spool and stable-idle startup"><figcaption>Read startup as a story: build oil pressure, crank, ignite, admit fuel, confirm combustion, spool and verify stable idle.</figcaption></figure><figure><img class="screenshot" src="{{ '/assets/images/control-rules-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine Control Rules editor showing a simulated oil-temperature cooling-fan rule"><figcaption>Learn threshold and hysteresis from a concrete example: fan on above 85 °C and off again below 80 °C.</figcaption></figure><figure><img class="screenshot" src="{{ '/assets/images/tools-page.png' | relative_url }}?v=20260718b" width="1800" height="1050" loading="lazy" alt="OpenTurbine Tools page showing standby-only tests for the fitted example actuators"><figcaption>Only fitted actuators appear, ready for short Standby tests after fuel and ignition energy are made safe.</figcaption></figure></div></div></section>
-
-<section class="section alt"><div class="shell"><h2>Compatibility</h2>{% include compatibility-table.html %}<p class="quiet">ESP32-C3 and other unlisted ESP32 families are not supported by the current normal setup path.</p></div></section>
-
-<section class="section"><div class="shell"><h2>Choose your path</h2><div class="card-grid four"><a class="card" href="{{ '/get-started/' | relative_url }}"><h3>Try on a board</h3><p>Install a supported board with the Windows Setup Tool.</p></a><a class="card" href="{{ '/hardware/' | relative_url }}"><h3>Build an ECU</h3><p>Plan drivers, sensors, wiring, power protection, and emergency shutdown.</p></a><a class="card" href="{{ '/troubleshooting/' | relative_url }}"><h3>Update or recover</h3><p>Back up an existing controller, update it, or diagnose installation problems.</p></a><a class="card" href="{{ '/developers/' | relative_url }}"><h3>Develop or integrate</h3><p>Build firmware, work with source, or integrate the serial protocol.</p></a></div></div></section>
-
-<section class="section"><div class="shell"><h2>Get the right help</h2>{% include support-options.html %}</div></section>
+<section class="section"><div class="shell split"><div>
+<h2>Experimental software, independent safety</h2>
+<p>OpenTurbine does not replace suitable drivers, fusing, signal conditioning or an independent physical emergency stop. Verify the complete system with fuel, ignition energy, starter power and load power isolated before an operating test.</p>
+<a href="{{ '/safety/' | relative_url }}">Read the safety requirements</a>
+</div><div>
+<h2>Source is open</h2>
+<p>Use the released firmware and Setup Tool, inspect the source, adapt it for your own project, or contribute improvements.</p>
+<a href="{{ site.data.project.repository_url }}">View OpenTurbine on GitHub</a>
+</div></div></section>
