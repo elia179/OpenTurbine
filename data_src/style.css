@@ -1203,6 +1203,9 @@ main.hw-installed-view .hw-section:not(#hardware-inputs-panel):not(#hardware-out
 .requirement-ok { border-color: color-mix(in srgb, var(--green) 35%, var(--border)); }
 .requirement-warn { border-color: color-mix(in srgb, var(--yellow) 45%, var(--border)); }
 .requirement-error { border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+.requirement-ok .requirement-state { color: var(--green); }
+.requirement-warn .requirement-state { color: var(--yellow); }
+.requirement-error .requirement-state { color: var(--red); font-weight: 700; }
 .requirement-state {
   font-size: .68rem;
   text-transform: uppercase;

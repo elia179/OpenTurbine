@@ -128,6 +128,13 @@ Measure the conditioned output before attaching it to the GPIO. ESP32 GPIO uses 
 
 ### 5.2 Typical wiring by electrical type
 
+Click or tap this diagram to enlarge it. These four drawings show the exact meaning of power, ground and signal; replace the generic GPIO label with the pin you saved on the Hardware page.
+
+<figure>
+  <img class="system-diagram" src="{{ '/assets/images/sensor-switch-wiring.svg' | relative_url }}" width="1400" height="1040" alt="Four basic OpenTurbine wiring diagrams showing a three-wire 3.3 volt sensor, a 5 volt analog sensor through a divider, an open-collector pulse sensor with a pull-up, and an active-low command switch">
+  <figcaption>Basic input wiring. Red is power, grey is ground and blue is signal. Confirm every voltage from the actual component datasheet before connecting the ESP32.</figcaption>
+</figure>
+
 <div class="table-wrap"><table>
 <thead><tr><th>Electrical type selected in Hardware</th><th>Connection pattern</th><th>Important fields</th></tr></thead>
 <tbody>

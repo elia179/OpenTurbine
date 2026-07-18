@@ -905,6 +905,10 @@ async function loadHardware() {
     GPIO_DB = cfg.platform === 'esp32s3' ? GPIO_DB_ESP32S3 : GPIO_DB_ESP32;
     populate();
     _snapshotFields();   // baseline — any field that diverges from this gets the save-warning highlight
+    // populate() renders workflow cards before their comparison baseline exists.
+    // Render them once more against the completed snapshot so unchanged
+    // Start/Stop cards do not retain a stale yellow "changed" border.
+    renderHardwareWorkflowSummaries();
     _hwDirty = false;
     document.querySelector('.save-bar')?.classList.remove('is-dirty');
     document.getElementById('save-msg').textContent = 'Loaded — no unsaved changes';
@@ -1718,7 +1722,7 @@ function registryDefaultRange(direction, driver, role) {
   if (direction === 'input') {
     if (driver === 1) return {min:0, max:4095};
     if (driver === 2) {
-      if (role === 'speed') return {min:0, max:500000};
+      if (role === 'speed') return {min:0, max:1000000000};
       if (role === 'flow') return {min:0, max:1000};
       return {min:0, max:10000};
     }
@@ -1825,7 +1829,7 @@ function registryRangeMeta(direction, driver, role) {
       return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095};
     }
     if (d === 2) {
-      if (role === 'speed') return {min:'Minimum speed (RPM)', max:'Maximum speed (RPM)', step:'100', limitMin:0, limitMax:500000,
+      if (role === 'speed') return {min:'Minimum speed (RPM)', max:'Maximum speed (RPM)', step:'100', limitMin:0, limitMax:1000000000,
         note:'N1/N2 speed registry cards are claimed by the ESP32 PCNT RPM path, not the low-rate generic interrupt counter. Set pulses/rev below.'};
       if (role === 'flow') return {min:'Minimum flow (L/min)', max:'Maximum flow (L/min)', step:'0.01', limitMin:0,
         note:'Fuel-flow pulse cards use pulses/litre below; displayed flow is litres/min before any page-level unit conversion.'};
@@ -2076,6 +2080,7 @@ function registryCurrentEditor(direction, c, index) {
   const pin = dedicated ? act.current_pin : c.current_pin;
   const mvA = dedicated ? (act.current_mv_a ?? (actKey === 'glow_plug' ? 185 : 100)) : (c.current_mv_a ?? 100);
   const zeroV = dedicated ? (act.current_zero_v ?? 1.65) : (c.current_zero_v ?? 1.65);
+  const maxA = dedicated ? (act.current_max_a ?? 0) : (c.current_max_a ?? 0);
   const fieldSet = dedicated
     ? (field, expr) => `setActCurrentSensor('${actKey}','${field}',${expr})`
     : (field, expr) => {
@@ -2092,7 +2097,7 @@ function registryCurrentEditor(direction, c, index) {
       <div class="hw-field"><span class="hw-label">Sensor sensitivity (mV/A)</span><span class="hw-desc">Datasheet sensitivity at the ECU ADC pin. Example: ACS712-20A = 100 mV/A.</span><input type="number" min="1" max="10000" step="1" value="${registryFormatValue(mvA)}" oninput="${fieldSet('mv_a','+this.value')}"></div>
       <div class="hw-field"><span class="hw-label">Zero-current voltage (V)</span><span class="hw-desc">Sensor output voltage when no current flows.</span><input type="number" min="0" max="3.3" step="0.01" value="${registryFormatValue(zeroV)}" oninput="${fieldSet('zero_v','+this.value')}"></div>
        ${actKey === 'glow_plug' ? `<div class="hw-field"><span class="hw-label">Ready current (A)</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_ready_a ?? 3)}" oninput="${fieldSet('ready_a','+this.value')}"></div>` : ''}
-       ${actKey === 'oil_pump' ? `<div class="hw-field"><span class="hw-label">Overcurrent trip (A)</span><span class="hw-desc">0 disables the oil-pump overcurrent trip.</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(act.current_max_a ?? 0)}" oninput="${fieldSet('current_max_a','+this.value')}"></div>` : ''}
+       ${(!dedicated || actKey === 'oil_pump') ? `<div class="hw-field"><span class="hw-label">Overcurrent trip (A)</span><span class="hw-desc">Warn immediately and shut down after the configured continuous-current delay. 0 disables this output's trip.</span><input type="number" min="0" max="1000" step="0.1" value="${registryFormatValue(maxA)}" oninput="${fieldSet('current_max_a','+this.value')}"></div>` : ''}
     </div></div>` : ''}
   </div>`;
 }
@@ -2292,7 +2297,7 @@ function registryRangeProblem(c) {
   if (driver === 2) {
     if (min < 0) return 'Pulse range below 0';
     if (Number(c.pulses_per_unit ?? 1) <= 0) return 'Pulse scale invalid';
-    if (String(c.role || '') === 'speed' && max > 500000) return 'RPM range max 500000';
+    if (String(c.role || '') === 'speed' && max > 1000000000) return 'RPM range max 1000000000';
   }
   if (driver === 7 && (min < 0 || max > 1)) return 'PWM duty range 0-100%';
   if ((driver === 3 || driver === 6) && (min < 500 || max > 2500)) return 'Pulse width 500-2500 us';
@@ -2596,6 +2601,16 @@ function controlFieldChanged(which, key) {
   const after = key === 'label'
     ? (cfg?.labels || {})[which]
     : (cfg?.controls || {})[`${which}_${key}`];
+  // Optional switch fields acquire explicit defaults while the Hardware page
+  // loads. Compare their effective values so that undefined -> default does
+  // not paint an unchanged Start/Stop card as an unsaved yellow change.
+  if (key === 'label') {
+    const fallback = which === 'stop' ? 'Stop' : 'Start';
+    return String(before || fallback) !== String(after || fallback);
+  }
+  if (key === 'pin') return Number(before ?? -1) !== Number(after ?? -1);
+  if (key === 'pullup') return (before !== false) !== (after !== false);
+  if (key === 'active_h' || key === 'pulldown') return !!before !== !!after;
   return JSON.stringify(before) !== JSON.stringify(after);
 }
 function controlFieldClass(which, key) {
@@ -4573,7 +4588,6 @@ async function saveHardware() {
     if (!obj || obj[key] === undefined || obj[key] === null || obj[key] < 0) missing.push(label);
   };
   requirePin(cfg.controls, 'stop_pin', 'Stop button');
-  requirePin(cfg.controls, 'start_pin', 'Start button');
   for (const [key, label] of Object.entries({
     n1_rpm:'N1 RPM', n2_rpm:'N2 RPM', oil_press:'Oil Pressure', flame:'Flame Detector',
     fuel_flow:'Fuel Flow', fuel_press:'Fuel Pressure', p1:'Pressure 1', p2:'Pressure 2',
@@ -4842,7 +4856,7 @@ function applyContextTooltips(root) {
     'Pulses / litre': 'Fuel-flow sensor calibration. Flow is pulse rate converted to pulses/min, then divided by pulses/litre.',
     'Pulses / unit': 'Pulse scaling used for generic pulse/frequency conversion.',
     'Minimum speed (RPM)': 'Lower RPM endpoint for mapping this speed input.',
-    'Maximum speed (RPM)': 'Upper RPM endpoint for mapping this speed input. N1/N2 can be configured up to 500000 RPM.',
+    'Maximum speed (RPM)': 'Upper RPM endpoint for mapping this speed input. Extremely high values are accepted for unusual turbines but should be checked against the sensor and counter bandwidth.',
     'Minimum flow (L/min)': 'Lower flow endpoint for mapping this pulse flow input.',
     'Maximum flow (L/min)': 'Upper flow endpoint for mapping this pulse flow input.',
     'Mapped value': 'The firmware maps raw electrical input/output values into the normalized value used by rules and telemetry.',
