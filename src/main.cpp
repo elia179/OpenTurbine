@@ -481,7 +481,7 @@ static void validateSequences() {
         if (checkCustomBlockHardware(nm)) return;
         if (strcmp(nm, "FuelSolClose") == 0) {
             if (!hw.hasFuelSol)
-                addIssue(nm, "No fuel solenoid configured - close command has no physical output", false);
+                addIssue(nm, "No main fuel shutoff configured - close command has no physical output", false);
         }
         else if (strcmp(nm, "StarterEnOn") == 0 || strcmp(nm, "StarterEnOff") == 0) {
             if (!hw.hasStarterEn)
@@ -501,7 +501,7 @@ static void validateSequences() {
         }
         else if (strcmp(nm, "AirstarterOn") == 0 || strcmp(nm, "AirstarterOff") == 0) {
             if (!hw.hasAirstarterSol)
-                addIssue(nm, "No airstarter solenoid configured - airstarter command has no physical output", false);
+                addIssue(nm, "No air starter valve configured - command has no physical output", false);
         }
         else if (strcmp(nm, "OilScavengeOn") == 0 || strcmp(nm, "OilScavengeOff") == 0) {
             if (!hw.hasOilScavengePump)
@@ -509,7 +509,7 @@ static void validateSequences() {
         }
         else if (strcmp(nm, "WaitTOTCool") == 0) {
             if (Config::effectiveEgtSource() == 0)
-                addIssue(nm, "No selected EGT source - Wait EGT Cool completes immediately without temperature feedback", false);
+                addIssue(nm, "No selected EGT source - this block waits for its full timeout, then aborts startup or permits shutdown to finish", false);
         }
         else if (strcmp(nm, "FinalStop") == 0) {
             if (!hw.hasN1Rpm)
@@ -563,13 +563,13 @@ static void validateSequences() {
         }
         else if (strcmp(nm, "GlowPreheat") == 0) {
             if (!hw.hasGlowPlug)
-                addIssue(nm, "No glow plug configured - block will complete immediately with no effect", false);
+                addIssue(nm, "No glow plug configured - block will spend its configured time with no physical heating output", false);
             else if (Config::glowWaitUntilHot && !hw.hasGlowCurrentSensor)
                 addIssue(nm, "Wait-until-hot requires calibrated glow-plug current feedback", true);
         }
         else if (strcmp(nm, "PreIgnSpark") == 0) {
             if (!hw.hasIgniter)
-                addIssue(nm, "No igniter configured - block will complete with no spark", false);
+                addIssue(nm, "No Igniter 1 output configured - block will spend its configured time with no ignition output", false);
         }
         else if (strcmp(nm, "PreHeat") == 0) {
             if (!ignitionTargetAvailable(hw.startupIgnitionTarget[i]))
@@ -585,19 +585,19 @@ static void validateSequences() {
         }
         else if (strcmp(nm, "FuelOpen") == 0) {
             if (!hw.hasFuelSol)
-                addIssue(nm, "No fuel solenoid configured - fuel will not open", false);
+                addIssue(nm, "No main fuel shutoff configured - main fuel cannot be opened", false);
         }
         else if (strcmp(nm, "FuelPulse") == 0) {
             if (!hw.hasFuelSol)
-                addIssue(nm, "No fuel solenoid configured - fuel pulse has no physical output", false);
+                addIssue(nm, "No main fuel shutoff configured - prime pulse has no physical output", false);
         }
         else if (strcmp(nm, "FuelPumpIdle") == 0) {
             if (!hw.hasThrottle)
-                addIssue(nm, "No throttle / fuel ESC actuator configured - idle fuel demand has no physical output", false);
+                addIssue(nm, "No main fuel pump / metering output configured - idle fuel demand has no physical output", false);
         }
         else if (strcmp(nm, "ModifiedIdle") == 0 || strcmp(nm, "ThrottleSet") == 0) {
             if (!hw.hasThrottle)
-                addIssue(nm, "No throttle / fuel ESC actuator configured - throttle demand has no physical output", false);
+                addIssue(nm, "No main fuel pump / metering output configured - fuel demand has no physical output", false);
         }
         else if (strcmp(nm, "WaitForInput") == 0) {
             if (Config::waitForInputChannel < 0 ||
@@ -1046,6 +1046,7 @@ static void cutCombustionAndStarterNow() {
     ed.abSolOpen = false; ed.abPumpDemand = 0.0f;
     ed.starterDemand = 0.0f; ed.starterEnabled = false;
     ed.airstarterOpen = false;
+    Hardware::cutRegistryHazardousDemands();
 }
 
 // ── General-purpose DI debounce state ────────────────────────
@@ -2019,7 +2020,7 @@ static void enterAbortStandby() {
     } else if (strcmp(blockName, "FlameConfirm") == 0) {
         strncpy(ed.faultDescription,
             "Startup aborted: flame was not detected within the allowed time.\n"
-            "What to do: Check fuel supply, fuel solenoid, igniter operation, "
+            "What to do: Check fuel supply, main fuel shutoff, igniter operation, "
             "and flame sensor threshold. Try Igniter Test from the Tools page.",
             sizeof(ed.faultDescription) - 1);
     } else if (strcmp(blockName, "Spool") == 0) {

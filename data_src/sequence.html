@@ -385,10 +385,10 @@ const BLOCKS = {
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
       {key:'pre_ign_rpm',        label:'Starter cut target N1', unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000, configKey:'pre_ign_rpm',
         visibleIf: hw => sensorEnabled('n1_rpm'),
-        desc:'Starter runs until N1 exceeds this RPM. Without N1 sensor this condition cannot be checked - the block will run for the full timeout.'},
+        desc:'Starter runs until N1 exceeds this RPM. Without healthy N1 feedback the block runs to its timeout and then causes a fault shutdown.'},
       {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
         configKey:'starter_timeout_ms',
-        desc:'Maximum spin time before fault. If no N1 sensor is fitted, the timeout determines when the block exits.'},
+        desc:'Maximum spin time before fault shutdown. Bench Mode is the only mode where this timeout completes without verified N1 feedback.'},
       {key:'oil_startup_min_bar',label:'Oil arm min',   unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
         visibleIf: hw => sensorEnabled('oil_press'), configKey:'oil_startup_min_bar',
         desc:'Shared with OilPrime arm threshold - both use the same config value.'},
@@ -407,7 +407,7 @@ const BLOCKS = {
     label:'Open Main Fuel Shutoff', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: null, timeout_action:null,
-    desc:'Opens the fuel solenoid and sets the internal fuelEverOpened flag (used by Cooldown block to decide if cooling is needed). Instant action. Outputs: fuelSolOpen=true.',
+    desc:'Opens the main fuel shutoff and marks that combustion was attempted so Cooldown can run when needed. Instant action.',
     params:[]
   },
   FlameConfirm: {
@@ -523,14 +523,14 @@ const BLOCKS = {
     label:'Air Starter Valve Open', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('airstarter_sol'),
     condition: null, timeout_action:null,
-    desc:'Open the airstarter solenoid to allow compressed air to drive the starter.',
+    desc:'Open the air starter valve so compressed air can spool the turbine.',
     params:[]
   },
   AirstarterOff: {
     label:'Air Starter Valve Close', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('airstarter_sol'),
     condition: null, timeout_action:null,
-    desc:'Close the airstarter solenoid.',
+    desc:'Close the air starter valve.',
     params:[]
   },
   CoolFanOn: {
@@ -566,7 +566,7 @@ const BLOCKS = {
     label:'Close Main Fuel Shutoff', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: null, timeout_action:null,
-    desc:'Close the fuel solenoid. Use to cut fuel without triggering full emergency stop.',
+    desc:'Close the main fuel shutoff. Use to cut fuel without triggering the full emergency-stop path.',
     params:[]
   },
   StarterEnOn: {
@@ -654,7 +654,7 @@ const BLOCKS = {
     ],
     params:[
       {key:'tot_cooldown_target',       label:'EGT target',              unitType:'temp', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
-      {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:200000, configKey:'cooldown_timeout_ms'},
+      {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:60000, configKey:'cooldown_timeout_ms'},
       {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
         visibleIf: hw => actuatorEnabled('starter')},
       {key:'cooldown_starter_pct',      label:'Starter speed',           unit:'%',  type:'float',min:0,    max:100,    step:5,     def:40,     configKey:'cooldown_starter_pct',
@@ -678,7 +678,7 @@ const BLOCKS = {
       ? `N1 > ${hw.rpm_zero_threshold ?? 100} rpm`
       : `timer (no N1 sensor)`,
     timeout_action:'continue',
-    desc:'Wait for complete stop. Main oil pump cuts when N1 reaches zero (or on timeout). If a scavenge pump is fitted and scavenge time > 0, it continues running to flush hot oil from bearings. Without N1 sensor: completes immediately (N1 health = unhealthy = treated as stopped) then runs scavenge if configured.',
+    desc:'Wait for complete stop. Main oil pump cuts when healthy N1 feedback reaches the stop threshold, or after timeout if fitted N1 feedback is unhealthy. If no N1 sensor is fitted, it proceeds immediately. A fitted scavenge pump can then continue to flush hot oil from bearings.',
     params:[
       {key:'rpm_zero_threshold',    label:'Stop threshold',   unit:'rpm',type:'float',min:0,   max:1000,  step:10,   def:100,
         visibleIf: hw => sensorEnabled('n1_rpm'),
@@ -696,7 +696,7 @@ const BLOCKS = {
     visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: hw => `fuel ${hw.fuel_pulse_ms ?? 200}ms`,
     timeout_action:null,
-    desc:'Opens the fuel solenoid for a brief pulse to wet the atomiser or clear the dead-leg before ignition. Does NOT set fuelEverOpened - use before PreIgnSpark as a pre-prime step. The solenoid closes after pulseMs; the block then waits offMs before completing.',
+    desc:'Opens the main fuel shutoff for a brief pulse to wet the atomiser or clear the dead-leg before ignition. Does NOT mark combustion as attempted - use before Igniter 1 Timed On as a pre-prime step. The shutoff closes after the pulse, then the block waits before completing.',
     params:[
       {key:'fuel_pulse_ms', label:'Pulse duration',  unit:'ms', type:'int', min:50,  max:2000, step:50,  def:200, configKey:'fuel_pulse_ms'},
       {key:'fuel_off_ms',   label:'Wait after close', unit:'ms', type:'int', min:0,   max:5000, step:100, def:300, configKey:'fuel_off_ms'},
@@ -1079,7 +1079,7 @@ const BLOCK_INFO = {
     links: []
   },
   FuelOpen: {
-    desc: 'Opens the fuel solenoid. Sets fuelEverOpened flag so CooldownSpin knows cooling is needed.',
+    desc: 'Opens the main fuel shutoff and marks that combustion was attempted so Cooldown can run when needed.',
     links: []
   },
   FlameConfirm: {
@@ -1127,7 +1127,7 @@ const BLOCK_INFO = {
     ]
   },
   ImmediateCut: {
-    desc: 'Emergency cut: zeros throttle, closes fuel solenoid, turns off ignition outputs and starter instantly.',
+    desc: 'Emergency cut: zeros all main/pilot/afterburner fuel demands, closes fuel valves, and turns off ignition and starter outputs instantly.',
     links: []
   },
   FuelPumpIdle: {
@@ -1807,8 +1807,8 @@ function buildFinalStateCard(tab, seq, idleRaw) {
   }
 
   const rows = [
-    hasAct('throttle') ? { label:'Main Fuel Pump / Throttle ESC', val: state.throttle } : null,
-    hasAct('fuel_sol') ? { label:'Fuel Solenoid',       val: state.fuelSol } : null,
+    hasAct('throttle') ? { label:'Main Fuel Pump / Metering Output', val: state.throttle } : null,
+    hasAct('fuel_sol') ? { label:'Main Fuel Shutoff',   val: state.fuelSol } : null,
     hasAct('igniter') ? { label:'Igniter',              val: state.igniter } : null,
     hasAct('igniter2') ? { label:'AB / Pilot Igniter', val: state.igniter2 } : null,
     hasAct('starter') ? { label:'Starter',              val: state.starter } : null,
@@ -2569,10 +2569,10 @@ function getEnabledActuators() {
   if (starterAct) list.push({key:'starter', label:demandLabel(starterAct, 'Starter Demand %', 'Starter Relay'), mode: isOnOff(starterAct) ? 'relay':'pct'});
   if (registryOutputPurpose('starter_enable')) list.push({key:'starter_en', label:'Starter Enable Output', mode:'relay'});
   if (oilPumpAct) list.push({key:'oil_pump', label:demandLabel(oilPumpAct, 'Oil Pump %', 'Oil Pump Relay'), mode: isOnOff(oilPumpAct) ? 'relay':'pct'});
-  if (registryOutputPurpose('fuel_shutoff')) list.push({key:'fuel_sol', label:'Fuel Solenoid', mode:'relay'});
+  if (registryOutputPurpose('fuel_shutoff')) list.push({key:'fuel_sol', label:'Main Fuel Shutoff', mode:'relay'});
   if (registryOutputPurpose('igniter')) list.push({key:'igniter', label:'Igniter 1', mode:'relay'});
   if (registryOutputPurpose('ab_igniter')) list.push({key:'igniter2', label:hasAB ? 'Afterburner Igniter' : 'AB / Pilot Igniter', mode:'relay'});
-  if (registryOutputPurpose('air_starter')) list.push({key:'airstarter_sol', label:'Airstarter Solenoid', mode:'relay'});
+  if (registryOutputPurpose('air_starter')) list.push({key:'airstarter_sol', label:'Air Starter Valve', mode:'relay'});
   if (registryOutputPurpose('cooling_fan')) list.push({key:'cool_fan', label:'Cooling Fan', mode:'relay'});
   if (registryOutputPurpose('scavenge_pump')) list.push({key:'oil_scavenge_pump', label:'Oil Scavenge Pump', mode:'relay'});
   if (registryOutputPurpose('bleed_valve') || registryOutputPurpose('valve')?.id === 'bleed_valve') list.push({key:'bleed_valve', label:'Bleed Valve', mode:'relay'});
@@ -2950,14 +2950,14 @@ const RULE_OUTPUTS = [
   {v:4,l:'Throttle Demand',id:'main_fuel',ok:()=>actuatorEnabled('throttle')},
   {v:5,l:'Starter Demand',id:'starter_main',ok:()=>actuatorEnabled('starter')},
   {v:7,l:'Oil Pump Demand',id:'oil_pump_main',ok:()=>actuatorEnabled('oil_pump')},
-  {v:8,l:'Fuel Solenoid',id:'fuel_shutoff',ok:()=>actuatorEnabled('fuel_sol')},
+  {v:8,l:'Main Fuel Shutoff',id:'fuel_shutoff',ok:()=>actuatorEnabled('fuel_sol')},
   {v:9,l:'Igniter',id:'igniter',ok:()=>actuatorEnabled('igniter')},
   {v:10,l:'AB / Pilot Igniter',id:'ab_igniter',ok:()=>actuatorEnabled('igniter2')},
   {v:11,l:'Afterburner Fuel Valve',id:'ab_solenoid',ok:()=>actuatorEnabled('ab_sol')},
   {v:12,l:'Afterburner Fuel Pump',id:'ab_pump',ok:()=>actuatorEnabled('ab_pump')},
   {v:13,l:'Request Shutdown',id:'request_shutdown',ok:()=>true},
   {v:14,l:'Fault + Shutdown',id:'request_fault',ok:()=>true},
-  {v:15,l:'Airstarter Solenoid',id:'air_starter',ok:()=>actuatorEnabled('airstarter_sol')},
+  {v:15,l:'Air Starter Valve',id:'air_starter',ok:()=>actuatorEnabled('airstarter_sol')},
   {v:16,l:'Glow Plug',id:'glow_plug',ok:()=>actuatorEnabled('glow_plug')},
   {v:17,l:'Prop Pitch',id:'prop_pitch',ok:()=>actuatorEnabled('prop_pitch')}
 ];
@@ -3762,7 +3762,13 @@ function _applySeqValidation(d) {
   for (const iss of issues) {
     const cls  = iss.error ? 'seq-val-error' : 'seq-val-warn';
     const icon = iss.error ? '&#10060;' : '&#9888;';
-    const block = String(iss.block || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    const issueLabels = {
+      AutoRelight:'Automatic Relight', Flameout:'Flameout Protection', Overtemp:'Overtemperature Protection',
+      OilSafety:'Oil Protection', Battery:'Battery / Bus Protection', Governor:'Power-Turbine Governor',
+      DynamicIdle:'Automatic Idle Control'
+    };
+    const friendlyBlock = BLOCKS[iss.block]?.label || issueLabels[iss.block] || iss.block || 'Sequence';
+    const block = String(friendlyBlock).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const msg = String(iss.msg || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');

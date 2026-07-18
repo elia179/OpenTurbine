@@ -364,7 +364,7 @@ A sequence is an ordered list. Each block either performs an action, waits for a
 Do not copy this blindly; make it match the engine. A common logic pattern is:
 
 1. **Build Oil Pressure (OilPrime):** runs the oil pump and waits for pressure, or uses a timed fixed output if no pressure sensor exists.
-2. **Crank Engine (StarterSpin):** enables/ramps the starter and waits for pre-ignition N1.
+2. **Starter Spin to Light-Off Speed (StarterSpin):** enables/ramps the starter and waits for the configured light-off N1.
 3. **Igniter On / Pre-Heat:** energizes the selected ignition or glow output.
 4. **Fuel Open / Fuel Pulse:** admits the configured starting fuel.
 5. **Confirm Combustion:** uses FlameConfirm or TempConfirm; never leave light-off unverified merely because a timer expired.

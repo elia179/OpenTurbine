@@ -1902,8 +1902,8 @@ void Config::_fromDoc(const JsonDocument& doc) {
     // about below instead (never block the informed user).
     if (!isfinite(rpmLimit) || rpmLimit <= 0.0f) rpmLimit = 100000.0f;
     if (!isfinite(n2RpmLimit) || n2RpmLimit < 0.0f) n2RpmLimit = 0.0f;
-    if (minRpm <= 0.0f) minRpm = 30000.0f;
-    if (minRpm >= rpmLimit) minRpm = rpmLimit * 0.3f;
+    if (!isfinite(minRpm) || minRpm < 0.0f) minRpm = 30000.0f;
+    if (minRpm > 0.0f && minRpm >= rpmLimit) minRpm = rpmLimit * 0.3f;
     if (!isfinite(totLimit) || totLimit < 0.0f) totLimit = 750.0f;
     if (totCooldownTarget < 0.0f) totCooldownTarget = 0.0f;
     totSafeMargin = totLimit > 0.0f

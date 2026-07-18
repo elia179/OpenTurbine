@@ -14,8 +14,8 @@ function plainRegistryName(raw, fallback = '') {
   const direct = {
     user_throttle:'Throttle Input', operator_throttle:'Throttle Input', operator_thrott:'Throttle Input', throttle_input:'Throttle Input',
     user_idle:'Idle Input', operator_idle:'Idle Input', idle_input:'Idle Input',
-    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Fuel Pump', main_fuel:'Main Fuel Pump',
-    fuel_shutoff:'Fuel Shutoff', fuel_sol:'Fuel Shutoff', flame:'Flame Sensor', flame_main:'Flame Sensor',
+    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Pilot / Auxiliary Fuel Pump', main_fuel:'Main Fuel Pump',
+    fuel_shutoff:'Main Fuel Shutoff', fuel_sol:'Main Fuel Shutoff', flame:'Flame Sensor', flame_main:'Flame Sensor',
     coolant_pump:'Coolant Pump', coolant_temperature:'Coolant Temperature',
     pilot_fuel:'Pilot Gas', purge_valve:'Purge Valve', air_starter:'Air Starter',
     ab_pump:'Afterburner Fuel Pump', ab_solenoid:'Afterburner Fuel Valve', ab_igniter:'Afterburner Igniter',
@@ -40,6 +40,34 @@ function registryDisplayName(c, fallback = 'Output') {
 function selectedEgtKey(d) {
   return d?.egt_source === 2 ? 'tit'
     : (d?.egt_source === 1 ? 'tot' : (d?.has_tot ? 'tot' : (d?.has_tit ? 'tit' : null)));
+}
+const SEQUENCE_BLOCK_LABELS = {
+  OilPrime:'Build Oil Pressure', StarterSpin:'Starter Spin to Light-Off Speed', PreIgnSpark:'Igniter 1 Timed On',
+  FuelOpen:'Open Main Fuel Shutoff', FlameConfirm:'Confirm Combustion by Flame Sensor',
+  TempConfirm:'Confirm Combustion by Temperature', TimedDelay:'Timed Delay',
+  FuelPumpIdle:'Set Main Fuel for Idle', ModifiedIdle:'Set Main Fuel for Raised Idle', Spool:'Accelerate to Idle',
+  SafetyHold:'Verify Stable Idle', AirstarterOn:'Air Starter Valve Open', AirstarterOff:'Air Starter Valve Close',
+  CoolFanOn:'Cooling Fan On', CoolFanOff:'Cooling Fan Off', IgniterOn:'Ignition Output On', IgniterOff:'Ignition Output Off',
+  FuelSolClose:'Close Main Fuel Shutoff', StarterEnOn:'Starter Enable On', StarterEnOff:'Starter Enable Off',
+  OilPumpOn:'Oil Pump On', OilPumpOff:'Oil Pump Off', OilScavengeOn:'Scavenge On', OilScavengeOff:'Scavenge Off',
+  StarterOff:'Starter Off', ImmediateCut:'Immediate Fuel and Ignition Cut', RPMDrop:'Wait for Rotor to Slow',
+  CooldownSpin:'Cooldown', FinalStop:'Wait for Complete Stop', FuelPulse:'Pulse Main Fuel Shutoff',
+  WaitTOTCool:'Wait for Safe Restart Temperature', ThrottleSet:'Set Main Fuel Demand',
+  WaitForInput:'Wait for External Input', WaitForInputOff:'Wait for External Input to Release', PreHeat:'Pre-Heat',
+  ABPumpOn:'Afterburner Fuel Pump On', ABPumpOff:'Afterburner Fuel Pump Off', ABIgnOn:'Afterburner Igniter On',
+  ABIgnOff:'Afterburner Igniter Off', ABSolOpen:'Afterburner Fuel Valve Open', ABSolClose:'Afterburner Fuel Valve Close',
+  ABCheckReady:'Check Afterburner Entry Conditions', ABIgnite:'Ignite Afterburner',
+  ABFlameConfirm:'Confirm Afterburner Flame', ABStabilize:'Stabilize Afterburner',
+  BleedOpen:'Bleed Valve Open', BleedClose:'Bleed Valve Close', GlowPreheat:'Glow Preheat',
+  FuelPumpRamp:'Pilot / Auxiliary Fuel Pump Ramp', FuelPump2Set:'Pilot / Auxiliary Fuel Pump Set',
+  FuelPump2On:'Pilot / Auxiliary Fuel Pump On', FuelPump2Off:'Pilot / Auxiliary Fuel Pump Off',
+  GovernorHold:'Verify Power-Turbine Governor'
+};
+function sequenceBlockLabel(id) { return SEQUENCE_BLOCK_LABELS[id] || id || '—'; }
+function friendlyEventText(text) {
+  const value = String(text || '');
+  const match = /^Seq:\s*(.+)$/.exec(value);
+  return match ? `Sequence: ${sequenceBlockLabel(match[1])}` : value;
 }
 
 // ── Unit preferences (persisted in localStorage) ─────────────
@@ -524,7 +552,7 @@ function applyData(d) {
   if (temperatureGroup) temperatureGroup.style.display =
     (d.has_tot || d.has_tit || d.has_n1 || d.has_n2) ? '' : 'none';
   setText('uptime',      d.uptime_s !== undefined ? formatUptime(d.uptime_s)  : '—');
-  setText('last-event',  d.last_event || '—');
+  setText('last-event',  friendlyEventText(d.last_event) || '—');
 
   // Fuel-output sub-labels: calibrated minimum pump output + automatic idle target.
   // Non-standby commands below min-spin are displayed as zero after firmware
@@ -781,7 +809,7 @@ function applyData(d) {
     const inSeq = (d.mode === 'STARTUP' || d.mode === 'SHUTDOWN' || abSeqActive) && d.seq_block_total > 0;
     seqSection.style.display = inSeq ? '' : 'none';
     if (inSeq) {
-      setText('seq-block-name', d.current_block || '—');
+      setText('seq-block-name', sequenceBlockLabel(d.current_block));
       setText('seq-wait-reason', d.seq_wait_reason || '');
       const step = (d.seq_block_idx || 0) + 1;
       const total = d.seq_block_total || 1;
@@ -1402,7 +1430,7 @@ function _trackRunState(d) {
       _seqTimeline     = [];
       _seqLastBlockIdx = -1;
       _seqBlockStart   = now;
-      _seqCurBlockName = d.current_block || '—';
+      _seqCurBlockName = sequenceBlockLabel(d.current_block);
     }
     const idx = d.seq_block_idx !== undefined ? d.seq_block_idx : -1;
     if (idx > _seqLastBlockIdx) {
@@ -1412,7 +1440,7 @@ function _trackRunState(d) {
         _renderLiveTimeline();
       }
       _seqLastBlockIdx = idx;
-      _seqCurBlockName = d.current_block || '—';
+      _seqCurBlockName = sequenceBlockLabel(d.current_block);
       _seqBlockStart   = now;
     }
   }

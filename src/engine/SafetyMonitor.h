@@ -57,10 +57,7 @@ public:
         _startupSpooled   = false;
         _overspeedPending = false;
         _n2OverspeedPending = false;
-        _oilOvercurrentSinceMs = 0;
-        memset(_registryOvercurrentSinceMs, 0, sizeof(_registryOvercurrentSinceMs));
-        _lowOilSinceMs = _oilZeroSinceMs = _oilTempSinceMs = 0;
-        _fuelPressSinceMs = _battLowSinceMs = 0;
+        _resetDwellConfirmations();
         _resetEgtRing();
         _resetSurge();
         _refWindowOpen    = false;
@@ -92,7 +89,8 @@ public:
             _refWindowOpen   = false;
             _overspeedPending = false;
             _n2OverspeedPending = false;
-            _oilOvercurrentSinceMs = 0;
+            _resetDwellConfirmations();
+            _lastCheckMs = 0;
             _lastEgt        = -1.0f;
             _lastEgtMs      = 0;
             _lastEgtSampleSeq = 0;
@@ -114,6 +112,8 @@ public:
             // which monitoring was deliberately suspended.
             _overspeedPending = false;
             _n2OverspeedPending = false;
+            _resetDwellConfirmations();
+            _lastCheckMs = 0;
             _resetSurge();
             return;
         }
@@ -407,7 +407,7 @@ public:
         // STARTUP: only fire if N1 previously crossed minRpm and then fell back
         //          (genuine stall during spool-up, not the normal crank-up phase
         //          where the engine must pass through 0→minRpm on its way to idle).
-        if (HardwareConfig::hasN1Rpm && m == SysMode::RUNNING) {
+        if (HardwareConfig::hasN1Rpm && minRpm > 0.0f && m == SysMode::RUNNING) {
             if (ed.n1Healthy && ed.n1Rpm < minRpm) {
                 if (HardwareConfig::safetyFlameout && ed.flameMonitorActive
                     && _effectiveFlameoutSource() == 2) {
@@ -436,6 +436,7 @@ public:
             bool protectionBlind =
                 (HardwareConfig::safetyOvertemp && Config::effectiveEgtSource() != 0 && !Config::primaryEgtHealthy(ed)) ||
                 ((HardwareConfig::safetyLowOil || HardwareConfig::safetyOilZero) && HardwareConfig::hasOilPress && !ed.oilHealthy) ||
+                (HardwareConfig::hasOilLoop && !FeedbackRequirements::allOilLoopFeedbackHealthy(ed)) ||
                 (HardwareConfig::safetyOilTempHigh && HardwareConfig::hasOilTemp && !ed.oilTempHealthy) ||
                 (HardwareConfig::safetyFuelPressLow && HardwareConfig::hasFuelPress && !ed.fuelPressHealthy) ||
                 (HardwareConfig::safetyBattLow && HardwareConfig::hasBattVoltage && !ed.battHealthy) ||
@@ -454,7 +455,7 @@ public:
                 strncpy(ed.lastEvent, "LIMP: safety sensor lost", sizeof(ed.lastEvent) - 1);
             }
         }
-        if (HardwareConfig::hasN1Rpm && m == SysMode::STARTUP && ed.n1Healthy) {
+        if (HardwareConfig::hasN1Rpm && minRpm > 0.0f && m == SysMode::STARTUP && ed.n1Healthy) {
             // Track once N1 reaches minRpm so we know the engine has spooled through
             if (ed.n1Rpm >= minRpm) _startupSpooled = true;
             // Only fault if we already spooled past minRpm and now dropped below it
@@ -535,6 +536,16 @@ private:
         if (delayMs == 0) return true;
         if (sinceMs == 0) { sinceMs = now; return false; }
         return now - sinceMs >= delayMs;
+    }
+
+    void _resetDwellConfirmations() {
+        _oilOvercurrentSinceMs = 0;
+        memset(_registryOvercurrentSinceMs, 0, sizeof(_registryOvercurrentSinceMs));
+        _lowOilSinceMs = 0;
+        _oilZeroSinceMs = 0;
+        _oilTempSinceMs = 0;
+        _fuelPressSinceMs = 0;
+        _battLowSinceMs = 0;
     }
 
     void _resetSurge() {

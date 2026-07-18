@@ -63,13 +63,30 @@ namespace FeedbackRequirements {
         if (!HardwareConfig::hasOilPress) return false;
         return HardwareConfig::safetyLowOil || HardwareConfig::safetyOilZero ||
                HardwareConfig::hasOilLoop || startupHas("OilPrime") ||
-               startupHas("StarterSpin") || startupHas("Spool") ||
                startupHas("SafetyHold");
     }
 
     inline bool flameForStart() {
-        return HardwareConfig::hasFlame && HardwareConfig::safetyFlameout &&
-               effectiveFlameoutSource() == 1;
+        return HardwareConfig::hasFlame &&
+               (startupHas("FlameConfirm") ||
+                (HardwareConfig::safetyFlameout && effectiveFlameoutSource() == 1));
+    }
+
+    inline bool allOilLoopFeedbackHealthy(const EngineData& ed) {
+        if (!HardwareConfig::hasOilLoop) return true;
+        bool foundEnabledLoop = false;
+        for (uint8_t i = 0; i < HardwareConfig::oilLoopCount; ++i) {
+            const auto& loop = HardwareConfig::oilLoops[i];
+            if (!loop.enabled) continue;
+            foundEnabledLoop = true;
+            if (loop.pressureInputIndex >= HardwareConfig::channelRegistry.inputCount ||
+                loop.pressureInputIndex >= ChannelRegistry::MAX_INPUT_CHANNELS ||
+                !ed.registryInputHealthy[loop.pressureInputIndex]) return false;
+        }
+        // Legacy profiles may enable the controller before an explicit registry
+        // oil-loop entry has been migrated. Its authoritative feedback is the
+        // primary oil-pressure sensor.
+        return foundEnabledLoop || (HardwareConfig::hasOilPress && ed.oilHealthy);
     }
 
     // Telemetry-only sensors are intentionally absent. Every member of this
@@ -85,6 +102,7 @@ namespace FeedbackRequirements {
                 now - sampleMs > 1000UL) return false;
         }
         if (oilPressureForStart() && !ed.oilHealthy) return false;
+        if (!allOilLoopFeedbackHealthy(ed)) return false;
         if (HardwareConfig::safetyOilTempHigh && HardwareConfig::hasOilTemp && !ed.oilTempHealthy) return false;
         if (HardwareConfig::safetyFuelPressLow && HardwareConfig::hasFuelPress && !ed.fuelPressHealthy) return false;
         if (HardwareConfig::safetyBattLow && HardwareConfig::hasBattVoltage && !ed.battHealthy) return false;

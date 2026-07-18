@@ -971,6 +971,28 @@ namespace Hardware {
         if (HardwareConfig::hasPropPitch) ed.propPitchDemand = 1.0f;
     }
 
+    inline bool registryCombustionPurpose(const char* purpose) {
+        return !strcmp(purpose, "main_fuel") || !strcmp(purpose, "fuel_shutoff") ||
+               !strcmp(purpose, "fuel_pump") || !strcmp(purpose, "pilot_fuel") ||
+               !strcmp(purpose, "igniter") || !strcmp(purpose, "ab_igniter") ||
+               !strcmp(purpose, "ab_valve") || !strcmp(purpose, "ab_pump") ||
+               !strcmp(purpose, "glow_plug") || !strcmp(purpose, "wet_glow_fuel");
+    }
+
+    inline bool registryStarterPurpose(const char* purpose) {
+        return !strcmp(purpose, "starter") || !strcmp(purpose, "starter_enable") ||
+               !strcmp(purpose, "air_starter");
+    }
+
+    inline void cutRegistryHazardousDemands(bool includeStarter = true) {
+        auto& reg = HardwareConfig::channelRegistry;
+        auto& ed = EngineData::instance();
+        for (uint8_t i = 0; i < reg.outputCount; ++i)
+            if (registryCombustionPurpose(reg.outputs[i].purpose) ||
+                (includeStarter && registryStarterPurpose(reg.outputs[i].purpose)))
+                ed.registryOutputDemand[i] = 0.0f;
+    }
+
     inline void applyShutdownCombustionInvariant() {
         auto& ed = EngineData::instance();
         if (ed.mode != SysMode::SHUTDOWN) return;
@@ -984,15 +1006,16 @@ namespace Hardware {
         ed.wetGlowFuelDemand = 0.0f;
         ed.abSolOpen = false;
         ed.abPumpDemand = 0.0f;
-        auto& reg = HardwareConfig::channelRegistry;
-        for (uint8_t i = 0; i < reg.outputCount; ++i) {
-            const char* p = reg.outputs[i].purpose;
-            if (!strcmp(p, "main_fuel") || !strcmp(p, "fuel_shutoff") ||
-                !strcmp(p, "fuel_pump") || !strcmp(p, "igniter") ||
-                !strcmp(p, "ab_igniter") || !strcmp(p, "ab_valve") ||
-                !strcmp(p, "ab_pump") || !strcmp(p, "glow_plug") ||
-                !strcmp(p, "wet_glow_fuel")) ed.registryOutputDemand[i] = 0.0f;
+        const bool immediateCut = strcmp(ed.currentBlock, "ImmediateCut") == 0;
+        if (immediateCut) {
+            // Neutralise simultaneous actions attached to the hard-cut block,
+            // including registry-defined secondary starter channels. Later
+            // cooldown blocks may intentionally re-enable a starter.
+            ed.starterDemand = 0.0f;
+            ed.starterEnabled = false;
+            ed.airstarterOpen = false;
         }
+        cutRegistryHazardousDemands(immediateCut);
     }
 
     inline void faultRegistryOutputs() {

@@ -4436,7 +4436,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         const ChannelRegistry::Channel* pressure = channelRegistry.find("oil_pressure_main", ChannelRegistry::Input);
         const ChannelRegistry::Channel* pump = channelRegistry.find("oil_pump_main", ChannelRegistry::Output);
         if (!pressure) for (uint8_t i = 0; i < channelRegistry.inputCount; i++)
-            if (!strcmp(channelRegistry.inputs[i].role, "pressure")) { pressure = &channelRegistry.inputs[i]; break; }
+            if (!strcmp(channelRegistry.inputs[i].purpose, "oil_pressure")) { pressure = &channelRegistry.inputs[i]; break; }
         if (!pump) for (uint8_t i = 0; i < channelRegistry.outputCount; i++)
             if (!strcmp(channelRegistry.outputs[i].role, "oil_pump")) { pump = &channelRegistry.outputs[i]; break; }
         if (pressure && pump) {

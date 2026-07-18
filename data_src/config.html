@@ -130,7 +130,7 @@ const SCHEMA = [
   { title: 'Engine Protection Limits', id: 'engine-limits', sectionNote:'N1 is the gas-generator or core shaft speed. TOT is turbine-outlet temperature; TIT is turbine-inlet temperature. Choose the temperature measurement used by your engine documentation.', fields: [
     { key:'rpm_limit',          path:['engine','rpm_limit'],          label:'Maximum N1 Speed', unit:'RPM', desc:'Hard overspeed limit for the gas-generator/core shaft. Used only when an N1 sensor is fitted.', step:1000, min:1000, basic:true },
     { key:'n2_rpm_limit',       path:['engine','n2_rpm_limit'],       label:'Maximum N2 Speed', unit:'RPM', zeroOff:true, desc:'Independent hard shutdown limit for the free power-turbine/output shaft. This is separate from gradual N2 throttle pullback. Used only when N2 overspeed safety is enabled in Hardware.', step:1000, min:0, basic:true },
-    { key:'min_rpm',            path:['engine','min_rpm'],            label:'Minimum Running N1 Speed', unit:'RPM', desc:'Lowest N1 speed accepted after startup. Falling below it while running can indicate a flameout or stall.', step:1000, min:0, basic:true },
+    { key:'min_rpm',            path:['engine','min_rpm'],            label:'Minimum Running N1 Speed', unit:'RPM', zeroOff:true, desc:'Lowest N1 speed accepted after startup. Falling below it causes an underspeed shutdown. Set 0 to disable this independent underspeed check when N1 is informational only.', step:1000, min:0, basic:true },
     { key:'eg_src',             path:['safety','egt_source'],         label:'Primary Engine Temperature', type:'select', options:[{v:0,l:'Automatic: TOT if fitted, otherwise TIT'},{v:1,l:'Turbine outlet temperature (TOT)'},{v:2,l:'Turbine inlet temperature (TIT)'}], desc:'Temperature used for over-temperature protection, hot-start prevention, cooldown, throttle reduction, and flame confirmation.', basic:true },
     { key:'tot_limit',          path:['engine','tot_limit'],          label:'Outlet Temperature Limit (TOT)', unitType:'temp', zeroOff:true, desc:'Hard limit for turbine-outlet temperature. Active only when TOT is the primary engine temperature. 0 disables this limit.', step:10, min:0, basic:true },
     { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'Temperature Warning Margin', unitType:'temp_delta', desc:'Distance below the active hard temperature limit where warnings and gradual throttle reduction begin.', step:5, min:0, basic:true },
@@ -223,7 +223,7 @@ const SCHEMA = [
     { key:'rl_to', path:['relight','relight_timeout_ms'], label:'Relight Timeout (ms)',      desc:'How long to keep the igniter on trying to relight after a flameout. If flame is not restored within this window, the engine shuts down. 0 = no timeout (not recommended). Typical: 8,000-15,000 ms.', step:500, min:0, basic:true },
   ]},
   { title: 'Tools - Primary Bench Tests', id:'tools-primary-section', sectionNote:'These values control the main Tools page test buttons. Durations are milliseconds. Demand % only matters on proportional outputs; relay/on-off outputs run ON for the configured duration.', fields: [
-    { key:'tl_fp', path:['tools','fuel_prime_ms'],     label:'Fuel Prime ms',      desc:'Fuel solenoid open time for Fuel Prime.',   step:100, min:100, basic:true },
+    { key:'tl_fp', path:['tools','fuel_prime_ms'],     label:'Main Fuel Prime ms', desc:'Main fuel shutoff open time for the prime test.', step:100, min:100, basic:true },
     { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief fuel-solenoid click-test pulse.',     step:50,  min:50, basic:true },
     { key:'tl_op', path:['tools','oil_prime_ms'],      label:'Oil Prime ms',       desc:'Oil pump run time for Oil Prime.',          step:100, min:100, basic:true },
     { key:'tl_ig', path:['tools','ign_test_ms'],       label:'Igniter 1 Test ms',  desc:'Spark/igniter on time for Igniter 1 Test.', step:100, min:100, basic:true },
@@ -237,7 +237,7 @@ const SCHEMA = [
   { title: 'Tools - Accessory Bench Tests', id:'tools-accessory-section', sectionNote:'Accessory outputs only affect the matching Tools page buttons when that hardware is fitted. Unused outputs are greyed out so the saved defaults stay visible without inviting edits.', fields: [
     { key:'tl_os', path:['tools','oil_scav_test_ms'],  label:'Scavenge Test ms',   desc:'Oil scavenge pump test duration.',         step:100, min:100, basic:true },
     { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:100, basic:true },
-    { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Airstarter Test ms', desc:'Airstarter solenoid pulse duration.',      step:50,  min:50, basic:true },
+    { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Air Starter Valve Test ms', desc:'Air starter valve pulse duration.', step:50, min:50, basic:true },
     { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:50, basic:true },
     { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Pilot / Auxiliary Fuel Pump Test ms', desc:'Pilot / auxiliary fuel pump test duration.',     step:100, min:100, basic:true },
     { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Pilot / Auxiliary Fuel Pump Test %', desc:'Pilot / auxiliary fuel pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
@@ -356,7 +356,7 @@ const SCHEMA = [
     { key:'gl_hd', path:['glow_plug','hold_pct'],        label:'Hold Command',          desc:'Glow command held after preheat completes. PWM glow uses this as duty percent; relay glow stays ON for any nonzero hold command. Typical PWM value: 20–40%.', step:5, min:0, max:100 },
   ]},
   { title: 'RC / Servo Signal Loss Detection', id: 'rc-pwm-section', sectionNote:'Throttle and idle receiver-pulse endpoints are calibrated independently on the Calibration page.', fields: [
-    { key:'rc_fs', path:['rc_input','failsafe_ms'], label:'Signal-Loss Timeout (ms)', desc:'Mark the receiver signal invalid when no valid pulse arrives within this time.', step:50, min:100 },
+    { key:'rc_fs', path:['rc_input','failsafe_ms'], label:'Signal-Loss Timeout (ms)', desc:'Marks a receiver input invalid when no valid pulse arrives in time. A lost operator-throttle signal returns main fuel toward the calibrated minimum output; STOP still performs the immediate fuel cut.', step:50, min:100 },
   ]},
 ];
 
@@ -1810,12 +1810,12 @@ function applyHwConditions() {
   // zero runtime effect.
   const hasThrottleSlew = !!(hwCfg.controllers?.throttle_slew);
   const slewMsg = 'Applied by the Throttle Slew controller — enable it in Hardware > Controllers.';
-  ghostField('th_ru', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Throttle / fuel output is not configured in Hardware.' : slewMsg);
-  ghostField('th_rd', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Throttle / fuel output is not configured in Hardware.' : slewMsg);
-  ghostField('th_mx', hasThrottleOut, 'Throttle / fuel output is not configured in Hardware.');
+  ghostField('th_ru', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Main fuel pump / metering output is not configured in Hardware.' : slewMsg);
+  ghostField('th_rd', hasThrottleOut && hasThrottleSlew, !hasThrottleOut ? 'Main fuel pump / metering output is not configured in Hardware.' : slewMsg);
+  ghostField('th_mx', hasThrottleOut, 'Main fuel pump / metering output is not configured in Hardware.');
   ghostField('th_ex', hasThrottleOut && hasThrottleInput,
     !hasThrottleOut
-      ? 'Throttle / fuel output is not configured in Hardware.'
+      ? 'Main fuel pump / metering output is not configured in Hardware.'
       : 'Low-throttle sensitivity only applies to a physical throttle input configured in Hardware.');
   const hasN1Pb = hasRegistryInput('n1_speed');
   const hasEgtPb = hasRegistryInput('tot', 'tit');
@@ -1841,8 +1841,8 @@ function applyHwConditions() {
   ghostSelectOption('ms_it', 0, hasIgniter, 'Igniter 1 is not configured in Hardware.');
   ghostSelectOption('ms_it', 1, hasIgniter2, 'AB / Pilot Igniter is not configured in Hardware.');
   ghostSelectOption('ms_it', 2, hasGlowPlug, 'Glow/Wet Glow is not configured in Hardware.');
-  ghostField('tl_fp', hasFuelSol, 'Fuel Prime duration requires a fuel solenoid output.');
-  ghostField('tl_fs', hasFuelSol, 'Solenoid Click duration requires a fuel solenoid output.');
+  ghostField('tl_fp', hasFuelSol, 'Main Fuel Prime duration requires a main fuel shutoff output.');
+  ghostField('tl_fs', hasFuelSol, 'Main Fuel Shutoff Pulse duration requires a main fuel shutoff output.');
   ghostField('tl_op', hasOilPump, 'Oil Prime duration requires an oil pump output.');
   ghostField('tl_ig', hasIgniter, 'Igniter 1 Test duration requires Igniter 1 to be configured in Hardware.');
   ghostField('tl_i2', hasIgniter2, 'AB / Pilot Igniter Test duration requires AB / Pilot Igniter to be configured in Hardware.');
@@ -1855,7 +1855,7 @@ function applyHwConditions() {
   ghostField('tl_it', hasThrottleOut, 'Idle Test duration requires a throttle/fuel output.');
   ghostField('tl_os', hasOilScavenge, 'Scavenge Test duration requires an oil scavenge pump output.');
   ghostField('tl_cf', hasCoolFan, 'Fan Test duration requires a cooling fan output.');
-  ghostField('tl_as', hasAirstarter, 'Airstarter Test duration requires an airstarter solenoid output.');
+  ghostField('tl_as', hasAirstarter, 'Air Starter Valve Test duration requires an air starter valve output.');
   ghostField('tl_bv', hasBleedValve, 'Bleed Test duration requires a bleed valve output.');
   ghostField('tl_f2', hasFuelPump2, 'Pilot / Auxiliary Fuel Pump Test duration requires Pilot / Auxiliary Fuel Pump in Hardware.');
   ghostField('tl_f2p', hasFuelPump2 && !isOnOffType('fuel_pump2'), isOnOffType('fuel_pump2')

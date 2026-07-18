@@ -16,7 +16,7 @@ public:
     float         starterCoolPct     = 0.40f;  // 40% starter speed
     float         oilCoolPct         = 30.0f;  // direct oil pump % (no pressure sensor)
     float         oilPressureTarget  = 2.0f;   // bar target (used when oil pressure sensor present)
-    unsigned long timeoutMs          = 200000; // 3.3 min max
+    unsigned long timeoutMs          = 60000;  // 60 s default
     bool          useScavengePump = false;   // also run scavenge pump during cooldown
 
     const char* name() override { return "CooldownSpin"; }

@@ -90,7 +90,7 @@
 // toggleKey     → EngineData field name in telemetry (for ON/OFF state display)
 // visibleIf(hw) -> optional predicate on the hardware section; tool hidden when it returns false
 const TOOLS = [
-  { id:'FUEL_PRIME',          name:'Fuel Prime',        durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Opens fuel solenoid - primes fuel lines.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
+  { id:'FUEL_PRIME',          name:'Main Fuel Prime',   durationMs:3000, configKey:'tools.fuel_prime_ms',    desc:'Briefly opens the main fuel shutoff to prime the main fuel line.', visibleIf: hw => !!hw?.actuators?.fuel_sol?.enabled },
   { id:'OIL_PRIME',           name:'Oil Prime',          durationMs:5000, configKey:'tools.oil_prime_ms',     desc:'Runs oil pump at 100% - primes oil circuit. This is a direct bench command, not the controller minimum duty.', visibleIf: hw => !!hw?.actuators?.oil_pump?.enabled },
   { id:'IGN_TEST',            name:'Igniter 1 Test',     durationMs:2000, configKey:'tools.ign_test_ms',      desc:'Fires igniter 1 - verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter?.enabled },
   { id:'IGN2_TEST',           name:'AB Igniter Test',    durationMs:2000, configKey:'tools.ign2_test_ms',     desc:'Fires the afterburner / pilot igniter output — verify spark visually.', visibleIf: hw => !!hw?.actuators?.igniter2?.enabled },
@@ -101,7 +101,7 @@ const TOOLS = [
   { id:'STARTER_EN_TEST',  name:'Starter Enable Test', durationMs:1000, configKey:'tools.starter_en_test_ms', desc:'Drives the starter enable output for the configured duration.', visibleIf: hw => !!hw?.actuators?.starter_en?.enabled },
   { id:'OIL_SCAV_TEST',    name:'Oil Scavenge Test',   durationMs:2000, configKey:'tools.oil_scav_test_ms', desc:'Runs oil scavenge pump for configured duration.', visibleIf: hw => !!hw?.actuators?.oil_scavenge_pump?.enabled },
   { id:'COOL_FAN_TEST',    name:'Cool Fan Test',        durationMs:3000, configKey:'tools.cool_fan_test_ms', desc:'Runs cooling fan for configured duration.', visibleIf: hw => !!hw?.actuators?.cool_fan?.enabled },
-  { id:'AIRSTARTER_TEST',  name:'Airstarter Pulse',    durationMs:1000, configKey:'tools.airstarter_test_ms', desc:'Opens airstarter solenoid for configured duration.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
+  { id:'AIRSTARTER_TEST',  name:'Air Starter Valve Pulse', durationMs:1000, configKey:'tools.airstarter_test_ms', desc:'Opens the air starter valve for the configured duration.', visibleIf: hw => !!hw?.actuators?.airstarter_sol?.enabled },
   { id:'BLEED_VALVE_TEST', name:'Bleed Valve Test',    durationMs:1000, configKey:'tools.bleed_valve_test_ms', desc:'Opens bleed valve for configured duration.', visibleIf: hw => !!hw?.actuators?.bleed_valve?.enabled },
   { id:'GLOW_TEST',        name:'Glow Plug Test',      durationMs:10000, configKey:'tools.glow_test_ms', desc:'Runs glow plug at configured demand — confirm heating element.', visibleIf: hw => !!hw?.actuators?.glow_plug?.enabled },
   { id:'FUEL_PUMP2_TEST',  name:'Pilot / Auxiliary Fuel Pump Test', durationMs:3000, configKey:'tools.fuel_pump2_test_ms', desc:'Runs the independent pilot/auxiliary fuel pump at configured demand.', visibleIf: hw => !!hw?.actuators?.fuel_pump2?.enabled },
@@ -179,7 +179,7 @@ function plainRegistryToolName(raw,fallback='Output'){
   const direct={
     user_throttle:'Throttle Input',operator_throttle:'Throttle Input',operator_thrott:'Throttle Input',throttle_input:'Throttle Input',
     user_idle:'Idle Input',operator_idle:'Idle Input',idle_input:'Idle Input',
-    main_fuel:'Main Fuel Pump',main_fuel_output:'Main Fuel Pump',fuel_shutoff:'Fuel Shutoff',main_fuel_shutoff:'Fuel Shutoff',
+    main_fuel:'Main Fuel Pump',main_fuel_output:'Main Fuel Pump',fuel_shutoff:'Main Fuel Shutoff',main_fuel_shutoff:'Main Fuel Shutoff',
     oil_pump:'Oil Pump',oil_pump_main:'Oil Pump',fuel_pump:'Pilot / Auxiliary Fuel Pump',starter_enable:'Starter Enable',
     flame:'Flame Sensor',flame_main:'Flame Sensor',coolant_pump:'Coolant Pump',coolant_temperature:'Coolant Temperature',
     pilot_fuel:'Pilot Gas',purge_valve:'Purge Valve',air_starter:'Air Starter',
@@ -830,7 +830,7 @@ function syncDynamicToolText() {
   const setDesc = (id, text) => { const t = tool(id); if (t) t.desc = text; };
 
   setDesc('START_TEST', `Output: starter ${outputText('starter', tools.start_test_pct ?? 30)} for ${sec(tools.start_test_ms ?? 2000)} s.`);
-  setDesc('FUEL_SOL_TEST', `Output: fuel solenoid ON for ${sec(tools.fuel_sol_test_ms ?? 1000)} s.`);
+  setDesc('FUEL_SOL_TEST', `Output: main fuel shutoff OPEN for ${sec(tools.fuel_sol_test_ms ?? 1000)} s.`);
   const minSpin = Number(cfgData?.throttle?.fuel_pump_min_pct ?? 0);
   setDesc('IDLE_TEST', minSpin > 0
     ? `Output: throttle/fuel to the calibrated minimum reliable fuel-pump output (${pctText(minSpin)}) for ${sec(tools.idle_test_ms ?? 3000)} s.`
@@ -842,7 +842,7 @@ function syncDynamicToolText() {
   const fullOut = key => isRelay(key) ? 'ON' : 'to FULL output';
   setDesc('OIL_SCAV_TEST', `Output: oil scavenge pump ${fullOut('oil_scavenge_pump')} for ${sec(tools.oil_scav_test_ms ?? 2000)} s.`);
   setDesc('COOL_FAN_TEST', `Output: cooling fan ${fullOut('cool_fan')} for ${sec(tools.cool_fan_test_ms ?? 3000)} s.`);
-  setDesc('AIRSTARTER_TEST', `Output: airstarter solenoid ON for ${sec(tools.airstarter_test_ms ?? 1000)} s.`);
+  setDesc('AIRSTARTER_TEST', `Output: air starter valve OPEN for ${sec(tools.airstarter_test_ms ?? 1000)} s.`);
   setDesc('BLEED_VALVE_TEST', `Output: bleed valve ${fullOut('bleed_valve')} for ${sec(tools.bleed_valve_test_ms ?? 1000)} s.`);
   setDesc('FUEL_PUMP2_TEST', `Output: pilot/auxiliary fuel pump ${outputText('fuel_pump2', tools.fuel_pump2_test_pct ?? 30)} for ${sec(tools.fuel_pump2_test_ms ?? 3000)} s.`);
   setDesc('AB_SOL_TEST', `Output: afterburner fuel valve OPEN for ${sec(tools.ab_sol_test_ms ?? 1000)} s.`);

@@ -29,7 +29,7 @@ public:
             // With no N1 sensor fitted at all there is nothing to verify —
             // complete immediately instead of stalling every shutdown.
             bool stopped = HardwareConfig::hasN1Rpm
-                         ? (ed.n1Healthy && (ed.n1Rpm < rpmZeroThreshold))
+                         ? (ed.n1Healthy && (ed.n1Rpm <= rpmZeroThreshold))
                          : true;
             if (stopped || (now - _entryMs) > timeoutMs) {
                 // Cut main oil pump

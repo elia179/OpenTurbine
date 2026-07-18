@@ -363,8 +363,8 @@
       <div class="wizard-title">NTC Thermistor Calibration</div>
       <div class="wizard-steps">
         Enter your NTC thermistor datasheet values. These are physical constants of the thermistor — check your datasheet or measure with a multimeter.<br>
-        <span style="color:var(--dim)">Datasheet mode assumes 3.3 V → fixed pull-up → ADC → NTC → ground. For another analog temperature sensor or circuit, use Known temperature points below instead.</span><br>
-        <span style="color:var(--dim)">Beta and R0 are on the thermistor datasheet. R_Fixed is your pull-up resistor to 3.3 V.</span>
+        <span id="ntc-divider-note" style="color:var(--dim)">Datasheet mode uses the NTC divider orientation selected in Hardware.</span><br>
+        <span style="color:var(--dim)">Beta and R0 are on the thermistor datasheet. R_Fixed is the measured fixed divider resistor.</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin:.5rem 0">
         <div>
@@ -386,7 +386,7 @@
       <div id="ntc-status" style="font-size:.75rem;color:var(--dim)"></div>
       <hr style="border:0;border-top:1px solid var(--border);margin:.8rem 0">
       <div class="wizard-title">Known temperature points</div>
-      <div class="wizard-steps">Use this instead of datasheet values for any analog temperature sensor. Stabilise it at four different, well-spaced temperatures covering the useful range. Enter the known temperature in the page-selected unit, capture the live ADC point, review all four points, then save. Saving this disables datasheet mode.</div>
+      <div class="wizard-steps">Use this for an NTC divider or another supported analog temperature input. Stabilise it at four different, well-spaced temperatures covering the useful range. Enter the known temperature in the page-selected unit, capture the live ADC point, review all four points, then save. Saving this disables NTC datasheet mode.</div>
       <div id="oiltemp-known-rows"></div>
       <label>Known temperature <input id="oilt-known-temp" type="number" step="0.1" style="width:6rem"> <span data-unit="temp">°C</span></label>
       <div class="wiz-buttons" style="margin-top:.5rem">
@@ -735,6 +735,10 @@ function refreshOilTempCalMode(sensor) {
     if (beta !== undefined) document.getElementById('ntc-beta').value = beta;
     if (r0 !== undefined) document.getElementById('ntc-r0').value = r0;
     if (rf !== undefined) document.getElementById('ntc-rfixed').value = rf;
+    const dividerNote = document.getElementById('ntc-divider-note');
+    if (dividerNote) dividerNote.textContent = sensor?.ntc_pullup === false
+      ? 'Hardware divider: NTC to 3.3 V, ADC junction, fixed resistor to ground.'
+      : 'Hardware divider: fixed resistor to 3.3 V, ADC junction, NTC to ground.';
   }
 }
 
@@ -824,7 +828,7 @@ function refreshOilTempCalMode(sensor) {
     hwSensorEnabled(c.hardware, 'oil_temp', 'has_oil_temp') ? '' : 'none';
   const registryOil = registryChannelByPurpose(c.hardware, 'inputs', 'oil_temperature');
   const oilCalSensor = registryOil
-    ? { chip: Number(registryOil.temp_interface) === 4 ? 'ntc' : Number(registryOil.temp_interface) === 5 ? 'ds18b20' : 'analog', ntc_beta: registryOil.ntc_beta, ntc_r0: registryOil.ntc_r0, ntc_r_fixed: registryOil.ntc_r_fixed }
+    ? { chip: Number(registryOil.temp_interface) === 4 ? 'ntc' : Number(registryOil.temp_interface) === 5 ? 'ds18b20' : 'analog', ntc_beta: registryOil.ntc_beta, ntc_r0: registryOil.ntc_r0, ntc_r_fixed: registryOil.ntc_r_fixed, ntc_pullup: registryOil.ntc_pullup }
     : c.hardware?.sensors?.oil_temp;
   refreshOilTempCalMode(oilCalSensor);
   // Idle input — hidden when idle input is not fitted
@@ -1866,7 +1870,7 @@ function saveNtcCal() {
   if (isNaN(beta) || beta < 1000 || beta > 10000 ||
       isNaN(r0) || r0 < 100 || r0 > 1000000 ||
       isNaN(rf) || rf < 100 || rf > 1000000) {
-    alert('Enter valid NTC values: Beta 1000-10000, R0 100-1000000 ohm, pull-up R 100-1000000 ohm.');
+    alert('Enter valid NTC values: Beta 1000-10000, R0 100-1000000 ohm, fixed divider R 100-1000000 ohm.');
     return;
   }
   const patch = { sensors: { oil_temp: { ntc_beta: beta, ntc_r0: r0, ntc_r_fixed: rf, use_raw_poly:false } } };

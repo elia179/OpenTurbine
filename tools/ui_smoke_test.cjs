@@ -199,7 +199,7 @@ function installedBrowser() {
 
     await scenario(page, 'startup');
     await waitShown(page, '#seq-progress-section', true);
-    assert.equal(await text(page, '#seq-block-name'), 'FlameConfirm');
+    assert.equal(await text(page, '#seq-block-name'), 'Confirm Combustion by Flame Sensor');
     assert.equal(await text(page, '#seq-step-text'), '4 / 6');
     await waitShown(page, '#throttle-startup-range-row', true);
     assert.match(await text(page, '#throttle-startup-range-row'), /10\.0 to 25\.0/);

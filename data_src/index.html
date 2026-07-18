@@ -171,7 +171,7 @@
 
   <!-- Card definitions are moved into the grouped panels by app.js. -->
   <section class="grid-2 telemetry-card-bin">
-    <div class="card big" id="n1-card" style="display:none" title="Gas generator spool speed. N1 is the primary thrust control variable — the ECU drives throttle to maintain target N1 during running.">
+    <div class="card big" id="n1-card" style="display:none" title="Gas-generator/core shaft speed. N1 can provide overspeed, underspeed, surge, idle-control, and startup feedback when those functions are enabled; fitting it for display alone does not enable every protection.">
       <div class="label"><span id="lbl-n1">N1 RPM</span> <span id="n1-health" class="dot"></span></div>
       <div class="value" id="n1">—</div>
       <div class="peak-val">max <span id="max-n1">—</span></div>
@@ -338,7 +338,7 @@
           Starter enable <span id="starter-en-state" style="font-weight:600">OFF</span>
         </div>
         <div id="adv-fuel-sol" style="display:none">
-          Fuel solenoid <span id="fuel-sol-state" style="font-weight:600">CLOSED</span>
+          Main fuel shutoff <span id="fuel-sol-state" style="font-weight:600">CLOSED</span>
         </div>
         <div id="adv-igniter" style="display:none">
           Igniter 1 <span id="igniter-state" style="font-weight:600">OFF</span>
@@ -372,7 +372,7 @@
           Cool fan <span id="coolfan-state" style="font-weight:600">OFF</span>
         </div>
         <div id="adv-airstarter" style="display:none">
-          Airstarter <span id="airstarter-state" style="font-weight:600">CLOSED</span>
+          Air starter valve <span id="airstarter-state" style="font-weight:600">CLOSED</span>
         </div>
         <div id="adv-scavenge" style="display:none">
           Scavenge pump <span id="scavenge-state" style="font-weight:600">OFF</span>
@@ -416,7 +416,7 @@
   <!-- Telemetry cards -->
   <section class="grid-2 telemetry">
     <div class="card small" id="throttle-output-card" title="Actual commanded fuel/throttle output after applying the calibrated minimum reliable fuel-pump output. During startup the idle-input command range starts at this minimum.">
-      <div class="label">Main Fuel / Throttle Output</div>
+      <div class="label">Main Fuel Pump / Metering Output</div>
       <div class="value small" id="throttle-demand">—</div>
       <div class="gauge-bar-wrap"><div class="gauge-bar" id="throttle-gauge-bar" style="width:0%"></div></div>
       <div class="oil-sub" id="throttle-input-row" style="display:none">throttle input: <span id="throttle-input-pct">—</span>%</div>

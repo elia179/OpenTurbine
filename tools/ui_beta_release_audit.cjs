@@ -288,7 +288,7 @@ function enumNames(source, marker) {
     assert.match(ecuCluster, /bool hasShaftPower\(\) \{ return HardwareConfig::hasTorque && HardwareConfig::hasN2Rpm; \}/);
     assert.match(ecuCluster, /\{ F_TOT_RATE,[^}]*"TOT_RATE",\s*"EGT rise C\/s",\s*hasPrimaryEgt/s);
     assert.match(ecuCluster, /\{ F_POWER_W,[^}]*"POWER_W",\s*"Power W",\s*hasShaftPower/s);
-    assert.match(ecuCluster, /\{ F_THROTTLE_PCT,[^}]*"THROTTLE_PCT",\s*"Throttle pct",\s*hasThrottle/s);
+    assert.match(ecuCluster, /\{ F_THROTTLE_PCT,[^}]*"THROTTLE_PCT",\s*"Main fuel pct",\s*hasThrottle/s);
     assert.match(client, /OTC:SUB,ALL/);
     assert.match(client, /OTC:CMD,STOP/);
     assert.match(client, /signalLost\(\)/);

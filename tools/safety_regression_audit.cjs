@@ -25,6 +25,10 @@ const governor = read('src/engine/controllers/PowerTurbineGovernor.h');
 const feedback = read('src/system/FeedbackRequirements.h');
 const ntc = read('src/hal/sensors/NTCSensor.h');
 const sequenceHtml = read('data_src/sequence.html');
+const hardwareHtml = read('data_src/hardware.html');
+const calibrationHtml = read('data_src/calibration.html');
+const capabilities = read('src/system/HardwareCapabilities.h');
+const cooldown = read('src/engine/sequencer/blocks/CooldownSpin.h');
 
 expect('repository PlatformIO launcher avoids the broken global shim',
   fs.existsSync(path.join(root, 'tools/pio.cmd')));
@@ -33,6 +37,9 @@ expect('PCNT failures are recoverable',
 expect('analog filters use four samples', analog.includes('RollingAvg<4> _avg'));
 expect('oil-pressure mapping is explicit',
   !hwConfig.includes('"oil_pressure_main", "pressure"'));
+expect('legacy oil loop binds explicit oil-pressure purpose',
+  hwConfig.includes('channelRegistry.inputs[i].purpose, "oil_pressure"') &&
+  !hwConfig.includes('channelRegistry.inputs[i].role, "pressure"'));
 expect('battery mapping is explicit',
   !hwConfig.includes('"battery_voltage", "voltage"'));
 expect('OTA and START share the canonical output-demand scan',
@@ -55,6 +62,9 @@ expect('surge detection consumes only fresh shaft samples',
   safety.includes('ed.n1SampleSeq != _lastSurgeN1SampleSeq'));
 expect('generic overcurrent protection is timed',
   safety.includes('_registryOvercurrentSinceMs') && safety.includes('OUTPUT_OVERCURRENT'));
+expect('all safety dwell confirmations reset across inactive and bypassed monitoring',
+  (safety.match(/_resetDwellConfirmations\(\)/g) || []).length >= 4 &&
+  safety.includes('memset(_registryOvercurrentSinceMs'));
 expect('general safety scan is capped at 250 ms in firmware and UI',
   configCpp.includes('validInt(sf["check_interval_ms"], 10, 250)') &&
   configHtml.includes("path:['safety','check_interval_ms']") && configHtml.includes('max:250'));
@@ -73,5 +83,25 @@ expect('NTC divider orientation reaches the resistance calculation',
   ntc.includes('_cal.fixedPullup') && hardware.includes('hw.ntcFixedPullup'));
 expect('sequencer uses turbine startup terminology',
   sequenceHtml.includes("label:'Starter Spin to Light-Off Speed'") && !sequenceHtml.includes("label:'Crank Engine'"));
+expect('hardware dependency warnings use the same turbine block names',
+  hardwareHtml.includes("StarterSpin:'Starter Spin to Light-Off Speed'") && !hardwareHtml.includes("StarterSpin:'Crank Engine'"));
+expect('zero minimum N1 remains a valid underspeed-disable setting',
+  configCpp.includes('if (!isfinite(minRpm) || minRpm < 0.0f)') &&
+  configHtml.includes('Set 0 to disable this independent underspeed check'));
+expect('startup feedback follows actual block consumers',
+  feedback.includes('startupHas("FlameConfirm")') &&
+  !feedback.includes('startupHas("StarterSpin") || startupHas("Spool") ||\n               startupHas("SafetyHold")'));
+expect('every enabled oil loop makes its pressure feedback operationally required',
+  feedback.includes('allOilLoopFeedbackHealthy') && safety.includes('allOilLoopFeedbackHealthy'));
+expect('pilot fuel and registry starter channels join the immediate shutdown cut',
+  hardware.includes('!strcmp(purpose, "pilot_fuel")') &&
+  hardware.includes('registryStarterPurpose') && main.includes('cutRegistryHazardousDemands'));
+expect('critical safety capability checks reject generic temperature and voltage roles',
+  !capabilities.includes('hasInputRole("temperature")') && !capabilities.includes('hasInputRole("voltage")'));
+expect('cooldown defaults agree at sixty seconds',
+  cooldown.includes('timeoutMs          = 60000') &&
+  sequenceHtml.includes("def:60000, configKey:'cooldown_timeout_ms'"));
+expect('thermistor calibration explains the configured divider orientation',
+  calibrationHtml.includes('ntc-divider-note') && calibrationHtml.includes('ntc_pullup: registryOil.ntc_pullup'));
 
 console.log(`Safety regression audit passed (${checks.length} checks).`);

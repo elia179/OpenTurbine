@@ -11,7 +11,7 @@ public:
     static bool hasOutputPurpose(const char* purpose) { return hasPurpose(ChannelRegistry::Output, purpose); }
     static bool available(const char* feature) {
         if (!strcmp(feature, "oil_loop"))
-            return (hasInputPurpose("oil_pressure") && hasOutputRole("oil_pump")) ||
+            return (hasInputPurpose("oil_pressure") && hasOutputPurpose("oil_pump")) ||
                    (HardwareConfig::hasOilPress && HardwareConfig::hasOilPump);
         if (!strcmp(feature, "n1_safety"))
             return hasInputBindingOrPurpose("primary_n1", "n1_speed") || HardwareConfig::hasN1Rpm;
@@ -19,15 +19,15 @@ public:
             return hasInputBindingOrPurpose("primary_n2", "n2_speed") || HardwareConfig::hasN2Rpm;
         if (!strcmp(feature, "n2_governor"))
             return (hasInputBindingOrPurpose("primary_n2", "n2_speed") &&
-                    (hasOutputRole("fuel") || hasOutputRole("prop_pitch"))) ||
+                    (hasOutputPurpose("main_fuel") || hasOutputPurpose("prop_pitch"))) ||
                    (HardwareConfig::hasN2Rpm && (HardwareConfig::hasThrottle || HardwareConfig::hasPropPitch));
         if (!strcmp(feature, "egt_safety"))
             return (hasInputBindingOrPurpose("primary_egt", "tot") || hasInputPurpose("tit")) ||
                    HardwareConfig::hasTot || HardwareConfig::hasTit;
         if (!strcmp(feature, "dynamic_idle"))
             return ((hasInputBindingOrPurpose("primary_n1", "n1_speed") ||
-                     hasInputBindingOrPurpose("primary_n2", "n2_speed")) &&
-                    hasOutputRole("fuel")) ||
+                    hasInputBindingOrPurpose("primary_n2", "n2_speed")) &&
+                    hasOutputPurpose("main_fuel")) ||
                    ((HardwareConfig::hasN1Rpm || HardwareConfig::hasN2Rpm) && HardwareConfig::hasThrottle);
         return false;
     }
@@ -48,13 +48,13 @@ public:
             return "Low-oil safety requires an oil pressure input or low-oil switch";
         if (HardwareConfig::safetyOilZero && !hasOilSafetyInput("oil_zero_switch"))
             return "Zero-oil safety requires an oil pressure input or zero-oil switch";
-        if (HardwareConfig::safetyTitOvertemp && !(hasInputPurpose("tit") || hasInputRole("temperature") || HardwareConfig::hasTit))
+        if (HardwareConfig::safetyTitOvertemp && !(hasInputPurpose("tit") || HardwareConfig::hasTit))
             return "TIT safety requires a TIT/temperature input";
         if (HardwareConfig::safetyOilTempHigh && !(hasInputPurpose("oil_temperature") || HardwareConfig::hasOilTemp))
             return "Oil temperature safety requires an oil temperature input";
         if (HardwareConfig::safetyFuelPressLow && !(hasInputPurpose("fuel_pressure") || HardwareConfig::hasFuelPress))
             return "Fuel pressure safety requires a fuel pressure input";
-        if (HardwareConfig::safetyBattLow && !(hasInputPurpose("battery_voltage") || hasInputRole("voltage") || HardwareConfig::hasBattVoltage))
+        if (HardwareConfig::safetyBattLow && !(hasInputPurpose("battery_voltage") || HardwareConfig::hasBattVoltage))
             return "Battery safety requires a voltage input";
         return nullptr;
     }
@@ -72,13 +72,13 @@ public:
         else if (!strcmp(feature, "n2_safety")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
         else if (!strcmp(feature, "n2_governor")) {
             if (!hasInputBindingOrPurpose("primary_n2", "n2_speed")) addMissing(missing, "primary_n2", "Bind or add an N2 speed input");
-            if (!hasOutputRole("fuel") && !hasOutputRole("prop_pitch") && !HardwareConfig::hasThrottle && !HardwareConfig::hasPropPitch)
+            if (!hasOutputPurpose("main_fuel") && !hasOutputPurpose("prop_pitch") && !HardwareConfig::hasThrottle && !HardwareConfig::hasPropPitch)
                 addMissing(missing, "governor_output", "Add a fuel or prop-pitch output");
         }
         else if (!strcmp(feature, "egt_safety")) addMissing(missing, "primary_egt", "Bind or add a temperature input");
         else if (!strcmp(feature, "dynamic_idle")) {
             if (!hasInputRole("speed") && !HardwareConfig::hasN1Rpm && !HardwareConfig::hasN2Rpm) addMissing(missing, "rpm_input", "Add an RPM input");
-            if (!hasOutputRole("fuel") && !HardwareConfig::hasThrottle) addMissing(missing, "throttle_output", "Add a main fuel output");
+            if (!hasOutputPurpose("main_fuel") && !HardwareConfig::hasThrottle) addMissing(missing, "throttle_output", "Add a main fuel output");
         }
     }
 private:
@@ -88,7 +88,7 @@ private:
         item["message"] = message;
     }
     static bool hasPressureInput() { return hasInputPurpose("oil_pressure") || HardwareConfig::hasOilPress; }
-    static bool hasOilPumpOutput() { return hasOutputRole("oil_pump") || HardwareConfig::hasOilPump; }
+    static bool hasOilPumpOutput() { return hasOutputPurpose("oil_pump") || HardwareConfig::hasOilPump; }
     static bool hasOilSafetyInput(const char* switchRole) {
         return hasPressureInput() || hasInputPurpose(switchRole) || hasInputRole(switchRole) || hasDiRole(switchRole);
     }
