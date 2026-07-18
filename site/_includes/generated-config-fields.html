@@ -1,0 +1,194 @@
+<!-- Generated from data_src/config.html by tools/generate_site_config_reference.cjs. Do not edit by hand. -->
+<p class="source-note"><strong>178 fields in 24 sections.</strong> This reference is generated from the same schema that renders the ECU Config page, so names and explanations match the current code.</p>
+
+<details class="reference-section">
+  <summary>Engine Protection Limits <span>7 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Maximum N1 Speed</strong> <span class="quiet">(RPM)</span></td><td>Hard overspeed limit for the gas-generator/core shaft. Used only when an N1 sensor is fitted.</td></tr><tr><td><strong>Maximum N2 Speed</strong> <span class="quiet">(RPM)</span></td><td>Independent hard shutdown limit for the free power-turbine/output shaft. This is separate from gradual N2 throttle pullback. Used only when N2 overspeed safety is enabled in Hardware.</td></tr><tr><td><strong>Minimum Running N1 Speed</strong> <span class="quiet">(RPM)</span></td><td>Lowest N1 speed accepted after startup. Falling below it while running can indicate a flameout or stall.</td></tr><tr><td><strong>Primary Engine Temperature</strong></td><td>Temperature used for over-temperature protection, hot-start prevention, cooldown, throttle reduction, and flame confirmation.</td></tr><tr><td><strong>Outlet Temperature Limit (TOT)</strong></td><td>Hard limit for turbine-outlet temperature. Active only when TOT is the primary engine temperature. 0 disables this limit.</td></tr><tr><td><strong>Temperature Warning Margin</strong></td><td>Distance below the active hard temperature limit where warnings and gradual throttle reduction begin.</td></tr><tr><td><strong>Cooldown Temperature Target</strong></td><td>Cooldown completes after the selected engine temperature falls below this value.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Oil System <span>14 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Startup Oil Pressure Target</strong></td><td>Pressure the automatic oil controller targets while preparing the engine for ignition.</td></tr><tr><td><strong>Minimum Pressure Before Ignition</strong></td><td>Startup aborts unless oil pressure reaches this value before ignition. Set it slightly below the startup target.</td></tr><tr><td><strong>Startup Oil Pump Output (%)</strong></td><td>Fixed pump output used during startup only when no oil-pressure sensor is fitted.</td></tr><tr><td><strong>Running Low-Pressure Shutdown</strong></td><td>The ECU shuts the engine down if oil pressure stays below this value while running.</td></tr><tr><td><strong>No-Pressure Shutdown Threshold</strong></td><td>Detects a stopped pump, broken line, or disconnected sensor when pressure is effectively zero.</td></tr><tr><td><strong>Increase Oil Pressure with Throttle</strong></td><td>Raise the oil-pressure target as throttle increases. Leave disabled for one constant running target.</td></tr><tr><td><strong>Normal Running Oil Pressure</strong></td><td>Target at idle and throughout running when throttle-based pressure is disabled. Keep it above the low-pressure shutdown value.</td></tr><tr><td><strong>Full-Throttle Oil Pressure</strong></td><td>Target at full throttle when throttle-based pressure is enabled.</td></tr><tr><td><strong>Oil Pressure Response Gain</strong></td><td>How strongly pump output reacts to pressure error. Higher responds faster but can oscillate. Technical name: proportional or P gain.</td></tr><tr><td><strong>Minimum Automatic Pump Output (%)</strong></td><td>Lowest output used by automatic pressure regulation. Startup steps can still command a higher output.</td></tr><tr><td><strong>No-Correction Pressure Band</strong></td><td>No small pump corrections are made while pressure is within this distance of the target. Technical name: deadband.</td></tr><tr><td><strong>Continuous Pump Overcurrent Shutdown Delay (ms)</strong></td><td>Warn immediately, then shut down only if the configured oil-pump current limit remains exceeded for this long.</td></tr><tr><td><strong>Sensor-Fault Fallback Delay (ms)</strong></td><td>How long pressure feedback may remain invalid before the pump changes to the fixed fallback output.</td></tr><tr><td><strong>Pump Output After Sensor Failure (%)</strong></td><td>Fixed pump output used when pressure feedback is unavailable.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Throttle <span>20 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Full Opening Time (ms)</strong></td><td>Time for the fuel/throttle output to move from 0 to 100%. A larger value opens more gently.</td></tr><tr><td><strong>Full Closing Time (ms)</strong></td><td>Time for the fuel/throttle output to move from 100% to 0. A smaller value closes faster.</td></tr><tr><td><strong>Maximum Idle Fuel Output (%)</strong></td><td>Fuel/throttle output when the idle control is at its maximum. The low end comes from Calibration &gt; Minimum Reliable Fuel-Pump Output.</td></tr><tr><td><strong>Low-Throttle Sensitivity</strong></td><td>Softens response near idle while preserving full travel. 0 is linear; larger values make low-power adjustment less sensitive. Technical name: throttle expo.</td></tr><tr><td><strong>Gradual N1 Limit Protection</strong></td><td>Automatically reduce fuel as N1 approaches its configured limit.</td></tr><tr><td><strong>Begin N1 Throttle Reduction</strong> <span class="quiet">(RPM)</span></td><td>N1 speed where gradual fuel reduction begins.</td></tr><tr><td><strong>Full N1 Throttle Reduction</strong> <span class="quiet">(RPM)</span></td><td>N1 speed where the gradual reduction reaches full authority. Hard shutdown protection remains separate.</td></tr><tr><td><strong>Gradual N2 Limit Protection</strong></td><td>Automatically reduce fuel as the power-turbine/output shaft approaches its speed limit.</td></tr><tr><td><strong>Begin N2 Throttle Reduction</strong> <span class="quiet">(RPM)</span></td><td>N2 speed where gradual fuel reduction begins.</td></tr><tr><td><strong>Full N2 Throttle Reduction</strong> <span class="quiet">(RPM)</span></td><td>N2 speed where gradual reduction reaches full authority.</td></tr><tr><td><strong>Gradual Temperature Protection</strong></td><td>Automatically reduce fuel as the selected engine temperature approaches its limit.</td></tr><tr><td><strong>Begin Temperature Reduction</strong></td><td>Temperature where gradual fuel reduction begins.</td></tr><tr><td><strong>Full Temperature Reduction</strong></td><td>Temperature where gradual reduction reaches full authority.</td></tr><tr><td><strong>Minimum Fuel During Gradual Protection (%)</strong></td><td>Lowest fuel/throttle output allowed by gradual protection. Emergency protection may still command less.</td></tr><tr><td><strong>Limit-Protection Strength</strong></td><td>How strongly fuel is reduced near a limit. 1.0 is normal; higher is more aggressive and may cause oscillation.</td></tr><tr><td><strong>Gradual Speed-Protection Method</strong></td><td>Reactive control reduces fuel from the current RPM. Predictive control also estimates where RPM is heading so it can approach the limit more gently. Temperature protection always reacts to the current reading.</td></tr><tr><td><strong>Speed Prediction Time (ms)</strong></td><td>How far ahead the predictive method estimates shaft speed. Typical: 1000-2000 ms.</td></tr><tr><td><strong>Near-Limit Full Opening Time (ms)</strong></td><td>Slower full-opening time used near the predicted speed limit. Larger values make the approach gentler.</td></tr><tr><td><strong>Begin Prediction This Far Below Limit (RPM)</strong></td><td>Distance below the gradual limit where the ECU starts slowing fuel increases. 0 chooses this distance automatically.</td></tr><tr><td><strong>Speed-Change Smoothing (0-1)</strong></td><td>Smooths the estimated rate of RPM change. Lower values are steadier but slower; higher values react faster but pass more sensor noise.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Reduced-Power Mode <span>1 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Maximum Fuel Output (%)</strong></td><td>Fuel/throttle cap while Reduced-Power Mode is active. Turn the mode on from Tools or a configured switch.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Automatic Idle Speed Control <span>20 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Idle Speed Target</strong> <span class="quiet">(RPM)</span></td><td>Shaft speed the automatic idle controller tries to maintain.</td></tr><tr><td><strong>Fuel Increase Time (ms)</strong></td><td>How quickly automatic idle control may increase fuel.</td></tr><tr><td><strong>Fuel Decrease Time (ms)</strong></td><td>How quickly automatic idle control may reduce fuel.</td></tr><tr><td><strong>No-Correction Speed Band</strong> <span class="quiet">(RPM)</span></td><td>No fuel correction is made while speed is within this distance of the target. Technical name: deadband.</td></tr><tr><td><strong>Stop Controlling Above</strong> <span class="quiet">(RPM)</span></td><td>Automatic idle control disengages above this speed.</td></tr><tr><td><strong>Minimum Fuel Range Multiplier</strong></td><td>Scales the calibrated minimum reliable fuel-pump output to set the controller floor.</td></tr><tr><td><strong>Maximum Fuel Range Multiplier</strong></td><td>Allows the controller extra fuel authority above the configured maximum idle output.</td></tr><tr><td><strong>Control N2 Instead of N1</strong></td><td>Use power-turbine/output shaft speed as the idle feedback signal.</td></tr><tr><td><strong>Long-Term Correction Strength</strong></td><td>Removes a persistent speed error caused by changing accessory load. 0 disables this correction. Start small: 0.05–0.15. Technical name: integral gain.</td></tr><tr><td><strong>Maximum Long-Term Correction</strong></td><td>Limits how much fuel the long-term correction may add or remove. 0.10 means 10% of the available fuel range.</td></tr><tr><td><strong>Idle-Control Method</strong></td><td>Standard control corrects present speed error. Predictive control learns the steady idle output and briefly reduces fuel during a fast return from high speed so RPM settles without hanging high.</td></tr><tr><td><strong>Fast-Deceleration Entry Above Target (RPM)</strong></td><td>Predictive control activates when RPM is at least this far above the idle target.</td></tr><tr><td><strong>Fast-Deceleration Fuel Reduction (%)</strong></td><td>How far below the learned steady-idle output fuel may drop during a fast return to idle.</td></tr><tr><td><strong>Idle Speed Prediction Time (ms)</strong></td><td>How far ahead predictive idle control estimates shaft speed.</td></tr><tr><td><strong>Settled Speed Band (RPM)</strong></td><td>The ECU considers idle stable and learns the required fuel output while RPM is within this distance of target.</td></tr><tr><td><strong>Speed Error for Full Correction (RPM)</strong></td><td>RPM error where automatic idle control reaches its maximum correction rate.</td></tr><tr><td><strong>Maximum Fuel Correction Increase (%/s)</strong></td><td>Fastest rate at which predictive idle control may add fuel.</td></tr><tr><td><strong>Maximum Fuel Correction Decrease (%/s)</strong></td><td>Fastest rate at which predictive idle control may remove fuel.</td></tr><tr><td><strong>Steady-Idle Learning Speed (0-1)</strong></td><td>How quickly the learned steady-idle fuel output adapts after speed settles. Smaller values are steadier.</td></tr><tr><td><strong>Maximum Speed Change While Learning (RPM/s)</strong></td><td>The ECU learns steady-idle fuel only while RPM is changing more slowly than this value.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Automatic Safety Shutdowns <span>7 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Safety Check Interval (ms)</strong></td><td>How often safety conditions are evaluated. Lower responds faster but increases processor load. Rarely needs changing.</td></tr><tr><td><strong>Combustion-Loss Confirmation Time (ms)</strong></td><td>How long the selected signal must indicate flameout before the ECU declares a fault.</td></tr><tr><td><strong>How Combustion Loss Is Detected</strong></td><td>Signal used to decide that combustion has been lost while running.</td></tr><tr><td><strong>N1 Flameout RPM</strong></td><td>For N1-source flameout: declare flameout if N1 stays below this RPM. 0 uses Min RPM. This is delayed by Flameout Delay.</td></tr><tr><td><strong>EGT Drop for Flameout</strong></td><td>For EGT-source flameout: declare flameout after selected EGT drops this far below the highest running EGT reference. 0 disables EGT-drop flameout detection. Use cautiously; throttle changes can affect EGT.</td></tr><tr><td><strong>Max EGT Rise Rate</strong></td><td>Shuts down if the exhaust temperature rises faster than this in a single second. Protects against hot starts or runaway rich fuel. 0 = disabled. Typical safe value: 50-100 C/s.</td></tr><tr><td><strong>Hot-Start EGT Threshold</strong></td><td>Startup is aborted if selected EGT is above this when you press START. Prevents starting into a hot turbine section. 0 = disabled. Typical: 100-200 °C / 212-390 °F.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Automatic Flameout Relight <span>7 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Attempt Automatic Relight</strong></td><td>After combustion loss, try to restore flame before committing to shutdown.</td></tr><tr><td><strong>Ignition Output to Use</strong></td><td>Output energized during the relight attempt.</td></tr><tr><td><strong>How Successful Relight Is Confirmed</strong></td><td>Signal that confirms combustion has returned and allows ignition to turn off.</td></tr><tr><td><strong>N1 Recovery RPM</strong></td><td>For N1 relight confirmation: igniter stays on until N1 recovers to this RPM. 0 uses Min RPM + 5%.</td></tr><tr><td><strong>EGT Recovery Rise</strong></td><td>For EGT relight confirmation: igniter stays on until selected EGT rises this much above the temperature at relight start. 0 prevents EGT-rise confirmation. Set too low and EGT noise/throttle changes can false-confirm; too high can reject a real relight. Verify on a real start.</td></tr><tr><td><strong>Min N1 for Relight (RPM)</strong></td><td>Abort relight if N1 falls below this RPM - the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000-40,000 RPM.</td></tr><tr><td><strong>Relight Timeout (ms)</strong></td><td>How long to keep the igniter on trying to relight after a flameout. If flame is not restored within this window, the engine shuts down. 0 = no timeout (not recommended). Typical: 8,000-15,000 ms.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Tools - Primary Bench Tests <span>10 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Fuel Prime ms</strong></td><td>Fuel solenoid open time for Fuel Prime.</td></tr><tr><td><strong>Solenoid Pulse ms</strong></td><td>Brief fuel-solenoid click-test pulse.</td></tr><tr><td><strong>Oil Prime ms</strong></td><td>Oil pump run time for Oil Prime.</td></tr><tr><td><strong>Igniter 1 Test ms</strong></td><td>Spark/igniter on time for Igniter 1 Test.</td></tr><tr><td><strong>AB / Pilot Igniter Test ms</strong></td><td>Spark/igniter on time for AB / Pilot Igniter Test.</td></tr><tr><td><strong>Glow Test ms</strong></td><td>Glow plug test duration. For wet glow, set this longer than the configured pilot-fuel delay if you want fuel to start during the test.</td></tr><tr><td><strong>Glow Test Command</strong></td><td>Glow plug test command. PWM glow uses this as percent output; relay glow turns ON for any nonzero value. Use 100 for a full-power heat test.</td></tr><tr><td><strong>Starter Test ms</strong></td><td>Starter spin time for Starter Test.</td></tr><tr><td><strong>Starter Test %</strong></td><td>Starter demand for proportional starter outputs.</td></tr><tr><td><strong>Idle Test ms</strong></td><td>Throttle idle-output test duration.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Tools - Accessory Bench Tests <span>9 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Scavenge Test ms</strong></td><td>Oil scavenge pump test duration.</td></tr><tr><td><strong>Fan Test ms</strong></td><td>Cooling fan test duration.</td></tr><tr><td><strong>Airstarter Test ms</strong></td><td>Airstarter solenoid pulse duration.</td></tr><tr><td><strong>Bleed Test ms</strong></td><td>Bleed valve test pulse duration.</td></tr><tr><td><strong>Pilot / Auxiliary Fuel Pump Test ms</strong></td><td>Pilot / auxiliary fuel pump test duration.</td></tr><tr><td><strong>Pilot / Auxiliary Fuel Pump Test %</strong></td><td>Pilot / auxiliary fuel pump demand for proportional outputs.</td></tr><tr><td><strong>Starter Enable Test ms</strong></td><td>Starter enable output test duration.</td></tr><tr><td><strong>Prop Pitch Test ms</strong></td><td>Prop pitch test duration.</td></tr><tr><td><strong>Prop Pitch Test %</strong></td><td>Prop pitch test position/demand for proportional outputs.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Tools - Afterburner Bench Tests <span>3 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Afterburner Fuel Valve Test ms</strong></td><td>How long the normally closed afterburner fuel valve opens during a bench pulse.</td></tr><tr><td><strong>Afterburner Fuel Pump Test ms</strong></td><td>How long the dedicated afterburner fuel pump runs during a bench test.</td></tr><tr><td><strong>Afterburner Fuel Pump Test %</strong></td><td>Pump demand for proportional afterburner fuel-pump outputs.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Logging and Data Updates <span>29 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Log Standby Snapshots</strong></td><td>Include periodic event-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.</td></tr><tr><td><strong>Background Live Interval ms</strong></td><td>Reserved: the built-in web pages currently use fixed refresh rates (Dashboard/Calibration 333 ms, others slower). This interval only affects external API pollers that honour it.</td></tr><tr><td><strong>ECU Loop Target Hz</strong></td><td>Main control-loop target frequency. Default 400 Hz. Lower values reduce CPU use; higher values improve control granularity but increase load. Recommended beta range: 200-500 Hz. Takes effect after a reboot.</td></tr><tr><td><strong>Snapshot Interval ms</strong></td><td>Event-log RUNNING_SNAP interval (ms). Lower values create more history entries and more flash writes. Default 10000 ms (10 s).</td></tr><tr><td><strong>Session Log Rate (ms)</strong></td><td>How often a row is written to the per-run CSV log. Default 1000 ms (1 Hz). Use 500–100 ms only for high-speed transient capture. Lower values increase LittleFS wear and CPU/storage load.</td></tr><tr><td><strong>Log N1 RPM</strong></td><td>Include N1 RPM column in session CSV.</td></tr><tr><td><strong>Log N2 RPM</strong></td><td>Include N2 RPM column in session CSV.</td></tr><tr><td><strong>Log TOT</strong></td><td>Include turbine outlet temperature column in session CSV.</td></tr><tr><td><strong>Log Oil Temp</strong></td><td>Include oil, gearbox, or coolant temperature column in session CSV.</td></tr><tr><td><strong>Log Oil Pressure</strong></td><td>Include oil pressure column in session CSV.</td></tr><tr><td><strong>Log P1</strong></td><td>Include P1 pressure column in session CSV.</td></tr><tr><td><strong>Log P2</strong></td><td>Include P2 pressure column in session CSV.</td></tr><tr><td><strong>Log Throttle</strong></td><td>Include throttle demand column in session CSV.</td></tr><tr><td><strong>Log Mode</strong></td><td>Include engine mode column in session CSV.</td></tr><tr><td><strong>Log TIT</strong></td><td>Include turbine inlet temperature column in session CSV.</td></tr><tr><td><strong>Log Battery V</strong></td><td>Include battery / bus voltage column in session CSV.</td></tr><tr><td><strong>Log Fuel Press</strong></td><td>Include fuel rail pressure column in session CSV.</td></tr><tr><td><strong>Log Fuel Flow</strong></td><td>Include fuel flow column in session CSV.</td></tr><tr><td><strong>Log Glow Plug Output</strong></td><td>Include glow plug output column in session CSV. Relay glow logs 0/100 output state.</td></tr><tr><td><strong>Log Wet Glow Fuel Output</strong></td><td>Include wet-glow fuel solenoid/pump output column in session CSV.</td></tr><tr><td><strong>Log Glow Current</strong></td><td>Include glow plug current sensor column in session CSV.</td></tr><tr><td><strong>Log Igniter 1 Current</strong></td><td>Include igniter 1 current sensor column in session CSV.</td></tr><tr><td><strong>Log AB / Pilot Igniter Current</strong></td><td>Include AB / pilot igniter current sensor column in session CSV.</td></tr><tr><td><strong>Log Oil Pump Current</strong></td><td>Include oil pump current sensor column in session CSV.</td></tr><tr><td><strong>Log Pilot / Auxiliary Fuel Pump</strong></td><td>Include independent sequence/rule-commanded pilot / auxiliary fuel pump demand (%) column in session CSV. This channel does not automatically follow the main throttle input.</td></tr><tr><td><strong>Log AB State/Fuel</strong></td><td>Include afterburner mode, flame, AB pump demand, and main-fuel offset columns in session CSV.</td></tr><tr><td><strong>Log Prop Pitch</strong></td><td>Include propeller pitch demand (%) column in session CSV.</td></tr><tr><td><strong>Log Oil Pump %</strong></td><td>Include oil pump duty cycle (%) column in session CSV.</td></tr><tr><td><strong>Log ECU Loop Timing</strong></td><td>Include main control-loop speed and execution timing columns in session CSV.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>External Instrument Cluster Display <span>5 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Send Data to External Cluster</strong></td><td>Transmit live ECU data and display-warning status through the configured serial output.</td></tr><tr><td><strong>N1 Warn RPM</strong></td><td>N1 warning zone start on cluster gauge (yellow). 0 = auto (RPM Limit × 0.9). N1_MAX comes from Engine Limits → RPM Limit</td></tr><tr><td><strong>N2 Warn RPM</strong></td><td>N2 RPM warning threshold for cluster display</td></tr><tr><td><strong>EGT Warn</strong></td><td>Selected engine-temperature warning threshold for cluster status. 0 = auto (selected EGT limit minus safety margin).</td></tr><tr><td><strong>Oil Warn</strong></td><td>Oil pressure warning status code threshold. 0 = auto (running minimum)</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Low-RPM Starter Support <span>2 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Starter Output While Supporting (%)</strong></td><td>Starter demand applied when support is armed and N1 is below the disengage speed. Use only with a starter system designed to operate while the engine is running.</td></tr><tr><td><strong>Disengage Above N1 (RPM)</strong></td><td>The starter turns off when N1 reaches this speed. It can engage again only after N1 falls below half this value, which prevents rapid on/off cycling.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Windmilling Oil Protection <span>4 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Shaft to Monitor</strong></td><td>Choose which shaft can automatically request protective oil flow.</td></tr><tr><td><strong>Start Oil Pump Above</strong> <span class="quiet">(RPM)</span></td><td>Oil protection starts when the selected shaft exceeds this speed while the ECU is in standby.</td></tr><tr><td><strong>Minimum Protective Pump Output (%)</strong></td><td>Fixed output when pressure regulation is disabled, or the minimum output when a pressure target is used.</td></tr><tr><td><strong>Protective Oil Pressure Target</strong></td><td>Set above zero to regulate oil pressure. Set to zero to use only the fixed pump output. Requires an oil pressure sensor and automatic oil control.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Manual Relight and Cooldown Override <span>3 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Cooldown Skip Hold ms</strong></td><td>Hold START+STOP simultaneously for this long during SHUTDOWN to force-skip the cooldown and go to STANDBY, even if selected EGT is still above the cooldown target.</td></tr><tr><td><strong>START Relight Output</strong></td><td>Which configured ignition output is held on while START is held during RUNNING.</td></tr><tr><td><strong>Igniter on START (running)</strong></td><td>Fire igniter while START button is held during RUNNING — manual relight aid. Disable if accidental button presses are a concern.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>RPM Sensor Fault Detection <span>2 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Maximum Allowed Reading Jump</strong></td><td>Largest one-sample RPM change accepted before the sensor is marked faulty. 0.40 means 40%.</td></tr><tr><td><strong>Zero Readings Before Fault</strong></td><td>Number of consecutive zero readings required before a running RPM sensor is declared stuck at zero.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Afterburner — Ignition Conditions <span>4 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Min N1 RPM</strong></td><td>AB will not attempt ignition below this shaft speed (compressor needs sufficient airflow).</td></tr><tr><td><strong>Max N1 RPM</strong></td><td>AB will not attempt ignition above this shaft speed (high compressor pressure can prevent AB lighting). 0 = disabled.</td></tr><tr><td><strong>Max EGT for Light</strong></td><td>Do not attempt ignition if selected EGT exceeds this (engine already too hot). 0 = disabled.</td></tr><tr><td><strong>Throttle Trigger %</strong></td><td>Throttle demand percent that triggers AB when source is set to Throttle.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Afterburner — Ignition Method <span>6 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Use Torch</strong></td><td>Spike main fuel demand through the turbine section to push burning exhaust into the AB duct. Configure torch timing in the fields below.</td></tr><tr><td><strong>Use AB Igniter</strong></td><td>Fire the dedicated afterburner igniter installed in Hardware during the ignition window. Can be used alone or with torch.</td></tr><tr><td><strong>Torch Spike %</strong></td><td>Main fuel pump extra demand % during the torch window. Higher = more fuel pushed through. Typical: 20–40%.</td></tr><tr><td><strong>Torch Duration (ms)</strong></td><td>How long to hold the fuel spike before cutting back. Typical: 300–600 ms.</td></tr><tr><td><strong>Torch EGT Cut</strong></td><td>Cut torch spike if selected EGT exceeds this during ignition. Protects turbine from over-temperature. 0 = disabled. Typical: 900-1000 °C / 1650-1830 °F.</td></tr><tr><td><strong>Light-Up Pump %</strong></td><td>AB fuel pump demand used while the light-up sequence is trying to establish a confirmed flame.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Afterburner — Flame Confirmation <span>5 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Flame Mode</strong></td><td>How to verify the afterburner has lit. Sensor: requires AB flame sensor in Hardware. EGT Rise: waits for a selected-temperature jump. Timed: wait a fixed delay then assume lit - no sensor required.</td></tr><tr><td><strong>EGT Rise</strong></td><td>Minimum selected EGT rise required to confirm ignition (EGT Rise mode). Typical: 20-50 C. Too low can false-confirm on noise/throttle changes; too high can reject a real light. Verify on a real start.</td></tr><tr><td><strong>EGT Rise Window (ms)</strong></td><td>Time window in which the required EGT rise must occur (EGT Rise mode). Typical: 1500-3000 ms.</td></tr><tr><td><strong>Assume Lit After (ms)</strong></td><td>Delay before assuming AB has lit without sensor confirmation (Timed mode). Typical: 1000-2000 ms.</td></tr><tr><td><strong>Confirmation Timeout (ms)</strong></td><td>Overall deadline for flame confirmation. Exceeding this triggers an AB fault and shuts down the afterburner. Typical: 3000-5000 ms.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Afterburner — Running <span>6 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Pump Command Source</strong></td><td>Choose how AB pump flow is commanded while lit. Dedicated AB Input uses the ADC or servo-PWM AB input configured in Hardware. Note: if the AB input was not in use when the ECU booted, switching to Dedicated AB Input needs a reboot before the input is read.</td></tr><tr><td><strong>Afterburner Fuel Pump Min %</strong></td><td>Minimum afterburner fuel-pump demand for a variable command source. With a missing servo-PWM afterburner input, demand fails to this minimum.</td></tr><tr><td><strong>Afterburner Fuel Pump Max %</strong></td><td>Maximum afterburner fuel-pump demand. Fixed Max Output holds this value while the afterburner is running.</td></tr><tr><td><strong>Main Fuel Offset %</strong></td><td>Add this to main throttle demand while AB is running (extra air/fuel for compressor). 0 = none.</td></tr><tr><td><strong>Stabilize Hold (ms)</strong></td><td>Hold time after confirmed ignition before declaring the afterburner Running. Typical: 500-2000 ms.</td></tr><tr><td><strong>Stabilize Max EGT</strong></td><td>AB faults if selected EGT exceeds this during the stabilize hold. 0 = disabled.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Safety Thresholds <span>5 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>TIT Limit</strong></td><td>Turbine Inlet Temperature hard limit. Engine shuts down if TIT exceeds this. 0 = disabled. Typical turboprop TIT limit: 800-950 °C / 1470-1740 °F.</td></tr><tr><td><strong>Oil Temp Limit</strong></td><td>Maximum oil temperature before fault shutdown. 0 = disabled. Typical limit: 120–150 °C / 250–300 °F depending on oil grade.</td></tr><tr><td><strong>Fuel Press Min</strong></td><td>Low fuel pressure fault threshold during RUNNING. 0 = disabled. Typical: 0.5–2.0 bar / 7–30 PSI depending on pump type.</td></tr><tr><td><strong>Battery Min (V)</strong></td><td>Battery / bus undervoltage fault threshold. 0 = disabled. Set ~0.5 V below your minimum expected loaded voltage. Typical: 10.5 V for 3S LiPo.</td></tr><tr><td><strong>Surge Detect Variance</strong></td><td>N1 RPM variance threshold for surge/instability detection (variance over a 10-sample rolling window). 0 = disabled. Typical starting value: 500,000 (RPM²). Tune for your engine — lower = more sensitive.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Automatic N2 Speed Control <span>5 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Target N2 RPM</strong></td><td>Power turbine (N2) speed setpoint for the governor. Set to your rated output shaft RPM. 0 = governor disabled. In prop-pitch mode the governor adds propeller load to hold this speed, so set it to your rated power-turbine RPM — too low can over-load and stall the core.</td></tr><tr><td><strong>No-Correction Speed Band (RPM)</strong></td><td>The controller makes no correction while N2 is within this distance above or below the target. A small band prevents hunting. Typical: 200–500 RPM.</td></tr><tr><td><strong>Fuel-Control Response Strength</strong></td><td>How strongly fuel changes for N2 speed error when the ECU controls N2 with fuel. Too high can oscillate; too low responds slowly. Technical name: proportional gain (Kp). Typical: 0.0005–0.002; start low.</td></tr><tr><td><strong>Propeller-Pitch Response Strength</strong></td><td>How strongly propeller pitch changes for N2 speed error. A value above 0 selects pitch control when a proportional pitch actuator is fitted; 0 selects fuel control. Technical name: pitch gain (Kp).</td></tr><tr><td><strong>Full Propeller-Pitch Travel Time (s)</strong></td><td>Shortest allowed time for the pitch actuator to travel through its full range. This prevents abrupt load changes. 0 allows immediate movement. Typical: 1–5 s.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>Glow Plug Preheat <span>3 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Preheat Duration (ms)</strong></td><td>Time to ramp the glow plug from 0 to maximum duty before ignition. Longer = more heat soak. Typical: 8,000–15,000 ms.</td></tr><tr><td><strong>Preheat Peak Command</strong></td><td>Peak glow command during the preheat ramp. PWM glow uses this as duty percent; relay glow turns ON for any nonzero command. Typical PWM value: 60–90%.</td></tr><tr><td><strong>Hold Command</strong></td><td>Glow command held after preheat completes. PWM glow uses this as duty percent; relay glow stays ON for any nonzero hold command. Typical PWM value: 20–40%.</td></tr></tbody>
+  </table></div>
+</details>
+
+<details class="reference-section">
+  <summary>RC / Servo Signal Loss Detection <span>1 fields</span></summary>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
+    <tbody><tr><td><strong>Signal-Loss Timeout (ms)</strong></td><td>Mark the receiver signal invalid when no valid pulse arrives within this time.</td></tr></tbody>
+  </table></div>
+</details>

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="920" viewBox="0 0 1400 920" role="img" aria-labelledby="title desc">
+  <title id="title">OpenTurbine ECU beginner wiring overview</title>
+  <desc id="desc">A block wiring diagram showing a fused low-voltage supply, ESP32 ECU, conditioned sensor inputs, protected actuator drivers, separate load supply, and independent emergency stop.</desc>
+  <defs>
+    <style>
+      .bg{fill:#0c1218}.box{fill:#17212b;stroke:#526575;stroke-width:3}.ecu{fill:#24313d;stroke:#ff6a00;stroke-width:5}.power{fill:#39291d;stroke:#ff9a52;stroke-width:3}.safe{fill:#153426;stroke:#54d88b;stroke-width:3}.txt{fill:#eef4f8;font:700 25px Arial,sans-serif}.small{fill:#c8d3dc;font:19px Arial,sans-serif}.tiny{fill:#c8d3dc;font:16px Arial,sans-serif}.orange{stroke:#ff8a38}.blue{stroke:#5eb6ff}.green{stroke:#54d88b}.grey{stroke:#9babb8}.wire{fill:none;stroke-width:5}.dash{stroke-dasharray:12 10}.pin{fill:#ff6a00}.arrow{marker-end:url(#arrow)}
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#c8d3dc"/></marker>
+  </defs>
+  <rect class="bg" width="1400" height="920"/>
+  <text class="txt" x="50" y="55">OpenTurbine wiring overview — signal paths, not fixed GPIO numbers</text>
+  <text class="small" x="50" y="88">Choose GPIOs in Hardware, then wire those exact pins. Never feed load power through an ESP32 pin.</text>
+
+  <rect class="power" x="50" y="130" rx="18" width="300" height="170"/>
+  <text class="txt" x="80" y="175">ECU supply</text>
+  <text class="small" x="80" y="212">Battery / bench supply</text>
+  <text class="small" x="80" y="244">→ fuse → regulator</text>
+  <text class="small" x="80" y="276">→ ESP32 VIN + GND</text>
+
+  <rect class="ecu" x="510" y="250" rx="24" width="380" height="390"/>
+  <text class="txt" x="615" y="300">ESP32 ECU</text>
+  <text class="small" x="550" y="350">3.3 V digital inputs</text>
+  <text class="small" x="550" y="395">ADC-capable inputs</text>
+  <text class="small" x="550" y="440">SPI thermocouple bus</text>
+  <text class="small" x="550" y="485">pulse / frequency inputs</text>
+  <text class="small" x="550" y="550">GPIO / PWM / servo signals</text>
+  <text class="tiny" x="550" y="605">All grounds join only at the planned</text>
+  <text class="tiny" x="550" y="628">logic/sensor reference point.</text>
+
+  <rect class="box" x="50" y="360" rx="18" width="350" height="290"/>
+  <text class="txt" x="80" y="405">Inputs</text>
+  <text class="small" x="80" y="445">Switch → GPIO + pull-up</text>
+  <text class="small" x="80" y="482">0–5 V sensor → divider → ADC</text>
+  <text class="small" x="80" y="519">RPM pickup → conditioner → GPIO</text>
+  <text class="small" x="80" y="556">Thermocouple → MAX318xx → SPI</text>
+  <text class="small" x="80" y="593">RC receiver → 3.3 V signal → GPIO</text>
+  <text class="tiny" x="80" y="628">Every ECU pin must remain in its safe</text>
+  <text class="tiny" x="80" y="648">voltage range during normal and fault states.</text>
+
+  <rect class="box" x="1000" y="350" rx="18" width="350" height="260"/>
+  <text class="txt" x="1030" y="395">Output drivers</text>
+  <text class="small" x="1030" y="435">GPIO → relay/MOSFET input</text>
+  <text class="small" x="1030" y="472">PWM → protected motor driver</text>
+  <text class="small" x="1030" y="509">servo pulse → ESC / servo input</text>
+  <text class="small" x="1030" y="546">driver output → pump / valve / load</text>
+  <text class="tiny" x="1030" y="581">Fit fuses and flyback/transient protection.</text>
+
+  <rect class="power" x="1000" y="130" rx="18" width="350" height="150"/>
+  <text class="txt" x="1030" y="175">Separate load supply</text>
+  <text class="small" x="1030" y="215">individually fused branches</text>
+  <text class="small" x="1030" y="250">pump · starter · valve · ignition</text>
+
+  <rect class="safe" x="920" y="700" rx="18" width="430" height="145"/>
+  <text class="txt" x="950" y="745">Independent emergency stop</text>
+  <text class="small" x="950" y="785">Physically removes fuel/load energy.</text>
+  <text class="small" x="950" y="820">It must work with ECU/Wi-Fi failed.</text>
+
+  <path class="wire orange arrow" d="M350 215 H470 V285 H500"/>
+  <text class="tiny" x="376" y="195">regulated ECU power</text>
+  <path class="wire blue arrow" d="M400 480 H500"/>
+  <text class="tiny" x="415" y="462">conditioned signals</text>
+  <path class="wire orange arrow" d="M900 460 H990"/>
+  <text class="tiny" x="905" y="442">logic only</text>
+  <path class="wire orange arrow" d="M1175 280 V340"/>
+  <text class="tiny" x="1190" y="320">load power</text>
+  <path class="wire green dash" d="M1135 690 V620"/>
+  <path class="wire green dash" d="M1135 700 V650 H1175 V620"/>
+  <text class="tiny" x="1160" y="678">hardwired cut</text>
+  <path class="wire grey" d="M120 690 H1280"/>
+  <text class="tiny" x="120" y="720">planned common reference / star ground (unless an interface is intentionally isolated)</text>
+  <path class="wire grey" d="M210 650 V690 M700 640 V690 M1175 610 V690"/>
+
+  <circle class="pin" cx="500" cy="285" r="7"/><circle class="pin" cx="500" cy="480" r="7"/><circle class="pin" cx="900" cy="460" r="7"/>
+</svg>

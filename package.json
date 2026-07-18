@@ -1,7 +1,8 @@
 {
   "private": true,
   "scripts": {
-    "audit:ui": "node tools/run_ui_audits.cjs"
+    "audit:ui": "node tools/run_ui_audits.cjs",
+    "docs:config-reference": "node tools/generate_site_config_reference.cjs"
   },
   "dependencies": {
     "playwright": "1.61.1"
