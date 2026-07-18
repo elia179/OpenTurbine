@@ -1,36 +1,67 @@
 ---
 layout: document
-title: Install OpenTurbine on ESP32 from Windows
-description: Install the OpenTurbine ESP32 turbine ECU on a supported board from Windows with the guided Setup Tool, USB driver help, flashing, and Wi-Fi connection steps.
-lede: Install a new supported board from Windows without cloning the source code.
+title: Install OpenTurbine from Windows
+description: Install OpenTurbine on a supported ESP32 using the Windows Setup Tool, then connect to its Wi-Fi dashboard.
+lede: The normal installation does not require Git, PlatformIO or source-code compilation.
 ---
 
 {% include safety-note.html %}
 
-## Before you begin
+## 1. Prepare the board
 
-You need a Windows computer, a data-capable USB cable, and either a Classic ESP32 with at least 4 MB flash or an ESP32-S3 DevKitC-1 N16R8 target. ESP32-C3 and other unlisted families are not supported by the normal setup path. Keep fuel, ignition energy, starter power, and load power physically isolated during installation.
+You need:
 
-## Download and connect
+- A Classic ESP32 board with at least 4 MB flash, or an ESP32-S3 DevKitC-1 N16R8.
+- A Windows computer.
+- A USB **data cable**. A charge-only cable can power the board but cannot install firmware.
 
-1. [Download OpenTurbine Setup Tool for Windows]({{ site.data.project.windows_download_url }}).
-2. Connect the board directly to the computer using a data-capable USB cable.
-3. Open the Setup Tool. You should see a detected board or a prompt that identifies the missing USB driver.
-4. For a new board select **Clean install / reinstall**. It erases the selected board.
-5. For a working controller select **Update and keep my setup**. Back up the engine file first; this Wi-Fi path preserves setup intentionally.
+Keep fuel, ignition energy, starter power and actuator/load power physically disconnected during installation.
 
-For normal Windows setup, download `OpenTurbineSetupTool.exe`. Do not use GitHub’s **Download ZIP** source-code button. If Windows warns about the tool, confirm it came from the official [OpenTurbine Releases](https://github.com/elia179/OpenTurbine/releases) page before choosing Windows’ “More info” and “Run anyway” path. Do not disable Windows protection globally.
+## 2. Download the Setup Tool
 
-## USB driver help
+[Download `OpenTurbineSetupTool.exe` for Windows]({{ site.data.project.windows_download_url }}).
 
-If Windows sees a CP210x or WCH bridge but has not created a COM port, the Setup Tool offers the matching driver. If the detected bridge already owns a COM port but the ESP32 does not answer, hold BOOT, tap EN/RESET, close other serial programs, and try again.
+Use the executable above, not GitHub's **Download ZIP** source-code button. If Windows displays a warning, confirm that the file came from the official [OpenTurbine Releases]({{ site.data.project.releases_url }}) page before using **More info → Run anyway**. Do not disable Windows protection globally.
 
-## Connect to the dashboard
+<p class="expected"><strong>Expected:</strong> Windows opens the OpenTurbine Setup Tool.</p>
 
-After a successful install, join the board’s Wi-Fi network and open `http://192.168.4.1`. What you should see is the OpenTurbine dashboard. If it does not appear, use the [symptom-based troubleshooting guide]({{ '/troubleshooting/' | relative_url }}).
+## 3. Connect and identify the board
 
-## First dry setup
+Connect the ESP32 directly to the computer and open the Setup Tool. It will show a detected board or identify a missing CP210x/WCH USB driver.
 
-Follow this safe order: Hardware → Config → Calibration → Sequence / Control Rules → Tools → Dashboard. Verify the installed-channel inventory and pins, use Config search to review every applicable limit, calibrate fitted inputs, inspect sequence final states and rule off values, then test outputs at logic level before connecting loads. Do not add fuel until every shutdown path, including the independent physical stop, has been tested.
+If a driver is required, use the matching option offered by the Setup Tool. If Windows already shows a COM port but the board does not answer, close other serial programs, hold **BOOT**, tap **EN/RESET**, and try again.
 
-Need help? Use the [Setup Help form](https://github.com/elia179/OpenTurbine/issues/new?template=setup_help.yml) and attach only sanitized diagnostics.
+<p class="expected"><strong>Expected:</strong> the Setup Tool shows the connected board and a usable COM port.</p>
+
+<p class="inline-help">No board or COM port? <a href="{{ '/troubleshooting/#board-does-not-appear-as-a-com-port' | relative_url }}">Use the board-detection troubleshooting steps.</a></p>
+
+## 4. Choose install or update
+
+- For a new board, select **Clean install / reinstall**. This erases the selected board.
+- For a working OpenTurbine ECU, select **Update and keep my setup**. Back up the engine file first; this path is designed to preserve the setup.
+
+Check the selected board and operation before starting. Do not disconnect USB power while the Setup Tool is writing firmware.
+
+<p class="expected"><strong>Expected:</strong> installation completes without an error and the board restarts.</p>
+
+<p class="inline-help">Installation stopped or failed? <a href="{{ '/troubleshooting/#flashing-fails' | relative_url }}">Go directly to flashing help.</a></p>
+
+## 5. Open the dashboard
+
+Join the Wi-Fi network created by the board, remain connected even if Windows says the network has no internet, and open [`http://192.168.4.1`](http://192.168.4.1) in a browser.
+
+<p class="expected"><strong>Expected:</strong> the OpenTurbine dashboard loads and shows the ECU state.</p>
+
+<p class="inline-help">Wi-Fi missing or dashboard not loading? See <a href="{{ '/troubleshooting/#openturbine-wi-fi-is-missing' | relative_url }}">Wi-Fi help</a> or <a href="{{ '/troubleshooting/#dashboard-does-not-open' | relative_url }}">dashboard help</a>.</p>
+
+## 6. Continue with your own hardware
+
+OpenTurbine does not require one fixed engine layout. Describe only the sensors and actuators your system actually has, then configure and test them in this order:
+
+**Hardware → Config → Calibration → Sequence and Control Rules → Tools → Dashboard**
+
+The [complete User Guide]({{ '/user-guide/' | relative_url }}) explains every stage, including sensor wiring, actuator drivers, available inputs and outputs, controller behavior, safety functions and Config fields.
+
+Do not connect fuel or ignition energy until the independent stop and every configured shutdown path have been dry-tested.
+
+<p class="document-nav"><a href="{{ '/user-guide/' | relative_url }}">Open the User Guide</a><a href="{{ '/hardware/' | relative_url }}">Hardware requirements</a><a href="{{ '/troubleshooting/' | relative_url }}">Troubleshooting</a></p>

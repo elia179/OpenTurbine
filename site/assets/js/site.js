@@ -23,6 +23,19 @@ if (button && nav) {
   });
 }
 
+// On narrow screens, reference-table cells are presented as labelled rows.
+// The original table remains unchanged for wide screens and assistive tools.
+document.querySelectorAll('.document table').forEach(table => {
+  const headings = [...table.querySelectorAll('thead th')].map(cell => cell.textContent.trim());
+  if (!headings.length) return;
+  table.classList.add('responsive-reference');
+  table.querySelectorAll('tbody tr').forEach(row => {
+    [...row.children].forEach((cell, index) => {
+      if (headings[index]) cell.dataset.label = headings[index];
+    });
+  });
+});
+
 // Every meaningful content image can be enlarged without changing the Markdown
 // used by the page. The same interaction works with touch, mouse and keyboard.
 const zoomableImages = [...document.querySelectorAll('main img:not([data-no-zoom])')];

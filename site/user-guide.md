@@ -11,6 +11,9 @@ OpenTurbine is an experimental controller for turbine test projects. This guide 
 
 Keep fuel disconnected, ignition energy disabled, starter/load power isolated, and the turbine unable to move while completing Parts 1–10. A browser STOP button is not an emergency stop.
 
+<a class="guide-contents-link" href="#guide-contents">Contents</a>
+
+<a id="guide-contents"></a>
 ## Contents
 
 1. [Words used in this guide](#part-1-words-used-in-this-guide)
@@ -111,6 +114,8 @@ Test these cases without fuel:
 - power restored after a stop.
 
 The safe result must not depend on code executing.
+
+<p class="guide-return"><a href="#guide-contents">Back to contents</a></p>
 
 ## Part 5: Wire inputs and sensors
 
@@ -274,6 +279,8 @@ Open **Hardware**, select the exact Classic ESP32 or supported ESP32-S3 target, 
 <tr><td>Current-sensor fields</td><td>ADC GPIO, sensor mV/A, zero-current voltage and overcurrent limit for an attached current sensor. Calibrate zero with the load off.</td></tr>
 </tbody></table></div>
 
+<p class="guide-return"><a href="#guide-contents">Back to contents</a></p>
+
 ## Part 9: Understand controllers and safety functions
 
 ### 9.1 Controllers
@@ -390,6 +397,8 @@ Verify that STOP removes fuel immediately. Cooling, purge or scavenge actions ma
 
 Run the full startup and shutdown sequence repeatedly with no fuel and ignition energy disabled.
 
+<p class="guide-return"><a href="#guide-contents">Back to contents</a></p>
+
 ## Part 13: Use control rules
 
 Control rules are small automations outside the main sequence. Each output may have one enabled rule.
@@ -465,5 +474,7 @@ Use **Update and keep my setup** for a working controller. Use clean install onl
 Record the board target, OpenTurbine version, fitted channel list, engine state, active sequence block, exact expected behavior and exact observed behavior. Include sanitized engine backup and logs where appropriate. Setup Tool diagnostics are under `%LOCALAPPDATA%\OpenTurbine\SetupTool\logs`.
 
 Use [symptom-based troubleshooting]({{ '/troubleshooting/' | relative_url }}) or open [Setup Help](https://github.com/elia179/OpenTurbine/issues/new?template=setup_help.yml). Do not share Wi-Fi credentials or sensitive installation details publicly.
+
+<p class="guide-return"><a href="#guide-contents">Back to contents</a></p>
 
 <p class="document-nav"><a href="{{ '/get-started/' | relative_url }}">Get Started</a><a href="{{ '/hardware/' | relative_url }}">Hardware quick reference</a><a href="{{ '/troubleshooting/' | relative_url }}">Troubleshooting</a></p>
