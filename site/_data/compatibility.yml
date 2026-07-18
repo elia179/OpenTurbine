@@ -1,16 +1,24 @@
 - component: Classic ESP32 with at least 4 MB flash
   status: Supported
+  kind: supported
 - component: ESP32-S3 DevKitC-1 N16R8 target
   status: Supported
+  kind: supported
 - component: Windows guided setup
   status: Supported
+  kind: supported
 - component: Browser dashboard
   status: Supported
+  kind: supported
 - component: Wi-Fi update preserving setup
   status: Supported
+  kind: supported
 - component: macOS/Linux graphical installer
   status: Not currently available
+  kind: unavailable
 - component: Manual source build
   status: Advanced/developer path
+  kind: advanced
 - component: Certified aviation use
   status: Not certified
+  kind: unavailable
