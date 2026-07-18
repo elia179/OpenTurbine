@@ -11,8 +11,6 @@ OpenTurbine is an experimental controller for turbine test projects. This guide 
 
 Keep fuel disconnected, ignition energy disabled, starter/load power isolated, and the turbine unable to move while completing Parts 1–10. A browser STOP button is not an emergency stop.
 
-<a class="guide-contents-link" href="#guide-contents">Contents</a>
-
 <a id="guide-contents"></a>
 ## Contents
 
