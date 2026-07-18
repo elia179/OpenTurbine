@@ -1,71 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1040" viewBox="0 0 1400 1040" role="img" aria-labelledby="title desc">
-  <title id="title">Basic sensor and switch wiring to an ESP32 ECU</title>
-  <desc id="desc">Four simple wiring examples: a 3.3 volt three-wire sensor, a 5 volt analog sensor through a voltage divider, an open-collector pulse sensor with a pull-up, and an active-low switch.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1660" viewBox="0 0 1400 1660" role="img" aria-labelledby="title desc">
+  <title id="title">OpenTurbine sensor and command-switch wiring</title>
+  <desc id="desc">Four spacious examples showing a 3.3 volt sensor, a 5 volt analog sensor with a divider, an open collector pulse sensor, and an active-low command switch.</desc>
   <defs>
     <style>
-      .bg{fill:#0c1218}.panel{fill:#17212b;stroke:#526575;stroke-width:3}.ecu{fill:#24313d;stroke:#ff6a00;stroke-width:3}.device{fill:#111820;stroke:#8293a1;stroke-width:3}.title{fill:#eef4f8;font:700 28px Arial,sans-serif}.label{fill:#eef4f8;font:700 20px Arial,sans-serif}.note{fill:#c8d3dc;font:17px Arial,sans-serif}.tiny{fill:#c8d3dc;font:15px Arial,sans-serif}.v{stroke:#ff655f}.g{stroke:#aab6c0}.s{stroke:#59b7ff}.wire{fill:none;stroke-width:5}.dot{fill:#eef4f8}.res{fill:#39291d;stroke:#ffb05f;stroke-width:3}.warn{fill:#ffd0cd;font:700 16px Arial,sans-serif}.ok{fill:#9be9bd;font:700 16px Arial,sans-serif}
+      .bg{fill:#0b1117}.card{fill:#15202a;stroke:#405363;stroke-width:2}.head{fill:#f2f6f9;font:700 28px Arial,sans-serif}.sub{fill:#b9c7d2;font:18px Arial,sans-serif}.label{fill:#edf3f7;font:700 19px Arial,sans-serif}.small{fill:#b9c7d2;font:17px Arial,sans-serif}.tiny{fill:#b9c7d2;font:15px Arial,sans-serif}.ecu{fill:#202e3a;stroke:#ff7a1a;stroke-width:3}.device{fill:#101820;stroke:#7e91a0;stroke-width:3}.supply{fill:#202e3a;stroke:#e9a23b;stroke-width:3}.terminal{fill:#edf3f7}.power{fill:none;stroke:#ff6666;stroke-width:5}.ground{fill:none;stroke:#aebbc5;stroke-width:5}.signal{fill:none;stroke:#55b8ff;stroke-width:5}.component{fill:#22313d;stroke:#e9a23b;stroke-width:3}.goodbox{fill:#10271e;stroke:#3fac72;stroke-width:2}.good{fill:#9de6b9;font:700 17px Arial,sans-serif}.warnbox{fill:#30191b;stroke:#df5757;stroke-width:2}.warn{fill:#ffaaa6;font:700 17px Arial,sans-serif}.formula{fill:#f2d090;font:700 17px Arial,sans-serif}.node{fill:#55b8ff}.symbol{fill:none;stroke:#edf3f7;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
     </style>
   </defs>
-  <rect class="bg" width="1400" height="1040"/>
-  <text class="title" x="50" y="52">Basic OpenTurbine input wiring</text>
-  <text class="note" x="50" y="84">Red = power, grey = ground, blue = signal. GPIO numbers come from your saved Hardware page.</text>
+  <rect class="bg" width="1400" height="1660"/>
+  <text class="head" x="55" y="55">OpenTurbine input wiring — four common circuits</text>
+  <text class="sub" x="55" y="88">Follow the terminal names, not physical pin positions. Set the actual GPIO on the Hardware page.</text>
+  <line class="power" x1="55" y1="118" x2="105" y2="118"/><text class="small" x="118" y="124">power</text>
+  <line class="ground" x1="225" y1="118" x2="275" y2="118"/><text class="small" x="288" y="124">ground / 0 V</text>
+  <line class="signal" x1="450" y1="118" x2="500" y2="118"/><text class="small" x="513" y="124">signal</text>
 
-  <g transform="translate(50 120)">
-    <rect class="panel" width="630" height="390" rx="18"/>
-    <text class="title" x="28" y="45">1. Three-wire 3.3 V sensor</text>
-    <rect class="ecu" x="30" y="90" width="190" height="210" rx="14"/><text class="label" x="82" y="125">ESP32</text>
-    <text class="note" x="55" y="175">3V3</text><text class="note" x="55" y="225">GND</text><text class="note" x="55" y="275">ADC / GPIO</text>
-    <rect class="device" x="410" y="90" width="185" height="210" rx="14"/><text class="label" x="452" y="125">Sensor</text>
-    <text class="note" x="445" y="175">VCC</text><text class="note" x="445" y="225">GND</text><text class="note" x="445" y="275">OUT</text>
-    <path class="wire v" d="M120 168 H445"/><path class="wire g" d="M120 218 H445"/><path class="wire s" d="M150 268 H445"/>
-    <text class="ok" x="30" y="340">Use only when VCC and OUT are both 3.3 V compatible.</text>
-    <text class="tiny" x="30" y="367">Examples: a suitable 3.3 V pressure module or conditioned digital sensor.</text>
+  <g transform="translate(45 155)">
+    <rect class="card" width="1310" height="335" rx="18"/>
+    <text class="head" x="28" y="44">1 · Three-wire 3.3 V sensor</text>
+    <text class="sub" x="28" y="73">For a sensor whose supply and output are both explicitly rated for 3.3 V operation.</text>
+    <rect class="ecu" x="55" y="105" width="245" height="150" rx="12"/><text class="label" x="135" y="136">ESP32 ECU</text>
+    <text class="small" x="80" y="172">3V3</text><text class="small" x="80" y="207">GND</text><text class="small" x="80" y="242">INPUT GPIO</text>
+    <circle class="terminal" cx="285" cy="166" r="5"/><circle class="terminal" cx="285" cy="201" r="5"/><circle class="terminal" cx="285" cy="236" r="5"/>
+    <rect class="device" x="980" y="105" width="245" height="150" rx="12"/><text class="label" x="1063" y="136">SENSOR</text>
+    <text class="small" x="1005" y="172">VCC</text><text class="small" x="1005" y="207">GND</text><text class="small" x="1005" y="242">OUT</text>
+    <circle class="terminal" cx="995" cy="166" r="5"/><circle class="terminal" cx="995" cy="201" r="5"/><circle class="terminal" cx="995" cy="236" r="5"/>
+    <path class="power" d="M285 166 H995"/><path class="ground" d="M285 201 H995"/><path class="signal" d="M285 236 H995"/>
+    <text class="tiny" x="555" y="156">3.3 V supply</text><text class="tiny" x="555" y="226">sensor reading</text>
+    <rect class="goodbox" x="55" y="278" width="1170" height="38" rx="8"/><text class="good" x="75" y="303">CHECK FIRST: the sensor datasheet must say OUT never exceeds 3.3 V.</text>
   </g>
 
-  <g transform="translate(720 120)">
-    <rect class="panel" width="630" height="390" rx="18"/>
-    <text class="title" x="28" y="45">2. 5 V analog sensor</text>
-    <rect class="ecu" x="30" y="90" width="170" height="210" rx="14"/><text class="label" x="73" y="125">ESP32</text>
-    <text class="note" x="55" y="225">GND</text><text class="note" x="55" y="275">ADC</text>
-    <rect class="device" x="425" y="90" width="175" height="210" rx="14"/><text class="label" x="463" y="125">Sensor</text>
-    <text class="note" x="455" y="170">+5 V</text><text class="note" x="455" y="220">GND</text><text class="note" x="455" y="270">OUT</text>
-    <path class="wire v" d="M425 163 H365 V78"/><text class="tiny" x="330" y="67">regulated 5 V</text>
-    <path class="wire g" d="M110 218 H455"/>
-    <path class="wire s" d="M455 263 H350"/>
-    <rect class="res" x="315" y="245" width="38" height="75"/><text class="tiny" x="300" y="342">R1</text>
-    <circle class="dot" cx="280" cy="282" r="6"/><path class="wire s" d="M315 282 H110"/>
-    <rect class="res" x="260" y="310" width="38" height="55"/><text class="tiny" x="305" y="365">R2 to GND</text><path class="wire g" d="M279 365 V375 H110 V218"/>
-    <text class="warn" x="30" y="340">R1/R2 must keep ADC at or below its safe maximum.</text>
-    <text class="tiny" x="30" y="367">Calculate for the sensor fault maximum, then measure before connecting ADC.</text>
+  <g transform="translate(45 515)">
+    <rect class="card" width="1310" height="385" rx="18"/>
+    <text class="head" x="28" y="44">2 · 5 V analog sensor → protected ADC input</text>
+    <text class="sub" x="28" y="73">The R1/R2 divider reduces the sensor output before it reaches the ESP32 ADC.</text>
+    <rect class="ecu" x="55" y="120" width="245" height="145" rx="12"/><text class="label" x="135" y="151">ESP32 ECU</text>
+    <text class="small" x="80" y="195">ADC GPIO</text><text class="small" x="80" y="235">GND</text>
+    <circle class="terminal" cx="285" cy="189" r="5"/><circle class="terminal" cx="285" cy="229" r="5"/>
+    <rect class="supply" x="405" y="105" width="180" height="70" rx="10"/><text class="label" x="433" y="135">REGULATED</text><text class="small" x="463" y="160">5 V</text>
+    <rect class="device" x="1020" y="105" width="220" height="160" rx="12"/><text class="label" x="1090" y="136">SENSOR</text>
+    <text class="small" x="1045" y="170">+5 V</text><text class="small" x="1045" y="205">OUT</text><text class="small" x="1045" y="240">GND</text>
+    <circle class="terminal" cx="1035" cy="164" r="5"/><circle class="terminal" cx="1035" cy="199" r="5"/><circle class="terminal" cx="1035" cy="234" r="5"/>
+    <path class="power" d="M585 140 H930 V164 H1035"/><text class="tiny" x="735" y="130">+5 V</text>
+    <path class="signal" d="M1035 199 H890"/><rect class="component" x="790" y="181" width="100" height="36" rx="5"/><text class="label" x="825" y="206">R1</text>
+    <path class="signal" d="M790 199 H285"/><circle class="node" cx="700" cy="199" r="7"/>
+    <path class="ground" d="M285 229 H380 V275 H950 V234 H1035"/>
+    <rect class="component" x="682" y="212" width="36" height="48" rx="5"/><text class="label" x="730" y="243">R2</text>
+    <path class="signal" d="M700 199 V212"/><path class="ground" d="M700 260 V275"/>
+    <text class="formula" x="55" y="101">ADC voltage = sensor OUT × R2 ÷ (R1 + R2)</text>
+    <rect class="warnbox" x="55" y="300" width="1170" height="62" rx="8"/>
+    <text class="warn" x="75" y="326">DO NOT connect a 5 V output directly to an ESP32 input.</text>
+    <text class="small" x="75" y="350">Choose R1/R2 for the sensor’s worst-case fault voltage, then measure the divider before connecting the ADC.</text>
   </g>
 
-  <g transform="translate(50 550)">
-    <rect class="panel" width="630" height="420" rx="18"/>
-    <text class="title" x="28" y="45">3. Open-collector pulse sensor</text>
-    <rect class="ecu" x="30" y="100" width="190" height="210" rx="14"/><text class="label" x="82" y="135">ESP32</text>
-    <text class="note" x="55" y="185">3V3</text><text class="note" x="55" y="235">GND</text><text class="note" x="55" y="285">Pulse GPIO</text>
-    <rect class="device" x="415" y="100" width="180" height="210" rx="14"/><text class="label" x="448" y="135">RPM / flow</text>
-    <text class="note" x="450" y="185">VCC*</text><text class="note" x="450" y="235">GND</text><text class="note" x="450" y="285">OUT</text>
-    <path class="wire g" d="M120 228 H450"/><path class="wire s" d="M150 278 H450"/>
-    <rect class="res" x="300" y="145" width="38" height="85"/><text class="tiny" x="347" y="180">4.7k pull-up</text>
-    <path class="wire v" d="M120 178 H319 V145"/><path class="wire s" d="M319 230 V278"/>
-    <text class="warn" x="30" y="350">*Power the sensor only as its datasheet specifies.</text>
-    <text class="tiny" x="30" y="378">The pull-up goes to 3.3 V, never 5 V. A magnetic pickup needs a conditioner,</text>
-    <text class="tiny" x="30" y="400">not this direct circuit.</text>
+  <g transform="translate(45 925)">
+    <rect class="card" width="1310" height="335" rx="18"/>
+    <text class="head" x="28" y="44">3 · Open-collector RPM / flow sensor</text>
+    <text class="sub" x="28" y="73">Use the shown external 4.7 kΩ pull-up OR enable the ECU’s internal pull-up — never use both.</text>
+    <rect class="ecu" x="55" y="105" width="245" height="150" rx="12"/><text class="label" x="135" y="136">ESP32 ECU</text>
+    <text class="small" x="80" y="172">3V3</text><text class="small" x="80" y="207">GND</text><text class="small" x="80" y="242">PULSE GPIO</text>
+    <circle class="terminal" cx="285" cy="166" r="5"/><circle class="terminal" cx="285" cy="201" r="5"/><circle class="terminal" cx="285" cy="236" r="5"/>
+    <rect class="device" x="980" y="105" width="245" height="150" rx="12"/><text class="label" x="1029" y="136">RPM / FLOW</text>
+    <text class="small" x="1005" y="172">VCC*</text><text class="small" x="1005" y="207">GND</text><text class="small" x="1005" y="242">OUT (OC)</text>
+    <circle class="terminal" cx="995" cy="166" r="5"/><circle class="terminal" cx="995" cy="201" r="5"/><circle class="terminal" cx="995" cy="236" r="5"/>
+    <rect class="supply" x="770" y="105" width="165" height="62" rx="10"/><text class="tiny" x="791" y="130">SENSOR SUPPLY</text><text class="tiny" x="789" y="151">per datasheet</text><path class="power" d="M935 136 H955 V166 H995"/>
+    <path class="ground" d="M285 201 H995"/><path class="signal" d="M285 236 H995"/><circle class="node" cx="700" cy="236" r="7"/>
+    <path class="power" d="M285 166 H520"/><rect class="component" x="520" y="148" width="105" height="36" rx="5"/><text class="label" x="541" y="173">4.7 kΩ</text><path class="power" d="M625 166 H700 V236"/>
+    <text class="tiny" x="735" y="263">signal is HIGH while sensor output is open</text>
+    <rect class="warnbox" x="55" y="278" width="1170" height="38" rx="8"/><text class="warn" x="75" y="303">*Power VCC as its datasheet specifies. Never connect a raw magnetic pickup here; it needs a conditioner.</text>
   </g>
 
-  <g transform="translate(720 550)">
-    <rect class="panel" width="630" height="420" rx="18"/>
-    <text class="title" x="28" y="45">4. Active-LOW command switch</text>
-    <rect class="ecu" x="30" y="100" width="200" height="210" rx="14"/><text class="label" x="82" y="135">ESP32</text>
-    <text class="note" x="55" y="185">3V3</text><text class="note" x="55" y="235">GND</text><text class="note" x="55" y="285">Start/Stop GPIO</text>
-    <path class="wire v" d="M120 178 H320"/><rect class="res" x="300" y="178" width="38" height="80"/><text class="tiny" x="350" y="213">pull-up</text>
-    <circle class="dot" cx="319" cy="278" r="6"/><path class="wire s" d="M160 278 H480"/>
-    <circle cx="480" cy="278" r="10" fill="none" stroke="#eef4f8" stroke-width="4"/><circle cx="555" cy="278" r="10" fill="none" stroke="#eef4f8" stroke-width="4"/>
-    <path d="M485 265 L545 235" stroke="#eef4f8" stroke-width="5"/><text class="note" x="455" y="210">push switch</text>
-    <path class="wire g" d="M555 278 V228 H120"/>
-    <text class="ok" x="30" y="350">Open = HIGH (inactive). Pressed = GND (active).</text>
-    <text class="tiny" x="30" y="378">Select Active LOW plus pull-up in Hardware. This is only an ECU command.</text>
-    <text class="warn" x="30" y="402">A separate hardwired emergency stop must remove hazardous energy.</text>
+  <g transform="translate(45 1285)">
+    <rect class="card" width="1310" height="330" rx="18"/>
+    <text class="head" x="28" y="44">4 · Active-LOW command switch</text>
+    <text class="sub" x="28" y="73">Use the shown external 4.7 kΩ pull-up OR enable the ECU’s internal pull-up — never use both.</text>
+    <rect class="ecu" x="55" y="105" width="245" height="145" rx="12"/><text class="label" x="135" y="136">ESP32 ECU</text>
+    <text class="small" x="80" y="178">3V3</text><text class="small" x="80" y="213">GND</text><text class="small" x="80" y="242">COMMAND GPIO</text>
+    <circle class="terminal" cx="285" cy="172" r="5"/><circle class="terminal" cx="285" cy="207" r="5"/><circle class="terminal" cx="285" cy="236" r="5"/>
+    <path class="power" d="M285 172 H500"/><rect class="component" x="500" y="154" width="105" height="36" rx="5"/><text class="label" x="521" y="179">4.7 kΩ</text><path class="power" d="M605 172 H670 V236"/>
+    <path class="signal" d="M285 236 H885"/><circle class="node" cx="670" cy="236" r="7"/>
+    <circle class="symbol" cx="885" cy="236" r="9"/><circle class="symbol" cx="1000" cy="236" r="9"/><path class="symbol" d="M892 222 L982 181"/>
+    <path class="ground" d="M285 207 H380 V260 H1045 V236 H1000"/>
+    <text class="label" x="820" y="150">normally-open pushbutton</text>
+    <rect class="warnbox" x="55" y="272" width="1170" height="38" rx="8"/><text class="warn" x="75" y="297">This is an ECU command only. A separate hardwired emergency stop must remove hazardous energy.</text>
   </g>
 </svg>
