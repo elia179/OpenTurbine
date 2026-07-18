@@ -175,6 +175,11 @@ float Config::oilTempLimit               = 120.0f;
 float Config::fuelPressMin               = 0.0f;
 float Config::battVoltMin                = 0.0f;
 float Config::surgeDetectRpmVariance     = 0.0f;
+uint32_t Config::lowOilConfirmMs         = 500;
+uint32_t Config::oilZeroConfirmMs        = 100;
+uint32_t Config::oilTempConfirmMs        = 1000;
+uint32_t Config::fuelPressConfirmMs      = 500;
+uint32_t Config::battLowConfirmMs        = 1000;
 
 bool     Config::relightEnabled      = false;
 int      Config::relightIgnitionTarget = 0;
@@ -555,16 +560,16 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validInt(su["flame_required_count"], 1, 1000) ||
         !validInt(su["wait_for_input_ch"], 0, 3) ||
         !validBool(su["wait_for_input_state"])) return false;
-    if (!validNumber(su["pre_ign_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(su["rpm_target"], 0.0f, 500000.0f) ||
-        !validNumber(su["final_check_rpm"], 0.0f, 500000.0f) ||
+    if (!validNumber(su["pre_ign_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(su["rpm_target"], 0.0f, 1000000000.0f) ||
+        !validNumber(su["final_check_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(su["starter_demand"], 0.0f, 100.0f) ||
-        !validNumber(su["temp_confirm_target"], 0.0f, 1400.0f) ||
-        !validNumber(su["wait_tot_target"], 0.0f, 1400.0f) ||
+        !validNumber(su["temp_confirm_target"], 0.0f, 100000.0f) ||
+        !validNumber(su["wait_tot_target"], 0.0f, 100000.0f) ||
         !validNumber(su["throttle_set_pct"], 0.0f, 100.0f) ||
         !validNumber(su["oil_pump_on_pct"], 0.0f, 100.0f) ||
         !validNumber(su["modified_idle_multiplier"], 0.0f, 10.0f) ||
-        !validNumber(su["hot_start_tot_threshold"], 0.0f, 1400.0f) ||
+        !validNumber(su["hot_start_tot_threshold"], 0.0f, 100000.0f) ||
         !validNumber(su["fp2_start_pct"], 0.0f, 100.0f) ||
         !validNumber(su["fp2_end_pct"], 0.0f, 100.0f) ||
         !validNumber(su["fp2_demand_pct"], 0.0f, 100.0f)) return false;
@@ -578,8 +583,8 @@ bool validateSettingsDoc(const JsonDocument& doc) {
 
     const char* shutdownMs[] = { "rpm_drop_timeout_ms", "cooldown_timeout_ms", "final_stop_timeout_ms", "oil_scavenge_ms" };
     if (!validMsFields(sd, shutdownMs, sizeof(shutdownMs) / sizeof(shutdownMs[0])) ||
-        !validNumber(sd["rpm_drop_threshold"], 0.0f, 500000.0f) ||
-        !validNumber(sd["rpm_zero_threshold"], 0.0f, 500000.0f) ||
+        !validNumber(sd["rpm_drop_threshold"], 0.0f, 1000000000.0f) ||
+        !validNumber(sd["rpm_zero_threshold"], 0.0f, 1000000000.0f) ||
         !validNumber(sd["cooldown_starter_pct"], 0.0f, 100.0f) ||
         !validNumber(sd["cooldown_oil_pct"], 0.0f, 100.0f) ||
         !validNumber(sd["cooldown_oil_pressure_bar"], 0.0f, 20.0f) ||
@@ -596,12 +601,12 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validBool(th["pullback_n1"]) ||
         !validBool(th["pullback_n2"]) ||
         !validBool(th["pullback_egt"]) ||
-        !validNumber(th["pullback_n1_soft_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(th["pullback_n1_hard_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(th["pullback_n2_soft_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(th["pullback_n2_hard_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(th["pullback_egt_soft_c"], 0.0f, 1400.0f) ||
-        !validNumber(th["pullback_egt_hard_c"], 0.0f, 1400.0f) ||
+        !validNumber(th["pullback_n1_soft_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(th["pullback_n1_hard_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(th["pullback_n2_soft_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(th["pullback_n2_hard_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(th["pullback_egt_soft_c"], 0.0f, 100000.0f) ||
+        !validNumber(th["pullback_egt_hard_c"], 0.0f, 100000.0f) ||
         !validNumber(th["pullback_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["pullback_strength"], 0.0f, 5.0f)) return false;
     if (present(th["pullback_n1_soft_rpm"]) && present(th["pullback_n1_hard_rpm"]) &&
@@ -643,32 +648,37 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     JsonVariantConst so = doc["standby_oil"];
     if (present(so) && (!so.is<JsonObjectConst>() ||
         !validInt(so["source"], 0, 2) ||
-        !validNumber(so["rpm_limit"], 0.0f, 500000.0f) ||
+        !validNumber(so["rpm_limit"], 0.0f, 1000000000.0f) ||
         !validNumber(so["feed_pct"], 0.0f, 100.0f) ||
         !validNumber(so["feed_bar"], 0.0f, 20.0f))) return false;
 
     JsonVariantConst sf = doc["safety"];
-    if (!validInt(sf["check_interval_ms"], 10, 60000) ||
+    if (!validInt(sf["check_interval_ms"], 10, 250) ||
         !validNumber(sf["flameout_shutdown_ms"], 100.0f, 60000.0f) ||
         !validInt(sf["egt_source"], 0, 2) ||
         !validInt(sf["flameout_source"], 0, 3) ||
-        !validNumber(sf["flameout_n1_min_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(sf["flameout_tot_drop_c"], 0.0f, 1400.0f) ||
+        !validNumber(sf["flameout_n1_min_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(sf["flameout_tot_drop_c"], 0.0f, 100000.0f) ||
         !validNumber(sf["tot_rise_rate_limit_deg_s"], 0.0f, 1000.0f) ||
         !validNumber(sf["tit_limit_c"], 0.0f, 100000.0f) ||
         !validNumber(sf["oil_temp_limit_c"], 0.0f, 100000.0f) ||
         !validNumber(sf["fuel_press_min_bar"], 0.0f, 100.0f) ||
         !validNumber(sf["batt_volt_min_v"], 0.0f, 80.0f) ||
-        !validNumber(sf["surge_detect_rpm_variance"], 0.0f, 500000.0f)) return false;
+        !validNumber(sf["surge_detect_rpm_variance"], 0.0f, 1000000000000.0f) ||
+        !validInt(sf["low_oil_confirm_ms"], 0, 60000) ||
+        !validInt(sf["oil_zero_confirm_ms"], 0, 60000) ||
+        !validInt(sf["oil_temp_confirm_ms"], 0, 60000) ||
+        !validInt(sf["fuel_press_confirm_ms"], 0, 60000) ||
+        !validInt(sf["batt_low_confirm_ms"], 0, 60000)) return false;
 
     JsonVariantConst rl = doc["relight"];
     if (present(rl) && (!rl.is<JsonObjectConst>() ||
         !validBool(rl["enabled"]) ||
         !validInt(rl["ignition_target"], 0, 2) ||
         !validInt(rl["confirm_source"], 0, 3) ||
-        !validNumber(rl["min_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(rl["confirm_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(rl["tot_rise_c"], 0.0f, 1400.0f) ||
+        !validNumber(rl["min_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(rl["confirm_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(rl["tot_rise_c"], 0.0f, 100000.0f) ||
         !validInt(rl["relight_timeout_ms"], 0, 3600000))) return false;
 
     JsonVariantConst cal = doc["calibration"];
@@ -698,11 +708,11 @@ bool validateSettingsDoc(const JsonDocument& doc) {
 
     JsonVariantConst di = doc["dynamic_idle"];
     if (present(di) && (!di.is<JsonObjectConst>() ||
-        !validNumber(di["target_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(di["target_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(di["ramp_up_ms"], 0.0f, 3600000.0f) ||
         !validNumber(di["ramp_down_ms"], 0.0f, 3600000.0f) ||
-        !validNumber(di["deadband_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(di["rpm_limit"], 0.0f, 500000.0f) ||
+        !validNumber(di["deadband_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(di["rpm_limit"], 0.0f, 1000000000.0f) ||
         !validNumber(di["min_multiplier"], 0.0f, 1.0f) ||
         !validNumber(di["max_multiplier"], 1.0f, 3.0f) ||
         !validBool(di["use_n2"]) ||
@@ -712,17 +722,17 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     JsonVariantConst ab = doc["afterburner"];
     if (present(ab)) {
         if (!ab.is<JsonObjectConst>() ||
-            !validNumber(ab["min_n1"], 0.0f, 500000.0f) ||
-            !validNumber(ab["max_n1"], 0.0f, 500000.0f) ||
-            !validNumber(ab["max_tot_for_light"], 0.0f, 1400.0f) ||
+            !validNumber(ab["min_n1"], 0.0f, 1000000000.0f) ||
+            !validNumber(ab["max_n1"], 0.0f, 1000000000.0f) ||
+            !validNumber(ab["max_tot_for_light"], 0.0f, 100000.0f) ||
             !validNumber(ab["throttle_threshold"], 0.0f, 1.0f) ||
             !validBool(ab["use_torch"]) ||
             !validBool(ab["use_igniter"]) ||
             !validNumber(ab["torch_spike_pct"], 0.0f, 100.0f) ||
             !validInt(ab["torch_duration_ms"], 0, 3600000) ||
-            !validNumber(ab["torch_tot_limit"], 0.0f, 1400.0f) ||
+            !validNumber(ab["torch_tot_limit"], 0.0f, 100000.0f) ||
             !validInt(ab["flame_mode"], 0, 2) ||
-            !validNumber(ab["tot_rise_deg_c"], 0.0f, 1400.0f) ||
+            !validNumber(ab["tot_rise_deg_c"], 0.0f, 100000.0f) ||
             !validInt(ab["tot_rise_window_ms"], 0, 3600000) ||
             !validInt(ab["assume_ignited_ms"], 0, 3600000) ||
             !validInt(ab["flame_timeout_ms"], 0, 3600000) ||
@@ -732,7 +742,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
             !validInt(ab["pump_control_mode"], 0, 2) ||
             !validNumber(ab["main_fuel_offset_pct"], -20.0f, 50.0f) ||
             !validInt(ab["stabilize_ms"], 0, 3600000) ||
-            !validNumber(ab["stabilize_max_tot"], 0.0f, 1400.0f)) return false;
+            !validNumber(ab["stabilize_max_tot"], 0.0f, 100000.0f)) return false;
         if (present(ab["pump_min_pct"]) && present(ab["pump_max_pct"]) && ab["pump_max_pct"].as<float>() < ab["pump_min_pct"].as<float>()) return false;
     }
 
@@ -741,8 +751,8 @@ bool validateSettingsDoc(const JsonDocument& doc) {
 
     JsonVariantConst gov = doc["governor"];
     if (present(gov) && (!gov.is<JsonObjectConst>() ||
-        !validNumber(gov["target_rpm"], 0.0f, 500000.0f) ||
-        !validNumber(gov["band_rpm"], 0.0f, 500000.0f) ||
+        !validNumber(gov["target_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(gov["band_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(gov["kp"], 0.0f, 0.01f) ||
         !validNumber(gov["pitch_kp"], 0.0f, 0.01f) ||
         !validNumber(gov["pitch_ramp_sec"], 0.0f, 3600000.0f))) return false;
@@ -1448,6 +1458,8 @@ void Config::_applyDefaults() {
     idleSettleBandRpm = 1500.0f; idleFullResponseRpm = 12000.0f; idleTrimUpPctPerSec = 4.0f;
     idleTrimDownPctPerSec = 2.0f; idleLearnRate = 0.02f; idleLearnAccelMax = 1200.0f;
     safetyCheckIntervalMs = 100; flameoutShutdownMs = 3000;
+    lowOilConfirmMs = 500; oilZeroConfirmMs = 100; oilTempConfirmMs = 1000;
+    fuelPressConfirmMs = 500; battLowConfirmMs = 1000;
     egtSource = 0; flameoutSource = 0; flameoutN1MinRpm = 0.0f; flameoutTotDropC = 80.0f;
     totRiseRateLimitDegPerSec = 0.0f; titLimit = 0.0f; oilTempLimit = 120.0f;
     fuelPressMin = 0.0f; battVoltMin = 0.0f; surgeDetectRpmVariance = 0.0f;
@@ -1657,6 +1669,11 @@ void Config::_fromDoc(const JsonDocument& doc) {
     fuelPressMin                  = sf["fuel_press_min_bar"]         | fuelPressMin;
     battVoltMin                   = sf["batt_volt_min_v"]            | battVoltMin;
     surgeDetectRpmVariance        = sf["surge_detect_rpm_variance"]  | surgeDetectRpmVariance;
+    lowOilConfirmMs               = sf["low_oil_confirm_ms"]         | lowOilConfirmMs;
+    oilZeroConfirmMs              = sf["oil_zero_confirm_ms"]        | oilZeroConfirmMs;
+    oilTempConfirmMs              = sf["oil_temp_confirm_ms"]        | oilTempConfirmMs;
+    fuelPressConfirmMs            = sf["fuel_press_confirm_ms"]      | fuelPressConfirmMs;
+    battLowConfirmMs              = sf["batt_low_confirm_ms"]        | battLowConfirmMs;
     if (egtSource < 0 || egtSource > 2) egtSource = 0;
 
     auto gov = doc["governor"];
@@ -1905,6 +1922,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (oilPressureDeadband < 0.0f) oilPressureDeadband = 0.0f;
     oilPumpOvercurrentDelayMs = constrain(oilPumpOvercurrentDelayMs, 100UL, 60000UL);
     if (safetyCheckIntervalMs < 10) safetyCheckIntervalMs = 10;
+    if (safetyCheckIntervalMs > 250) safetyCheckIntervalMs = 250;
     if (flameoutShutdownMs < 100.0f) flameoutShutdownMs = 100.0f;
     flameoutSource = constrain(flameoutSource, 0, 3);
     if (flameoutN1MinRpm < 0.0f) flameoutN1MinRpm = 0.0f;
@@ -2010,14 +2028,14 @@ void Config::_fromDoc(const JsonDocument& doc) {
     fuelPumpMinPct     = constrain(fuelPumpMinPct, 0.0f, 100.0f);
     throttleIdleMaxPct = constrain(throttleIdleMaxPct, fuelPumpMinPct, 100.0f);
     throttleExpo = constrain(throttleExpo, 0.0f, 1.0f);
-    pullbackN1SoftRpm = constrain(pullbackN1SoftRpm, 0.0f, 500000.0f);
-    pullbackN1HardRpm = constrain(pullbackN1HardRpm, 0.0f, 500000.0f);
+    pullbackN1SoftRpm = constrain(pullbackN1SoftRpm, 0.0f, 1000000000.0f);
+    pullbackN1HardRpm = constrain(pullbackN1HardRpm, 0.0f, 1000000000.0f);
     if (pullbackN1HardRpm > 0.0f && pullbackN1HardRpm <= pullbackN1SoftRpm) pullbackN1HardRpm = pullbackN1SoftRpm + 1.0f;
-    pullbackN2SoftRpm = constrain(pullbackN2SoftRpm, 0.0f, 500000.0f);
-    pullbackN2HardRpm = constrain(pullbackN2HardRpm, 0.0f, 500000.0f);
+    pullbackN2SoftRpm = constrain(pullbackN2SoftRpm, 0.0f, 1000000000.0f);
+    pullbackN2HardRpm = constrain(pullbackN2HardRpm, 0.0f, 1000000000.0f);
     if (pullbackN2HardRpm > 0.0f && pullbackN2HardRpm <= pullbackN2SoftRpm) pullbackN2HardRpm = pullbackN2SoftRpm + 1.0f;
-    pullbackEgtSoftC = constrain(pullbackEgtSoftC, 0.0f, 1400.0f);
-    pullbackEgtHardC = constrain(pullbackEgtHardC, 0.0f, 1400.0f);
+    pullbackEgtSoftC = constrain(pullbackEgtSoftC, 0.0f, 100000.0f);
+    pullbackEgtHardC = constrain(pullbackEgtHardC, 0.0f, 100000.0f);
     if (pullbackEgtHardC > 0.0f && pullbackEgtHardC <= pullbackEgtSoftC) pullbackEgtHardC = pullbackEgtSoftC + 1.0f;
     pullbackMinThrottlePct = constrain(pullbackMinThrottlePct, 0.0f, 100.0f);
     pullbackStrength = constrain(pullbackStrength, 0.0f, 5.0f);
@@ -2289,6 +2307,11 @@ void Config::_toDoc(JsonDocument& doc) {
     sf["fuel_press_min_bar"]          = fuelPressMin;
     sf["batt_volt_min_v"]             = battVoltMin;
     sf["surge_detect_rpm_variance"]   = surgeDetectRpmVariance;
+    sf["low_oil_confirm_ms"]          = lowOilConfirmMs;
+    sf["oil_zero_confirm_ms"]         = oilZeroConfirmMs;
+    sf["oil_temp_confirm_ms"]         = oilTempConfirmMs;
+    sf["fuel_press_confirm_ms"]       = fuelPressConfirmMs;
+    sf["batt_low_confirm_ms"]         = battLowConfirmMs;
 
     auto gov = doc["governor"].to<JsonObject>();
     gov["target_rpm"]    = governorTargetRpm;

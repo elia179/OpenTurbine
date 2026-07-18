@@ -31,6 +31,7 @@
 // ============================================================
 
 struct NTCCal {
+    bool  fixedPullup = true;   // true: fixed resistor to 3V3; false: fixed resistor to GND
     float rFixed = 10000.0f;   // pull-up resistor (Ω)
     float r0     = 10000.0f;   // NTC resistance at reference temp (Ω)
     float t0C    = 25.0f;      // reference temperature (°C)
@@ -57,7 +58,9 @@ public:
             return ((_cal.a * raw + _cal.b) * raw + _cal.c) * raw + _cal.d;
         }
 
-        float r = _cal.rFixed * raw / (4095.0f - raw);
+        float r = _cal.fixedPullup
+            ? _cal.rFixed * raw / (4095.0f - raw)
+            : _cal.rFixed * (4095.0f - raw) / raw;
         if (r <= 0.0f) return -999.0f;
 
         float t0K = _cal.t0C + 273.15f;

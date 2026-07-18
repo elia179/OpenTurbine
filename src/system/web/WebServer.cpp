@@ -4,6 +4,9 @@
 #include "../Config.h"
 #include "../HardwareConfig.h"
 #include "../HardwareCapabilities.h"
+#include "../ConfigApplyGate.h"
+#include "../FeedbackRequirements.h"
+#include "../OutputActivity.h"
 #include "../FlightRecorder.h"
 #include "../SessionLogger.h"
 #include "../SessionFiles.h"
@@ -120,15 +123,7 @@ static void _releaseWebRx(AsyncWebServerRequest* req) {
 }
 
 static bool _outputsActiveForOta() {
-    const auto& ed = EngineData::instance();
-    return ed.extraCooldownActive || ed.standbyOilFeedActive ||
-           ed.throttleDemand > 0.001f || ed.fuelPump2Demand > 0.001f ||
-           ed.oilPumpPct > 0.01f || ed.starterDemand > 0.001f ||
-           ed.abPumpDemand > 0.001f || ed.propPitchDemand > 0.001f ||
-           ed.glowPlugDemand > 0.001f ||
-           ed.fuelSolOpen || ed.igniterOn || ed.igniter2On ||
-           ed.starterEnabled || ed.coolFanOn || ed.airstarterOpen ||
-           ed.oilScavengeOn || ed.bleedValveOpen || ed.abSolOpen;
+    return OutputActivity::anyPhysicalDemand(false);
 }
 
 static const char* const WEB_ASSETS[] = {
@@ -315,17 +310,7 @@ static const char* _commandPreflightRejectReason(const OTPacket& pkt) {
 }
 
 static bool _outputActiveBlocksStart() {
-    const auto& ed = EngineData::instance();
-    const bool standbyOilOnly = ed.standbyOilFeedActive &&
-                                ed.oilPumpPct > 0.01f &&
-                                ed.oilPumpPct <= (Config::standbyOilFeedPct + 0.5f);
-    return ed.throttleDemand > 0.001f || ed.fuelPump2Demand > 0.001f ||
-           (ed.oilPumpPct > 0.01f && !standbyOilOnly) ||
-           ed.starterDemand > 0.001f || ed.abPumpDemand > 0.001f ||
-           ed.propPitchDemand > 0.001f || ed.glowPlugDemand > 0.001f ||
-           ed.fuelSolOpen || ed.igniterOn || ed.igniter2On ||
-           ed.starterEnabled || ed.coolFanOn || ed.airstarterOpen ||
-           ed.oilScavengeOn || ed.bleedValveOpen || ed.abSolOpen;
+    return OutputActivity::anyPhysicalDemand(true);
 }
 
 static bool _startInhibitActive() {
@@ -359,7 +344,10 @@ static const char* _startPreflightRejectReason() {
     if (!Config::profileMatch || ed.configLocked) {
         return "Configuration is locked or profile ID does not match";
     }
-    if (!ed.startReleasedSinceBoot) {
+    if (ConfigApplyGate::busy()) {
+        return "Configuration update is still being applied";
+    }
+    if (HardwareConfig::startPin >= 0 && !ed.startReleasedSinceBoot) {
         return "Release the physical START input once after boot before starting";
     }
     if (ed.recoveryLockout && !ed.skipSafetyChecks) {
@@ -371,13 +359,8 @@ static const char* _startPreflightRejectReason() {
     }
     if (!ed.skipSafetyChecks && !ed.benchMode) {
         const uint32_t now = millis();
-        const bool rpmFresh = (!HardwareConfig::hasN1Rpm || (ed.n1Healthy && now - ed.n1SampleMs <= 500UL)) &&
-                              (!HardwareConfig::hasN2Rpm || (ed.n2Healthy && now - ed.n2SampleMs <= 500UL));
-        const bool egtRequired = (HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart) &&
-                                 Config::effectiveEgtSource() != 0;
-        const uint32_t egtMs = Config::effectiveEgtSource() == 2 ? ed.titSampleMs : ed.totSampleMs;
-        if (!rpmFresh || (egtRequired && (!Config::primaryEgtHealthy(ed) || now - egtMs > 1000UL)))
-            return "Configured shaft or EGT feedback is unhealthy or stale";
+        if (!FeedbackRequirements::allRequiredStartFeedbackHealthy(ed, now))
+            return "Feedback used by configured control, safety, or startup logic is unhealthy or stale";
     }
     if (ed.stopSwitchActive) {
         return "STOP switch is active. Release STOP before pressing START.";
@@ -878,9 +861,13 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["wet_glow_fuel_pct"]     = (int)(ed.wetGlowFuelDemand * 100.0f);
     doc["glow_plug_hot"]         = ed.glowPlugHot;
     doc["glow_current_amps"]     = (float)(int)(ed.glowCurrentAmps * 10) / 10.0f;
+    doc["glow_current_healthy"]  = ed.glowCurrentHealthy;
     doc["igniter_current_amps"]  = (float)(int)(ed.igniterCurrentAmps  * 10) / 10.0f;
+    doc["igniter_current_healthy"] = ed.igniterCurrentHealthy;
     doc["igniter2_current_amps"] = (float)(int)(ed.igniter2CurrentAmps * 10) / 10.0f;
+    doc["igniter2_current_healthy"] = ed.igniter2CurrentHealthy;
     doc["oil_pump_current_amps"] = (float)(int)(ed.oilPumpCurrentAmps  * 10) / 10.0f;
+    doc["oil_pump_current_healthy"] = ed.oilPumpCurrentHealthy;
     doc["oil_pump_overcurrent"]  = ed.oilPumpOvercurrent;
     doc["bleed_valve_open"]      = ed.bleedValveOpen;
     doc["bleed_valve_demand"]    = (float)(int)(ed.bleedValveDemand * 1000) / 1000.0f;
@@ -1382,26 +1369,28 @@ void WebServer::_setupRoutes() {
                 req->send(409, "application/json", "{\"error\":\"engine must be idle in STANDBY to change config\"}");
                 return;
             }
+            if (!ConfigApplyGate::tryBeginWebWrite()) {
+                req->send(409, "application/json", "{\"error\":\"START transition or another configuration update is in progress\"}");
+                return;
+            }
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                ConfigApplyGate::release();
+                req->send(409, "application/json", "{\"error\":\"engine left STANDBY before configuration could be applied\"}");
+                return;
+            }
             if (!Config::isLocked()) {
                 bool ok = Config::fromJson(g_webRxBuf, g_webRxLen);
                 // If fromJson succeeds it already saves; do NOT save on failure — it would
                 // silently persist the old (unchanged) config and mislead the caller.
                 if (!ok) {
+                    ConfigApplyGate::release();
                     req->send(400, "application/json", "{\"ok\":false,\"error\":\"settings rejected - check JSON and loaded engine profile_id\"}");
                     return;
                 }
-                bool applyQueued = CommandQueue::push({ OTCommand::APPLY_CONFIG });
-                bool deferred = (EngineData::instance().mode != SysMode::STANDBY);
-                if (!applyQueued) {
-                    req->send(200, "application/json",
-                        "{\"ok\":true,\"warn\":\"config saved, but live block reload queue was full; restart or re-save before testing\"}");
-                } else if (deferred) {
-                    req->send(200, "application/json",
-                        "{\"ok\":true,\"warn\":\"config saved; block params will apply on next engine start\"}");
-                } else {
-                    req->send(200, "application/json", "{\"ok\":true}");
-                }
+                ConfigApplyGate::markReadyForCore();
+                req->send(200, "application/json", "{\"ok\":true,\"applying\":true}");
             } else {
+                ConfigApplyGate::release();
                 req->send(423, "application/json", "{\"error\":\"locked\"}");
             }
         });
@@ -1437,8 +1426,18 @@ void WebServer::_setupRoutes() {
                 req->send(423, "application/json", "{\"error\":\"locked\"}");
                 return;
             }
+            if (!ConfigApplyGate::tryBeginWebWrite()) {
+                req->send(409, "application/json", "{\"error\":\"START transition or another configuration update is in progress\"}");
+                return;
+            }
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                ConfigApplyGate::release();
+                req->send(409, "application/json", "{\"error\":\"engine left STANDBY before configuration could be applied\"}");
+                return;
+            }
             JsonDocument patch;
             if (deserializeJson(patch, g_webRxBuf, g_webRxLen) != DeserializationError::Ok) {
+                ConfigApplyGate::release();
                 req->send(400, "application/json", "{\"error\":\"bad json\"}");
                 return;
             }
@@ -1448,37 +1447,27 @@ void WebServer::_setupRoutes() {
             Config::toJson(current);
             _mergeJsonObject(current.as<JsonObject>(), patch.as<JsonObjectConst>());
             if (!Config::validateJson(current)) {
+                ConfigApplyGate::release();
                 req->send(400, "application/json",
                     "{\"ok\":false,\"error\":\"settings validation failed; reload Config and review invalid values\"}");
                 return;
             }
             if (strcmp(current["profile_id"] | "", HardwareConfig::profileId) != 0) {
+                ConfigApplyGate::release();
                 req->send(409, "application/json",
                     "{\"ok\":false,\"error\":\"engine profile mismatch\"}");
                 return;
             }
             bool ok = Config::fromJson(current);
             if (!ok) {
+                ConfigApplyGate::release();
                 req->send(500, "application/json",
                     "{\"ok\":false,\"error\":\"settings were valid but could not be written to storage\"}");
                 return;
             }
-            bool applyQueued = CommandQueue::push({ OTCommand::APPLY_CONFIG });
             FlightRecorder::logConfigChange("config.patch", 0, 0);
-            // Config values are live in memory immediately.
-            // Block-instance params (applyConfig) are applied on next START; warn if deferred.
-            bool deferred = (EngineData::instance().mode != SysMode::STANDBY);
-            if (!applyQueued) {
-                req->send(200, "application/json",
-                    "{\"ok\":true,\"warn\":\"config saved, but live block reload queue was full; restart or re-save before testing\"}");
-                return;
-            }
-            if (deferred) {
-                req->send(200, "application/json",
-                    "{\"ok\":true,\"warn\":\"config saved; block params will apply on next engine start\"}");
-            } else {
-                req->send(200, "application/json", "{\"ok\":true}");
-            }
+            ConfigApplyGate::markReadyForCore();
+            req->send(200, "application/json", "{\"ok\":true,\"applying\":true}");
         });
 
     // POST /api/theme?t=<key> — persist the web UI theme into ecu_config.json so it
@@ -2158,8 +2147,21 @@ void WebServer::_setupRoutes() {
                     "{\"error\":\"Stop active actuator tools/cooldown before saving hardware config\"}");
                 return;
             }
+            // A complete hardware map takes effect only after reboot. Keep the
+            // transaction gate claimed until then so START cannot observe a
+            // partly replaced map while the old peripherals are still live.
+            if (!ConfigApplyGate::tryBeginWebWrite()) {
+                req->send(409, "application/json", "{\"error\":\"START transition or another configuration update is in progress\"}");
+                return;
+            }
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                ConfigApplyGate::release();
+                req->send(409, "application/json", "{\"error\":\"engine left STANDBY before hardware update\"}");
+                return;
+            }
             size_t previousLen = HardwareConfig::toJson(g_webTxBuf, sizeof(g_webTxBuf));
             if (previousLen >= sizeof(g_webTxBuf)) {
+                ConfigApplyGate::release();
                 req->send(500, "application/json",
                     "{\"ok\":false,\"error\":\"Current hardware section is too large to stage safely\"}");
                 return;
@@ -2173,12 +2175,14 @@ void WebServer::_setupRoutes() {
             bool prevSafSurge= HardwareConfig::safetySurge;
             bool ok = HardwareConfig::fromJson(g_webRxBuf, g_webRxLen);
             if (!ok) {
+                ConfigApplyGate::release();
                 req->send(400, "application/json",
                     "{\"ok\":false,\"error\":\"Invalid hardware section JSON\"}");
                 return;
             }
             if (!HardwareConfig::save()) {
                 HardwareConfig::fromJson(g_webTxBuf, previousLen);
+                ConfigApplyGate::release();
                 req->send(500, "application/json",
                     "{\"ok\":false,\"error\":\"Failed to write ecu_config.json hardware section\"}");
                 return;
@@ -2194,6 +2198,7 @@ void WebServer::_setupRoutes() {
                     Serial.println("[WebServer] ERROR: failed to restore previous hardware after settings sync failure");
                 }
                 Config::load();
+                ConfigApplyGate::release();
                 req->send(500, "application/json",
                     "{\"ok\":false,\"error\":\"Failed to synchronize settings after hardware dependency cleanup\"}");
                 return;
@@ -2380,7 +2385,17 @@ void WebServer::_setupRoutes() {
                 req->send(500, "application/json", "{\"error\":\"merged hardware config too large\"}");
                 return;
             }
+            if (!ConfigApplyGate::tryBeginWebWrite()) {
+                req->send(409, "application/json", "{\"error\":\"START transition or another configuration update is in progress\"}");
+                return;
+            }
+            if (!_isStandbyLike(EngineData::instance().mode)) {
+                ConfigApplyGate::release();
+                req->send(409, "application/json", "{\"error\":\"engine left STANDBY before calibration update\"}");
+                return;
+            }
             if (!HardwareConfig::fromJson(g_webTxBuf, merged)) {
+                ConfigApplyGate::release();
                 req->send(400, "application/json", "{\"error\":\"hardware patch rejected\"}");
                 return;
             }
@@ -2393,17 +2408,13 @@ void WebServer::_setupRoutes() {
             patch.shrinkToFit();
             if (!HardwareConfig::save()) {
                 HardwareConfig::fromJson(g_webRxBuf, previousLen);
+                ConfigApplyGate::release();
                 req->send(500, "application/json", "{\"error\":\"failed to write hardware config\"}");
                 return;
             }
-            bool applyQueued = CommandQueue::push({ OTCommand::APPLY_CONFIG });
             FlightRecorder::logConfigChange("hardware.patch", 0, 0);
-            if (!applyQueued) {
-                req->send(200, "application/json",
-                    "{\"ok\":true,\"warn\":\"hardware calibration saved, but live reload queue was full; restart or re-save before testing\"}");
-            } else {
-                req->send(200, "application/json", "{\"ok\":true}");
-            }
+            ConfigApplyGate::markReadyForCore();
+            req->send(200, "application/json", "{\"ok\":true,\"applying\":true}");
         });
 
     // GET /api/ecu_config — download full unified config (hardware + settings)

@@ -418,15 +418,16 @@ bool docActuatorEnabled(const JsonDocument& doc, const char* key) {
 bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry* registry) {
     const bool hasN1 = docSensorEnabled(doc, "n1_rpm") ||
                        registryHasBinding(registry, "primary_n1", ChannelRegistry::Input) ||
-                       registryHasRole(registry, ChannelRegistry::Input, "speed");
+                       registryHasPurpose(registry, ChannelRegistry::Input, "n1_speed");
     const bool hasN2 = docSensorEnabled(doc, "n2_rpm") ||
                         registryHasBinding(registry, "primary_n2", ChannelRegistry::Input) ||
-                        registryHasRole(registry, ChannelRegistry::Input, "speed");
+                        registryHasPurpose(registry, ChannelRegistry::Input, "n2_speed");
     const bool hasEgt = docSensorEnabled(doc, "tot") || docSensorEnabled(doc, "tit") ||
                         registryHasBinding(registry, "primary_egt", ChannelRegistry::Input) ||
-                        registryHasRole(registry, ChannelRegistry::Input, "temperature");
+                        registryHasPurpose(registry, ChannelRegistry::Input, "tot") ||
+                        registryHasPurpose(registry, ChannelRegistry::Input, "tit");
     const bool hasOilPress = docSensorEnabled(doc, "oil_press") ||
-                             registryHasRole(registry, ChannelRegistry::Input, "pressure");
+                             registryHasPurpose(registry, ChannelRegistry::Input, "oil_pressure");
     const bool hasLowOilSafetyInput = hasOilPress ||
                                       docHasDiRole(doc, "low_oil_switch") ||
                                       registryHasPurpose(registry, ChannelRegistry::Input, "low_oil_switch") ||
@@ -436,7 +437,8 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
                                        registryHasPurpose(registry, ChannelRegistry::Input, "oil_zero_switch") ||
                                        registryHasRole(registry, ChannelRegistry::Input, "oil_zero_switch");
     const bool hasThrottle = docActuatorEnabled(doc, "throttle") ||
-                             registryHasRole(registry, ChannelRegistry::Output, "fuel");
+                             registryHasBinding(registry, "main_fuel_output", ChannelRegistry::Output) ||
+                             registryHasPurpose(registry, ChannelRegistry::Output, "main_fuel");
     const bool hasOilPump = docActuatorEnabled(doc, "oil_pump") ||
                             registryHasRole(registry, ChannelRegistry::Output, "oil_pump");
     const int propPitchType = doc["actuators"]["prop_pitch"]["type"] | 0;
@@ -462,7 +464,7 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
     if ((safety["oil_zero"] | false) && !hasZeroOilSafetyInput) return false;
     if ((safety["tit_overtemp"] | false) &&
         !docSensorEnabled(doc, "tit") &&
-        !registryHasRole(registry, ChannelRegistry::Input, "temperature")) return false;
+        !registryHasPurpose(registry, ChannelRegistry::Input, "tit")) return false;
     if ((safety["oil_temp_high"] | false) &&
         !docSensorEnabled(doc, "oil_temp") &&
         !registryHasPurpose(registry, ChannelRegistry::Input, "oil_temperature")) return false;
@@ -471,7 +473,7 @@ bool validateHardwareDependencies(const JsonDocument& doc, const ChannelRegistry
         !registryHasPurpose(registry, ChannelRegistry::Input, "fuel_pressure")) return false;
     if ((safety["batt_low"] | false) &&
         !docSensorEnabled(doc, "batt_voltage") &&
-        !registryHasRole(registry, ChannelRegistry::Input, "voltage")) return false;
+        !registryHasPurpose(registry, ChannelRegistry::Input, "battery_voltage")) return false;
     return true;
 }
 
@@ -1353,8 +1355,8 @@ bool validatePlatformPins(const JsonDocument& doc,
     JsonVariantConst controls = doc["controls"];
     const int stopPin = jsonPin(controls, "stop_pin");
     const int startPin = jsonPin(controls, "start_pin");
-    if (stopPin < 0 || startPin < 0 ||
-        !gpioAllowed(stopPin) || !gpioAllowed(startPin) ||
+    if (stopPin < 0 ||
+        !gpioAllowed(stopPin) || (startPin >= 0 && !gpioAllowed(startPin)) ||
         (stopPin >= 0 && stopPin == startPin)) return false;
     if ((controls["stop_pullup"] | false) && (controls["stop_pulldown"] | false)) return false;
     if ((controls["start_pullup"] | false) && (controls["start_pulldown"] | false)) return false;
@@ -1414,6 +1416,7 @@ bool validatePlatformPins(const JsonDocument& doc,
                                       strcmp(chip, "ds18b20") == 0 ||
                                       validTcChip(chip);
         if (!validOilTempChip) return false;
+        if (!oilTemp["ntc_pullup"].isNull() && !oilTemp["ntc_pullup"].is<bool>()) return false;
         if (strcmp(chip, "ntc") == 0 &&
             (!requiredPinAllowed(oilTemp, "pin", adcGpioAllowed) ||
              !numberRange(oilTemp, "ntc_beta", 1000.0f, 10000.0f) ||
@@ -1872,6 +1875,7 @@ int   HardwareConfig::oilTempResolution = 12;
 float HardwareConfig::ntcBeta          = 3950.0f;
 float HardwareConfig::ntcR0            = 10000.0f;
 float HardwareConfig::ntcRFixed        = 10000.0f;
+bool  HardwareConfig::ntcFixedPullup   = true;
 bool  HardwareConfig::oilTempUseRawPoly = false;
 float HardwareConfig::oilTempPolyA = 0, HardwareConfig::oilTempPolyB = 0;
 float HardwareConfig::oilTempPolyC = 0, HardwareConfig::oilTempPolyD = 0;
@@ -2415,7 +2419,7 @@ void HardwareConfig::applyDefaults() {
     oilTempPin = -1; oilTempCs = -1; oilTempMiso = -1; oilTempMosi = -1;
     strncpy(oilTempTcType, "K", sizeof(oilTempTcType) - 1);
     oilTempResolution = 12;
-    ntcBeta = 3950.0f; ntcR0 = 10000.0f; ntcRFixed = 10000.0f;
+    ntcBeta = 3950.0f; ntcR0 = 10000.0f; ntcRFixed = 10000.0f; ntcFixedPullup = true;
     oilTempUseRawPoly = false;
     oilTempPolyA = oilTempPolyB = oilTempPolyC = oilTempPolyD = 0.0f;
     oilTempPolyXMin = 0.0f; oilTempPolyXMax = 4095.0f;
@@ -2925,6 +2929,7 @@ void HardwareConfig::_toDoc(JsonDocument& doc) {
     oilt["ntc_beta"]    = ntcBeta;
     oilt["ntc_r0"]      = ntcR0;
     oilt["ntc_r_fixed"] = ntcRFixed;
+    oilt["ntc_pullup"]  = ntcFixedPullup;
     oilt["use_raw_poly"] = oilTempUseRawPoly;
     oilt["poly_a"] = oilTempPolyA; oilt["poly_b"] = oilTempPolyB;
     oilt["poly_c"] = oilTempPolyC; oilt["poly_d"] = oilTempPolyD;
@@ -3338,6 +3343,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
     ntcBeta   = oilt["ntc_beta"]    | ntcBeta;
     ntcR0     = oilt["ntc_r0"]      | ntcR0;
     ntcRFixed = oilt["ntc_r_fixed"] | ntcRFixed;
+    ntcFixedPullup = oilt["ntc_pullup"] | ntcFixedPullup;
     oilTempUseRawPoly = oilt["use_raw_poly"] | oilTempUseRawPoly;
     oilTempPolyA = oilt["poly_a"] | oilTempPolyA;
     oilTempPolyB = oilt["poly_b"] | oilTempPolyB;
@@ -3747,6 +3753,8 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             if (c->driver == ChannelRegistry::Servo) {
                 minUs = (int)c->minValue;
                 maxUs = (int)c->maxValue;
+                if (inverted) *inverted = c->inverted;
+                else activeH = !c->inverted;
             } else if (c->driver == ChannelRegistry::Pwm) {
                 pwmMinPct = constrain(c->minValue, 0.0f, 1.0f) * 100.0f;
                 pwmMaxPct = constrain(c->maxValue, 0.0f, 1.0f) * 100.0f;
@@ -3810,6 +3818,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
             } else if (iface == 4 && oilTemp->pin >= 0) {
                 hasOilTemp = true; strlcpy(oilTempChip, "ntc", sizeof(oilTempChip)); oilTempPin = oilTemp->pin;
                 ntcBeta = oilTemp->thermistorBeta; ntcR0 = oilTemp->thermistorR0; ntcRFixed = oilTemp->thermistorRFixed;
+                ntcFixedPullup = oilTemp->thermistorPullup;
             } else if (iface == 5 && oilTemp->pin >= 0) {
                 hasOilTemp = true; strlcpy(oilTempChip, "ds18b20", sizeof(oilTempChip)); oilTempPin = oilTemp->pin;
                 oilTempResolution = constrain((int)oilTemp->temperatureResolution, 9, 12);
@@ -3824,7 +3833,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
                     fuelFlowPulsesPerLitre = ff->pulsesPerUnit > 0.0f ? ff->pulsesPerUnit : 1.0f;
             }
         }
-        applyAnalog(byIdOrRole(ChannelRegistry::Input, "oil_pressure_main", "pressure"), hasOilPress, oilPressPin);
+        applyAnalog(byIdOrRole(ChannelRegistry::Input, "oil_pressure_main", nullptr), hasOilPress, oilPressPin);
         if (const auto* c = byIdOrRole(ChannelRegistry::Input, "oil_temperature", nullptr))
             if (c->pin >= 0 && c->driver == ChannelRegistry::Analog) hasOilTemp = true;
         applyAnalog(byIdOrRole(ChannelRegistry::Input, "fuel_pressure", nullptr), hasFuelPress, fuelPressPin);
@@ -3855,7 +3864,7 @@ void HardwareConfig::_fromDoc(const JsonDocument& doc) {
         applyInput(bound("operator_idle", ChannelRegistry::Input), hasIdleInput, idleInputPin, idleInputRcPwm);
         if (!hasIdleInput)
             applyInput(byIdOrRole(ChannelRegistry::Input, "operator_idle", nullptr), hasIdleInput, idleInputPin, idleInputRcPwm);
-        const auto* battery = byIdOrRole(ChannelRegistry::Input, "battery_voltage", "voltage");
+        const auto* battery = byIdOrRole(ChannelRegistry::Input, "battery_voltage", nullptr);
         if (!battery) battery = byIdOrRole(ChannelRegistry::Input, "batt_voltage_main", nullptr);
         if (battery && battery->pin >= 0 && battery->driver == ChannelRegistry::Analog) {
             hasBattVoltage = true;

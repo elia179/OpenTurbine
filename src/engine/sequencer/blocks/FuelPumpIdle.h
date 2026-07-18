@@ -24,6 +24,12 @@ public:
 
     void onEnter() override {
         auto& ed = EngineData::instance();
+        _inputFault = HardwareConfig::hasIdleInput && !ed.idleInputValid && !ed.benchMode;
+        if (_inputFault) {
+            ed.throttleDemand = 0.0f;
+            setWaitReason("Idle input unhealthy");
+            return;
+        }
         float norm;
         if (HardwareConfig::idleInputRcPwm) {
             norm = ed.rcIdleValid ? ed.rcIdleNorm : 0.0f;
@@ -40,8 +46,13 @@ public:
     }
 
     BlockResult tick() override {
+        if (_inputFault) return BlockResult::Abort;
+        clearWaitReason();
         return BlockResult::Complete;
     }
 
     void onExit() override {}
+
+private:
+    bool _inputFault = false;
 };

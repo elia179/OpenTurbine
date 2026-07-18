@@ -366,7 +366,7 @@ const BLOCKS = {
     ]
   },
   StarterSpin: {
-    label:'Crank Engine', type:'while', badgeClass:'badge-while',
+    label:'Starter Spin to Light-Off Speed', type:'while', badgeClass:'badge-while',
     visibleIf: hw => actuatorEnabled('starter') && sensorEnabled('n1_rpm'),
     condition: hw => `N1 < ${hw.pre_ign_rpm ?? 5000} rpm`,
     timeout_action:'fault',
@@ -383,7 +383,7 @@ const BLOCKS = {
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
       {key:'ramp_pct_per_s',     label:'Starter output increase rate', unit:'%/s', type:'float', min:0, max:200, step:5, def:30, configKey:'ramp_pct_per_s',
         visibleIf: hw => actuatorHasProportionalOutput('starter')},
-      {key:'pre_ign_rpm',        label:'Stop cranking at N1', unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000, configKey:'pre_ign_rpm',
+      {key:'pre_ign_rpm',        label:'Starter cut target N1', unit:'rpm', type:'float', min:100, max:50000, step:100, def:5000, configKey:'pre_ign_rpm',
         visibleIf: hw => sensorEnabled('n1_rpm'),
         desc:'Starter runs until N1 exceeds this RPM. Without N1 sensor this condition cannot be checked - the block will run for the full timeout.'},
       {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
@@ -395,16 +395,16 @@ const BLOCKS = {
     ]
   },
   PreIgnSpark: {
-    label:'Igniter 1 Spark', type:'action', badgeClass:'badge-action',
+    label:'Igniter 1 Timed On', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('igniter'),
     condition: null, timeout_action:null,
     desc:'Igniter-1-only block. Prefer Igniter On or Pre-Heat when you want to choose igniter 1, AB / pilot igniter, glow, or wet glow from the block card. This block turns igniter 1 ON and leaves it ON when it exits.',
     params:[
-      {key:'pre_ign_spark_ms', label:'Spark duration', unit:'ms', type:'int', min:100, max:10000, step:100, def:1500, configKey:'pre_ign_spark_ms'},
+      {key:'pre_ign_spark_ms', label:'Ignition on time', unit:'ms', type:'int', min:100, max:10000, step:100, def:1500, configKey:'pre_ign_spark_ms'},
     ]
   },
   FuelOpen: {
-    label:'Fuel Open', type:'action', badgeClass:'badge-action',
+    label:'Open Main Fuel Shutoff', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: null, timeout_action:null,
     desc:'Opens the fuel solenoid and sets the internal fuelEverOpened flag (used by Cooldown block to decide if cooling is needed). Instant action. Outputs: fuelSolOpen=true.',
@@ -456,7 +456,7 @@ const BLOCKS = {
     ]
   },
   FuelPumpIdle: {
-    label:'Set Fuel from Idle Control', type:'action', badgeClass:'badge-action',
+    label:'Set Main Fuel for Idle', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Sets the fuel/throttle demand from the idle input (pot or RC channel). The low end is the calibrated minimum reliable fuel-pump output; this block maps raw input (0-4095) linearly up to Max%. If no idle channel is fitted, it uses the calibrated minimum as the fixed idle. Completes immediately.',
@@ -465,7 +465,7 @@ const BLOCKS = {
     ]
   },
   ModifiedIdle: {
-    label:'Set Raised Idle Fuel', type:'action', badgeClass:'badge-action',
+    label:'Set Main Fuel for Raised Idle', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Sets throttle demand = idle input mapped through throttle idle range (Config -> Throttle) x multiplier. Use multiplier > 1.0 for a slightly higher idle on first spool. Completes immediately. throttleDemand is reset to 0 when the engine enters RUNNING. Outputs: throttleDemand set to scaled value.',
@@ -520,14 +520,14 @@ const BLOCKS = {
     ]
   },
   AirstarterOn: {
-    label:'Airstarter On', type:'action', badgeClass:'badge-action',
+    label:'Air Starter Valve Open', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('airstarter_sol'),
     condition: null, timeout_action:null,
     desc:'Open the airstarter solenoid to allow compressed air to drive the starter.',
     params:[]
   },
   AirstarterOff: {
-    label:'Airstarter Off', type:'action', badgeClass:'badge-action',
+    label:'Air Starter Valve Close', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('airstarter_sol'),
     condition: null, timeout_action:null,
     desc:'Close the airstarter solenoid.',
@@ -563,7 +563,7 @@ const BLOCKS = {
     params:[]
   },
   FuelSolClose: {
-    label:'Fuel Solenoid Close', type:'action', badgeClass:'badge-action',
+    label:'Close Main Fuel Shutoff', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: null, timeout_action:null,
     desc:'Close the fuel solenoid. Use to cut fuel without triggering full emergency stop.',
@@ -598,7 +598,7 @@ const BLOCKS = {
     label:'Oil Pump Off', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorEnabled('oil_pump'),
     condition: null, timeout_action:null,
-    desc:'Stop the oil pump. For post-stop oil cut-off or dry cranking.',
+    desc:'Stop the oil pump. For post-stop oil cut-off or intentional dry motoring.',
     params:[]
   },
   OilScavengeOn: {
@@ -692,7 +692,7 @@ const BLOCKS = {
   },
   // ------ Extended / optional blocks ---------------------------------------------------------------------------------------------------------------------------------
   FuelPulse: {
-    label:'Fuel Pulse', type:'wait', badgeClass:'badge-wait',
+    label:'Pulse Main Fuel Shutoff', type:'wait', badgeClass:'badge-wait',
     visibleIf: hw => actuatorEnabled('fuel_sol'),
     condition: hw => `fuel ${hw.fuel_pulse_ms ?? 200}ms`,
     timeout_action:null,
@@ -706,20 +706,20 @@ const BLOCKS = {
     label:'Wait for Safe Restart Temperature', type:'while', badgeClass:'badge-while',
     visibleIf: hw => sensorEnabled('tot') || sensorEnabled('tit'),
     condition: hw => `EGT < ${fmtSeqTemp(hw.wait_tot_target ?? 150)}`,
-    timeout_action:'continue',
-    desc:'Holds the sequence until selected EGT drops below the target temperature. Use before a hot restart attempt, between relight tries, or as a post-cooldown verification. On timeout -> continues (does not abort). If the selected EGT sensor is unhealthy, completes immediately.',
+    timeout_action:null,
+    desc:'Holds until selected EGT is healthy and below the target. In STARTUP, an unhealthy/hot timeout aborts the start. In SHUTDOWN, timeout permits completion so shutdown cannot hang indefinitely.',
     params:[
       {key:'wait_tot_target',  label:'Target EGT', unitType:'temp', type:'float', min:0,    max:500,    step:10,   def:150,    configKey:'wait_tot_target'},
       {key:'wait_tot_timeout', label:'Timeout',    unit:'ms', type:'int',  min:5000, max:600000, step:5000, def:120000, configKey:'wait_tot_timeout'},
     ]
   },
   ThrottleSet: {
-    label:'Throttle Set', type:'action', badgeClass:'badge-action',
+    label:'Set Main Fuel Demand', type:'action', badgeClass:'badge-action',
     visibleIf: hw => actuatorHasProportionalOutput('throttle'),
     condition: null, timeout_action:null,
     desc:'Immediately sets throttleDemand to a fixed percentage and completes. Use for a precise idle hold, warm-up step, or test point. If the throttle slew controller is active it will ramp to this setpoint.',
     params:[
-      {key:'throttle_set_pct', label:'Throttle %', unit:'%', type:'float', min:0, max:100, step:1, def:10, configKey:'throttle_set_pct'},
+      {key:'throttle_set_pct', label:'Main fuel demand', unit:'%', type:'float', min:0, max:100, step:1, def:10, configKey:'throttle_set_pct'},
     ]
   },
   WaitForInput: {
@@ -1807,7 +1807,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
   }
 
   const rows = [
-    hasAct('throttle') ? { label:'Throttle / Fuel ESC', val: state.throttle } : null,
+    hasAct('throttle') ? { label:'Main Fuel Pump / Throttle ESC', val: state.throttle } : null,
     hasAct('fuel_sol') ? { label:'Fuel Solenoid',       val: state.fuelSol } : null,
     hasAct('igniter') ? { label:'Igniter',              val: state.igniter } : null,
     hasAct('igniter2') ? { label:'AB / Pilot Igniter', val: state.igniter2 } : null,
@@ -1815,7 +1815,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     hasAct('starter_en') ? { label:'Starter Enable',    val: state.starterEn } : null,
     hasAct('oil_pump') ? { label:'Oil Pump',            val: state.oilPump } : null,
     hasAct('oil_scavenge_pump') ? { label:'Scavenge Pump', val: state.oilScav } : null,
-    hasAct('airstarter_sol') ? { label:'Airstarter Solenoid', val: state.airstarter } : null,
+    hasAct('airstarter_sol') ? { label:'Air Starter Valve', val: state.airstarter } : null,
     hasAct('cool_fan') ? { label:'Cooling Fan',         val: state.coolFan } : null,
     hasAct('bleed_valve') ? { label:'Bleed Valve',      val: state.bleed } : null,
     hasAct('glow_plug') ? { label:'Glow Plug',          val: state.glow } : null,
@@ -2897,7 +2897,7 @@ function _validateSequence(blocks) {
     const fuelIdx   = blocks.indexOf('FuelOpen');
     const startIdx  = blocks.indexOf('StarterSpin');
     if (fuelIdx < startIdx) {
-      warnings.push('FuelOpen appears before StarterSpin. Fuel will be injected before the starter spins - this risks unburned fuel pooling. Move StarterSpin before FuelOpen.');
+      warnings.push('Open Main Fuel Shutoff appears before Starter Spin to Light-Off Speed. Fuel may enter before rotor airflow is established, risking unburned fuel pooling. Move the starter-spin block before main fuel opens.');
     }
   }
   // SafetyHold without Spool - valid but unusual
@@ -2994,7 +2994,7 @@ function plainRegistryName(raw, fallback = '') {
   const direct = {
     user_throttle:'Throttle Input', operator_throttle:'Throttle Input', operator_thrott:'Throttle Input', throttle_input:'Throttle Input',
     user_idle:'Idle Input', operator_idle:'Idle Input', idle_input:'Idle Input',
-    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Fuel Pump', main_fuel:'Main Fuel Pump',
+    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Pilot / Auxiliary Fuel Pump', main_fuel:'Main Fuel Pump',
     flame:'Flame Sensor', flame_main:'Flame Sensor', coolant_pump:'Coolant Pump',
     coolant_temperature:'Coolant Temperature', pilot_fuel:'Pilot Gas', purge_valve:'Purge Valve',
     air_starter:'Air Starter', prop_pitch:'Prop Pitch', nozzle_actuator:'Nozzle Actuator'
@@ -3580,7 +3580,7 @@ async function saveAll() {
   const startupBlocks = hwCfg['startup_seq'] || [];
   if (startupBlocks.length === 0) {
     setSaveStatus('Warning: Startup sequence is empty - add blocks before saving');
-    alert('Startup sequence is empty.\n\nAdd at minimum: OilPumpOn -> TimedDelay -> IgniterOn -> FuelPumpIdle -> TimedDelay -> IgniterOff -> TimedDelay\nbefore saving. An empty startup sequence will allow the engine to start with no safety or control blocks.');
+    alert('Startup sequence is empty.\n\nAdd at minimum: Oil Pump On -> Timed Delay -> Ignition Output On -> Set Main Fuel for Idle -> Timed Delay -> Ignition Output Off -> Timed Delay\nbefore saving. An empty startup sequence will allow the engine to start with no safety or control blocks.');
     return;
   }
   // Validate sequence safety: warn if critical blocks are missing

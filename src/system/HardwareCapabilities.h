@@ -11,7 +11,7 @@ public:
     static bool hasOutputPurpose(const char* purpose) { return hasPurpose(ChannelRegistry::Output, purpose); }
     static bool available(const char* feature) {
         if (!strcmp(feature, "oil_loop"))
-            return (hasInputRole("pressure") && hasOutputRole("oil_pump")) ||
+            return (hasInputPurpose("oil_pressure") && hasOutputRole("oil_pump")) ||
                    (HardwareConfig::hasOilPress && HardwareConfig::hasOilPump);
         if (!strcmp(feature, "n1_safety"))
             return hasInputBindingOrPurpose("primary_n1", "n1_speed") || HardwareConfig::hasN1Rpm;
@@ -87,7 +87,7 @@ private:
         item["capability"] = capability;
         item["message"] = message;
     }
-    static bool hasPressureInput() { return hasInputRole("pressure") || HardwareConfig::hasOilPress; }
+    static bool hasPressureInput() { return hasInputPurpose("oil_pressure") || HardwareConfig::hasOilPress; }
     static bool hasOilPumpOutput() { return hasOutputRole("oil_pump") || HardwareConfig::hasOilPump; }
     static bool hasOilSafetyInput(const char* switchRole) {
         return hasPressureInput() || hasInputPurpose(switchRole) || hasInputRole(switchRole) || hasDiRole(switchRole);

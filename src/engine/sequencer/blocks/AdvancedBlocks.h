@@ -86,13 +86,23 @@ public:
         // waitHotTimeout prevents an infinite hang if the sensor is broken or
         // misconfigured — proceed after the deadline rather than stalling the
         // entire startup sequence permanently.
-        if (waitUntilHot && HardwareConfig::hasGlowCurrentSensor
-                         && !ed.glowPlugHot && !ed.benchMode) {
+        if (waitUntilHot && !ed.benchMode) {
+            if (!HardwareConfig::hasGlowCurrentSensor || !ed.glowCurrentHealthy)
+                setWaitReason("Glow current feedback unavailable");
+            else if (!ed.glowPlugHot)
+                setWaitReason("Waiting for glow plug temperature");
+            else {
+                clearWaitReason();
+                return BlockResult::Complete;
+            }
             if ((millis() - _startMs) < preheatMs + waitHotTimeout) {
                 return BlockResult::Running;
             }
-            Serial.println("[GlowPreheat] waitUntilHot timeout - proceeding anyway");
+            Serial.println("[GlowPreheat] waitUntilHot timeout - aborting startup");
+            ed.glowPlugDemand = 0.0f;
+            return BlockResult::Abort;
         }
+        clearWaitReason();
         return BlockResult::Complete;
     }
 

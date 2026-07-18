@@ -122,10 +122,14 @@ struct EngineData {
     volatile float    glowPlugDemand  = 0;      // 0.0–1.0 heat level for glow-plug ramp
     volatile float    wetGlowFuelDemand = 0;    // 0.0-1.0 wet-glow fuel output demand
     volatile float    glowCurrentAmps    = 0.0f;   // glow plug current (A), 0 if no sensor
+    volatile bool     glowCurrentHealthy = false;
     volatile bool     glowPlugHot        = false;   // true when current dropped below ready threshold
     volatile float    igniterCurrentAmps  = 0.0f;   // igniter 1 coil current (A), 0 if no sensor
+    volatile bool     igniterCurrentHealthy = false;
     volatile float    igniter2CurrentAmps = 0.0f;   // AB / pilot igniter coil current (A), 0 if no sensor
+    volatile bool     igniter2CurrentHealthy = false;
     volatile float    oilPumpCurrentAmps = 0.0f;   // oil pump current (A), 0 if no sensor
+    volatile bool     oilPumpCurrentHealthy = false;
     volatile bool     oilPumpOvercurrent = false;  // true when oil pump current exceeds max threshold
 
     // ── Afterburner state ─────────────────────────────────────
@@ -133,6 +137,7 @@ struct EngineData {
     volatile bool     abTriggerActive = false;  // trigger input (throttle/switch/input) is asserted
     volatile bool     abArmSwitchOn   = false;  // arm switch currently asserted
     volatile bool     abFlameOn       = false;  // AB flame sensor detected
+    volatile bool     abFlameHealthy  = false;
     volatile bool     abSolOpen       = false;  // AB fuel solenoid (g_actAbSol)
     volatile int      abInputRaw      = 0;      // raw ADC/RC counts for analog/RC AB trigger
     volatile float    abInputNorm     = 0.0f;   // normalized 0.0-1.0 AB command input

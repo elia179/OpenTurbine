@@ -67,6 +67,10 @@ public:
     int         rawCounts()  const { return (int)_avg.avg(); }
     bool        railHealthy() const { return _railCheck(); }
     const char* name()       override { return _name; }
+    void setHealthyRawRange(int minRaw, int maxRaw) {
+        _healthyMinRaw = constrain(minRaw, 0, 4094);
+        _healthyMaxRaw = constrain(maxRaw, _healthyMinRaw + 1, 4095);
+    }
 
 protected:
     static constexpr unsigned long SAMPLE_INTERVAL_MS = 10;
@@ -74,12 +78,14 @@ protected:
     int         _pin;
     const char* _name;
     unsigned long _lastMs = 0;
-    RollingAvg<16> _avg;
+    RollingAvg<4> _avg;
+    int _healthyMinRaw = 10;
+    int _healthyMaxRaw = 4085;
 
     // ADC rail detection — stuck at 0 or 4095 → sensor fault
     bool _railCheck() const {
         int v = (int)_avg.avg();
-        return v > 10 && v < 4085;
+        return v >= _healthyMinRaw && v <= _healthyMaxRaw;
     }
 };
 

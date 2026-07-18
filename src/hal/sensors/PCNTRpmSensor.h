@@ -30,6 +30,7 @@ public:
     }
 
     void begin() override {
+        _cleanup();
         _ready = false;
         if (_pin < 0) return;
         if (_ppr <= 0.0f) {
@@ -45,32 +46,36 @@ public:
             // accumulator is int32, which wraps after ~14 days at max RPM).
             .flags = { .accum_count = 0 }
         };
-        esp_err_t allocErr = pcnt_new_unit(&unitCfg, &_unit);
-        if (allocErr != ESP_OK) {
-            Serial.printf("[%s] PCNT allocation failed: %s\n", _name, esp_err_to_name(allocErr));
-            return;
-        }
+        esp_err_t err = pcnt_new_unit(&unitCfg, &_unit);
+        if (err != ESP_OK) return _fail("allocation", err);
 
         // Glitch filter: ignore pulses shorter than 1000 ns (1 µs)
         pcnt_glitch_filter_config_t flt = { .max_glitch_ns = 1000 };
-        ESP_ERROR_CHECK(pcnt_unit_set_glitch_filter(_unit, &flt));
+        err = pcnt_unit_set_glitch_filter(_unit, &flt);
+        if (err != ESP_OK) return _fail("glitch filter", err);
 
         pcnt_chan_config_t chanCfg = {
             .edge_gpio_num  = _pin,
             .level_gpio_num = -1,  // not used (IDF5 — no PCNT_PIN_NOT_USED macro)
             .flags = {}
         };
-        pcnt_channel_handle_t chan = nullptr;
-        ESP_ERROR_CHECK(pcnt_new_channel(_unit, &chanCfg, &chan));
+        err = pcnt_new_channel(_unit, &chanCfg, &_channel);
+        if (err != ESP_OK) return _fail("channel allocation", err);
 
         // Count on rising edge only
-        ESP_ERROR_CHECK(pcnt_channel_set_edge_action(chan,
+        err = (pcnt_channel_set_edge_action(_channel,
             PCNT_CHANNEL_EDGE_ACTION_INCREASE,   // rising  → +1
             PCNT_CHANNEL_EDGE_ACTION_HOLD));      // falling → no change
 
-        ESP_ERROR_CHECK(pcnt_unit_enable(_unit));
-        ESP_ERROR_CHECK(pcnt_unit_clear_count(_unit));
-        ESP_ERROR_CHECK(pcnt_unit_start(_unit));
+        if (err != ESP_OK) return _fail("edge action", err);
+        err = pcnt_unit_enable(_unit);
+        if (err != ESP_OK) return _fail("enable", err);
+        _enabled = true;
+        err = pcnt_unit_clear_count(_unit);
+        if (err != ESP_OK) return _fail("clear", err);
+        err = pcnt_unit_start(_unit);
+        if (err != ESP_OK) return _fail("start", err);
+        _started = true;
 
         _lastMs    = millis();
         _lastCount = 0;
@@ -92,7 +97,14 @@ public:
         // total never wraps — the IDF's own int32 accumulator overflows
         // after ~14 days at max RPM with typical PPR values.
         int rawInt = 0;
-        pcnt_unit_get_count(_unit, &rawInt);
+        esp_err_t readErr = pcnt_unit_get_count(_unit, &rawInt);
+        if (readErr != ESP_OK) {
+            Serial.printf("[%s] PCNT runtime read failed: %s; feedback disabled without reboot\n",
+                          _name, esp_err_to_name(readErr));
+            _health.set(RpmHealth::SATURATED);
+            _ready = false;
+            return;
+        }
 
         int64_t delta = (int64_t)rawInt - _lastCount;
         if (delta < 0) delta += H_LIM;   // hardware counter wrapped 0…H_LIM
@@ -144,6 +156,7 @@ private:
     const char* _name;
 
     pcnt_unit_handle_t _unit        = nullptr;
+    pcnt_channel_handle_t _channel  = nullptr;
     unsigned long      _lastMs      = 0;
     int64_t            _lastCount   = 0;   // last raw hardware counter value (0…H_LIM)
     int64_t            _accumPulses = 0;   // total pulses since begin() — never overflows
@@ -154,6 +167,27 @@ private:
     RpmHealth          _health;
     uint32_t           _sampleSeq = 0;
     bool               _ready = false;
+    bool               _enabled = false;
+    bool               _started = false;
+
+    void _cleanup() {
+        if (_unit && _started) pcnt_unit_stop(_unit);
+        _started = false;
+        if (_channel) pcnt_del_channel(_channel);
+        _channel = nullptr;
+        if (_unit && _enabled) pcnt_unit_disable(_unit);
+        _enabled = false;
+        if (_unit) pcnt_del_unit(_unit);
+        _unit = nullptr;
+    }
+
+    void _fail(const char* stage, esp_err_t err) {
+        Serial.printf("[%s] PCNT %s failed: %s; channel unavailable without reboot\n",
+                      _name, stage, esp_err_to_name(err));
+        _health.set(RpmHealth::SATURATED);
+        _cleanup();
+        _ready = false;
+    }
 
     void _updateHealth(float rpm, unsigned long dt) {
         _health.clear();

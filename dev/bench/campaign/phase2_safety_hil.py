@@ -117,7 +117,15 @@ class SafetyQualification:
             hw["safety"][key] = key in names
         self.runner.prepare_hardware_save()
         previous_boot = self.dut.data().get("boot_count")
-        code, resp = self.dut._post("/api/hardware", hw)
+        deadline = time.time() + 3.0
+        while True:
+            code, resp = self.dut._post("/api/hardware", hw)
+            if code != 409 or "configuration update" not in str(resp).lower() or time.time() >= deadline:
+                break
+            # Settings PATCH returns after persistence but the ECU core applies
+            # the staged document on its next control tick. A back-to-back full
+            # hardware save should respect that intentional transaction gate.
+            time.sleep(0.05)
         if code != 200:
             raise RuntimeError(f"safety hardware save failed: HTTP {code} {resp}")
         if not self.runner.wait_dut_ready_after_hardware_save(previous_boot_count=previous_boot):
@@ -267,6 +275,11 @@ class SafetyQualification:
             raise RuntimeError(f"could not re-arm EGT rate protection: {resp}")
         self.trip_test("EGT_RATE", lambda: self.t.set_tot(120),
                        lambda: self.t.set_tot(600), "rate-of-rise", timeout=4)
+
+        # Isolate ordinary low-oil from the deliberately faster catastrophic
+        # near-zero-oil protection. With both armed, a stimulus below both
+        # thresholds must correctly report OIL_ZERO first.
+        self.set_safeties("low_oil")
         self.trip_test("LOW_OIL", lambda: self.t.set("OILP", 0.7),
                        lambda: self.t.set("OILP", 0.12), "low oil", timeout=4)
 

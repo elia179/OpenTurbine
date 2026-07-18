@@ -120,6 +120,11 @@ public:
     static float fuelPressMin;             // bar minimum fuel pressure (0 = disabled)
     static float battVoltMin;              // V minimum battery voltage (0 = disabled)
     static float surgeDetectRpmVariance;   // N1 variance threshold for surge detection (0 = disabled)
+    static uint32_t lowOilConfirmMs;
+    static uint32_t oilZeroConfirmMs;
+    static uint32_t oilTempConfirmMs;
+    static uint32_t fuelPressConfirmMs;
+    static uint32_t battLowConfirmMs;
 
     // ── Relight ───────────────────────────────────────────────
     static bool     relightEnabled;      // opt-in; false = flameout → immediate fault
@@ -413,7 +418,7 @@ public:
     static char    loadWarning[192];
 
     // ── Config version ────────────────────────────────────────
-    static constexpr uint8_t CONFIG_VERSION = 6;
+    static constexpr uint8_t CONFIG_VERSION = 7;
 
     // ── API ───────────────────────────────────────────────────
     static void load();

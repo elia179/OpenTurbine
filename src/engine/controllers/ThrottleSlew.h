@@ -3,6 +3,7 @@
 #include "../EngineData.h"
 #include "../../system/Config.h"
 #include "../../system/HardwareConfig.h"
+#include "../../system/FeedbackRequirements.h"
 #include <Arduino.h>
 
 // ============================================================
@@ -73,9 +74,10 @@ public:
         // Dry Bench Mode intentionally permits actuator travel without fitted
         // feedback. In normal operation this interlock must still prevent a
         // fuel increase with missing speed or temperature feedback.
-        if (!ed.benchMode && ((HardwareConfig::hasN1Rpm && !ed.n1Healthy) ||
-            (HardwareConfig::hasN2Rpm && !ed.n2Healthy) ||
-            (Config::effectiveEgtSource() != 0 && !Config::primaryEgtHealthy(ed)))) {
+        if (!ed.benchMode &&
+            ((FeedbackRequirements::n1ForProtectionOrControl() && !ed.n1Healthy) ||
+             (FeedbackRequirements::n2ForProtectionOrControl() && !ed.n2Healthy) ||
+             (FeedbackRequirements::egtForProtectionOrControl() && !Config::primaryEgtHealthy(ed)))) {
             if (target > _current) target = _current;
         }
 

@@ -103,8 +103,10 @@ public:
             ed.limpMode = true;
             _wasActive = false;
             if (usePropPitch) {
+                // Lost free-turbine feedback: add propeller load. Fine pitch
+                // would unload the shaft and can worsen an overspeed.
                 float maxStep = pitchRampSec > 0.0f ? dt / pitchRampSec : 1.0f;
-                _pitchCurrent = constrain(_pitchCurrent - maxStep, 0.0f, 1.0f);
+                _pitchCurrent = constrain(_pitchCurrent + maxStep, 0.0f, 1.0f);
                 ed.propPitchDemand = _pitchCurrent;
             }
             return;

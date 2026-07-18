@@ -1586,7 +1586,7 @@ const REGISTRY_OUTPUT_PRESETS=[
   {group:'Engine actuators',purpose:'purge_valve',role:'valve',label:'Air / fuel purge valve',id:'purge_valve',name:'Purge Valve',driver:4},
   {group:'Engine actuators',purpose:'nozzle_actuator',role:'prop_pitch',label:'Variable nozzle actuator',id:'nozzle_actuator',name:'Nozzle Actuator',driver:6},
   {group:'Engine actuators',role:'cooling_fan',label:'Cooling fan',id:'cooling_fan',name:'Cooling Fan',driver:5},
-  {group:'Engine actuators',role:'fuel_pump',label:'Fuel pump',id:'fuel_pump',name:'Fuel Pump',driver:5},
+  {group:'Engine actuators',role:'fuel_pump',label:'Pilot / auxiliary fuel pump',id:'fuel_pump',name:'Pilot / Aux Fuel',driver:5},
   {group:'Engine actuators',role:'valve',label:'Bleed valve',id:'bleed_valve',name:'Bleed Valve',driver:4},
   {group:'Engine actuators',role:'prop_pitch',label:'Prop pitch',id:'prop_pitch',name:'Prop Pitch',driver:6},
   {group:'Engine actuators',purpose:'ab_valve',role:'valve',label:'Afterburner fuel shutoff valve',id:'ab_solenoid',name:'AB Fuel Valve',driver:4},
@@ -1685,7 +1685,7 @@ function registryHumanizeIdentifier(raw, direction) {
   const direct = {
     user_throttle:'Throttle Input', operator_throttle:'Throttle Input', operator_thrott:'Throttle Input', throttle_input:'Throttle Input',
     user_idle:'Idle Input', operator_idle:'Idle Input', idle_input:'Idle Input',
-    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Fuel Pump', main_fuel:'Main Fuel Pump',
+    oil_pump:'Oil Pump', oil_pump_main:'Oil Pump', fuel_pump:'Pilot / Auxiliary Fuel Pump', main_fuel:'Main Fuel Pump',
     fuel_shutoff:'Fuel Shutoff', fuel_sol:'Fuel Shutoff',
     flame:'Flame Sensor', flame_main:'Flame Sensor',
     low_oil_switch:'Low Oil Switch', oil_zero_switch:'Zero Oil Pressure Switch',

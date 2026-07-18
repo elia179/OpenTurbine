@@ -10,10 +10,11 @@ public:
         : _pin(pin), _minUs(minUs), _maxUs(maxUs), _name(actuatorName) {}
 
     // Runtime-pin overload: update params then initialise.
-    void begin(int pin, int minUs, int maxUs) {
+    void begin(int pin, int minUs, int maxUs, bool inverted = false) {
         _pin   = pin;
         _minUs = minUs;
         _maxUs = maxUs;
+        _inverted = inverted;
         begin();
     }
 
@@ -39,16 +40,17 @@ public:
                       ok ? "OK" : "FAILED");
         _ready = ok;
         _lastUs = -1;
-        if (_ready) writePulse(_minUs); // safe low on boot
+        if (_ready) set(0.0f); // logical safe/off demand on boot
     }
 
     void set(float value) override {
         value = constrain(value, 0.0f, 1.0f);
+        if (_inverted) value = 1.0f - value;
         writePulse(_minUs + (int)(value * (_maxUs - _minUs)));
     }
 
     void off() override {
-        writePulse(_minUs);
+        set(0.0f);
     }
 
     const char* name() override { return _name; }
@@ -78,4 +80,5 @@ private:
     uint8_t     _resBits = MAX_RES_BITS;
     uint32_t    _maxDuty = (1UL << MAX_RES_BITS) - 1UL;
     bool        _ready = false;
+    bool        _inverted = false;
 };

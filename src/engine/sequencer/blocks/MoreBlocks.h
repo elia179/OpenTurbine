@@ -69,13 +69,19 @@ public:
 
     BlockResult tick() override {
         auto& ed = EngineData::instance();
-        if (!Config::primaryEgtHealthy(ed))         return BlockResult::Complete;
+        if (!Config::primaryEgtHealthy(ed)) {
+            setWaitReason("Selected EGT feedback unavailable");
+            if ((millis() - _entryMs) > timeoutMs)
+                return ed.mode == SysMode::STARTUP ? BlockResult::Abort : BlockResult::Complete;
+            return BlockResult::Running;
+        }
         if (Config::primaryEgtC(ed) <= targetTot)   return BlockResult::Complete;
-        if ((millis() - _entryMs) > timeoutMs)      return BlockResult::Complete;
+        if ((millis() - _entryMs) > timeoutMs)
+            return ed.mode == SysMode::STARTUP ? BlockResult::Abort : BlockResult::Complete;
         return BlockResult::Running;
     }
 
-    void onExit() override {}
+    void onExit() override { clearWaitReason(); }
 
 private:
     unsigned long _entryMs = 0;

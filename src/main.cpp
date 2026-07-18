@@ -12,6 +12,8 @@
 #include "system/web/WebServer.h"
 #include "system/MAVLinkOutput.h"
 #include "system/RulesEngine.h"
+#include "system/ConfigApplyGate.h"
+#include "system/FeedbackRequirements.h"
 #include "engine/EngineData.h"
 #include "hal/RCInput.h"
 
@@ -562,6 +564,8 @@ static void validateSequences() {
         else if (strcmp(nm, "GlowPreheat") == 0) {
             if (!hw.hasGlowPlug)
                 addIssue(nm, "No glow plug configured - block will complete immediately with no effect", false);
+            else if (Config::glowWaitUntilHot && !hw.hasGlowCurrentSensor)
+                addIssue(nm, "Wait-until-hot requires calibrated glow-plug current feedback", true);
         }
         else if (strcmp(nm, "PreIgnSpark") == 0) {
             if (!hw.hasIgniter)
@@ -706,7 +710,7 @@ static void validateSequences() {
                     solOpened = true;
             }
             if (!solOpened)
-                addIssue("FuelOpen", "Fuel solenoid is fitted but no startup step opens it - engine will crank with the valve closed", false);
+                addIssue("FuelOpen", "Main fuel shutoff is fitted but no startup step opens it - the starter will motor the rotor with fuel isolated", false);
         }
 
         if (hw.hasStarterEn) {
@@ -1740,7 +1744,8 @@ static void checkCooldownSkip() {
         return;
     }
     auto& hcfg = HardwareConfig::instance();
-    bool startHeld = (digitalRead(hcfg.startPin) == (hcfg.startActiveH ? HIGH : LOW));
+    bool startHeld = hcfg.startPin >= 0 &&
+                     (digitalRead(hcfg.startPin) == (hcfg.startActiveH ? HIGH : LOW));
     bool stopHeld  = (digitalRead(hcfg.stopPin)  == (hcfg.stopActiveH  ? HIGH : LOW));
     if (startHeld && stopHeld) {
         if (_cooldownSkipHoldStart == 0) _cooldownSkipHoldStart = millis();
@@ -1892,6 +1897,7 @@ static void enterFaultShutdown() {
     ed.mode = SysMode::SHUTDOWN;
     cutCombustionAndStarterNow();
     ed.faultShutdownActive = true;
+    if (HardwareConfig::hasPropPitch) ed.propPitchDemand = 1.0f;
     // Synchronously stop any active AB sequence so igniter2, solenoid and
     // AB pump are cut immediately rather than waiting for the next
     // checkABTrigger() tick.
@@ -2157,7 +2163,7 @@ static void handleCommand(const OTPacket& pkt) {
                 break;
             }
             if (ed.mode == SysMode::STANDBY && Config::profileMatch && !ed.configLocked) {
-                if (!ed.startReleasedSinceBoot) {
+                if (HardwareConfig::startPin >= 0 && !ed.startReleasedSinceBoot) {
                     strncpy(ed.lastEvent, "START blocked: release START after boot", sizeof(ed.lastEvent) - 1);
                     break;
                 }
@@ -2174,16 +2180,10 @@ static void handleCommand(const OTPacket& pkt) {
                 }
                 if (!ed.skipSafetyChecks && !ed.benchMode) {
                     unsigned long sn = millis();
-                    bool rpmFresh = (!HardwareConfig::hasN1Rpm || (ed.n1Healthy && sn - ed.n1SampleMs <= 500UL)) &&
-                                    (!HardwareConfig::hasN2Rpm || (ed.n2Healthy && sn - ed.n2SampleMs <= 500UL));
-                    bool egtRequired = (HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart) &&
-                                       Config::effectiveEgtSource() != 0;
-                    unsigned long egtMs = Config::effectiveEgtSource() == 2 ? ed.titSampleMs : ed.totSampleMs;
-                    bool egtFresh = !egtRequired || (Config::primaryEgtHealthy(ed) && sn - egtMs <= 1000UL);
-                    if (!rpmFresh || !egtFresh) {
+                    if (!FeedbackRequirements::allRequiredStartFeedbackHealthy(ed, sn)) {
                         strncpy(ed.lastEvent, "START blocked: critical feedback not fresh", sizeof(ed.lastEvent) - 1);
                         strncpy(ed.faultDescription,
-                                "Cannot start: configured shaft or EGT feedback is unhealthy or stale. Check wiring and wait for a fresh reading.",
+                                "Cannot start: feedback used by configured control, safety, or startup logic is unhealthy or stale. Check wiring and calibration.",
                                 sizeof(ed.faultDescription) - 1);
                         break;
                     }
@@ -2282,7 +2282,19 @@ static void handleCommand(const OTPacket& pkt) {
                     ed.faultDescription[sizeof(ed.faultDescription) - 1] = '\0';
                     break;
                 }
+                // This is the final transition point. Claim it atomically
+                // against Core 0 configuration replacement, then publish the
+                // non-STANDBY mode before releasing the gate.
+                if (!ConfigApplyGate::tryBeginStartTransition()) {
+                    strncpy(ed.lastEvent, "START blocked: configuration update in progress", sizeof(ed.lastEvent) - 1);
+                    break;
+                }
+                if (ed.mode != SysMode::STANDBY) {
+                    ConfigApplyGate::release();
+                    break;
+                }
                 ed.mode = SysMode::STARTUP;
+                ConfigApplyGate::release();
                 ResetRecovery::markActive();
                 ed.faultShutdownActive = false;
                 _buzzerPattern = 3; _buzzerStep = 0;  // double chirp: sequence starting
@@ -2692,6 +2704,12 @@ static void checkStartSwitch() {
     // Edge-detect: normalise to active-low convention (cur==LOW means "pressed")
     // so all downstream logic is unchanged regardless of startActiveH.
     auto& hca = HardwareConfig::instance();
+    if (hca.startPin < 0) {
+        auto& ed = EngineData::instance();
+        ed.startSwitchActive = false;
+        ed.startReleasedSinceBoot = true;
+        return;
+    }
     int  rawLevel = digitalRead(hca.startPin);
     bool rawPressed = hca.startActiveH ? (rawLevel == HIGH) : (rawLevel == LOW);
     // Debounce the raw level first — the edge detect and the manual-relight
@@ -2796,7 +2814,8 @@ void setup() {
     {
         auto& hcfg = HardwareConfig::instance();
         pinMode(hcfg.stopPin,  hcfg.stopPullup  ? INPUT_PULLUP : (hcfg.stopPulldown  ? INPUT_PULLDOWN : INPUT));
-        pinMode(hcfg.startPin, hcfg.startPullup ? INPUT_PULLUP : (hcfg.startPulldown ? INPUT_PULLDOWN : INPUT));
+        if (hcfg.startPin >= 0)
+            pinMode(hcfg.startPin, hcfg.startPullup ? INPUT_PULLUP : (hcfg.startPulldown ? INPUT_PULLDOWN : INPUT));
     }
 
     Config::load();
@@ -2961,6 +2980,21 @@ void loop() {
     static uint32_t loopWindowMaxUs = 0;
     static float loopExecAvgUs = 0.0f;
     if (!Watchdog::feed()) EngineData::instance().watchdogReady = false;
+
+    // Core 0 has finished validating, persisting, and publishing a complete
+    // settings document. Apply all block/controller copies on the ECU core
+    // before either physical or queued START processing is allowed.
+    if (ConfigApplyGate::tryBeginCoreApply()) {
+        if (EngineData::instance().mode == SysMode::STANDBY) {
+            Hardware::applyConfig();
+            validateSequences();
+            ClusterSerial::beginIfNeeded();
+            Serial.println("[OT] Atomic config apply complete");
+        } else {
+            Serial.println("[OT] ERROR: config apply reached ECU core outside STANDBY");
+        }
+        ConfigApplyGate::release();
+    }
 
     checkStopSwitch();
     checkStartSwitch();

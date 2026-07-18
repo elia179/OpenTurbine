@@ -154,18 +154,16 @@ private:
             case P1:              return HardwareConfig::hasP1 && ed.p1Healthy;
             case P2:              return HardwareConfig::hasP2 && ed.p2Healthy;
             case TORQUE:          return HardwareConfig::hasTorque && ed.torqueHealthy;
-            case FLAME:           return HardwareConfig::hasFlame;
-            case THROTTLE_INPUT:  return HardwareConfig::hasThrottleInput &&
-                                         (!HardwareConfig::throttleInputRcPwm || ed.rcThrottleValid);
-            case IDLE_INPUT:      return HardwareConfig::hasIdleInput &&
-                                         (!HardwareConfig::idleInputRcPwm || ed.rcIdleValid);
-            case AB_FLAME:        return HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame;
-            case GLOW_CURRENT:    return HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor;
-            case IGNITER_CURRENT: return HardwareConfig::hasIgniter && HardwareConfig::hasIgniterCurrentSensor;
-            case IGNITER2_CURRENT:return HardwareConfig::hasIgniter2 && HardwareConfig::hasIgniter2CurrentSensor;
-            case OIL_PUMP_CURRENT:return HardwareConfig::hasOilPump && HardwareConfig::hasOilPumpCurrentSensor;
+            case FLAME:           return HardwareConfig::hasFlame && ed.flameHealthy;
+            case THROTTLE_INPUT:  return HardwareConfig::hasThrottleInput && ed.throttleInputValid;
+            case IDLE_INPUT:      return HardwareConfig::hasIdleInput && ed.idleInputValid;
+            case AB_FLAME:        return HardwareConfig::hasAfterburner && HardwareConfig::hasAbFlame && ed.abFlameHealthy;
+            case GLOW_CURRENT:    return HardwareConfig::hasGlowPlug && HardwareConfig::hasGlowCurrentSensor && ed.glowCurrentHealthy;
+            case IGNITER_CURRENT: return HardwareConfig::hasIgniter && HardwareConfig::hasIgniterCurrentSensor && ed.igniterCurrentHealthy;
+            case IGNITER2_CURRENT:return HardwareConfig::hasIgniter2 && HardwareConfig::hasIgniter2CurrentSensor && ed.igniter2CurrentHealthy;
+            case OIL_PUMP_CURRENT:return HardwareConfig::hasOilPump && HardwareConfig::hasOilPumpCurrentSensor && ed.oilPumpCurrentHealthy;
             case AB_INPUT:        return HardwareConfig::hasAfterburner &&
-                                         HardwareConfig::abInputPin >= 0;
+                                         HardwareConfig::abInputPin >= 0 && ed.abInputValid;
             case START_SWITCH:    return HardwareConfig::startPin >= 0;
             case STOP_SWITCH:     return HardwareConfig::stopPin >= 0;
             default:              return false;
