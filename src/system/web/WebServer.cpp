@@ -804,6 +804,7 @@ static size_t _buildTelemetry(char* buf, size_t len, JsonDocument& doc, bool ful
     doc["session_dropped_rows"]  = SessionLogger::droppedRows();
     doc["session_logger_healthy"] = SessionLogger::healthy();
     doc["session_logger_error"]   = SessionLogger::errorCode();
+    doc["session_log_path"]       = SessionLogger::currentPath();
     doc["flight_dropped_events"] = FlightRecorder::droppedEvents();
     doc["log_records"]           = FlightRecorder::recordCount();
     doc["max_n1"]                = (int)ed.maxN1;
@@ -1814,21 +1815,32 @@ void WebServer::_setupRoutes() {
 
     // GET /api/session/list — JSON array of available run numbers, newest first
     _server.on("/api/session/list", HTTP_GET, [](AsyncWebServerRequest* req) {
-        // Collect all run numbers from /logs/session_N.csv files
+        // Probe newest run-number filenames directly. This keeps legacy
+        // timestamp-only file clutter from causing an unbounded directory
+        // walk inside the network task.
         int runs[64];
         int count = 0;
-        File dir = LittleFS.open("/logs");
-        if (dir) {
-            File entry = dir.openNextFile();
-            while (entry) {
-                int num = -1;
-                // entry.name() may return full path (/logs/session_1.csv) or just basename
-                if (count < 64 && SessionFiles::parseRunNumber(entry.name(), num))
-                    runs[count++] = num;
-                entry.close();
-                entry = dir.openNextFile();
-            }
-            dir.close();
+        const uint32_t baseRun = EngineData::instance().runCount + 1;
+        uint32_t run = baseRun;
+        const uint32_t started = millis();
+        uint16_t checked = 0;
+        // Restoring a saved configuration can restore an older run counter
+        // while newer session files remain. Follow the same contiguous
+        // collision chain used by _openSession(), then enumerate downward.
+        while (checked < 4096 && millis() - started < 75) {
+            char path[40];
+            snprintf(path, sizeof(path), "/logs/session_%lu.csv", (unsigned long)run);
+            if (!LittleFS.exists(path)) break;
+            run++;
+            checked++;
+        }
+        if (run > baseRun) run--;
+        while (run > 0 && count < 64 && checked < 4096 && millis() - started < 500) {
+            char path[40];
+            snprintf(path, sizeof(path), "/logs/session_%lu.csv", (unsigned long)run);
+            if (LittleFS.exists(path)) runs[count++] = (int)run;
+            run--;
+            checked++;
         }
         // Sort descending (simple insertion sort — at most 64 entries)
         for (int i = 1; i < count; i++) {

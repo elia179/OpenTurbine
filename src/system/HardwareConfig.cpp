@@ -1529,6 +1529,10 @@ bool validatePlatformPins(const JsonDocument& doc,
             !numberRange(item, "current_mv_a", 0.001f, 10000.0f)) return false;
     }
     if (!numberRange(actuators["glow_plug"], "current_ready_a", 0.0f, 1000.0f) ||
+        !intRange(actuators["igniter"], "dwell_ms", 1, 200) ||
+        !intRange(actuators["igniter"], "rest_ms", 1, 200) ||
+        !intRange(actuators["igniter2"], "dwell_ms", 1, 200) ||
+        !intRange(actuators["igniter2"], "rest_ms", 1, 200) ||
         !numberRange(actuators["igniter"], "coil_sat_a", 0.001f, 1000.0f) ||
         !numberRange(actuators["igniter2"], "coil_sat_a", 0.001f, 1000.0f) ||
         !numberRange(actuators["oil_pump"], "current_max_a", 0.0f, 1000.0f)) return false;

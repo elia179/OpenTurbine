@@ -72,6 +72,10 @@
   </div>
   <div id="standby-warn" class="error-banner" style="display:none">⚠ Engine is not in STANDBY — hardware changes are locked.</div>
 
+  <div class="warning-banner" style="margin-bottom:.8rem">
+    <strong>Who should edit this page?</strong> The person wiring or commissioning the ECU. GPIO numbers, signal type and active polarity must match the actual electrical installation. If you are operating or mechanically setting up an already-wired turbine, import the engine file supplied by the builder and use Config and Calibration; you normally do not need to edit channel IDs or driver details.
+  </div>
+
   <div class="hw-section" id="hardware-profile-section">
     <div class="hw-title">System Profile</div>
     <div class="hw-item-card">
@@ -643,7 +647,7 @@ const DI_ROLES = [
   { val:'sequence_gate',  lbl:'Sequence Gate — WaitForInput block' },
   { val:'ab_arm',         lbl:'AB Arm — afterburner arm switch (hold active)' },
   { val:'ab_fire',        lbl:'AB Fire — trigger afterburner ignition (rising edge)' },
-  { val:'limp_mode',      lbl:'Reduced-Power Mode — limit fuel/throttle while the switch is active' },
+  { val:'limp_mode',      lbl:'Reduced-Power Mode — apply the shared main-fuel cap while the switch is active' },
 ];
 const DI_MODES = [
   { bit:1,  lbl:'STANDBY' },
@@ -1626,7 +1630,7 @@ const REGISTRY_PRESET_HELP = {
     sequence_gate:'Physical permission switch used to gate a sequence action.',
     ab_arm:'Physical afterburner arm/permission switch.',
     ab_fire:'Physical afterburner fire-request switch.',
-    limp_mode:'Physical switch that requests the configured limp operating mode.',
+    limp_mode:'Physical switch that requests the shared Reduced-Power cap. The ECU can also turn this same mode on automatically if feedback required by an enabled safety protection or shaft controller is lost.',
     generic:'Unassigned normalized input for custom rules or sequence logic.'
   },
   output: {

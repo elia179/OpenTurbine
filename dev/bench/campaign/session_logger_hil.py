@@ -1,0 +1,126 @@
+"""Session-log enable/disable and live-web interaction test on OTBench."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import traceback
+import urllib.request
+from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from phase2_safety_hil import SafetyQualification  # noqa: E402
+
+
+SESSION_FIELDS = (
+    "n1", "n2", "tot", "oil_temp", "oil", "p1", "p2", "throttle", "mode", "tit",
+    "batt", "fuel_press", "fuel_flow", "glow", "wet_glow", "glow_current", "ign_current",
+    "ign2_current", "oil_current", "fp2", "ab", "prop", "oil_pct", "loop",
+)
+
+
+def session_cfg(**enabled):
+    cfg = {key: False for key in SESSION_FIELDS}
+    cfg.update(enabled)
+    cfg["interval_ms"] = 100
+    return {"session_log": cfg}
+
+
+def main():
+    q = SafetyQualification()
+    rows = []
+    restored = False
+    error = None
+    try:
+        q.install()
+        q.set_safeties()
+
+        ok, response = q.runner.dc.patch_cfg(session_cfg())
+        if not ok:
+            raise RuntimeError(f"could not disable all session fields: {response}")
+        time.sleep(0.5)
+        before_path = q.dut.data().get("session_log_path") or ""
+        q.start_running()
+        time.sleep(3)
+        q.recover()
+        after_disabled_path = q.dut.data().get("session_log_path") or ""
+        disabled_ok = after_disabled_path == before_path
+        rows.append({
+            "name": "NO_FIELDS_CREATES_NO_SESSION_FILE",
+            "ok": disabled_ok,
+            "before_path": before_path,
+            "after_path": after_disabled_path,
+        })
+        print(f"[{'PASS' if disabled_ok else 'FAIL'}] NO_FIELDS_CREATES_NO_SESSION_FILE")
+
+        ok, response = q.runner.dc.patch_cfg(session_cfg(n1=True, throttle=True, mode=True, loop=True))
+        if not ok:
+            raise RuntimeError(f"could not enable session fields: {response}")
+        time.sleep(0.5)
+        q.start_running()
+        web_samples = 0
+        deadline = time.time() + 10
+        last = {}
+        active_path = ""
+        while time.time() < deadline:
+            last = q.dut.data()
+            active_path = last.get("session_log_path") or active_path
+            web_samples += 1
+            time.sleep(0.2)
+        q.recover()
+
+        csv_text = ""
+        if active_path:
+            with urllib.request.urlopen("http://192.168.4.1/api/session/log", timeout=10) as response:
+                csv_text = response.read().decode("utf-8")
+        lines = [line for line in csv_text.splitlines() if line.strip()]
+        header_ok = bool(lines) and lines[0] == (
+            "t_ms,mode,n1_rpm,thr_pct,loop_hz,loop_exec_avg_ms,loop_exec_max_ms"
+        )
+        enabled_ok = (
+            bool(active_path) and header_ok and len(lines) >= 20 and web_samples >= 25 and
+            last.get("session_logger_healthy") is True and
+            int(last.get("session_dropped_rows") or 0) == 0
+        )
+        rows.append({
+            "name": "ENABLED_LOGGING_RECORDS_WHILE_WEB_STAYS_RESPONSIVE",
+            "ok": enabled_ok,
+            "active_path": active_path,
+            "csv_lines": len(lines),
+            "web_samples": web_samples,
+            "logger_healthy": last.get("session_logger_healthy"),
+            "dropped_rows": last.get("session_dropped_rows"),
+        })
+        print(f"[{'PASS' if enabled_ok else 'FAIL'}] ENABLED_LOGGING_RECORDS_WHILE_WEB_STAYS_RESPONSIVE: "
+              f"samples={web_samples} rows={max(0, len(lines) - 1)}")
+    except Exception as exc:  # noqa: BLE001
+        error = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+        print("ERROR:", error)
+    finally:
+        try:
+            restored = q.close()
+        except Exception as exc:  # noqa: BLE001
+            error = error or f"restore: {type(exc).__name__}: {exc}"
+
+    result = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "firmware": q.firmware_before,
+        "rows": rows,
+        "restored": restored,
+        "error": error,
+    }
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "results",
+                        "session_logger_hil_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(result, handle, indent=2)
+    passed = sum(1 for row in rows if row["ok"])
+    print(f"RESULT: {passed}/{len(rows)} session-log checks passed; restored={restored}")
+    print("Results:", os.path.abspath(path))
+    return 0 if error is None and restored and passed == 2 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

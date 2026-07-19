@@ -21,14 +21,19 @@ const web = read('src/system/web/WebServer.cpp');
 const pcnt = read('src/hal/sensors/PCNTRpmSensor.h');
 const analog = read('src/hal/sensors/AnalogSensor.h');
 const safety = read('src/engine/SafetyMonitor.h');
+const sessionLogger = read('src/system/SessionLogger.cpp');
 const governor = read('src/engine/controllers/PowerTurbineGovernor.h');
 const feedback = read('src/system/FeedbackRequirements.h');
 const ntc = read('src/hal/sensors/NTCSensor.h');
 const sequenceHtml = read('data_src/sequence.html');
 const hardwareHtml = read('data_src/hardware.html');
 const calibrationHtml = read('data_src/calibration.html');
+const toolsHtml = read('data_src/tools.html');
 const capabilities = read('src/system/HardwareCapabilities.h');
 const cooldown = read('src/engine/sequencer/blocks/CooldownSpin.h');
+const version = read('src/system/version.h');
+const changelog = read('CHANGELOG.md');
+const phase2Hil = read('dev/bench/campaign/phase2_safety_hil.py');
 
 expect('repository PlatformIO launcher avoids the broken global shim',
   fs.existsSync(path.join(root, 'tools/pio.cmd')));
@@ -88,6 +93,24 @@ expect('hardware dependency warnings use the same turbine block names',
 expect('zero minimum N1 remains a valid underspeed-disable setting',
   configCpp.includes('if (!isfinite(minRpm) || minRpm < 0.0f)') &&
   configHtml.includes('Set 0 to disable this independent underspeed check'));
+expect('N1 feedback-loss limp is independent of the optional underspeed limit',
+  safety.includes('if (HardwareConfig::hasN1Rpm && m == SysMode::RUNNING)') &&
+  safety.includes('if (minRpm > 0.0f && ed.n1Healthy && ed.n1Rpm < minRpm)') &&
+  safety.includes('LIMP: N1 feedback lost'));
+expect('empty session-log selection does not write timestamp-only run files',
+  sessionLogger.includes('if (Config::sessionLogMask == 0)') &&
+  sessionLogger.includes('_startPending = false;'));
+expect('session-log listing cannot perform an unbounded directory walk',
+  web.includes('checked < 4096 && millis() - started < 500'));
+expect('valid slow igniter PWM cycles have sufficient LEDC timer resolution',
+  hardware.includes('g_actIgniterLedc.begin(hw.igniterPin, freq, 14)') &&
+  hardware.includes('g_actIgniter2Ledc.begin(hw.igniter2Pin, freq, 14)') &&
+  hwConfig.includes('intRange(actuators["igniter"], "dwell_ms", 1, 200)') &&
+  hwConfig.includes('intRange(actuators["igniter2"], "rest_ms", 1, 200)'));
+expect('reduced-power caps total main fuel after the afterburner offset',
+  hardware.includes('ed.throttleDemand + ed.abFuelOffset') &&
+  hardware.indexOf('if (ed.limpMode && ed.mode == SysMode::RUNNING)') >
+    hardware.indexOf('ed.throttleDemand + ed.abFuelOffset'));
 expect('startup feedback follows actual block consumers',
   feedback.includes('startupHas("FlameConfirm")') &&
   !feedback.includes('startupHas("StarterSpin") || startupHas("Spool") ||\n               startupHas("SafetyHold")'));
@@ -103,5 +126,13 @@ expect('cooldown defaults agree at sixty seconds',
   sequenceHtml.includes("def:60000, configKey:'cooldown_timeout_ms'"));
 expect('thermistor calibration explains the configured divider orientation',
   calibrationHtml.includes('ntc-divider-note') && calibrationHtml.includes('ntc_pullup: registryOil.ntc_pullup'));
+expect('reduced-power cap discloses automatic safety-feedback activation',
+  configHtml.includes('automatically because feedback used by an enabled protection/controller becomes unhealthy') &&
+  toolsHtml.includes('feedback required by an enabled safety protection or shaft controller is lost'));
+expect('release changelog covers the source firmware version',
+  changelog.includes(`## [${version.match(/OT_VERSION\s+"([^"]+)"/)[1]}]`));
+expect('phase-two HIL records the live DUT firmware version',
+  phase2Hil.includes('self.firmware_before = self.dut.data().get("fw_version"') &&
+  !phase2Hil.includes('"firmware": "1.9.2"'));
 
 console.log(`Safety regression audit passed (${checks.length} checks).`);

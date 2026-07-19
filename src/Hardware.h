@@ -1887,8 +1887,12 @@ namespace Hardware {
         if (hw.hasIgniter) {
             if (hw.igniterPwm) {
                 int period = hw.igniterDwellMs + hw.igniterRestMs;
-                uint32_t freq = (period > 0) ? (1000u / (uint32_t)period) : 111u;
-                g_actIgniterLedc.begin(hw.igniterPin, freq, 8);
+                uint32_t freq = (period > 0) ? (uint32_t)(1000u / (uint32_t)period) : 111u;
+                if (freq == 0) freq = 1;
+                // Long dwell/rest cycles need the extra timer divider range.
+                // Eight-bit LEDC cannot generate much of the 1..200 ms UI range
+                // on the S3 and used to leave a fitted igniter uninitialised.
+                g_actIgniterLedc.begin(hw.igniterPin, freq, 14);
                 g_actIgniter = &g_actIgniterLedc;
             } else {
                 g_actIgniterRelay.begin(hw.igniterPin, hw.igniterActiveH);
@@ -1898,8 +1902,9 @@ namespace Hardware {
         if (hw.hasIgniter2 && hw.igniter2Pin >= 0) {
             if (hw.igniter2Pwm) {
                 int period = hw.igniter2DwellMs + hw.igniter2RestMs;
-                uint32_t freq = (period > 0) ? (1000u / (uint32_t)period) : 111u;
-                g_actIgniter2Ledc.begin(hw.igniter2Pin, freq, 8);
+                uint32_t freq = (period > 0) ? (uint32_t)(1000u / (uint32_t)period) : 111u;
+                if (freq == 0) freq = 1;
+                g_actIgniter2Ledc.begin(hw.igniter2Pin, freq, 14);
                 g_actIgniter2 = &g_actIgniter2Ledc;
             } else {
                 g_actIgniter2Relay.begin(hw.igniter2Pin, hw.igniter2ActiveH);
@@ -2064,6 +2069,13 @@ namespace Hardware {
         // so ThrottleSlew's feedback loop never sees the inflated value.
         if (hw.hasThrottle && g_actThrottle) {
             float demand = constrain(ed.throttleDemand + ed.abFuelOffset, 0.0f, 1.0f);
+            // Reduced-Power Mode promises a cap on the actual main-fuel output.
+            // Enforce it after the AB offset is composed so afterburner compressor-
+            // fuel coordination cannot bypass a manual or feedback-loss cap.
+            if (ed.limpMode && ed.mode == SysMode::RUNNING) {
+                demand = min(demand,
+                             constrain(Config::limpMaxThrottlePct / 100.0f, 0.0f, 1.0f));
+            }
             // Standby calibration/tools intentionally bypass the saved min-spin
             // threshold so the operator can measure or lower the threshold.
             if (ed.mode != SysMode::STANDBY) demand = Config::applyFuelPumpMinimum(demand);

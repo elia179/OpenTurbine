@@ -328,6 +328,15 @@ static void _closeSession() {
 // ── Core 1: snapshot sensor state → queue (no file I/O) ──────
 void SessionLogger::startSession() {
     _acceptRows = false;
+    // An empty field mask would otherwise create timestamp-only files and
+    // periodically flush LittleFS during every run. Besides wasting flash,
+    // those flushes can stall the ESP32 Wi-Fi task for hundreds of
+    // milliseconds. Treat "no fields selected" as logging disabled.
+    if (Config::sessionLogMask == 0) {
+        _startPending = false;
+        if (_open) _endPending = true;
+        return;
+    }
     _startPending = true;
 }
 

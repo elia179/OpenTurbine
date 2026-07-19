@@ -112,7 +112,7 @@ const TOOLS = [
   { id:'TOGGLE_DYNAMIC_IDLE', name:'Automatic Idle Speed Control', durationMs:0, modes:['STANDBY','RUNNING'], desc:'Turns automatic idle-speed holding on or off for the next or current run. Available only when enabled in Hardware with fuel output and RPM feedback.', toggleKey:'dynamic_idle_enabled',
     visibleIf: hw => !!(hw?.controllers?.dynamic_idle && hw?.actuators?.throttle?.enabled &&
       (hw?.sensors?.n1_rpm?.enabled || hw?.sensors?.n2_rpm?.enabled)) },
-  { id:'TOGGLE_LIMP_MODE',    name:'Reduced-Power Mode', durationMs:0, modes:['STANDBY','RUNNING'], desc:'Restricts maximum fuel/throttle output for the next or current run.', toggleKey:'limp_mode',
+  { id:'TOGGLE_LIMP_MODE',    name:'Reduced-Power Mode', durationMs:0, modes:['STANDBY','RUNNING'], desc:'Restricts maximum main-fuel output for the next or current run. The ECU also turns this same mode on if feedback required by an enabled safety protection or shaft controller is lost.', toggleKey:'limp_mode',
     visibleIf: hw => !!hw?.actuators?.throttle?.enabled },
   { id:'STARTER_LOW_RPM_SUPPORT', name:'Low-RPM Starter Support', durationMs:0, modes:['RUNNING'], desc:'Arm optional starter support for this run. The starter engages at the configured output when N1 is low, turns off above the configured disengage speed, and disarms automatically at shutdown. Configure it under Config > Low-RPM Starter Support.', toggleKey:'starter_low_rpm_support_active',
     visibleIf: hw => !!(hw?.actuators?.starter?.enabled && hw?.actuators?.starter?.low_rpm_support_enabled && hw?.sensors?.n1_rpm?.enabled) },

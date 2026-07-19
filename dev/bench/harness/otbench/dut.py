@@ -76,7 +76,18 @@ class DUT:
         try:
             with self._open_retry(req) as r:
                 body = r.read().decode("utf-8")
-                return r.status, (json.loads(body) if body else {})
+                if not body:
+                    return r.status, {}
+                try:
+                    parsed = json.loads(body)
+                except json.JSONDecodeError:
+                    # The request already received a successful HTTP status and
+                    # may have changed ECU state (START, toggle, config apply).
+                    # Retrying a non-idempotent command could undo or duplicate
+                    # it. Preserve the success status and let callers verify
+                    # state through the normal GET path instead.
+                    parsed = {"ok": True, "transport_warning": "non-JSON success body"}
+                return r.status, parsed
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
             try:
@@ -127,11 +138,18 @@ class DUT:
 
     def poll_until(self, predicate, timeout=5.0, interval=0.15):
         """Poll /api/data until predicate(data) is truthy or timeout.
-        Returns (ok, last_data)."""
+        Transient transport or JSON failures are treated as a missed sample;
+        the caller's full timeout remains authoritative. Returns
+        (ok, last_successful_data)."""
         deadline = time.time() + timeout
         last = {}
         while time.time() < deadline:
-            last = self.data()
+            try:
+                last = self.data()
+            except (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError,
+                    json.JSONDecodeError):
+                time.sleep(interval)
+                continue
             if predicate(last):
                 return True, last
             time.sleep(interval)

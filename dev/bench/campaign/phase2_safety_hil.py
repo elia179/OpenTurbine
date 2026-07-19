@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,6 +32,8 @@ class SafetyQualification:
         self.runner = TenBuildRunner(port=os.environ.get("OTBENCH_PORT", "COM3"))
         self.dut = self.runner.dut
         self.t = self.runner.t
+        self.firmware_before = self.dut.data().get("fw_version", "unknown")
+        self.firmware_after = None
         self.rows: list[dict] = []
 
     def build_profile(self, hw):
@@ -105,7 +108,7 @@ class SafetyQualification:
         if float(settings.get("engine", {}).get("n2_rpm_limit") or 0) != 30000:
             raise RuntimeError(f"hard N2 limit did not persist: {settings.get('engine', {}).get('n2_rpm_limit')!r}")
         if data.get("seq_has_errors"):
-            _, data = self.dut.poll_until(lambda d: not d.get("seq_has_errors"), timeout=3, interval=0.05)
+            _, data = self.dut.poll_until(lambda d: not d.get("seq_has_errors"), timeout=3, interval=0.15)
         if data.get("seq_has_errors"):
             raise RuntimeError(f"safety profile readiness issues: {data.get('seq_issues')}")
         print("Verified registry purposes:", sorted(required))
@@ -147,7 +150,7 @@ class SafetyQualification:
         code, resp = self.dut.start()
         if code != 200:
             raise RuntimeError(f"START rejected: HTTP {code} {resp}")
-        ok, data = self.dut.poll_until(lambda d: d.get("mode") == "RUNNING", timeout=20, interval=0.08)
+        ok, data = self.dut.poll_until(lambda d: d.get("mode") == "RUNNING", timeout=20, interval=0.15)
         if not ok:
             raise RuntimeError(f"did not reach RUNNING: mode={data.get('mode')} fault={data.get('fault_description')}")
         return data
@@ -203,7 +206,7 @@ class SafetyQualification:
             if self.dut.data().get("mode") not in ("STARTUP", "RUNNING"):
                 safe_side = False
                 break
-            time.sleep(0.08)
+            time.sleep(0.15)
         t0 = time.time()
         fault_drive()
         tripped = matched = False
@@ -218,7 +221,7 @@ class SafetyQualification:
                 tripped = True
                 elapsed = round(time.time() - t0, 3)
                 break
-            time.sleep(0.04)
+            time.sleep(0.15)
         cut_ok, cut_detail = self.safe_cut() if tripped else (False, {})
         self.record(name, safe_side, tripped, matched, elapsed, detail.splitlines()[0], cut_ok, cut_detail)
         self.recover()
@@ -233,7 +236,7 @@ class SafetyQualification:
         if code == 200:
             ok, data = self.dut.poll_until(
                 lambda d: d.get("mode") in ("SHUTDOWN", "FAULT") or "hot" in str(d.get("fault_description") or "").lower(),
-                timeout=6, interval=0.04,
+                timeout=6, interval=0.15,
             )
             tripped = ok
             detail = str(data.get("fault_description") or data.get("last_event") or "")
@@ -251,16 +254,72 @@ class SafetyQualification:
         self.start_running()
         self.t.set("STOP", 1)
         t0 = time.time()
-        ok, data = self.dut.poll_until(lambda d: d.get("mode") not in ("STARTUP", "RUNNING"), timeout=3, interval=0.03)
+        ok, data = self.dut.poll_until(lambda d: d.get("mode") not in ("STARTUP", "RUNNING"), timeout=3, interval=0.1)
         cut_ok, cut_detail = self.safe_cut() if ok else (False, {})
         self.record("PHYSICAL_STOP", True, ok, ok, round(time.time() - t0, 3) if ok else None,
                     str(data.get("last_event") or data.get("fault_description") or ""), cut_ok, cut_detail)
         self.t.set("STOP", 0)
         self.recover()
 
+    def shared_reduced_power_cap(self):
+        """Manual reduced-power and protection-feedback loss use one cap."""
+        self.set_safeties("overspeed")
+        ok, resp = self.runner.dc.patch_cfg({
+            "engine": {"min_rpm": 0},
+            "limp_mode": {"max_throttle_pct": 30},
+            "rpm_health": {"zero_stuck_ticks": 4},
+        })
+        if not ok:
+            raise RuntimeError(f"could not configure shared reduced-power test: {resp}")
+        self.start_running()
+        self.t.set("THROTTLE_IN", 3.3)
+        full_ok, full = self.dut.poll_until(
+            lambda d: float(d.get("throttle_effective") or 0) > 0.65,
+            timeout=4, interval=0.15,
+        )
+        code, resp = self.dut.command("TOGGLE_LIMP_MODE")
+        manual_ok, manual = self.dut.poll_until(
+            lambda d: d.get("limp_mode") and float(d.get("throttle_effective") or 1) <= 0.305,
+            timeout=3, interval=0.15,
+        )
+        manual_pulse = self.t.get("THROTTLE_OUT")
+        self.dut.command("TOGGLE_LIMP_MODE")
+        clear_ok, _ = self.dut.poll_until(
+            lambda d: not d.get("limp_mode") and float(d.get("throttle_effective") or 0) > 0.65,
+            timeout=3, interval=0.15,
+        )
+        self.t.set("N1", 0)
+        auto_ok, automatic = self.dut.poll_until(
+            lambda d: d.get("mode") == "RUNNING" and not d.get("n1_healthy") and
+                      d.get("limp_mode") and float(d.get("throttle_effective") or 1) <= 0.305,
+            timeout=6, interval=0.15,
+        )
+        auto_pulse = self.t.get("THROTTLE_OUT")
+        physical_ok = int(manual_pulse.get("us") or 0) <= 1350 and int(auto_pulse.get("us") or 0) <= 1350
+        passed = full_ok and code == 200 and manual_ok and clear_ok and auto_ok and physical_ok
+        detail = {
+            "command": {"code": code, "response": resp},
+            "full_effective": full.get("throttle_effective"),
+            "manual_effective": manual.get("throttle_effective"),
+            "automatic_effective": automatic.get("throttle_effective"),
+            "manual_pulse": manual_pulse,
+            "automatic_pulse": auto_pulse,
+        }
+        self.rows.append({"name": "SHARED_REDUCED_POWER_CAP", "ok": bool(passed), "detail": detail})
+        print(f"[{'PASS' if passed else 'FAIL'}] SHARED_REDUCED_POWER_CAP: {detail}")
+        self.recover()
+        ok, resp = self.runner.dc.patch_cfg({
+            "engine": {"min_rpm": 10000},
+            "limp_mode": {"max_throttle_pct": 50},
+        })
+        if not ok:
+            raise RuntimeError(f"could not restore safety campaign settings: {resp}")
+        self.set_safeties("overspeed", "n2_overspeed", "overtemp", "low_oil", "hot_start", "oil_zero", "flameout")
+
     def run(self):
         self.install()
         self.hot_start()
+        self.shared_reduced_power_cap()
         self.trip_test("OVERSPEED", lambda: self.t.set("N1", hz(49000)),
                        lambda: self.t.set("N1", hz(60000)), "over-speed", timeout=4)
         self.trip_test("N2_OVERSPEED", lambda: self.t.set("N2", hz(29000)),
@@ -304,16 +363,23 @@ def main():
     try:
         qualification.run()
     except Exception as exc:  # noqa: BLE001
-        error = f"{type(exc).__name__}: {exc}"
+        error = f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
         print("ERROR:", error)
     finally:
         try:
             restored = qualification.close()
         except Exception as exc:  # noqa: BLE001
             print("RESTORE ERROR:", exc)
+    try:
+        qualification.firmware_after = qualification.dut.data().get("fw_version", "unknown")
+    except Exception as exc:  # noqa: BLE001
+        qualification.firmware_after = f"unavailable: {type(exc).__name__}"
+    firmware_match = qualification.firmware_after == qualification.firmware_before
     result = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "firmware": "1.9.2",
+        "firmware": qualification.firmware_before,
+        "firmware_after": qualification.firmware_after,
+        "firmware_match": firmware_match,
         "rows": qualification.rows,
         "restored": restored,
         "error": error,
@@ -325,9 +391,10 @@ def main():
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(result, handle, indent=2)
     passed = sum(1 for row in qualification.rows if row["ok"])
-    print(f"RESULT: {passed}/{len(qualification.rows)} safety checks passed; restored={restored}")
+    print(f"RESULT: {passed}/{len(qualification.rows)} safety checks passed; "
+          f"firmware={qualification.firmware_before}; restored={restored}")
     print("Results:", os.path.abspath(path))
-    return 0 if error is None and restored and passed == len(qualification.rows) and passed >= 7 else 1
+    return 0 if error is None and firmware_match and restored and passed == len(qualification.rows) and passed >= 7 else 1
 
 
 if __name__ == "__main__":

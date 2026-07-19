@@ -407,8 +407,8 @@ public:
         // STARTUP: only fire if N1 previously crossed minRpm and then fell back
         //          (genuine stall during spool-up, not the normal crank-up phase
         //          where the engine must pass through 0→minRpm on its way to idle).
-        if (HardwareConfig::hasN1Rpm && minRpm > 0.0f && m == SysMode::RUNNING) {
-            if (ed.n1Healthy && ed.n1Rpm < minRpm) {
+        if (HardwareConfig::hasN1Rpm && m == SysMode::RUNNING) {
+            if (minRpm > 0.0f && ed.n1Healthy && ed.n1Rpm < minRpm) {
                 if (HardwareConfig::safetyFlameout && ed.flameMonitorActive
                     && _effectiveFlameoutSource() == 2) {
                     return;
@@ -421,6 +421,7 @@ public:
                 // (RpmHealth::isTrustworthy — PCNTRpmSensor holds the last real
                 // reading), so this only latches on persistent sensor faults.
                 ed.limpMode = true;  // RPM sensor lost → limp
+                strncpy(ed.lastEvent, "LIMP: N1 feedback lost", sizeof(ed.lastEvent) - 1);
             }
         }
         if (HardwareConfig::hasN2Rpm && FeedbackRequirements::n2ForProtectionOrControl() &&

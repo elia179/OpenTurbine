@@ -10,6 +10,36 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+### Changed
+- Reduced the hardware-aware Essentials view to the common commissioning limits and controls; specialist tuning, logging, integration, windmilling-oil, and afterburner detail remains available under **All settings**.
+- Clarified that Hardware is an installer/electronics commissioning surface and that the Reduced-Power cap is shared by manual activation and automatic loss of feedback required by an enabled protection or shaft controller.
+
+### Fixed
+- HIL campaign records now capture the firmware version reported by the DUT instead of writing a stale hard-coded version.
+- Fixed S3 dwell/rest igniter PWM initialization across the documented timing range, and reject imported igniter timings outside the Hardware UI limits.
+- Enforced the Reduced-Power maximum at the final main-fuel actuator boundary so an afterburner main-fuel offset cannot exceed the configured cap.
+- Disabled timestamp-only session files when no log fields are selected, avoiding needless flash wear and long LittleFS flush stalls during a run.
+- Bounded session-log listing by newest run numbers so a large legacy log directory cannot block the ECU web task for tens of seconds.
+
+## [1.9.5] — 2026-07-18
+
+### Changed
+- Standardized dashboard, sequencer, cluster, tools, calibration, and hardware terminology around turbine devices such as the main fuel metering output, main fuel shutoff, air starter valve, and combustion confirmation.
+- Preserved configurable turbine use cases: a zero minimum-running N1 disables the independent underspeed check, telemetry-only sensors do not cause limp, and cooldown may intentionally reuse the starter after the immediate shutdown cut.
+
+### Fixed
+- Made START feedback requirements follow the sensors actually consumed by enabled safety features, controllers, and sequence blocks, including FlameConfirm and registry oil loops.
+- Hardened shutdown of registry-defined pilot/start, auxiliary, main, and afterburner fuel/ignition outputs while preserving intentional cooldown actions.
+- Reset delayed safety confirmations across inactive and bypassed states, corrected zero-RPM FinalStop completion, aligned the cooldown timeout, and prevented legacy oil-loop migration from binding a non-oil pressure channel.
+
+## [1.9.4] — 2026-07-18
+
+### Changed
+- Updated turbine setup, calibration, sequencer naming, and device guidance, including known-point thermistor calibration and explicit coarse-pitch fail-safe behavior.
+
+### Fixed
+- Hardened configuration application, start interlocks, device dependency cleanup, output shutdown invariants, sensor-loss handling, current protection, reboot gating, and multi-platform build/setup behavior found during the post-1.9.3 exhaustive audit.
+
 ## [1.9.3] — 2026-07-17
 
 ### Fixed

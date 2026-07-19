@@ -64,8 +64,19 @@ def now_id() -> str:
 
 
 def fetch_json(path: str, timeout: float = 6.0):
-    with urllib.request.urlopen(BASE + path, timeout=timeout) as r:
-        return json.load(r)
+    last_error = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(BASE + path, timeout=timeout) as r:
+                body = r.read()
+            if not body:
+                raise json.JSONDecodeError("empty DUT response", "", 0)
+            return json.loads(body)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = exc
+            if attempt < 3:
+                time.sleep(0.4)
+    raise RuntimeError(f"DUT JSON request failed after retries: {path}") from last_error
 
 
 def write_json(path: str, obj) -> None:
@@ -133,6 +144,9 @@ class TenBuildRunner:
         self.dut = self.rig.dut
         self.dc = self.rig.dcfg
         self.t = self.rig.t
+        self.firmware_before = self.dut.data().get("fw_version", "unknown")
+        self.firmware_after = None
+        self.restored = False
         self.original_hw = self.dut.hardware()
         self.original_cfg = self.dut.config()
         self.base_profile_id = self.original_hw.get("profile_id", "OpenTurbine")
@@ -151,8 +165,12 @@ class TenBuildRunner:
     def save_progress(self) -> None:
         write_json(self.result_path, {
             "run_id": self.run_id,
+            "firmware": self.firmware_before,
+            "firmware_after": self.firmware_after,
+            "firmware_match": self.firmware_after in (None, self.firmware_before),
             "backup_path": self.backup_path,
             "results": self.results,
+            "restored": self.restored,
         })
 
     def api_alive(self) -> bool:
@@ -958,7 +976,9 @@ class TenBuildRunner:
             self.log(f"WARNING: original config restore failed: HTTP {code} {resp}")
             return False
         self.safe_standby()
-        return True
+        self.firmware_after = self.dut.data().get("fw_version", "unknown")
+        self.restored = True
+        return self.firmware_after == self.firmware_before
 
     def close(self):
         try:
@@ -1024,7 +1044,7 @@ def build_profiles(r: TenBuildRunner):
     def p8(hw):
         r.common_turbine(hw, with_fuel_sol=False)
         r.enable_n1(hw)
-        hw["actuators"]["igniter"].update(enabled=True, pin=21, active_h=True, pwm=True, dwell_ms=800, rest_ms=200)
+        hw["actuators"]["igniter"].update(enabled=True, pin=21, active_h=True, pwm=True, dwell_ms=80, rest_ms=20)
         hw["actuators"]["glow_plug"].update(enabled=True, pin=39, output_type=1, type=2, active_h=True,
                                             fuel_pin=12, fuel_type=0, fuel_active_h=True, fuel_delay_ms=0)
 

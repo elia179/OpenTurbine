@@ -253,6 +253,10 @@ async function goto(page, route, waitSelector) {
       'Config workspace should render the canonical grouped navigation');
     assert.equal(await page.locator('#btn-view-basic').getAttribute('class').then(v => v.includes('active')), true);
     assert.equal(await page.locator('#cfg-state-badge').textContent(), 'Saved');
+    const essentialCount = await page.locator('.cfg-field:visible').count();
+    assert.ok(essentialCount <= 32, `Essentials should stay focused; rendered ${essentialCount} fields`);
+    assert.match(await page.locator('#cf-lm_mt').evaluate(el => el.closest('.cfg-field')?.textContent || ''),
+      /automatically because feedback used by an enabled protection\/controller becomes unhealthy/i);
     await page.locator('#cfg-search').fill('governor');
     assert.match(await page.locator('#cfg-result-count').textContent(), /^\d+ settings?$/);
     assert.equal(await shown(page, '[data-group="power"]'), true);
@@ -285,13 +289,15 @@ async function goto(page, route, waitSelector) {
     assert.equal(await page.locator('#dev-mode-tools-link').getAttribute('href'), '/tools.html#card-dev-mode');
     assert.equal(await page.locator('#btn-dev-mode').count(), 0,
       'Config must not bypass the guarded Developer Mode control on Tools');
-    for (const selector of ['#ab-cfg-section', '#ab-ign-section', '#ab-flame-section', '#ab-run-section']) {
+    for (const selector of ['#ab-cfg-section', '#ab-ign-section', '#ab-flame-section']) {
       assert.equal(await shown(page, selector), true, `${selector} should be available in Essentials for fitted AB hardware`);
     }
+    assert.equal(await shown(page, '#ab-run-section'), false,
+      'specialist afterburner running-fuel tuning belongs under All settings');
     assert.equal(await page.locator('#cf-ab_pcm option[value="2"]').isDisabled(), true,
       'a stale hidden input pin must not enable Dedicated AB Input unless that trigger source is active');
     assert.match(await page.locator('#cf-ab_tt').evaluate(el => el.closest('.cfg-field')?.title || ''), /Hardware.*Afterburner trigger and arm/i);
-    results.push('Essentials exposes afterburner settings from the fitted registry hardware');
+    results.push('Essentials stays focused while exposing the fitted afterburner commissioning choices');
     const firstTot = await page.locator('#cf-tot_limit').inputValue();
     assert.ok(firstTot === '720' || firstTot === '1328');
     await page.locator('#unit-temp-btn').click();
