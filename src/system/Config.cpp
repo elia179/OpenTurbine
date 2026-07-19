@@ -1281,11 +1281,16 @@ bool Config::save() {
     }
     ConfigStorageWriteRelease release;
 
-    // Read-modify-write: preserve other sections (hardware etc.)
+    // Read-modify-write: preserve Hardware while replacing Settings. Parse
+    // only the subtree that survives; the incoming web transaction may still
+    // own another large JsonDocument on classic ESP32.
     JsonDocument fullDoc;
     File fr = LittleFS.open(PATH, "r");
     if (fr) {
-        DeserializationError err = deserializeJson(fullDoc, fr);
+        JsonDocument filter;
+        filter["hardware"] = true;
+        DeserializationError err = deserializeJson(
+            fullDoc, fr, DeserializationOption::Filter(filter));
         fr.close();
         if (err) {
             Serial.printf("[Config] Refusing to overwrite unreadable ecu_config.json: %s\n",
@@ -1294,9 +1299,7 @@ bool Config::save() {
         }
     }
 
-    JsonDocument settingsDoc;
-    _toDoc(settingsDoc);
-    fullDoc[SECTION].set(settingsDoc);
+    _writeDoc(fullDoc[SECTION].to<JsonObject>());
 
     // Write to temp file first — if power is lost mid-write the original is still intact.
     File fw = LittleFS.open(TMP_PATH, "w");
@@ -2170,6 +2173,11 @@ void Config::_fromDoc(const JsonDocument& doc) {
 }
 
 void Config::_toDoc(JsonDocument& doc) {
+    doc.clear();
+    _writeDoc(doc.to<JsonObject>());
+}
+
+void Config::_writeDoc(JsonObject doc) {
     sanitizeForHardware();
     doc["profile_id"]     = HardwareConfig::profileId[0] ? HardwareConfig::profileId : OT_PROFILE_ID;
     doc["config_version"] = CONFIG_VERSION;

@@ -10,6 +10,21 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.9] — 2026-07-19
+
+### Changed
+- Hardware temperature and torque cards now use one plainly named **Sensor interface** selector, with required HX711 and thermocouple GPIO fields visibly marked until assigned.
+- Valve/actuator cards can select relay, PWM, or servo output where the turbine function is not intrinsically a hard shutoff; air-starter PWM/servo endpoints retain the sequencer's safe on/off command semantics.
+- OTBench 0.6 adds role-reversed MAX6675, MAX31855, MAX31856, and HX711 protocol emulation for physical GPIO qualification.
+
+### Fixed
+- Classic ESP32 now uses deterministic static FreeRTOS timer-task storage and keeps the flight-recorder queue out of critically fragmented normal DRAM, eliminating the pre-setup timer-task boot assertion.
+- Hardware and Settings saves parse only the unified-config subtree they must preserve and rebuild the replacement subtree in place, preventing low-memory saves from dropping registry bindings or failing after repeated Hardware changes.
+- Boot and web saves now use the same complete Hardware validation path and emit the rejected validation stage to serial diagnostics.
+- HX711 torque registry cards now mirror the dedicated load-cell driver's calibrated value and health instead of incorrectly sampling DOUT as a second analog input.
+- Sensor-only test profiles retain the mandatory physical STOP input and clear hidden low-RPM starter support when the starter is absent.
+- New ECU profiles leave optional low-RPM starter assistance disabled until the user fits both a starter output and N1 feedback.
+
 ## [1.9.8] — 2026-07-19
 
 ### Changed

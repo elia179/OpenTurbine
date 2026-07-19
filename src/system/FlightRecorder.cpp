@@ -3,6 +3,7 @@
 #include "HardwareConfig.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <esp_attr.h>
 #include <Arduino.h>
 #include <esp_efuse.h>
 
@@ -30,9 +31,19 @@ static int s_lineCount = -1;
 // slot write + head advance + drop counting are serialized with s_ringMux.
 // Single consumer: only Core 0's drain writes s_ringTail, and it reads
 // slots only behind a committed s_ringHead.
-static constexpr int    RING_SLOTS    = 16;
 static constexpr size_t RING_SLOT_LEN = 500;   // fits the largest (FAULT) record
-static char             s_ring[RING_SLOTS][RING_SLOT_LEN];
+#if defined(OT_PLATFORM_ESP32)
+// Keep scarce classic DRAM contiguous for the mandatory FreeRTOS timer-task
+// stack. RTC slow memory is internal, byte-addressable and always powered in
+// normal operation, so it is safe for this low-frequency producer queue. The
+// classic queue holds 14 pending records versus 15 on S3; normal draining is
+// much faster than event production, and overflow remains explicitly counted.
+static constexpr int RING_SLOTS = 15;
+RTC_NOINIT_ATTR static char s_ring[RING_SLOTS][RING_SLOT_LEN];
+#else
+static constexpr int RING_SLOTS = 16;
+static char s_ring[RING_SLOTS][RING_SLOT_LEN];
+#endif
 static volatile uint8_t s_ringHead = 0;
 static volatile uint8_t s_ringTail = 0;
 static portMUX_TYPE     s_ringMux  = portMUX_INITIALIZER_UNLOCKED;

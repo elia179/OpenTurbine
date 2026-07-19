@@ -136,14 +136,20 @@ RESET                -> OK                 (all driven outputs to safe/idle)
 SET <name> <value>   -> OK | ERR ...       digital: 1/0 · freq: Hz · analog: volts
 GET <name>           -> VAL <name> level=.. | us=.. hz=.. duty=.. level=..
 STATE                -> VAL STATE <name>=.. ...   (all inputs in one shot)
+EMU MAX6675 <C|open> -> OK                 (S3 tester in role-reversed harness)
+EMU MAX31855 <C|open> -> OK
+EMU MAX31856 <C|open> -> OK
+EMU HX711 <counts>   -> OK
+EMU OFF 0            -> OK                 (restore normal bench signal roles)
 ```
 
 ## 7. Limits / next steps
 
-- **SPI thermocouples (TOT/TIT/oil-temp)** aren't driven yet — emulating a
-  MAX6675/31855 as an SPI slave is a future OTBench module. For now, test
-  temperature-driven logic (overtemp, EGT flameout) via Dev-Mode value injection
-  once that endpoint exists, or add the SPI-slave emulator.
+- **Role-reversed digital sensors:** OTBench 0.6 can emulate MAX6675, MAX31855,
+  MAX31856 and HX711 traffic when the S3 is the tester and the classic ESP32 is
+  the DUT. This validates GPIO transactions, decoding, fault state and ECU
+  calibration, but it does not reproduce thermocouple cold-junction accuracy,
+  a load-cell bridge, excitation, analogue noise, grounding or engine-bay EMI.
 - **Only 2 clean analog (DAC) channels** on the tester (GPIO 25/26 → THROTTLE_IN,
   OILP). Without smoothing caps, FLAME and IDLE_IN are digital HIGH/LOW, not swept.
   Add an MCP4728 (4-ch I²C DAC) if you need more true-analog channels.

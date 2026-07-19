@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from otbench.dut import DUT
 from otbench.dutconfig import DutConfig
 from otbench.tester import Tester
+from ten_build_webui_hil import chan_output
 
 dut = DUT(); dc = DutConfig(dut); t = Tester("COM4").open()
 results = []
@@ -26,8 +27,29 @@ def setup(hw):
     a["fuel_sol"].update(enabled=True, pin=22, active_h=True)
     a["igniter"].update(enabled=True, pin=23, active_h=True)
     a["starter_en"].update(enabled=True, pin=33, active_h=True)
-ok = dc.multi(setup, check=lambda hw: hw["actuators"]["throttle"].get("pin") == 17
+    # The registry is the fitted-hardware authority.  Editing only the legacy
+    # mirror makes the ECU correctly remove those devices again on reboot.
+    hw["channel_registry"] = {
+        "version": 1,
+        "inputs": [],
+        "outputs": [
+            chan_output("main_fuel", "Main Fuel Pump", "fuel", "main_fuel", 6, 17,
+                        min=1000, max=2000),
+            chan_output("oil_pump_main", "Oil Pump", "oil_pump", "oil_pump", 5, 21),
+            chan_output("fuel_shutoff", "Main Fuel Shutoff", "valve", "fuel_shutoff", 4, 22),
+            chan_output("igniter", "Igniter", "igniter", "igniter", 4, 23),
+            chan_output("starter_enable", "Starter Enable", "starter_en", "starter_enable", 4, 33),
+        ],
+        "bindings": [
+            {"key": "main_fuel_output", "channel": "main_fuel"},
+            {"key": "main_fuel_shutoff", "channel": "fuel_shutoff"},
+        ],
+    }
+ok = dc.multi(setup, check=lambda hw: hw["actuators"]["throttle"].get("enabled") is True
+              and hw["actuators"]["throttle"].get("pin") == 17
+              and hw["actuators"]["fuel_sol"].get("enabled") is True
               and hw["actuators"]["fuel_sol"].get("pin") == 22
+              and hw["actuators"]["igniter"].get("enabled") is True
               and hw["actuators"]["igniter"].get("pin") == 23)[0]
 print("classic actuators mapped to wired GPIOs:", ok)
 

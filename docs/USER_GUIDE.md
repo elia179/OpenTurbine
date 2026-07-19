@@ -179,7 +179,7 @@ Sensor supply           -> voltage required by sensor
 
 ### TOT/EGT or TIT thermocouple
 
-Thermocouples connect to a supported converter module, not directly to the ESP32. Hardware supports MAX6675, MAX31855, and MAX31856 configurations.
+Thermocouples connect to a supported converter module, not directly to the ESP32. On the Hardware card, choose the actual **Sensor interface**: analog temperature transmitter, MAX6675, MAX31855, or MAX31856. A turbine-gas TOT/EGT or TIT card intentionally does not offer low-temperature NTC or DS18B20 interfaces.
 
 ```text
 Thermocouple -> converter module
@@ -191,6 +191,7 @@ Converter supply          -> module-compatible supply
 
 - Several SPI temperature modules may share CLK, MISO, and MOSI, but each requires its own CS.
 - MAX31856 requires MOSI because the ECU configures and verifies the chip.
+- Every displayed SPI pin is required. A red pin field means the device is not ready to save; CLK/MISO/MOSI may be shared by compatible converter cards, but CS must remain unique.
 - Match thermocouple type, polarity, connector metals, and extension wire.
 - Mount the probe at the temperature station whose limit you are configuring.
 
@@ -203,6 +204,10 @@ The built-in NTC datasheet mode assumes:
 ```
 
 Enter the real pull-up resistance, NTC R₀, and beta value. For another analog circuit or sensor curve, use four well-spaced known-temperature points on Calibration instead.
+
+### Torque / load-cell sensor
+
+Choose **Analog 0–3.3 V transmitter** or **HX711 load-cell amplifier** under the torque card's **Sensor interface**. An HX711 requires two GPIOs: DOUT is an ECU input and SCK is an ECU output. Enter the no-load raw count and Nm/count scale from a known applied torque; do not treat the default numbers as a calibration. The ECU mirrors the dedicated HX711 driver's calibrated value and health into the same Hardware registry channel used by the dashboard, rules, and logging.
 
 ### DS18B20 temperature sensor
 
@@ -264,6 +269,7 @@ Open **Hardware** and describe the actual installation. Do not enable a sensor o
 - Use **Installed Channel Inventory** for channels that rules, sequences, and controller bindings need to reference by ID. The stable ID is the machine key; keep it short, unique, and unchanged after other features reference it. The display name is safe to edit.
 - Inventory inputs can be digital, analog, pulse/frequency, or RC PWM. Digital switch roles can feed existing DI behaviors such as inhibit-start, E-stop, AB arm/fire, limp mode, sequence gate, and fault inputs. Registry-driven DI behavior currently uses the existing active-low/pull-up default unless a legacy DI channel supplies richer switch metadata.
 - Inventory outputs can be relay, PWM, or servo/ESC. Relay outputs quantize at the driver boundary; PWM and servo outputs preserve the full 0-100% demand used by rules, sequences, tools, and controllers.
+- General valves, bleed valves, purge/pilot valves, and air-starter actuators may use relay, PWM, or servo endpoints. The standard air-starter sequence blocks remain deliberately on/off, so a PWM/servo air-starter card moves between its configured 0% and 100% endpoints. Dedicated hard fuel-shutoff and afterburner-shutoff purposes remain relay-only.
 - Repeatable outputs with the same role are allowed. For example, `Oil Pump 1` can be the main bound pump while `Oil Pump 2` is controlled by rules, sequences, tools, or another oil loop.
 - The standard `AB igniter` inventory output bridges to the existing Igniter 2 / afterburner ignition path when it uses the standard `ab_igniter` or `igniter2_main` ID.
 - Confirm the correct ESP32 target.

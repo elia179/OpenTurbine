@@ -1,0 +1,262 @@
+{
+  "timestamp": "2026-07-19T15:51:35",
+  "firmware": "1.9.9",
+  "firmware_after": "1.9.9",
+  "firmware_match": true,
+  "rows": [
+    {
+      "name": "HOT_START",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.389,
+      "detail": "Hot start aborted: exhaust temperature was still too high to start safely.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 1000,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "SHARED_REDUCED_POWER_CAP",
+      "ok": true,
+      "detail": {
+        "command": {
+          "code": 200,
+          "response": {
+            "ok": true
+          }
+        },
+        "full_effective": 1,
+        "manual_effective": 0.3,
+        "automatic_effective": 0.3,
+        "manual_pulse": {
+          "us": 1298,
+          "hz": 50.0,
+          "duty": 0.065,
+          "level": 1
+        },
+        "automatic_pulse": {
+          "us": 1299,
+          "hz": 50.0,
+          "duty": 0.065,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "OVERSPEED",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.517,
+      "detail": "Engine over-speed: RPM exceeded the safety limit.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 1000,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "N2_OVERSPEED",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.487,
+      "detail": "N2 over-speed: power-turbine RPM exceeded its hard shutdown limit.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 999,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "OVERTEMP",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.542,
+      "detail": "Over-temperature: selected engine temperature source (TOT/TIT) exceeded the limit.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 1000,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "EGT_RATE",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.346,
+      "detail": "EGT rate-of-rise too fast: temperature is climbing dangerously quickly.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 999,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "LOW_OIL",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.731,
+      "detail": "Low oil pressure during operation.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 1000,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "OIL_ZERO",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.309,
+      "detail": "Oil pressure read near zero - possible pump failure or broken fitting.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 999,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "FLAMEOUT",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.768,
+      "detail": "Flameout: combustion was lost according to the configured flameout source, and relight was not possible.",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 999,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    },
+    {
+      "name": "PHYSICAL_STOP",
+      "ok": true,
+      "safe_side": true,
+      "tripped": true,
+      "matched": true,
+      "elapsed_s": 0.513,
+      "detail": "Seq: TimedDelay",
+      "safe_cut": true,
+      "safe_cut_detail": {
+        "mode": "SHUTDOWN",
+        "fuel": {
+          "level": 0
+        },
+        "igniter": {
+          "level": 0
+        },
+        "throttle": {
+          "us": 1000,
+          "hz": 50.0,
+          "duty": 0.05,
+          "level": 1
+        }
+      }
+    }
+  ],
+  "restored": true,
+  "error": null
+}

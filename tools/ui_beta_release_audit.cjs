@@ -352,7 +352,7 @@ function enumNames(source, marker) {
     assert.match(hardwareHeader, /MAX_CUSTOM_BLOCKS = 8/);
     assert.match(hardwareHeader, /struct CustomBlockDef/);
     const hardwareConfig = fs.readFileSync(path.join('src', 'system', 'HardwareConfig.cpp'), 'utf8');
-    assert.match(hardwareConfig, /void writeCustomBlocks\(JsonDocument& doc\)/);
+    assert.match(hardwareConfig, /void writeCustomBlocks\(JsonObject doc\)/);
     assert.match(hardwareConfig, /void readCustomBlocks\(const JsonDocument& doc\)/);
     assert.match(hardwareConfig, /doc\["custom_blocks"\]/);
     assert.match(hardwareConfig, /strncmp\(name, "custom_", 7\) == 0\) return customBlockAvailable\(name\)/);

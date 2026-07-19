@@ -492,6 +492,11 @@ namespace Hardware {
         if (c.driver == ChannelRegistry::RcPwm && !strcmp(c.purpose, "idle")) return 5;
         if (c.driver == ChannelRegistry::Analog &&
             (!strcmp(c.purpose, "oil_pressure") || !strcmp(c.id, "oil_pressure_main"))) return 6;
+        // HX711 uses the dedicated timing-sensitive load-cell driver. Mirror
+        // its calibrated result; never analogRead() the DOUT GPIO a second
+        // time as though this were an analog torque transmitter.
+        if (c.driver == ChannelRegistry::Analog && c.torqueInterface == 1 &&
+            (!strcmp(c.purpose, "torque") || !strcmp(c.id, "torque_main"))) return 7;
         return 0;
     }
 
@@ -550,6 +555,9 @@ namespace Hardware {
         } else if (kind == 6) {
             ed.registryInputValue[i] = ed.oilPressure;
             ed.registryInputHealthy[i] = ed.oilHealthy;
+        } else if (kind == 7) {
+            ed.registryInputValue[i] = ed.torque;
+            ed.registryInputHealthy[i] = ed.torqueHealthy;
         }
     }
 
@@ -823,10 +831,19 @@ namespace Hardware {
         return nullptr;
     }
 
+    inline const ChannelRegistry::Channel* registryAirStarterOutput() {
+        const auto& reg = HardwareConfig::channelRegistry;
+        for (uint8_t i = 0; i < reg.outputCount; ++i)
+            if (reg.outputs[i].installed && !strcmp(reg.outputs[i].purpose, "air_starter"))
+                return &reg.outputs[i];
+        return nullptr;
+    }
+
     inline bool registryOutputManaged(const ChannelRegistry::Channel& c) {
         const bool proportionalStarterEnable = !strcmp(c.purpose, "starter_enable") && c.driver != ChannelRegistry::Relay;
+        const bool proportionalAirStarter = !strcmp(c.purpose, "air_starter") && c.driver != ChannelRegistry::Relay;
         return c.installed && c.pin >= 0 &&
-               (proportionalStarterEnable ||
+               (proportionalStarterEnable || proportionalAirStarter ||
                !ChannelRegistry::isCoreManagedOutputId(c.id) &&
                !registryOutputOwnsCorePurpose(c) &&
                !HardwareConfig::channelRegistry.boundToCoreOutput(c));
@@ -902,6 +919,8 @@ namespace Hardware {
             const auto& c = reg.outputs[i];
             if (!strcmp(c.purpose, "starter_enable") && c.driver != ChannelRegistry::Relay)
                 ed.registryOutputDemand[i] = ed.starterEnabled ? 1.0f : 0.0f;
+            if (!strcmp(c.purpose, "air_starter") && c.driver != ChannelRegistry::Relay)
+                ed.registryOutputDemand[i] = ed.airstarterOpen ? 1.0f : 0.0f;
             writeRegistryOutput(c, ed.registryOutputDemand[i]);
             if (c.hasCurrent && c.currentPin >= 0) {
                 int raw = analogRead(c.currentPin);
@@ -1918,8 +1937,11 @@ namespace Hardware {
         }
         if (hw.hasAbSol && hw.abSolPin >= 0)
             g_actAbSol.begin(hw.abSolPin, hw.abSolActiveH);
-        if (hw.hasAirstarterSol && hw.airstarterSolPin >= 0)
-            g_actAirstarterSol.begin(hw.airstarterSolPin, hw.airstarterSolActiveH);
+        if (hw.hasAirstarterSol && hw.airstarterSolPin >= 0) {
+            const auto* airStarter = registryAirStarterOutput();
+            if (!airStarter || airStarter->driver == ChannelRegistry::Relay)
+                g_actAirstarterSol.begin(hw.airstarterSolPin, hw.airstarterSolActiveH);
+        }
         if (hw.hasCoolFan && hw.coolFanPin >= 0) {
             if (hw.coolFanType == 0) {
                 g_actCoolFanServo.begin(hw.coolFanPin, hw.coolFanMinUs, hw.coolFanMaxUs, !hw.coolFanActiveH);
@@ -2044,7 +2066,11 @@ namespace Hardware {
         requireReady(hw.hasStarterEn && (!registryStarterEnableOutput() || registryStarterEnableOutput()->driver == ChannelRegistry::Relay),
                      &g_actStarterEn, "Starter enable");
         requireReady(hw.hasAbSol, &g_actAbSol, "Afterburner shutoff");
-        requireReady(hw.hasAirstarterSol, &g_actAirstarterSol, "Air starter valve");
+        {
+            const auto* airStarter = registryAirStarterOutput();
+            requireReady(hw.hasAirstarterSol && (!airStarter || airStarter->driver == ChannelRegistry::Relay),
+                         &g_actAirstarterSol, "Air starter valve");
+        }
         requireReady(hw.hasCoolFan, g_pActCoolFan, "Cooling fan");
         requireReady(hw.hasOilScavengePump, g_actOilScavPump, "Oil scavenge pump");
         requireReady(hw.hasBleedValve, g_actBleedValve, "Bleed valve");
@@ -2104,7 +2130,11 @@ namespace Hardware {
         }
         if (hw.hasAbPump      && g_actAbPump)      g_actAbPump->set(ed.abPumpDemand);
         if (hw.hasAbSol)         g_actAbSol.set(ed.abSolOpen ? 1.0f : 0.0f);
-        if (hw.hasAirstarterSol) g_actAirstarterSol.set(ed.airstarterOpen ? 1.0f : 0.0f);
+        if (hw.hasAirstarterSol) {
+            const auto* airStarter = registryAirStarterOutput();
+            if (!airStarter || airStarter->driver == ChannelRegistry::Relay)
+                g_actAirstarterSol.set(ed.airstarterOpen ? 1.0f : 0.0f);
+        }
         if (hw.hasCoolFan && g_pActCoolFan)  g_pActCoolFan->set(registryPurposeMinimum("cooling_fan", constrain(ed.coolFanDemand, 0.0f, 1.0f)));
         if (hw.hasOilScavengePump && g_actOilScavPump)
             g_actOilScavPump->set(registryPurposeMinimum("scavenge_pump", constrain(ed.oilScavengeDemand, 0.0f, 1.0f)));

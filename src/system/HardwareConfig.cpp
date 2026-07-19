@@ -832,7 +832,7 @@ void clearSeqSideActions(
 }
 
 void writeSeqSideActions(
-    JsonDocument& doc, const char* key, int seqLen,
+    JsonObject doc, const char* key, int seqLen,
     HardwareConfig::SeqSideAction actions[HardwareConfig::MAX_SEQ_BLOCKS][HardwareConfig::MAX_SEQ_SIDE_ACTIONS]) {
     JsonArray outer = doc[key].to<JsonArray>();
     for (int i = 0; i < seqLen; i++) {
@@ -878,7 +878,7 @@ void clearCustomBlocks() {
     HardwareConfig::customBlockCount = 0;
 }
 
-void writeCustomBlocks(JsonDocument& doc) {
+void writeCustomBlocks(JsonObject doc) {
     JsonObject root = doc["custom_blocks"].to<JsonObject>();
     for (int i = 0; i < HardwareConfig::customBlockCount; i++) {
         const auto& def = HardwareConfig::customBlocks[i];
@@ -2004,7 +2004,7 @@ int   HardwareConfig::starterLedcFreqHz   = 5000;
 int   HardwareConfig::starterLedcBits     = 12;
 float HardwareConfig::starterPwmMinPct    = 0.0f;
 float HardwareConfig::starterPwmMaxPct    = 100.0f;
-bool  HardwareConfig::starterLowRpmSupportEnabled = true;
+bool  HardwareConfig::starterLowRpmSupportEnabled = false;
 
 int   HardwareConfig::oilPumpPin       = OT_OIL_PUMP_PIN;
 #ifdef OT_OIL_PUMP_ONOFF
@@ -2259,8 +2259,14 @@ void HardwareConfig::load() {
         return;
     }
     delay(0);
+    // HardwareConfig shares ecu_config.json with the much larger settings
+    // document. Parse only our subtree so classic ESP32 validation does not
+    // need to hold every unrelated setting while expanding the registry.
+    JsonDocument filter;
+    filter[SECTION] = true;
     JsonDocument fullDoc;
-    DeserializationError err = deserializeJson(fullDoc, f);
+    DeserializationError err = deserializeJson(
+        fullDoc, f, DeserializationOption::Filter(filter));
     f.close();
     delay(0);
     if (err) {
@@ -2272,6 +2278,10 @@ void HardwareConfig::load() {
     JsonDocument workDoc;
     if (fullDoc[SECTION].is<JsonObject>()) {
         workDoc.set(fullDoc[SECTION]);
+        // The classic ESP32 cannot reliably hold the complete ecu_config,
+        // a second hardware-only copy and registry validation scratch at once.
+        fullDoc.clear();
+        fullDoc.shrinkToFit();
         delay(0);
     } else {
         Serial.println("[HWCfg] Hardware section missing - adding compiled defaults");
@@ -2307,16 +2317,11 @@ void HardwareConfig::load() {
         Serial.println("[HWCfg] Hardware channel registry is missing or invalid - START inhibited");
         return;
     }
-    if (!validatePlatformPins(workDoc)) {
+    // Use the exact same complete validation path as POST /api/hardware.
+    if (!validateJson(workDoc)) {
         inhibitStartForHardwareConfigFailure(
-            "Cannot start: stored hardware uses invalid or unsafe GPIO assignments.");
-        Serial.println("[HWCfg] Hardware GPIO validation failed - START inhibited");
-        return;
-    }
-    if ((workDoc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) {
-        inhibitStartForHardwareConfigFailure(
-            "Cannot start: hardware channel registry was written by newer firmware.");
-        Serial.println("[HWCfg] Future channel registry version - START inhibited");
+            "Cannot start: stored hardware configuration is invalid or unsafe.");
+        Serial.println("[HWCfg] Complete hardware validation failed - START inhibited");
         return;
     }
     _fromDoc(workDoc);
@@ -2338,7 +2343,13 @@ bool HardwareConfig::save() {
     JsonDocument fullDoc;
     File fr = LittleFS.open(PATH, "r");
     if (fr) {
-        DeserializationError err = deserializeJson(fullDoc, fr);
+        // The unified file currently has two authoritative top-level
+        // sections. Hardware is being replaced, so parsing its old copy only
+        // wastes heap while the incoming POST document is still resident.
+        JsonDocument filter;
+        filter["settings"] = true;
+        DeserializationError err = deserializeJson(
+            fullDoc, fr, DeserializationOption::Filter(filter));
         fr.close();
         if (err) {
             Serial.printf("[HWCfg] Refusing to overwrite unreadable ecu_config.json: %s\n",
@@ -2347,9 +2358,9 @@ bool HardwareConfig::save() {
         }
     }
 
-    JsonDocument hwDoc;
-    _toDoc(hwDoc);
-    fullDoc[SECTION].set(hwDoc);
+    // Rebuild Hardware directly inside the unified document; no second
+    // hardware document or copied replacement is needed.
+    _toDoc(fullDoc[SECTION].to<JsonObject>());
     if (fullDoc["settings"].is<JsonObject>())
         fullDoc["settings"]["profile_id"] = profileId;
 
@@ -2516,7 +2527,7 @@ void HardwareConfig::applyDefaults() {
     starterEnPin     = OT_STARTER_EN_PIN;
     starterEnActiveH = OT_STARTER_EN_ACTIVE_H;
     starterEnDelayMs = 1000;             // mirror static-init default (was missing here)
-    starterLowRpmSupportEnabled = true;
+    starterLowRpmSupportEnabled = false;
                                          // disables it if no starter + N1 sensor
 
     igniter2Pin = -1; igniter2ActiveH = true; igniter2Pwm = false;
@@ -2802,7 +2813,8 @@ size_t HardwareConfig::toJson(char* buf, size_t len, bool redactPassword) {
 }
 
 void HardwareConfig::toJson(JsonDocument& doc, bool redactPassword) {
-    _toDoc(doc);
+    doc.clear();
+    _toDoc(doc.to<JsonObject>());
     if (redactPassword)
         doc["wifi_password"] = wifiPassword[0] ? WIFI_PASSWORD_RETAINED : "";
 }
@@ -2816,40 +2828,44 @@ bool HardwareConfig::validateJson(const char* json, size_t len) {
 }
 
 bool HardwareConfig::validateJson(const JsonDocument& doc) {
-    if (!requiredStringFits(doc["profile_id"], sizeof(HardwareConfig::profileId))) return false;
-    if (!optionalStringFits(doc["profile_desc"], sizeof(HardwareConfig::profileDesc))) return false;
-    if (!optionalStringFits(doc["wifi_password"], sizeof(HardwareConfig::wifiPassword))) return false;
+    auto reject = [](const char* reason) {
+        Serial.printf("[HardwareConfig] validation rejected: %s\n", reason);
+        return false;
+    };
+    if (!requiredStringFits(doc["profile_id"], sizeof(HardwareConfig::profileId))) return reject("profile_id");
+    if (!optionalStringFits(doc["profile_desc"], sizeof(HardwareConfig::profileDesc))) return reject("profile_desc");
+    if (!optionalStringFits(doc["wifi_password"], sizeof(HardwareConfig::wifiPassword))) return reject("wifi_password");
     const char* password = doc["wifi_password"] | "";
     if (strcmp(password, WIFI_PASSWORD_RETAINED) != 0 && password[0]) {
         size_t pwLen = strlen(password);
-        if (pwLen < 8 || pwLen >= sizeof(HardwareConfig::wifiPassword)) return false;
+        if (pwLen < 8 || pwLen >= sizeof(HardwareConfig::wifiPassword)) return reject("wifi_password length");
     }
-    if (!validateDisplayLabels(doc["labels"])) return false;
-    if (!validateCustomBlockStrings(doc["custom_blocks"])) return false;
-    if (doc["channel_registry"].isNull()) return false;
+    if (!validateDisplayLabels(doc["labels"])) return reject("display labels");
+    if (!validateCustomBlockStrings(doc["custom_blocks"])) return reject("custom block strings");
+    if (doc["channel_registry"].isNull()) return reject("missing channel registry");
     const ChannelRegistry* registryForValidation = nullptr;
     // Keep the expanded registry off the AsyncWebServer task stack without
     // permanently reserving a second registry in DRAM.
     std::unique_ptr<ChannelRegistry> registry;
     if (!doc["channel_registry"].isNull()) {
-        if ((doc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) return false;
+        if ((doc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) return reject("channel registry version");
         registry.reset(new (std::nothrow) ChannelRegistry());
-        if (!registry || !registry->fromJson(doc["channel_registry"].as<JsonObjectConst>())) return false;
+        if (!registry || !registry->fromJson(doc["channel_registry"].as<JsonObjectConst>())) return reject("channel registry contents");
         registryForValidation = registry.get();
     }
-    if (!validateOilLoops(doc["oil_loops"], registryForValidation)) return false;
-    if (!validateHardwareDependencies(doc, registryForValidation)) return false;
-    if (!validateSequenceReferenceIds(doc.as<JsonVariantConst>(), registryForValidation)) return false;
+    if (!validateOilLoops(doc["oil_loops"], registryForValidation)) return reject("oil loops");
+    if (!validateHardwareDependencies(doc, registryForValidation)) return reject("hardware dependencies");
+    if (!validateSequenceReferenceIds(doc.as<JsonVariantConst>(), registryForValidation)) return reject("sequence references");
     auto sensors = doc["sensors"];
     auto n1 = sensors["n1_rpm"];
     if (n1["enabled"].as<bool>()) {
-        if (n1["ppr"].isNull() || n1["ppr"].as<float>() <= 0.0f) return false;
+        if (n1["ppr"].isNull() || n1["ppr"].as<float>() <= 0.0f) return reject("N1 pulses per revolution");
     }
     auto n2 = sensors["n2_rpm"];
     if (n2["enabled"].as<bool>()) {
-        if (n2["ppr"].isNull() || n2["ppr"].as<float>() <= 0.0f) return false;
+        if (n2["ppr"].isNull() || n2["ppr"].as<float>() <= 0.0f) return reject("N2 pulses per revolution");
     }
-    if (!validatePlatformPins(doc, registryForValidation)) return false;
+    if (!validatePlatformPins(doc, registryForValidation)) return reject("platform pins or electrical ranges");
     return true;
 }
 
@@ -2862,7 +2878,7 @@ bool HardwareConfig::fromJson(const char* json, size_t len) {
 }
 
 // ── _toDoc ────────────────────────────────────────────────────
-void HardwareConfig::_toDoc(JsonDocument& doc) {
+void HardwareConfig::_toDoc(JsonObject doc) {
 #ifdef OT_PLATFORM_ESP32S3
     doc["platform"]         = "esp32s3";
 #else

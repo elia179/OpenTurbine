@@ -461,6 +461,7 @@ private:
     static void _applyDefaults();
     static void _fromDoc(const JsonDocument& doc);
     static void _toDoc(JsonDocument& doc);
+    static void _writeDoc(JsonObject doc);
     static volatile bool _savePending;
     static volatile bool _runtimeStatsSavePending;
     static bool _missingRequiredSections;

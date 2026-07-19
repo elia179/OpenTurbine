@@ -35,7 +35,7 @@
 #include "soc/gpio_reg.h"  // GPIO_OUT_W1TS_REG / GPIO_IN1_REG for fast ISR pin access
 #include "driver/ledc.h"   // raw ESP-IDF LEDC: explicit per-timer control so N1/N2 are independent
 
-static const char* OTBENCH_VER = "0.5";
+static const char* OTBENCH_VER = "0.6";
 
 // ── Signal kinds ─────────────────────────────────────────────
 enum Kind {
@@ -157,7 +157,11 @@ static inline void ledcSetDuty(int chan, uint32_t duty) {
 static ledc_timer_bit_t freqResolutionFor(float hz) {
     // 16-bit reaches the sub-20 Hz range; 14-bit keeps useful resolution up
     // to roughly 4.8 kHz; 12-bit covers the 500,000 RPM / 1 PPR test case.
+#if defined(OTBENCH_S3)
+    if (hz < 20.0f) return LEDC_TIMER_14_BIT; // S3 LEDC has no 16-bit mode
+#else
     if (hz < 20.0f) return LEDC_TIMER_16_BIT;
+#endif
     if (hz <= 4000.0f) return LEDC_TIMER_14_BIT;
     return LEDC_TIMER_12_BIT;
 }
@@ -232,6 +236,155 @@ static void totSet(float celsius, bool open) {
     g_totEnabled = true;
 }
 #endif   // !OTBENCH_S3 (MAX6675 emulator)
+
+#if defined(OTBENCH_S3)
+// Digital-sensor emulator for the role-reversed bench. Existing protected
+// jumpers are temporarily repurposed while the classic ESP32 is the DUT:
+// classic 13 -> S3 13 clock, classic 14 -> S3 15 CS,
+// classic 4 <- S3 14 data, and classic 25 -> S3 4 MAX31856 MOSI.
+static constexpr int EMU_CLK = 13, EMU_CS = 15, EMU_DATA = 14, EMU_MOSI = 4;
+static void initSignals();
+enum EmuMode : uint8_t { EMU_NONE, EMU_MAX6675, EMU_MAX31855, EMU_MAX31856, EMU_HX711 };
+static volatile EmuMode g_emuMode = EMU_NONE;
+static volatile uint32_t g_emuWord = 0;
+static volatile int8_t g_emuBit = -1;
+static volatile uint8_t g_56Regs[16] = {};
+static volatile uint8_t g_56Addr = 0, g_56In = 0, g_56Byte = 0;
+static volatile int8_t g_56Bit = 7;
+static volatile bool g_56Write = false;
+static volatile uint32_t g_56Transactions = 0;
+static volatile uint32_t g_hxWord = 0, g_hxReadyAt = 0;
+static volatile uint8_t g_hxPulse = 0;
+static volatile bool g_hxWaiting = false;
+
+static inline void IRAM_ATTR emuDataWrite(bool high) {
+    REG_WRITE(high ? GPIO_OUT_W1TS_REG : GPIO_OUT_W1TC_REG, 1u << EMU_DATA);
+}
+static inline bool IRAM_ATTR emuPinHigh(int pin) {
+    return (REG_READ(GPIO_IN_REG) & (1u << pin)) != 0;
+}
+
+static void IRAM_ATTR emuCsISR() {
+    if (g_emuMode == EMU_MAX6675 || g_emuMode == EMU_MAX31855) {
+        if (!emuPinHigh(EMU_CS)) {
+            g_emuBit = g_emuMode == EMU_MAX6675 ? 15 : 31;
+            emuDataWrite((g_emuWord >> g_emuBit) & 1u);
+        } else {
+            g_emuBit = -1;
+            emuDataWrite(true);
+        }
+    } else if (g_emuMode == EMU_MAX31856) {
+        if (!emuPinHigh(EMU_CS)) {
+            g_56Addr = 0; g_56In = 0; g_56Bit = 7; g_56Byte = 0; g_56Write = false;
+            emuDataWrite(false);
+        } else {
+            ++g_56Transactions;
+            emuDataWrite(true);
+        }
+    }
+}
+
+static void IRAM_ATTR emuClkISR() {
+    const bool high = emuPinHigh(EMU_CLK);
+    if (g_emuMode == EMU_MAX6675 || g_emuMode == EMU_MAX31855) {
+        if (emuPinHigh(EMU_CS) || g_emuBit < 0) return;
+        --g_emuBit;
+        if (g_emuBit >= 0) emuDataWrite((g_emuWord >> g_emuBit) & 1u);
+    } else if (g_emuMode == EMU_MAX31856) {
+        if (emuPinHigh(EMU_CS)) return;
+        // The DUT samples MISO shortly after the falling edge. Prepare each
+        // response bit on the preceding rising edge; using the falling-edge
+        // ISR to change MISO races the master's one-microsecond sample delay.
+        if (!high) {
+            if (emuPinHigh(EMU_MOSI)) g_56In |= (uint8_t)(1u << g_56Bit);
+            return;
+        }
+        if (g_56Bit == 0) {
+            if (g_56Byte == 0) {
+                g_56Addr = g_56In & 0x7Fu;
+                g_56Write = (g_56In & 0x80u) != 0;
+            } else if (g_56Write) {
+                const uint8_t reg = (uint8_t)((g_56Addr + g_56Byte - 1u) & 0x0Fu);
+                g_56Regs[reg] = g_56In;
+            }
+            ++g_56Byte; g_56Bit = 7; g_56In = 0;
+        } else {
+            --g_56Bit;
+        }
+        if (g_56Byte > 0 && !g_56Write) {
+            const uint8_t reg = (uint8_t)((g_56Addr + g_56Byte - 1u) & 0x0Fu);
+            emuDataWrite((g_56Regs[reg] >> g_56Bit) & 1u);
+        } else emuDataWrite(false);
+    } else if (g_emuMode == EMU_HX711 && !high) {
+        // The DUT samples while SCK is high. Advance on falling edges so the
+        // next bit is stable before the following rising-edge sample.
+        ++g_hxPulse;
+        if (g_hxPulse < 24) {
+            emuDataWrite((g_hxWord >> (23 - g_hxPulse)) & 1u);
+        } else {
+            emuDataWrite(true);
+            g_hxPulse = 0;
+            g_hxWaiting = true;
+            g_hxReadyAt = millis() + 50;
+        }
+    }
+}
+
+static void emuStop() {
+    detachInterrupt(digitalPinToInterrupt(EMU_CLK));
+    detachInterrupt(digitalPinToInterrupt(EMU_CS));
+    g_emuMode = EMU_NONE;
+    g_hxWaiting = false;
+    pinMode(EMU_DATA, INPUT);
+    pinMode(EMU_MOSI, INPUT);
+    initSignals();
+}
+
+static void emuBegin(EmuMode mode) {
+    if (g_emuMode != EMU_NONE) emuStop();
+    ledcDetach(EMU_DATA); // N1 normally owns this S3 pin
+    pinMode(EMU_CLK, INPUT);
+    pinMode(EMU_CS, INPUT_PULLUP);
+    pinMode(EMU_MOSI, INPUT);
+    pinMode(EMU_DATA, OUTPUT);
+    emuDataWrite(true);
+    g_emuMode = mode;
+    attachInterrupt(digitalPinToInterrupt(EMU_CLK), emuClkISR,
+                    (mode == EMU_MAX31856 || mode == EMU_HX711) ? CHANGE : RISING);
+    if (mode != EMU_HX711) attachInterrupt(digitalPinToInterrupt(EMU_CS), emuCsISR, CHANGE);
+}
+
+static void emuSetThermocouple(EmuMode mode, const char* value) {
+    emuBegin(mode);
+    const bool fault = !strcasecmp(value, "open") || !strcasecmp(value, "fault");
+    const float c = atof(value);
+    if (mode == EMU_MAX6675) {
+        int counts = constrain((int)lroundf(c / 0.25f), 0, 4095);
+        g_emuWord = fault ? (1u << 2) : ((uint32_t)counts << 3);
+    } else if (mode == EMU_MAX31855) {
+        int counts = constrain((int)lroundf(c / 0.25f), -8192, 8191);
+        g_emuWord = fault ? 0x00010001u : ((uint32_t)(counts & 0x3FFF) << 18);
+    } else {
+        int32_t counts = (int32_t)lroundf(c / 0.0078125f);
+        uint32_t raw = ((uint32_t)counts & 0x7FFFFu) << 5;
+        g_56Regs[0x0C] = (uint8_t)(raw >> 16);
+        g_56Regs[0x0D] = (uint8_t)(raw >> 8);
+        g_56Regs[0x0E] = (uint8_t)raw;
+        g_56Regs[0x0F] = fault ? 0x01 : 0x00;
+    }
+}
+
+static void emuSetHx711(const char* value) {
+    emuBegin(EMU_HX711);
+    int32_t counts = (int32_t)strtol(value, nullptr, 0);
+    if (counts > 8388607) counts = 8388607;
+    if (counts < -8388608) counts = -8388608;
+    g_hxWord = (uint32_t)counts & 0xFFFFFFu;
+    g_hxPulse = 0;
+    g_hxWaiting = false;
+    emuDataWrite(false);
+}
+#endif
 
 // ── Helpers ──────────────────────────────────────────────────
 static const char* kindName(Kind k) {
@@ -451,10 +604,47 @@ static void handleLine(char* line) {
         return;
     }
     if (strcasecmp(cmd, "RESET") == 0) {
+#if defined(OTBENCH_S3)
+        if (g_emuMode != EMU_NONE) emuStop();
+#endif
         for (int i = 0; i < NUM_SIGNALS; i++) safeState(SIGNALS[i]);
         Serial.println("OK");
         return;
     }
+#if defined(OTBENCH_S3)
+    if (strcasecmp(cmd, "EMU") == 0) {
+        char* kind = strtok(nullptr, " \t");
+        char* val  = strtok(nullptr, " \t");
+        if (!kind) { Serial.println("ERR usage: EMU <MAX6675|MAX31855|MAX31856|HX711|OFF> <value>"); return; }
+        if (!strcasecmp(kind, "OFF")) {
+            if (g_emuMode != EMU_NONE) emuStop();
+            // EMU_DATA normally doubles as the S3 tester's N1 output.  The
+            // generic safe state drives that signal LOW, which looks like a
+            // permanently-ready HX711 and makes the DUT clock zero samples.
+            // EMU OFF means the emulated converter is physically absent, so
+            // release DOUT and let the DUT's pull-up report missing data.
+            pinMode(EMU_DATA, INPUT);
+            Serial.println("OK");
+            return;
+        }
+        if (!strcasecmp(kind, "STATUS")) {
+            Serial.printf("OK mode=%u tx=%lu cr0=%02X cr1=%02X addr=%02X byte=%u write=%u\n",
+                          (unsigned)g_emuMode, (unsigned long)g_56Transactions,
+                          (unsigned)g_56Regs[0], (unsigned)g_56Regs[1],
+                          (unsigned)g_56Addr, (unsigned)g_56Byte,
+                          g_56Write ? 1u : 0u);
+            return;
+        }
+        if (!val) { Serial.println("ERR emulator value required"); return; }
+        if (!strcasecmp(kind, "MAX6675"))       emuSetThermocouple(EMU_MAX6675, val);
+        else if (!strcasecmp(kind, "MAX31855")) emuSetThermocouple(EMU_MAX31855, val);
+        else if (!strcasecmp(kind, "MAX31856")) emuSetThermocouple(EMU_MAX31856, val);
+        else if (!strcasecmp(kind, "HX711"))    emuSetHx711(val);
+        else { Serial.println("ERR unknown emulator"); return; }
+        Serial.println("OK");
+        return;
+    }
+#endif
     if (strcasecmp(cmd, "STATE") == 0) {
         char buf[96];
         String out = "VAL STATE";
@@ -527,6 +717,13 @@ void setup() {
 }
 
 void loop() {
+#if defined(OTBENCH_S3)
+    if (g_emuMode == EMU_HX711 && g_hxWaiting &&
+        (int32_t)(millis() - g_hxReadyAt) >= 0) {
+        g_hxWaiting = false;
+        emuDataWrite(false);
+    }
+#endif
     while (Serial.available()) {
         char c = (char)Serial.read();
         if (c == '\r') continue;

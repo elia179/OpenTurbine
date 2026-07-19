@@ -328,6 +328,8 @@ class TenBuildRunner:
                 a["fuel_type"] = 0
             if "fuel_delay_ms" in a:
                 a["fuel_delay_ms"] = 0
+            if "low_rpm_support_enabled" in a:
+                a["low_rpm_support_enabled"] = False
         hw["channel_registry"] = {"version": 1, "inputs": [], "outputs": [], "bindings": []}
         hw["di_channels"] = [
             {"pin": -1, "active_h": False, "debounce_ms": 20, "label": "", "role": "none", "fault_code": "", "fault_msg": "", "active_modes": 31}

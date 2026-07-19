@@ -514,6 +514,6 @@ public:
     static void   applyValidatedJsonRuntimeOnly(const JsonDocument& doc);
 
 private:
-    static void _toDoc(JsonDocument& doc);
+    static void _toDoc(JsonObject doc);
     static void _fromDoc(const JsonDocument& doc);
 };

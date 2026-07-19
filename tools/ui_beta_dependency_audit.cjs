@@ -223,10 +223,11 @@ async function optionDisabled(page, selector, value) {
     assert.match(sensorInterfaceUx.totEditor, /MAX6675/);
     assert.match(sensorInterfaceUx.totEditor, /MAX31856/);
     assert.doesNotMatch(sensorInterfaceUx.totEditor, /DS18B20/);
-    assert.match(sensorInterfaceUx.totSignalEditor, /Selected below/);
-    assert.doesNotMatch(sensorInterfaceUx.totSignalEditor, /<select/);
+    assert.equal(sensorInterfaceUx.totSignalEditor, '');
+    assert.match(sensorInterfaceUx.totEditor, /Sensor interface/);
     assert.match(sensorInterfaceUx.torqueEditor, /HX711 SCK GPIO/);
-    assert.match(sensorInterfaceUx.torqueSignalEditor, /separate DOUT and SCK/);
+    assert.match(sensorInterfaceUx.torqueEditor, /Sensor interface/);
+    assert.equal(sensorInterfaceUx.torqueSignalEditor, '');
     assert.match(sensorInterfaceUx.torquePins, /DOUT GPIO5 \/ SCK GPIO6/);
     assert.equal(sensorInterfaceUx.digitalRangeProblem, '');
     assert.match(sensorInterfaceUx.unsafeTotInterface, /only for oil, coolant, intake or ambient/i);
