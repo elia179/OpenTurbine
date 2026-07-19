@@ -249,8 +249,10 @@ async function goto(page, route, waitSelector) {
       ab_trigger: { source: 0, switch_pin: -1, input_pin: 4 }
     });
     await goto(page, 'config.html', '#cf-tot_limit');
-    assert.equal(await page.locator('.config-group').count(), 7,
+    assert.equal(await page.locator('.config-group').count(), 6,
       'Config workspace should render the canonical grouped navigation');
+    assert.equal(await page.locator('[data-group="bench"]').count(), 0,
+      'Bench-test settings belong in Tools > Test settings, not Config');
     assert.equal(await page.locator('#btn-view-basic').getAttribute('class').then(v => v.includes('active')), true);
     assert.equal(await page.locator('#cfg-state-badge').textContent(), 'Saved');
     const essentialCount = await page.locator('.cfg-field:visible').count();

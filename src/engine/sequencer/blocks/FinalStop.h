@@ -26,11 +26,12 @@ public:
         if (_phase == 0) {
             // Unhealthy N1 must not read as "stopped" — the shaft may still be
             // spinning. Wait out timeoutMs instead (same policy as RPMDrop).
-            // With no N1 sensor fitted at all there is nothing to verify —
-            // complete immediately instead of stalling every shutdown.
+            // With no N1 sensor there is no proof that the shaft has stopped.
+            // Use the configured time as a conservative spool-down delay, just
+            // as we do when fitted N1 feedback becomes unhealthy.
             bool stopped = HardwareConfig::hasN1Rpm
-                         ? (ed.n1Healthy && (ed.n1Rpm <= rpmZeroThreshold))
-                         : true;
+                         && ed.n1Healthy
+                         && (ed.n1Rpm <= rpmZeroThreshold);
             if (stopped || (now - _entryMs) > timeoutMs) {
                 // Cut main oil pump
                 ed.oilTargetBar    = 0;
@@ -46,7 +47,9 @@ public:
                 }
             } else {
                 char _buf[80];
-                if (!ed.n1Healthy)
+                if (!HardwareConfig::hasN1Rpm)
+                    snprintf(_buf, sizeof(_buf), "No N1 sensor (waiting %lu ms spool-down delay)", timeoutMs);
+                else if (!ed.n1Healthy)
                     snprintf(_buf, sizeof(_buf), "N1 sensor unhealthy (waiting %lu ms timeout)", timeoutMs);
                 else
                     snprintf(_buf, sizeof(_buf), "N1: %d RPM (waiting for zero)", (int)ed.n1Rpm);

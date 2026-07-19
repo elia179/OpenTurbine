@@ -201,6 +201,7 @@ function showTab(tab) {
     document.getElementById('pane-' + t).style.display = tab === t ? '' : 'none';
     document.getElementById('tab-'  + t).className = 'tab-btn' + (tab === t ? ' active' : '');
   });
+  if (tab === 'events') loadLog();
   if (tab === 'session') { loadSessionList(); loadSessionCfg(); loadSessionPreview(); }
 }
 
@@ -427,7 +428,7 @@ function toggleRun(i) {
 function renderEvents(events) {
   const tbody = document.getElementById('log-body');
   if (!events.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty-msg">No events recorded yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-msg">No events are stored yet. START, sequence steps, RUNNING entry, shutdowns and faults are recorded automatically.</td></tr>';
     return;
   }
   tbody.innerHTML = [...events].reverse().map(e => {

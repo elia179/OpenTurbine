@@ -18,6 +18,7 @@ const hardware = read('src/Hardware.h');
 const hwConfig = read('src/system/HardwareConfig.cpp');
 const main = read('src/main.cpp');
 const web = read('src/system/web/WebServer.cpp');
+const configGate = read('src/system/ConfigApplyGate.h');
 const pcnt = read('src/hal/sensors/PCNTRpmSensor.h');
 const analog = read('src/hal/sensors/AnalogSensor.h');
 const safety = read('src/engine/SafetyMonitor.h');
@@ -31,6 +32,7 @@ const calibrationHtml = read('data_src/calibration.html');
 const toolsHtml = read('data_src/tools.html');
 const capabilities = read('src/system/HardwareCapabilities.h');
 const cooldown = read('src/engine/sequencer/blocks/CooldownSpin.h');
+const finalStop = read('src/engine/sequencer/blocks/FinalStop.h');
 const version = read('src/system/version.h');
 const changelog = read('CHANGELOG.md');
 const phase2Hil = read('dev/bench/campaign/phase2_safety_hil.py');
@@ -124,6 +126,22 @@ expect('critical safety capability checks reject generic temperature and voltage
 expect('cooldown defaults agree at sixty seconds',
   cooldown.includes('timeoutMs          = 60000') &&
   sequenceHtml.includes("def:60000, configKey:'cooldown_timeout_ms'"));
+expect('FinalStop waits for its timeout when N1 is missing or unhealthy',
+  finalStop.includes('bool stopped = HardwareConfig::hasN1Rpm') &&
+  finalStop.includes('&& ed.n1Healthy') &&
+  finalStop.includes('No N1 sensor (waiting %lu ms spool-down delay)') &&
+  !finalStop.includes(': true;'));
+expect('Developer Mode live config writes use the same runtime lock as Config',
+  (web.match(/enable Developer Mode before starting to allow live settings updates/g) || []).length === 2 &&
+  (web.match(/if \(Config::isLocked\(\)\)/g) || []).length >= 4);
+expect('active Developer Mode writes defer disruptive copies until STANDBY',
+  configGate.includes('tryBeginDeferredCoreApply') &&
+  main.includes('_configApplyDeferred = true') &&
+  main.includes('configMode == SysMode::STANDBY || configMode == SysMode::FAULT') &&
+  web.includes('\\"block_hardware_apply\\":\\"deferred_until_standby\\"'));
+expect('bench-test timing is edited only from Tools',
+  !configHtml.includes("id:'bench', title:'Bench Test Timing'") &&
+  toolsHtml.includes('openTestSettings()'));
 expect('thermistor calibration explains the configured divider orientation',
   calibrationHtml.includes('ntc-divider-note') && calibrationHtml.includes('ntc_pullup: registryOil.ntc_pullup'));
 expect('reduced-power cap discloses automatic safety-feedback activation',

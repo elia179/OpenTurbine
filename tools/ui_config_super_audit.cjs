@@ -182,10 +182,13 @@ async function sectionVisible(page, title) {
         starter: { enabled: false }
       }
     });
-    await gotoConfig(page);
-    await page.locator('#btn-view-expert').click();
-    for (const selector of ['#cf-tl_fp', '#cf-tl_op', '#cf-tl_ig', '#cf-tl_st', '#cf-tl_fs']) {
-      assert.equal(await disabled(page, selector), true, `${selector} should be locked when its tool actuator is absent`);
+    await page.goto(`${base}/tools.html`);
+    await page.waitForFunction(() => !!hwCfg?.actuators);
+    await page.evaluate(() => { engineMode = 'STANDBY'; });
+    await page.locator('#btn-test-settings').click();
+    for (const key of ['fuel_prime_ms', 'oil_prime_ms', 'ign_test_ms', 'start_test_ms', 'fuel_sol_test_ms']) {
+      assert.equal(await page.locator(`.test-setting[data-key="${key}"]`).count(), 0,
+        `${key} should be absent when its tool actuator is not fitted`);
     }
 
     await patchHardware(page, {
@@ -197,20 +200,28 @@ async function sectionVisible(page, title) {
         starter: { enabled: true }
       }
     });
-    await gotoConfig(page);
-    await page.locator('#btn-view-expert').click();
-    for (const selector of ['#cf-tl_fp', '#cf-tl_op', '#cf-tl_st', '#cf-tl_fs']) {
-      assert.equal(await disabled(page, selector), false, `${selector} should unlock when its tool actuator is fitted`);
+    await page.goto(`${base}/tools.html`);
+    await page.waitForFunction(() => !!hwCfg?.actuators);
+    await page.evaluate(() => { engineMode = 'STANDBY'; });
+    await page.locator('#btn-test-settings').click();
+    for (const key of ['fuel_prime_ms', 'oil_prime_ms', 'start_test_ms', 'fuel_sol_test_ms']) {
+      assert.ok(await page.locator(`.test-setting[data-key="${key}"]`).count() > 0,
+        `${key} should appear when its tool actuator is fitted`);
     }
     // Igniter tool timings are per-output: with only Igniter 2 fitted, the
     // Igniter 1 duration stays ghosted and the Igniter 2 duration unlocks.
-    assert.equal(await disabled(page, '#cf-tl_ig'), true, '#cf-tl_ig must stay locked when only Igniter 2 is fitted');
-    assert.equal(await disabled(page, '#cf-tl_i2'), false, '#cf-tl_i2 should unlock when Igniter 2 is fitted');
+    assert.equal(await page.locator('.test-setting[data-key="ign_test_ms"]').count(), 0,
+      'Igniter 1 timing must stay absent when only Igniter 2 is fitted');
+    assert.ok(await page.locator('.test-setting[data-key="ign2_test_ms"]').count() > 0,
+      'Igniter 2 timing should appear when Igniter 2 is fitted');
     await patchHardware(page, { actuators: { igniter: { enabled: true } } });
-    await gotoConfig(page);
-    await page.locator('#btn-view-expert').click();
-    assert.equal(await disabled(page, '#cf-tl_ig'), false, '#cf-tl_ig should unlock when Igniter 1 is fitted');
-    results.push('tool duration settings follow per-output actuator availability, including the igniter 1/2 split');
+    await page.goto(`${base}/tools.html`);
+    await page.waitForFunction(() => !!hwCfg?.actuators);
+    await page.evaluate(() => { engineMode = 'STANDBY'; });
+    await page.locator('#btn-test-settings').click();
+    assert.ok(await page.locator('.test-setting[data-key="ign_test_ms"]').count() > 0,
+      'Igniter 1 timing should appear when Igniter 1 is fitted');
+    results.push('Tools > Test settings follows per-output actuator availability, including the igniter 1/2 split');
 
     await reset(page);
     console.log('super-audit: optional sections');

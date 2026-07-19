@@ -424,9 +424,9 @@ class InteractionQualification:
         )
         self.recover()
 
-        # Config mutation during RUNNING must be rejected atomically. Once the
-        # same deletion is made in idle STANDBY, the next run must not inherit
-        # the old rule's ignition demand.
+        # Developer Mode intentionally permits runtime Config changes. Removing
+        # an active rule must apply atomically on the ECU core and release its
+        # output; the following run must not inherit the deleted demand.
         ign_rule = [{
             "enabled": True, "kind": 0, "source": "tot_main",
             "target": "igniter_main", "op": 0, "threshold": 50,
@@ -441,9 +441,9 @@ class InteractionQualification:
         )
         physical_on = self.t.get("IGNITER")
         edit_code, edit_resp = self.dut.patch("/api/config", {"rules": []})
-        still_on_ok, still_on = self.dut.poll_until(
-            lambda d: d.get("mode") == "RUNNING" and d.get("igniter_on"),
-            timeout=1, interval=0.05,
+        released_ok, released = self.dut.poll_until(
+            lambda d: d.get("mode") == "RUNNING" and not d.get("igniter_on"),
+            timeout=2, interval=0.05,
         )
         self.recover()
         self.save_rules([], set())
@@ -454,13 +454,13 @@ class InteractionQualification:
         )
         physical_off = self.t.get("IGNITER")
         self.record(
-            "RUNNING_RULE_EDIT_IS_ATOMIC_AND_STANDBY_DELETE_RELEASES_OUTPUT",
+            "DEV_MODE_RUNNING_RULE_DELETE_ATOMICALLY_RELEASES_OUTPUT",
             on_ok and int(physical_on.get("level") or 0) == 1 and
-            edit_code == 409 and still_on_ok and off_ok and
+            edit_code == 200 and released_ok and off_ok and
             int(physical_off.get("level") or 0) == 0,
             on_telemetry=on.get("igniter_on"), on_output=physical_on,
             running_edit={"code": edit_code, "response": edit_resp,
-                          "igniter_stayed_on": still_on.get("igniter_on")},
+                          "igniter_released": not released.get("igniter_on")},
             off_telemetry=off.get("igniter_on"), off_output=physical_off,
         )
         self.recover()

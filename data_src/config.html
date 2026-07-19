@@ -282,7 +282,7 @@ const SCHEMA = [
     { key:'sl_lp', path:['session_log','loop'],      label:'Log ECU Loop Timing', type:'checkbox', desc:'Include main control-loop speed and execution timing columns in session CSV.' },
   ]},
   { title: 'External Instrument Cluster Display', sectionNote:'Optional display-only thresholds for an external serial instrument cluster. These values change gauge warning colours and status messages; they do not trigger ECU shutdowns.', fields: [
-    { key:'cl_en', path:['cluster','enabled'],      label:'Send Data to External Cluster', desc:'Transmit live ECU data and display-warning status through the configured serial output.', type:'checkbox' },
+    { key:'cl_en', path:['cluster','enabled'],      label:'Enable Cluster Data Transmission', desc:'Runtime master switch for sending live ECU values and display-warning status. Hardware > External Cluster installs the serial connection and assigns its GPIO; this switch lets you pause or resume transmission without changing hardware or rebooting.', type:'checkbox' },
     { key:'cl_n1', path:['cluster','n1_warn_rpm'],  label:'N1 Warn RPM',   desc:'N1 warning zone start on cluster gauge (yellow). 0 = auto (RPM Limit × 0.9). N1_MAX comes from Engine Limits → RPM Limit', step:500, min:0 },
     { key:'cl_n2', path:['cluster','n2_warn_rpm'],  label:'N2 Warn RPM',   desc:'N2 RPM warning threshold for cluster display', step:500, min:0 },
     { key:'cl_tw', path:['cluster','tot_warn_c'],   label:'EGT Warn',   unitType:'temp',  zeroOff:true, desc:'Selected engine-temperature warning threshold for cluster status. 0 = auto (selected EGT limit minus safety margin).', step:10, min:0 },
@@ -304,7 +304,7 @@ const SCHEMA = [
     { key:'ms_is', path:['misc','igniter_on_start'],      label:'Igniter on START (running)', desc:'Fire igniter while START button is held during RUNNING — manual relight aid. Disable if accidental button presses are a concern.', type:'checkbox' },
   ]},
   { title: 'RPM Sensor Fault Detection', fields: [
-    { key:'rh_jt', path:['rpm_health','jump_threshold'],   label:'Maximum Allowed Reading Jump', desc:'Largest one-sample RPM change accepted before the sensor is marked faulty. 0.40 means 40%.', step:0.05, min:0.05, max:1 },
+    { key:'rh_jt', path:['rpm_health','jump_threshold'],   label:'Maximum RPM Change Rate', desc:'Maximum plausible shaft acceleration or deceleration, expressed as a fraction of that shaft\'s configured RPM limit per second. Example: 0.40 with a 100,000 RPM limit allows 40,000 RPM/s (4,000 RPM between 100 ms samples). Jump checking starts only after the previous accepted reading is above 500 RPM, so the first rise from zero does not fault.', step:0.05, min:0.05, max:1 },
     { key:'rh_zs', path:['rpm_health','zero_stuck_ticks'], label:'Zero Readings Before Fault', desc:'Number of consecutive zero readings required before a running RPM sensor is declared stuck at zero.', step:1, min:1 },
   ]},
   { title: 'Afterburner — Ignition Conditions', id: 'ab-cfg-section', fields: [
@@ -494,7 +494,8 @@ const WORKSPACE_GROUPS = [
   { id:'safety', title:'Safety & Input Health', desc:'Shutdown thresholds, sensor health and input signal loss', sections:['Automatic Safety Shutdowns','Safety Thresholds','RPM Sensor Fault Detection','RC / Servo Signal Loss Detection'] },
   { id:'power', title:'Power System', desc:'Automatic N2 speed control and afterburner tuning', sections:['Automatic N2 Speed Control','Afterburner — Ignition Conditions','Afterburner — Ignition Method','Afterburner — Flame Confirmation','Afterburner — Running'] },
   { id:'data', title:'Data & Display', desc:'Logging, external display thresholds and general timing', sections:['Logging and Data Updates','External Instrument Cluster Display','Manual Relight and Cooldown Override'] },
-  { id:'bench', title:'Bench Test Timing', desc:'Tool pulse lengths and proportional test demands', sections:['Tools - Primary Bench Tests','Tools - Accessory Bench Tests','Tools - Afterburner Bench Tests'] }
+  // Bench-test settings are intentionally edited beside the actuator buttons
+  // in Tools > Test settings. Their schema remains here for config round trips.
 ];
 const SECTION_GROUP = new Map(WORKSPACE_GROUPS.flatMap(group => group.sections.map(title => [title, group.id])));
 let _workspaceFilter = 'essential';

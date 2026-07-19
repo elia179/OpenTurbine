@@ -2593,7 +2593,7 @@ function renderHardwareRequirementsSummary() {
   }
   const registryInvalid = ['input','output'].reduce((sum, dir) =>
     sum + (registryRoot()[dir + 's'] || []).filter(c => registryStatus(c).kind === 'error').length, 0);
-  items.push({state: registryInvalid ? 'error' : 'ok', text: registryInvalid ? `${registryInvalid} registry channel(s) need ID, pin, or range fixes` : 'Registry channel cards are structurally ready'});
+  items.push({state: registryInvalid ? 'error' : 'ok', text: registryInvalid ? `${registryInvalid} installed device(s) need a pin, valid range, or internal ID` : 'Installed device entries have the required setup fields'});
   let conflictCount = 0;
   try { conflictCount = _checkGpioConflicts().length; } catch (e) {}
   items.push({state: conflictCount ? 'error' : 'ok', text: conflictCount ? `${conflictCount} GPIO conflict(s) detected` : 'No GPIO conflicts detected'});

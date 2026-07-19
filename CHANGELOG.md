@@ -10,9 +10,13 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.6] — 2026-07-19
+
 ### Changed
 - Reduced the hardware-aware Essentials view to the common commissioning limits and controls; specialist tuning, logging, integration, windmilling-oil, and afterburner detail remains available under **All settings**.
 - Clarified that Hardware is an installer/electronics commissioning surface and that the Reduced-Power cap is shared by manual activation and automatic loss of feedback required by an enabled protection or shaft controller.
+- Moved bench-test timing and output controls out of Config and into **Tools > Test settings**, clarified the separate hardware-installation and runtime cluster controls, and documented the exact RPM change-rate calculation.
+- The Hardware device picker now wraps long turbine-device descriptions and uses theme-matched scrollbars without horizontal overflow.
 
 ### Fixed
 - HIL campaign records now capture the firmware version reported by the DUT instead of writing a stale hard-coded version.
@@ -20,6 +24,9 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 - Enforced the Reduced-Power maximum at the final main-fuel actuator boundary so an afterburner main-fuel offset cannot exceed the configured cap.
 - Disabled timestamp-only session files when no log fields are selected, avoiding needless flash wear and long LittleFS flush stalls during a run.
 - Bounded session-log listing by newest run numbers so a large legacy log directory cannot block the ECU web task for tens of seconds.
+- Final shutdown now uses the configured spool-down timeout when no N1 sensor is fitted instead of treating an unmeasured rotor as already stopped.
+- Developer Mode now permits runtime-safe Config values to be saved and applied while the engine is active; sequence-block and peripheral copies are safely queued until STANDBY, while normal operating mode remains locked.
+- Shutdown final-state guidance now explains the ECU-enforced STANDBY safe-output boundary, and opening All Events refreshes the event history.
 
 ## [1.9.5] — 2026-07-18
 

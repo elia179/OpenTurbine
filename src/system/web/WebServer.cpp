@@ -1366,34 +1366,32 @@ void WebServer::_setupRoutes() {
                 req->send(400, "application/json", "{\"error\":\"request body too large\"}");
                 return;
             }
-            if (!_isStandbyLike(EngineData::instance().mode)) {
-                req->send(409, "application/json", "{\"error\":\"engine must be idle in STANDBY to change config\"}");
+            if (Config::isLocked()) {
+                req->send(423, "application/json", "{\"error\":\"config is locked while the engine is active; enable Developer Mode before starting to allow live settings updates\"}");
                 return;
             }
             if (!ConfigApplyGate::tryBeginWebWrite()) {
                 req->send(409, "application/json", "{\"error\":\"START transition or another configuration update is in progress\"}");
                 return;
             }
-            if (!_isStandbyLike(EngineData::instance().mode)) {
+            if (Config::isLocked()) {
                 ConfigApplyGate::release();
-                req->send(409, "application/json", "{\"error\":\"engine left STANDBY before configuration could be applied\"}");
+                req->send(409, "application/json", "{\"error\":\"configuration became locked before it could be applied\"}");
                 return;
             }
-            if (!Config::isLocked()) {
-                bool ok = Config::fromJson(g_webRxBuf, g_webRxLen);
-                // If fromJson succeeds it already saves; do NOT save on failure — it would
-                // silently persist the old (unchanged) config and mislead the caller.
-                if (!ok) {
-                    ConfigApplyGate::release();
-                    req->send(400, "application/json", "{\"ok\":false,\"error\":\"settings rejected - check JSON and loaded engine profile_id\"}");
-                    return;
-                }
-                ConfigApplyGate::markReadyForCore();
-                req->send(200, "application/json", "{\"ok\":true,\"applying\":true}");
-            } else {
+            bool ok = Config::fromJson(g_webRxBuf, g_webRxLen);
+            // If fromJson succeeds it already saves; do NOT save on failure — it would
+            // silently persist the old (unchanged) config and mislead the caller.
+            if (!ok) {
                 ConfigApplyGate::release();
-                req->send(423, "application/json", "{\"error\":\"locked\"}");
+                req->send(400, "application/json", "{\"ok\":false,\"error\":\"settings rejected - check JSON and loaded engine profile_id\"}");
+                return;
             }
+            bool active = !_isStandbyLike(EngineData::instance().mode);
+            ConfigApplyGate::markReadyForCore();
+            req->send(200, "application/json", active
+                ? "{\"ok\":true,\"saved\":true,\"runtime_safe_values_live\":true,\"block_hardware_apply\":\"deferred_until_standby\"}"
+                : "{\"ok\":true,\"applying\":true}");
         });
 
     // PATCH /api/config — partial update to the settings section.
@@ -1419,21 +1417,17 @@ void WebServer::_setupRoutes() {
                 req->send(400, "application/json", "{\"error\":\"request body too large\"}");
                 return;
             }
-            if (!_isStandbyLike(EngineData::instance().mode)) {
-                req->send(409, "application/json", "{\"error\":\"engine must be idle in STANDBY to change config\"}");
-                return;
-            }
             if (Config::isLocked()) {
-                req->send(423, "application/json", "{\"error\":\"locked\"}");
+                req->send(423, "application/json", "{\"error\":\"config is locked while the engine is active; enable Developer Mode before starting to allow live settings updates\"}");
                 return;
             }
             if (!ConfigApplyGate::tryBeginWebWrite()) {
                 req->send(409, "application/json", "{\"error\":\"START transition or another configuration update is in progress\"}");
                 return;
             }
-            if (!_isStandbyLike(EngineData::instance().mode)) {
+            if (Config::isLocked()) {
                 ConfigApplyGate::release();
-                req->send(409, "application/json", "{\"error\":\"engine left STANDBY before configuration could be applied\"}");
+                req->send(409, "application/json", "{\"error\":\"configuration became locked before it could be applied\"}");
                 return;
             }
             JsonDocument patch;
@@ -1467,8 +1461,11 @@ void WebServer::_setupRoutes() {
                 return;
             }
             FlightRecorder::logConfigChange("config.patch", 0, 0);
+            bool active = !_isStandbyLike(EngineData::instance().mode);
             ConfigApplyGate::markReadyForCore();
-            req->send(200, "application/json", "{\"ok\":true,\"applying\":true}");
+            req->send(200, "application/json", active
+                ? "{\"ok\":true,\"saved\":true,\"runtime_safe_values_live\":true,\"block_hardware_apply\":\"deferred_until_standby\"}"
+                : "{\"ok\":true,\"applying\":true}");
         });
 
     // POST /api/theme?t=<key> — persist the web UI theme into ecu_config.json so it

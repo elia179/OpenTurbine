@@ -678,12 +678,12 @@ const BLOCKS = {
       ? `N1 > ${hw.rpm_zero_threshold ?? 100} rpm`
       : `timer (no N1 sensor)`,
     timeout_action:'continue',
-    desc:'Wait for complete stop. Main oil pump cuts when healthy N1 feedback reaches the stop threshold, or after timeout if fitted N1 feedback is unhealthy. If no N1 sensor is fitted, it proceeds immediately. A fitted scavenge pump can then continue to flush hot oil from bearings.',
+    desc:'Wait for complete stop. With healthy N1 feedback, the main oil pump cuts when speed reaches the stop threshold. If N1 is missing or unhealthy, the block waits for the full timeout as a conservative spool-down delay. A fitted scavenge pump can then continue to flush hot oil from bearings.',
     params:[
       {key:'rpm_zero_threshold',    label:'Stop threshold',   unit:'rpm',type:'float',min:0,   max:1000,  step:10,   def:100,
         visibleIf: hw => sensorEnabled('n1_rpm'),
         configKey:'rpm_zero_threshold',
-        desc:'N1 below this is treated as "stopped". Without N1 sensor the block treats the rotor as stopped and moves directly to the optional scavenge phase.'},
+        desc:'N1 below this is treated as "stopped". When N1 is missing or unhealthy, this threshold cannot be used and the block waits for the full timeout.'},
       {key:'final_stop_timeout_ms', label:'Timeout',          unit:'ms', type:'int',  min:1000,max:60000, step:1000, def:10000, configKey:'final_stop_timeout_ms'},
       {key:'oil_scavenge_ms', label:'Scavenge pump run time', unit:'ms', type:'int',
         min:0, max:120000, step:1000, def:0, configKey:'oil_scavenge_ms',
@@ -1736,7 +1736,8 @@ function buildFinalStateCard(tab, seq, idleRaw) {
     }
 
   } else if (tab === 'shutdown') {
-    // enterStandby() zeros everything after shutdown sequence
+    // enterStandby() zeros everything after shutdown sequence. These are the
+    // ECU-enforced STANDBY boundaries, not inferred sequence-card actions.
     state.throttle  = '0%';
     state.fuelSol   = 'closed';
     state.igniter   = 'off';
@@ -1835,6 +1836,7 @@ function buildFinalStateCard(tab, seq, idleRaw) {
   card.id = 'final-state-' + tab;
   card.innerHTML = `
     <div class="fs-header">Final state after ${tab === 'startup' ? 'Startup complete (RUNNING)' : 'Shutdown complete (STANDBY)'}</div>
+    ${tab === 'shutdown' ? '<div class="hw-desc" style="padding:.55rem 1rem 0">When the sequence finishes, the ECU enters STANDBY and forces every actuator to its safe/off state. This final safety boundary applies even when no matching Off block is present.</div>' : ''}
     <div class="fs-grid">${rowsHtml}</div>`;
   return card;
 }

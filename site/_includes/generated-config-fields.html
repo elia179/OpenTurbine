@@ -93,7 +93,7 @@
   <summary>External Instrument Cluster Display <span>5 fields</span></summary>
   <div class="table-wrap"><table>
     <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
-    <tbody><tr><td><strong>Send Data to External Cluster</strong></td><td>Transmit live ECU data and display-warning status through the configured serial output.</td></tr><tr><td><strong>N1 Warn RPM</strong></td><td>N1 warning zone start on cluster gauge (yellow). 0 = auto (RPM Limit × 0.9). N1_MAX comes from Engine Limits → RPM Limit</td></tr><tr><td><strong>N2 Warn RPM</strong></td><td>N2 RPM warning threshold for cluster display</td></tr><tr><td><strong>EGT Warn</strong></td><td>Selected engine-temperature warning threshold for cluster status. 0 = auto (selected EGT limit minus safety margin).</td></tr><tr><td><strong>Oil Warn</strong></td><td>Oil pressure warning status code threshold. 0 = auto (running minimum)</td></tr></tbody>
+    <tbody><tr><td><strong>Enable Cluster Data Transmission</strong></td><td>Runtime master switch for sending live ECU values and display-warning status. Hardware &gt; External Cluster installs the serial connection and assigns its GPIO; this switch lets you pause or resume transmission without changing hardware or rebooting.</td></tr><tr><td><strong>N1 Warn RPM</strong></td><td>N1 warning zone start on cluster gauge (yellow). 0 = auto (RPM Limit × 0.9). N1_MAX comes from Engine Limits → RPM Limit</td></tr><tr><td><strong>N2 Warn RPM</strong></td><td>N2 RPM warning threshold for cluster display</td></tr><tr><td><strong>EGT Warn</strong></td><td>Selected engine-temperature warning threshold for cluster status. 0 = auto (selected EGT limit minus safety margin).</td></tr><tr><td><strong>Oil Warn</strong></td><td>Oil pressure warning status code threshold. 0 = auto (running minimum)</td></tr></tbody>
   </table></div>
 </details>
 
@@ -125,7 +125,7 @@
   <summary>RPM Sensor Fault Detection <span>2 fields</span></summary>
   <div class="table-wrap"><table>
     <thead><tr><th>Dashboard field</th><th>What it controls</th></tr></thead>
-    <tbody><tr><td><strong>Maximum Allowed Reading Jump</strong></td><td>Largest one-sample RPM change accepted before the sensor is marked faulty. 0.40 means 40%.</td></tr><tr><td><strong>Zero Readings Before Fault</strong></td><td>Number of consecutive zero readings required before a running RPM sensor is declared stuck at zero.</td></tr></tbody>
+    <tbody><tr><td><strong>Maximum RPM Change Rate</strong></td><td>Maximum plausible shaft acceleration or deceleration, expressed as a fraction of that shaft's configured RPM limit per second. Example: 0.40 with a 100,000 RPM limit allows 40,000 RPM/s (4,000 RPM between 100 ms samples). Jump checking starts only after the previous accepted reading is above 500 RPM, so the first rise from zero does not fault.</td></tr><tr><td><strong>Zero Readings Before Fault</strong></td><td>Number of consecutive zero readings required before a running RPM sensor is declared stuck at zero.</td></tr></tbody>
   </table></div>
 </details>
 

@@ -288,6 +288,14 @@ static IgnitionCommandBlock* const _abShutIgnitionBlocks =
     _sequenceIgnitionBlockStorage + HardwareConfig::MAX_SEQ_BLOCKS * 3;
 static int     _abShutCount   = 0;
 static void validateSequences();  // defined after buildSequences
+static bool _configApplyDeferred = false;
+
+static void applyConfigOnEcuCore(const char* reason) {
+    Hardware::applyConfig();
+    validateSequences();
+    ClusterSerial::beginIfNeeded();
+    Serial.printf("[OT] Config block/hardware apply complete (%s)\n", reason);
+}
 
 static void buildSequences() {
     auto& hw = HardwareConfig::instance();
@@ -513,7 +521,7 @@ static void validateSequences() {
         }
         else if (strcmp(nm, "FinalStop") == 0) {
             if (!hw.hasN1Rpm)
-                addIssue(nm, "No N1 RPM sensor - FinalStop completes immediately without verifying spooldown", false);
+                addIssue(nm, "No N1 RPM sensor - cannot verify complete stop; uses the configured timeout as a spool-down delay", false);
         }
     };
 
@@ -2983,17 +2991,31 @@ void loop() {
     if (!Watchdog::feed()) EngineData::instance().watchdogReady = false;
 
     // Core 0 has finished validating, persisting, and publishing a complete
-    // settings document. Apply all block/controller copies on the ECU core
-    // before either physical or queued START processing is allowed.
+    // settings document. Runtime-safe Config statics are already visible. A
+    // full block/hardware copy is allowed only at the safe-output STANDBY/FAULT
+    // boundary; Developer Mode may save while active, in which case the newest
+    // copy remains queued.
     if (ConfigApplyGate::tryBeginCoreApply()) {
-        if (EngineData::instance().mode == SysMode::STANDBY) {
-            Hardware::applyConfig();
-            validateSequences();
-            ClusterSerial::beginIfNeeded();
-            Serial.println("[OT] Atomic config apply complete");
+        const SysMode configMode = EngineData::instance().mode;
+        if (configMode == SysMode::STANDBY || configMode == SysMode::FAULT) {
+            applyConfigOnEcuCore("web update");
+            _configApplyDeferred = false;
         } else {
-            Serial.println("[OT] ERROR: config apply reached ECU core outside STANDBY");
+            _configApplyDeferred = true;
+            Serial.println("[OT] Config saved while active: block/hardware apply deferred until STANDBY");
         }
+        ConfigApplyGate::release();
+    }
+
+    // Claim the same transaction gate before consuming a deferred update. This
+    // prevents a simultaneous web write or START transition from observing a
+    // partly copied configuration.
+    const SysMode deferredMode = EngineData::instance().mode;
+    if (_configApplyDeferred &&
+        (deferredMode == SysMode::STANDBY || deferredMode == SysMode::FAULT) &&
+        ConfigApplyGate::tryBeginDeferredCoreApply()) {
+        applyConfigOnEcuCore("deferred update at STANDBY");
+        _configApplyDeferred = false;
         ConfigApplyGate::release();
     }
 

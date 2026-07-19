@@ -25,6 +25,13 @@ public:
         return _state.compare_exchange_strong(expected, CoreApplying, std::memory_order_acq_rel);
     }
 
+    // Claims an otherwise-idle gate so the ECU core can apply a configuration
+    // that was deliberately deferred while the engine was active.
+    static bool tryBeginDeferredCoreApply() {
+        uint8_t expected = Idle;
+        return _state.compare_exchange_strong(expected, CoreApplying, std::memory_order_acq_rel);
+    }
+
     static bool tryBeginStartTransition() {
         uint8_t expected = Idle;
         return _state.compare_exchange_strong(expected, StartTransition, std::memory_order_acq_rel);
