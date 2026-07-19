@@ -134,7 +134,7 @@ const SCHEMA = [
     { key:'eg_src',             path:['safety','egt_source'],         label:'Primary Engine Temperature', type:'select', options:[{v:0,l:'Automatic: TOT if fitted, otherwise TIT'},{v:1,l:'Turbine outlet temperature (TOT)'},{v:2,l:'Turbine inlet temperature (TIT)'}], desc:'Temperature used for over-temperature protection, hot-start prevention, cooldown, throttle reduction, and flame confirmation.', basic:true },
     { key:'tot_limit',          path:['engine','tot_limit'],          label:'Outlet Temperature Limit (TOT)', unitType:'temp', zeroOff:true, desc:'Hard limit for turbine-outlet temperature. Active only when TOT is the primary engine temperature. 0 disables this limit.', step:10, min:0, basic:true },
     { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'Temperature Warning Margin', unitType:'temp_delta', desc:'Distance below the active hard temperature limit where warnings and gradual throttle reduction begin.', step:5, min:0, basic:true },
-    { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown Temperature Target', unitType:'temp', desc:'Cooldown completes after the selected engine temperature falls below this value.', step:10, min:0, basic:true },
+    { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown Temperature Target', unitType:'temp', desc:'Cooldown completes after the selected engine temperature falls below this value.', step:10, min:0, max:100000, basic:true },
   ]},
   { title: 'Oil System', id: 'oil-config-section', fields: [
     { key:'oil_sp',  path:['oil','startup_pressure'],   label:'Startup Oil Pressure Target', unitType:'press', desc:'Pressure the automatic oil controller targets while preparing the engine for ignition.', step:0.1, min:0, max:20, basic:true },
@@ -156,7 +156,7 @@ const SCHEMA = [
     { key:'th_ru', path:['throttle','ramp_up_ms'],   label:'Full Opening Time (ms)', desc:'Time for the fuel/throttle output to move from 0 to 100%. A larger value opens more gently.', step:50, min:0, basic:true },
     { key:'th_rd', path:['throttle','ramp_down_ms'], label:'Full Closing Time (ms)', desc:'Time for the fuel/throttle output to move from 100% to 0. A smaller value closes faster.', step:50, min:0, basic:true },
     { key:'th_mx', path:['throttle','idle_max_pct'], label:'Maximum Idle Fuel Output (%)', desc:'Fuel/throttle output when the idle control is at its maximum. The low end comes from Calibration > Minimum Reliable Fuel-Pump Output.', step:1, min:0, max:100, basic:true },
-    { key:'th_ex', path:['throttle','expo'],         label:'Low-Throttle Sensitivity', desc:'Softens response near idle while preserving full travel. 0 is linear; larger values make low-power adjustment less sensitive. Technical name: throttle expo.', step:0.05, min:0, max:0.95 },
+    { key:'th_ex', path:['throttle','expo'],         label:'Low-Throttle Sensitivity', desc:'Softens response near idle while preserving full travel. 0 is linear; 1 is maximum softening. Technical name: throttle expo.', step:0.05, min:0, max:1 },
     { key:'pb_n1e', path:['throttle','pullback_n1'], label:'Gradual N1 Limit Protection', type:'checkbox', desc:'Automatically reduce fuel as N1 approaches its configured limit.' },
     { key:'pb_n1s', path:['throttle','pullback_n1_soft_rpm'], label:'Begin N1 Throttle Reduction', unit:'RPM', desc:'N1 speed where gradual fuel reduction begins.', step:500, min:0, max:1000000000 },
     { key:'pb_n1h', path:['throttle','pullback_n1_hard_rpm'], label:'Full N1 Throttle Reduction', unit:'RPM', desc:'N1 speed where the gradual reduction reaches full authority. Hard shutdown protection remains separate.', step:500, min:0, max:1000000000 },
@@ -221,34 +221,6 @@ const SCHEMA = [
     { key:'rl_tr', path:['relight','tot_rise_c'],          label:'EGT Recovery Rise', unitType:'temp_delta', desc:'For EGT relight confirmation: igniter stays on until selected EGT rises this much above the temperature at relight start. 0 prevents EGT-rise confirmation. Set too low and EGT noise/throttle changes can false-confirm; too high can reject a real relight. Verify on a real start.', step:5, min:0, basic:true },
     { key:'rl_mr', path:['relight','min_rpm'],            label:'Min N1 for Relight (RPM)', desc:'Abort relight if N1 falls below this RPM - the turbine is winding down too fast to recover. Set above 50% of idle RPM. Typical: 25,000-40,000 RPM.', step:1000, min:0 },
     { key:'rl_to', path:['relight','relight_timeout_ms'], label:'Relight Timeout (ms)',      desc:'How long to keep the igniter on trying to relight after a flameout. If flame is not restored within this window, the engine shuts down. 0 = no timeout (not recommended). Typical: 8,000-15,000 ms.', step:500, min:0 },
-  ]},
-  { title: 'Tools - Primary Bench Tests', id:'tools-primary-section', sectionNote:'These values control the main Tools page test buttons. Durations are milliseconds. Demand % only matters on proportional outputs; relay/on-off outputs run ON for the configured duration.', fields: [
-    { key:'tl_fp', path:['tools','fuel_prime_ms'],     label:'Main Fuel Prime ms', desc:'Main fuel shutoff open time for the prime test.', step:100, min:100, basic:true },
-    { key:'tl_fs', path:['tools','fuel_sol_test_ms'],  label:'Solenoid Pulse ms',  desc:'Brief fuel-solenoid click-test pulse.',     step:50,  min:50, basic:true },
-    { key:'tl_op', path:['tools','oil_prime_ms'],      label:'Oil Prime ms',       desc:'Oil pump run time for Oil Prime.',          step:100, min:100, basic:true },
-    { key:'tl_ig', path:['tools','ign_test_ms'],       label:'Igniter 1 Test ms',  desc:'Spark/igniter on time for Igniter 1 Test.', step:100, min:100, basic:true },
-    { key:'tl_i2', path:['tools','ign2_test_ms'],      label:'AB / Pilot Igniter Test ms',  desc:'Spark/igniter on time for AB / Pilot Igniter Test.', step:100, min:100 },
-    { key:'tl_gl', path:['tools','glow_test_ms'],      label:'Glow Test ms',       desc:'Glow plug test duration. For wet glow, set this longer than the configured pilot-fuel delay if you want fuel to start during the test.', step:100, min:100, basic:true },
-    { key:'tl_gp', path:['tools','glow_test_pct'],     label:'Glow Test Command',  desc:'Glow plug test command. PWM glow uses this as percent output; relay glow turns ON for any nonzero value. Use 100 for a full-power heat test.', step:5, min:0, max:100, basic:true },
-    { key:'tl_st', path:['tools','start_test_ms'],     label:'Starter Test ms',    desc:'Starter spin time for Starter Test.',       step:100, min:100, basic:true },
-    { key:'tl_sp', path:['tools','start_test_pct'],    label:'Starter Test %',     desc:'Starter demand for proportional starter outputs.', step:5, min:0, max:100, basic:true },
-    { key:'tl_it', path:['tools','idle_test_ms'],      label:'Idle Test ms',       desc:'Throttle idle-output test duration.',      step:100, min:100, basic:true },
-  ]},
-  { title: 'Tools - Accessory Bench Tests', id:'tools-accessory-section', sectionNote:'Accessory outputs only affect the matching Tools page buttons when that hardware is fitted. Unused outputs are greyed out so the saved defaults stay visible without inviting edits.', fields: [
-    { key:'tl_os', path:['tools','oil_scav_test_ms'],  label:'Scavenge Test ms',   desc:'Oil scavenge pump test duration.',         step:100, min:100, basic:true },
-    { key:'tl_cf', path:['tools','cool_fan_test_ms'],  label:'Fan Test ms',        desc:'Cooling fan test duration.',               step:100, min:100, basic:true },
-    { key:'tl_as', path:['tools','airstarter_test_ms'],label:'Air Starter Valve Test ms', desc:'Air starter valve pulse duration.', step:50, min:50, basic:true },
-    { key:'tl_bv', path:['tools','bleed_valve_test_ms'],label:'Bleed Test ms',     desc:'Bleed valve test pulse duration.',         step:50,  min:50, basic:true },
-    { key:'tl_f2', path:['tools','fuel_pump2_test_ms'],label:'Pilot / Auxiliary Fuel Pump Test ms', desc:'Pilot / auxiliary fuel pump test duration.',     step:100, min:100, basic:true },
-    { key:'tl_f2p',path:['tools','fuel_pump2_test_pct'],label:'Pilot / Auxiliary Fuel Pump Test %', desc:'Pilot / auxiliary fuel pump demand for proportional outputs.', step:5, min:0, max:100, basic:true },
-    { key:'tl_se', path:['tools','starter_en_test_ms'],label:'Starter Enable Test ms',  desc:'Starter enable output test duration.',     step:50,  min:50, basic:true },
-    { key:'tl_pp', path:['tools','prop_pitch_test_ms'],label:'Prop Pitch Test ms', desc:'Prop pitch test duration.',                step:100, min:100, basic:true },
-    { key:'tl_pq', path:['tools','prop_pitch_test_pct'],label:'Prop Pitch Test %', desc:'Prop pitch test position/demand for proportional outputs.', step:5, min:0, max:100, basic:true },
-  ]},
-  { title: 'Tools - Afterburner Bench Tests', id:'tools-ab-section', sectionNote:'Afterburner bench-test timing is shown separately because these buttons are only useful on AB builds. Demand % is ignored by relay-style AB pump outputs.', fields: [
-    { key:'tl_abs',path:['tools','ab_sol_test_ms'],    label:'Afterburner Fuel Valve Test ms', desc:'How long the normally closed afterburner fuel valve opens during a bench pulse.', step:50, min:50, basic:true },
-    { key:'tl_abp',path:['tools','ab_pump_test_ms'],   label:'Afterburner Fuel Pump Test ms', desc:'How long the dedicated afterburner fuel pump runs during a bench test.', step:100, min:100, basic:true },
-    { key:'tl_abq',path:['tools','ab_pump_test_pct'],  label:'Afterburner Fuel Pump Test %', desc:'Pump demand for proportional afterburner fuel-pump outputs.', step:5, min:0, max:100, basic:true },
   ]},
   { title: 'Logging and Data Updates', fields: [
     { key:'tm_sb', path:['telemetry','log_standby'],          label:'Log Standby Snapshots', desc:'Include periodic event-log snapshots while the ECU is idle. Leave off to avoid long idle-only log stretches.', type:'checkbox' },
@@ -326,15 +298,15 @@ const SCHEMA = [
     { key:'ab_tr',  path:['afterburner','tot_rise_deg_c'],      label:'EGT Rise', unitType:'temp_delta', desc:'Minimum selected EGT rise required to confirm ignition (EGT Rise mode). Typical: 20-50 C. Too low can false-confirm on noise/throttle changes; too high can reject a real light. Verify on a real start.', step:5, min:0 },
     { key:'ab_tw',  path:['afterburner','tot_rise_window_ms'],  label:'EGT Rise Window (ms)',desc:'Time window in which the required EGT rise must occur (EGT Rise mode). Typical: 1500-3000 ms.', step:100, min:0 },
     { key:'ab_ams', path:['afterburner','assume_ignited_ms'],   label:'Assume Lit After (ms)',desc:'Delay before assuming AB has lit without sensor confirmation (Timed mode). Typical: 1000-2000 ms.', step:100, min:0 },
-    { key:'ab_fto', path:['afterburner','flame_timeout_ms'],    label:'Confirmation Timeout (ms)', desc:'Overall deadline for flame confirmation. Exceeding this triggers an AB fault and shuts down the afterburner. Typical: 3000-5000 ms.', step:200, min:0 },
+    { key:'ab_fto', path:['afterburner','flame_timeout_ms'],    label:'Confirmation Timeout (ms)', desc:'Overall deadline for flame confirmation. Exceeding this triggers an AB fault and shuts down the afterburner. Typical: 3000-5000 ms.', step:200, min:0, max:3600000 },
   ]},
   { title: 'Afterburner — Running', id: 'ab-run-section', fields: [
     { key:'ab_pcm', path:['afterburner','pump_control_mode'],     label:'Pump Command Source',   type:'select', options:[{v:0,l:'Fixed Max Output'},{v:1,l:'Follow Main Throttle'},{v:2,l:'Dedicated AB Input'}], desc:'Choose how AB pump flow is commanded while lit. Dedicated AB Input uses the ADC or servo-PWM AB input configured in Hardware. Note: if the AB input was not in use when the ECU booted, switching to Dedicated AB Input needs a reboot before the input is read.' },
     { key:'ab_pmn', path:['afterburner','pump_min_pct'],         label:'Afterburner Fuel Pump Min %', desc:'Minimum afterburner fuel-pump demand for a variable command source. With a missing servo-PWM afterburner input, demand fails to this minimum.', step:5, min:0, max:100 },
     { key:'ab_pmx', path:['afterburner','pump_max_pct'],         label:'Afterburner Fuel Pump Max %', desc:'Maximum afterburner fuel-pump demand. Fixed Max Output holds this value while the afterburner is running.', step:5, min:0, max:100 },
     { key:'ab_mo',  path:['afterburner','main_fuel_offset_pct'], label:'Main Fuel Offset %',    desc:'Add this to main throttle demand while AB is running (extra air/fuel for compressor). 0 = none.', step:2, min:-20, max:50 },
-    { key:'ab_sms', path:['afterburner','stabilize_ms'],         label:'Stabilize Hold (ms)',   desc:'Hold time after confirmed ignition before declaring the afterburner Running. Typical: 500-2000 ms.', step:100, min:0 },
-    { key:'ab_smt', path:['afterburner','stabilize_max_tot'],    label:'Stabilize Max EGT',  unitType:'temp', zeroOff:true, desc:'AB faults if selected EGT exceeds this during the stabilize hold. 0 = disabled.', step:10, min:0 },
+    { key:'ab_sms', path:['afterburner','stabilize_ms'],         label:'Stabilize Hold (ms)',   desc:'Hold time after confirmed ignition before declaring the afterburner Running. Typical: 500-2000 ms.', step:100, min:0, max:3600000 },
+    { key:'ab_smt', path:['afterburner','stabilize_max_tot'],    label:'Stabilize Max EGT',  unitType:'temp', zeroOff:true, desc:'AB faults if selected EGT exceeds this during the stabilize hold. 0 = disabled.', step:10, min:0, max:100000 },
   ]},
   { title: 'Safety Thresholds', id: 'safety-ext-section', fields: [
     { key:'sf_tit', path:['safety','tit_limit_c'],              label:'TIT Limit',          unitType:'temp',  zeroOff:true, wrapId:'field-sf-tit', desc:'Turbine Inlet Temperature hard limit. Engine shuts down if TIT exceeds this. 0 = disabled. Typical turboprop TIT limit: 800-950 °C / 1470-1740 °F.',               step:10,   min:0, basic:true },
@@ -345,13 +317,13 @@ const SCHEMA = [
   ]},
   { title: 'Automatic N2 Speed Control', id: 'governor-cfg-section', sectionNote:'Holds the power turbine (N2) at a set speed as load changes. The ECU automatically chooses one control method from the fitted hardware and gains. PROP-PITCH (turboprop) adjusts propeller load when a proportional Prop Pitch actuator is fitted and Pitch Gain is above 0. FUEL CONTROL (turboshaft, APU, or generator) adjusts fuel directly when propeller-pitch control is unavailable or Pitch Gain is 0.', fields: [
     { key:'gv_tr', path:['governor','target_rpm'],   label:'Target N2 RPM',      desc:'Power turbine (N2) speed setpoint for the governor. Set to your rated output shaft RPM. 0 = governor disabled. In prop-pitch mode the governor adds propeller load to hold this speed, so set it to your rated power-turbine RPM — too low can over-load and stall the core.',                                                             step:100,   min:0, basic:true },
-    { key:'gv_bd', path:['governor','band_rpm'],     label:'No-Correction Speed Band (RPM)', desc:'The controller makes no correction while N2 is within this distance above or below the target. A small band prevents hunting. Typical: 200–500 RPM.', step:50, min:0 },
+    { key:'gv_bd', path:['governor','band_rpm'],     label:'No-Correction Speed Band (RPM)', desc:'The controller makes no correction while N2 is within this distance above or below the target. A small band prevents hunting. Typical: 200–500 RPM.', step:50, min:0, max:1000000000 },
     { key:'gv_kp', path:['governor','kp'], label:'Fuel-Control Response Strength', desc:'How strongly fuel changes for N2 speed error when the ECU controls N2 with fuel. Too high can oscillate; too low responds slowly. Technical name: proportional gain (Kp). Typical: 0.0005–0.002; start low.', step:0.0001, min:0, max:0.01 },
     { key:'gv_pk', path:['governor','pitch_kp'], label:'Propeller-Pitch Response Strength', desc:'How strongly propeller pitch changes for N2 speed error. A value above 0 selects pitch control when a proportional pitch actuator is fitted; 0 selects fuel control. Technical name: pitch gain (Kp).', step:0.0001, min:0, max:0.01 },
     { key:'gv_pr', path:['governor','pitch_ramp_sec'], label:'Full Propeller-Pitch Travel Time (s)', desc:'Shortest allowed time for the pitch actuator to travel through its full range. This prevents abrupt load changes. 0 allows immediate movement. Typical: 1–5 s.', step:0.5, min:0 },
   ]},
   { title: 'Glow Plug Preheat', id: 'glow-cfg-section', fields: [
-    { key:'gl_ms', path:['glow_plug','preheat_ms'],      label:'Preheat Duration (ms)', desc:'Time to ramp the glow plug from 0 to maximum duty before ignition. Longer = more heat soak. Typical: 8,000–15,000 ms.',                  step:500, min:0, basic:true },
+    { key:'gl_ms', path:['glow_plug','preheat_ms'],      label:'Preheat Duration (ms)', desc:'Time to ramp the glow plug from 0 to maximum duty before ignition. Longer = more heat soak. Typical: 8,000–15,000 ms.',                  step:500, min:0, max:3600000, basic:true },
     { key:'gl_mx', path:['glow_plug','preheat_max_pct'], label:'Preheat Peak Command',  desc:'Peak glow command during the preheat ramp. PWM glow uses this as duty percent; relay glow turns ON for any nonzero command. Typical PWM value: 60–90%.', step:5, min:0, max:100 },
     { key:'gl_hd', path:['glow_plug','hold_pct'],        label:'Hold Command',          desc:'Glow command held after preheat completes. PWM glow uses this as duty percent; relay glow stays ON for any nonzero hold command. Typical PWM value: 20–40%.', step:5, min:0, max:100 },
   ]},
@@ -490,12 +462,10 @@ function setPath(obj, path, val) {
 const WORKSPACE_GROUPS = [
   { id:'engine', title:'Engine & Limits', desc:'Primary speed, temperature and throttle behaviour', sections:['Engine Protection Limits','Throttle'] },
   { id:'oil', title:'Oil & Lubrication', desc:'Startup, running and windmilling oil protection', sections:['Oil System','Windmilling Oil Protection'] },
-  { id:'operation', title:'Start, Run & Recovery', desc:'Idle control, relight, low-RPM starter support and glow', sections:['Automatic Idle Speed Control','Reduced-Power Mode','Automatic Flameout Relight','Low-RPM Starter Support','Glow Plug Preheat'] },
+  { id:'operation', title:'Start, Run & Recovery', desc:'Idle control, relight, cooldown overrides, low-RPM starter support and glow', sections:['Automatic Idle Speed Control','Reduced-Power Mode','Automatic Flameout Relight','Manual Relight and Cooldown Override','Low-RPM Starter Support','Glow Plug Preheat'] },
   { id:'safety', title:'Safety & Input Health', desc:'Shutdown thresholds, sensor health and input signal loss', sections:['Automatic Safety Shutdowns','Safety Thresholds','RPM Sensor Fault Detection','RC / Servo Signal Loss Detection'] },
   { id:'power', title:'Power System', desc:'Automatic N2 speed control and afterburner tuning', sections:['Automatic N2 Speed Control','Afterburner — Ignition Conditions','Afterburner — Ignition Method','Afterburner — Flame Confirmation','Afterburner — Running'] },
-  { id:'data', title:'Data & Display', desc:'Logging, external display thresholds and general timing', sections:['Logging and Data Updates','External Instrument Cluster Display','Manual Relight and Cooldown Override'] },
-  // Bench-test settings are intentionally edited beside the actuator buttons
-  // in Tools > Test settings. Their schema remains here for config round trips.
+  { id:'data', title:'Data & Display', desc:'Logging, update rates and external display thresholds', sections:['Logging and Data Updates','External Instrument Cluster Display'] },
 ];
 const SECTION_GROUP = new Map(WORKSPACE_GROUPS.flatMap(group => group.sections.map(title => [title, group.id])));
 let _workspaceFilter = 'essential';

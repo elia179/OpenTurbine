@@ -348,10 +348,10 @@ const BLOCKS = {
     ],
     params:[
       // ------ With oil pressure sensor ------------------------------------------------------------------------------------------------------------------------------
-      {key:'startup_oil_demand', label:'Oil pressure target', unit:'bar', type:'float', min:0, max:10, step:0.1, def:2.5,
+      {key:'startup_oil_demand', label:'Oil pressure target', unit:'bar', type:'float', min:0, max:20, step:0.1, def:2.5,
         visibleIf: hw => sensorEnabled('oil_press') && actuatorHasProportionalOutput('oil_pump'),
         configKey:'startup_oil_demand'},
-      {key:'oil_arm_min_bar',    label:'Minimum pressure before ignition', unit:'bar', type:'float', min:0, max:10, step:0.1, def:1.5,
+      {key:'oil_arm_min_bar',    label:'Minimum pressure before ignition', unit:'bar', type:'float', min:0, max:20, step:0.1, def:1.5,
         visibleIf: hw => sensorEnabled('oil_press'), configKey:'oil_arm_min_bar'},
       // ------ Without oil pressure sensor ---------------------------------------------------------------------------------------------------------------------
       {key:'startup_oil_pct',    label:'Pump duty %',         unit:'%',  type:'float', min:0, max:100, step:5, def:80,
@@ -389,7 +389,7 @@ const BLOCKS = {
       {key:'starter_timeout_ms', label:'Timeout',       unit:'ms',  type:'int',   min:1000,max:60000, step:500, def:8000,
         configKey:'starter_timeout_ms',
         desc:'Maximum spin time before fault shutdown. Bench Mode is the only mode where this timeout completes without verified N1 feedback.'},
-      {key:'oil_startup_min_bar',label:'Oil arm min',   unit:'bar', type:'float', min:0,   max:10,    step:0.1, def:1.5,
+      {key:'oil_startup_min_bar',label:'Oil arm min',   unit:'bar', type:'float', min:0,   max:20,    step:0.1, def:1.5,
         visibleIf: hw => sensorEnabled('oil_press'), configKey:'oil_startup_min_bar',
         desc:'Shared with OilPrime arm threshold - both use the same config value.'},
     ]
@@ -486,7 +486,7 @@ const BLOCKS = {
     params:[
       {key:'rpm_target',                label:'Idle-entry N1 target', unit:'rpm',type:'float', min:1000, max:200000, step:500, def:32000, configKey:'rpm_target'},
       {key:'rpm_timeout_ms',            label:'Timeout',                    unit:'ms', type:'int',   min:1000, max:120000, step:1000, def:12000, configKey:'rpm_timeout_ms'},
-      {key:'oil_running_min',           label:'Running oil min',            unit:'bar',type:'float', min:0,    max:10,     step:0.1,  def:2.8,   configKey:'oil_running_min',
+      {key:'oil_running_min',           label:'Running oil min',            unit:'bar',type:'float', min:0,    max:20,     step:0.1,  def:2.8,   configKey:'oil_running_min',
         visibleIf: hw => sensorEnabled('oil_press'),
         desc:'Oil pressure minimum enforced from Spool start through running. Shared with SafetyHold - edit in either block or in Config -> Oil -> Running Min.'},
       {key:'spool_cut_starter_on_exit', label:'Cut starter demand on exit',            type:'bool',                                  def:true,  configKey:'spool_cut_starter_on_exit'},
@@ -510,7 +510,7 @@ const BLOCKS = {
       {key:'final_check_rpm',label:'Minimum accepted N1', unit:'rpm',type:'float', min:1000, max:200000, step:500, def:31000, configKey:'final_check_rpm',
         visibleIf: hw => sensorEnabled('n1_rpm'),
         desc:'Fault if N1 is below this after the hold. Not checked when no N1 RPM sensor is fitted.'},
-      {key:'oil_running_min',label:'Minimum accepted oil pressure',unit:'bar',type:'float', min:0, max:10, step:0.1, def:2.8, configKey:'oil_running_min',
+      {key:'oil_running_min',label:'Minimum accepted oil pressure',unit:'bar',type:'float', min:0, max:20, step:0.1, def:2.8, configKey:'oil_running_min',
         visibleIf: hw => sensorEnabled('oil_press'),
         desc:'Same threshold as Spool running oil min - both read Config -> Oil -> Running Min.'},
       {key:'safety_turn_off_starter',    label:'Turn off starter on exit',             type:'bool', def:false, configKey:'safety_turn_off_starter'},
@@ -653,7 +653,7 @@ const BLOCKS = {
         msg: 'Warning: No temperature sensor - cooldown cannot verify EGT has dropped. Block will run for the full timeout then continue (safe).' },
     ],
     params:[
-      {key:'tot_cooldown_target',       label:'EGT target',              unitType:'temp', type:'float',min:0,    max:500,    step:10,    def:150,    configKey:'tot_cooldown_target'},
+      {key:'tot_cooldown_target',       label:'EGT target',              unitType:'temp', type:'float',min:0, max:100000, step:10, def:150, configKey:'tot_cooldown_target'},
       {key:'cooldown_timeout_ms',       label:'Timeout',                 unit:'ms', type:'int',  min:10000,max:600000, step:10000, def:60000, configKey:'cooldown_timeout_ms'},
       {key:'cooldown_use_starter',      label:'Use starter motor',                  type:'bool',                                  def:true,   configKey:'cooldown_use_starter',
         visibleIf: hw => actuatorEnabled('starter')},
@@ -828,7 +828,7 @@ const BLOCKS = {
     timeout_action:'fault',
     desc:'Waits for AB flame confirmation using the method configured in Config -> Afterburner - Flame Confirmation. Faults if the overall timeout is exceeded.',
     params:[
-      {key:'ab_flame_timeout', label:'Overall Timeout', unit:'ms', type:'int', min:0, max:15000, step:200, def:3000, configKey:'ab_flame_timeout'},
+      {key:'ab_flame_timeout', label:'Overall Timeout', unit:'ms', type:'int', min:0, max:3600000, step:200, def:3000, configKey:'ab_flame_timeout'},
     ]
   },
   ABStabilize: {
@@ -837,8 +837,8 @@ const BLOCKS = {
     timeout_action:'complete',
     desc:'Hold after lighting. Monitors selected EGT - faults if too hot. On completion, sets AB state to Running.',
     params:[
-      {key:'ab_stab_ms',        label:'Hold Time',       unit:'ms', type:'int',  min:100, max:10000,step:100,def:1000,configKey:'ab_stab_ms'},
-      {key:'ab_stab_max_tot',   label:'Max EGT (0=off)', unitType:'temp', zeroOff:true, type:'float',min:0,   max:1000, step:10, def:0,   configKey:'ab_stab_max_tot'},
+      {key:'ab_stab_ms',        label:'Hold Time',       unit:'ms', type:'int', min:0, max:3600000, step:100, def:1000, configKey:'ab_stab_ms'},
+      {key:'ab_stab_max_tot',   label:'Max EGT (0=off)', unitType:'temp', zeroOff:true, type:'float', min:0, max:100000, step:10, def:0, configKey:'ab_stab_max_tot'},
     ]
   },
 
@@ -862,8 +862,8 @@ const BLOCKS = {
     condition: null, timeout_action: null,
     desc:'Ramps glow plug power linearly from 0 to maxPct over preheatMs, then holds at holdPct. Wet glow pilot fuel follows the hardware delay after glow ON. If a glow current sensor is fitted and "Wait until hot" is checked, the block keeps holding at holdPct until the current drops below the ready threshold. The plug stays at holdPct when this block exits.',
     params:[
-      {key:'glow_preheat_ms',      label:'Preheat duration',  unit:'ms', type:'int',   min:500,  max:60000, step:500, def:10000, configKey:'glow_preheat_ms'},
-      {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:10,   max:100,   step:5,   def:80,    configKey:'glow_preheat_max_pct',
+      {key:'glow_preheat_ms',      label:'Preheat duration',  unit:'ms', type:'int', min:0, max:3600000, step:500, def:10000, configKey:'glow_preheat_ms'},
+      {key:'glow_preheat_max_pct', label:'Peak duty',         unit:'%',  type:'float', min:0, max:100, step:5, def:80, configKey:'glow_preheat_max_pct',
        visibleIf: hw => actuatorHasProportionalOutput('glow_plug')},
       {key:'glow_hold_pct',        label:'Hold duty',         unit:'%',  type:'float', min:0,    max:100,   step:5,   def:30,    configKey:'glow_hold_pct',
        visibleIf: hw => actuatorHasProportionalOutput('glow_plug')},
@@ -913,7 +913,7 @@ const BLOCKS = {
     desc:'Waits until N2 (power turbine) is within bandRpm of the governor target RPM, or until timeoutMs elapses. On timeout, proceeds normally (engine is already in RUNNING - governor will continue to regulate). Use after entering RUNNING to confirm the governor has taken control. Outputs: none (monitoring only).',
     params:[
       {key:'gov_hold_timeout_ms', label:'Timeout', unit:'ms',  type:'int',   min:1000, max:60000, step:500,  def:10000, configKey:'gov_hold_timeout_ms'},
-      {key:'gov_hold_band_rpm',   label:'Band',    unit:'rpm', type:'float', min:10,   max:5000,  step:50,   def:500,   configKey:'gov_hold_band_rpm'},
+      {key:'gov_hold_band_rpm',   label:'Band',    unit:'rpm', type:'float', min:0, max:1000000000, step:50, def:500, configKey:'gov_hold_band_rpm'},
     ],
     visibleIf: hw => !!(hw.controllers?.governor && sensorEnabled('n2_rpm') &&
       (actuatorEnabled('throttle') || actuatorHasProportionalOutput('prop_pitch'))),

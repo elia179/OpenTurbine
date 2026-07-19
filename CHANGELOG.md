@@ -10,6 +10,16 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.7] — 2026-07-19
+
+### Changed
+- Bench-test settings now have one UI owner under **Tools > Test settings**; the hidden duplicate Config schema definitions were removed while full engine-file round trips continue to preserve their values.
+- Manual relight and cooldown-override controls now live under **Start, Run & Recovery** instead of **Data & Display**.
+
+### Fixed
+- Aligned every setting shared by Config and Sequence to the same firmware-supported range, including oil pressure, cooldown temperature, afterburner timing/temperature, glow preheat, and governor band settings.
+- Allowed the documented maximum throttle-expo value of 1.0 and added structural regression checks for duplicate Config keys, paths, labels, section ownership, Tools coverage, and shared Sequence ranges.
+
 ## [1.9.6] — 2026-07-19
 
 ### Changed

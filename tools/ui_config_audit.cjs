@@ -6,6 +6,64 @@ const { chromium } = require('playwright');
 const port = 8800 + Math.floor(Math.random() * 500);
 const base = `http://127.0.0.1:${port}`;
 
+function readConstExpression(source, marker, closing) {
+  const start = source.indexOf(marker);
+  assert.notEqual(start, -1, `missing ${marker}`);
+  const end = source.indexOf(closing, start);
+  assert.notEqual(end, -1, `unterminated ${marker}`);
+  return Function(`return (${source.slice(start + marker.length, end + closing.length - 1).trim().replace(/;$/, '')})`)();
+}
+
+function auditConfigStructure() {
+  const root = path.resolve(__dirname, '..');
+  const configSource = fs.readFileSync(path.join(root, 'data_src', 'config.html'), 'utf8');
+  const sequenceSource = fs.readFileSync(path.join(root, 'data_src', 'sequence.html'), 'utf8');
+  const toolsSource = fs.readFileSync(path.join(root, 'data_src', 'tools.html'), 'utf8');
+  const configCpp = fs.readFileSync(path.join(root, 'src', 'system', 'Config.cpp'), 'utf8');
+  const schema = readConstExpression(configSource, 'const SCHEMA = ', '\n];');
+  const groups = readConstExpression(configSource, 'const WORKSPACE_GROUPS = ', '\n];');
+  const fields = schema.flatMap(section => section.fields.map(field => ({
+    ...field, section: section.title, pathText: field.path.join('.')
+  })));
+
+  for (const property of ['key', 'pathText', 'label']) {
+    const values = fields.map(field => field[property]);
+    assert.equal(new Set(values).size, values.length, `Config contains a duplicate ${property}`);
+  }
+  assert.equal(new Set(schema.map(section => section.title)).size, schema.length,
+    'Config contains duplicate section titles');
+  const assignments = groups.flatMap(group => group.sections);
+  assert.deepEqual([...assignments].sort(), schema.map(section => section.title).sort(),
+    'Every Config section must belong to exactly one logical workspace group');
+  assert.equal(fields.some(field => field.pathText.startsWith('tools.')), false,
+    'Bench-test settings must be owned only by Tools > Test settings');
+
+  const firmwareToolKeys = [...new Set(
+    [...configCpp.matchAll(/tl\["([^"]+)"\]\s*=/g)].map(match => match[1])
+  )];
+  const toolsUiKeys = new Set([
+    ...[...toolsSource.matchAll(/configKey:'tools\.([^']+)'/g)].map(match => match[1]),
+    ...[...toolsSource.matchAll(/:\s*'([^']+)'/g)].map(match => match[1])
+  ]);
+  assert.deepEqual(firmwareToolKeys.filter(key => !toolsUiKeys.has(key)), [],
+    'Every firmware bench-test setting must remain editable from Tools');
+
+  const blocks = readConstExpression(sequenceSource, 'const BLOCKS = ', '\n};');
+  const mappings = readConstExpression(sequenceSource, 'const CONFIG_SECTIONS = ', '\n};');
+  for (const [blockName, block] of Object.entries(blocks)) {
+    for (const parameter of block.params || []) {
+      const mapping = mappings[parameter.configKey];
+      if (!mapping) continue;
+      const configField = fields.find(field => field.pathText === `${mapping.sec}.${mapping.key}`);
+      if (!configField) continue;
+      assert.equal(parameter.min ?? null, configField.min ?? null,
+        `${blockName}.${parameter.key} minimum differs between Config and Sequence`);
+      assert.equal(parameter.max ?? null, configField.max ?? null,
+        `${blockName}.${parameter.key} maximum differs between Config and Sequence`);
+    }
+  }
+}
+
 function installedBrowser() {
   const candidates = [
     process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google', 'Chrome', 'Application', 'chrome.exe'),
@@ -63,6 +121,8 @@ async function goto(page, route, waitSelector) {
 
   const results = [];
   try {
+    auditConfigStructure();
+    results.push('Config keys, paths, labels, section ownership, Tools ownership, and shared Sequence ranges are unique and consistent');
     await reset(page);
 
     await goto(page, 'hardware.html', '#f-profile-id');
