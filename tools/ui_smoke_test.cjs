@@ -631,9 +631,9 @@ function installedBrowser() {
     results.push('event log renders firmware event keys, TIT peaks, and follows the unit preference');
 
     await page.evaluate(() => renderSummary([], 8));
-    assert.match(await page.locator('#runs-container').textContent(), /No engine runs recorded yet\. 8 diagnostic events are still available under All Events\./);
+    assert.match(await page.locator('#runs-container').textContent(), /No engine runs in the currently loaded log\. 8 diagnostic events are still available under All Events\./);
     await page.evaluate(() => renderSummary([], 0));
-    assert.equal((await page.locator('#runs-container').textContent()).trim(), 'No engine runs recorded yet.');
+    assert.match((await page.locator('#runs-container').textContent()).trim(), /^No engine runs in the currently loaded log\..*return to STANDBY and click Refresh\.$/s);
     results.push('empty run summary distinguishes diagnostic events from engine runs');
 
     console.log(`UI smoke test passed (${results.length} checks):`);

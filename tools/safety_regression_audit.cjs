@@ -25,6 +25,7 @@ const safety = read('src/engine/SafetyMonitor.h');
 const sessionLogger = read('src/system/SessionLogger.cpp');
 const governor = read('src/engine/controllers/PowerTurbineGovernor.h');
 const feedback = read('src/system/FeedbackRequirements.h');
+const channelRegistry = read('src/system/ChannelRegistry.h');
 const ntc = read('src/hal/sensors/NTCSensor.h');
 const sequenceHtml = read('data_src/sequence.html');
 const hardwareHtml = read('data_src/hardware.html');
@@ -75,6 +76,41 @@ expect('all safety dwell confirmations reset across inactive and bypassed monito
 expect('general safety scan is capped at 250 ms in firmware and UI',
   configCpp.includes('validInt(sf["check_interval_ms"], 10, 250)') &&
   configHtml.includes("path:['safety','check_interval_ms']") && configHtml.includes('max:250'));
+expect('large-turbine factory safety suggestions are useful but hardware-gated',
+  configCpp.includes('totRiseRateLimitDegPerSec  = 100.0f') &&
+  configCpp.includes('hotStartTotThreshold        = 150.0f') &&
+  configCpp.includes('standbyOilRpmLimit  = 1000.0f') &&
+  configCpp.includes('prevHotStart') &&
+  configCpp.includes('autofill:hot_start_egt_c'));
+expect('nonzero EGT-rate suggestion does not block a sensor-free turbine start',
+  feedback.includes('(Config::effectiveEgtSource() != 0 && Config::totRiseRateLimitDegPerSec > 0.0f)'));
+expect('event log routes preserve specific downloads and reject malformed display records',
+  web.indexOf('_server.on("/api/log/raw"') < web.indexOf('_server.on("/api/log",') &&
+  web.indexOf('_server.on("/api/log/csv"') < web.indexOf('_server.on("/api/log",') &&
+  web.includes("lineBuf[n - 1] == ','") &&
+  web.includes("lineBuf[n - 1] != '}'") &&
+  (web.match(/const int DISPLAY_LIMIT = 120/g) || []).length === 2 &&
+  (web.match(/if \(!_gateLogRead\(req\)\) return;/g) || []).length === 3 &&
+  web.includes('Another log view or download is in progress; retry shortly'));
+expect('windmilling oil setup warns when it cannot activate or command oil',
+  configHtml.includes('windmilling oil protection can never activate') &&
+  configHtml.includes('both zero; this protection would command no oil'));
+expect('large RC jet example is internally based on a 100000 RPM shaft',
+  configHtml.includes("desc: 'Large RC Jet ~400N+, approximately 100,000 RPM'") &&
+  configHtml.includes('rpm_limit: 100000') && configHtml.includes('pullback_n1_soft_rpm: 95000'));
+expect('dedicated temperature interfaces ignore irrelevant analog range fields',
+  channelRegistry.includes('c.temperatureInterface != 0') &&
+  channelRegistry.includes('return temperatureInterfaceValid(c)'));
+expect('low-temperature interfaces cannot masquerade as turbine-gas feedback',
+  channelRegistry.includes('const bool lowTemperaturePurpose') &&
+  channelRegistry.includes('if (!lowTemperaturePurpose || turbineGasPurpose) return false') &&
+  hardwareHtml.includes('NTC and DS18B20 interfaces are only for oil, coolant, intake or ambient temperature'));
+expect('GlowPreheat help redirects missing hardware to the installed-output editor',
+  sequenceHtml.includes("bname === 'GlowPreheat' && !actuatorEnabled('glow_plug')") &&
+  sequenceHtml.includes("/hardware.html#registry-outputs"));
+expect('every forced STANDBY transition stops an active main sequence before all-off',
+  main.includes('if (g_sequencer.isRunning()) g_sequencer.stopSequence();') &&
+  main.indexOf('if (g_sequencer.isRunning()) g_sequencer.stopSequence();') < main.indexOf('ResetRecovery::markSafe();'));
 
 for (const key of [
   'low_oil_confirm_ms', 'oil_zero_confirm_ms', 'oil_temp_confirm_ms',

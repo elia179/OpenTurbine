@@ -317,7 +317,7 @@ function renderSummary(runs, eventCount = 0) {
     const detail = eventCount
       ? ` ${eventCount} diagnostic event${eventCount === 1 ? '' : 's'} are still available under All Events.`
       : '';
-    c.innerHTML = '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">No engine runs recorded yet.' + detail + '</div>';
+    c.innerHTML = '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">No engine runs in the currently loaded log.' + detail + '<br><span style="display:inline-block;margin-top:.6rem">If an engine run completed after this page was opened, return to STANDBY and click Refresh.</span></div>';
     return;
   }
 
@@ -443,7 +443,7 @@ function renderEvents(events) {
 }
 
 // ── Load ──────────────────────────────────────────────────────
-function loadLog() {
+function loadLog(retryEmpty = true, busyRetries = 3) {
   document.getElementById('runs-container').innerHTML =
     '<div style="text-align:center;color:var(--dim);padding:2.5rem;font-size:.8rem">Loading…</div>';
   document.getElementById('log-body').innerHTML =
@@ -452,14 +452,28 @@ function loadLog() {
   fetch('/api/log')
     .then(async r => {
       const body = await r.json().catch(() => ({}));
+      if (r.status === 429 && busyRetries > 0) {
+        // Another dashboard is reading flash. Stagger retries so multiple
+        // clients do not repeatedly collide in lock-step.
+        setTimeout(() => loadLog(retryEmpty, busyRetries - 1), 600 + Math.random() * 600);
+        return null;
+      }
       if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
       return body;
     })
     .then(events => {
+      if (events === null) return;
       if (!Array.isArray(events)) events = [];
+      // LittleFS may still be rebuilding the recorder index immediately after
+      // a reboot. Retry one empty response so a populated log is not presented
+      // as missing; never poll continuously or contend with active logging.
+      if (!events.length && retryEmpty) {
+        setTimeout(() => loadLog(false, busyRetries), 800);
+        return;
+      }
       const countEl = document.getElementById('log-count');
-      if (events.length === 400) {
-        countEl.textContent = 'showing last 400 events — download for full log';
+      if (events.length === 120) {
+        countEl.textContent = 'showing last 120 events — Detailed JSON contains the full log';
       } else {
         countEl.textContent = events.length ? events.length + ' events' : '';
       }

@@ -10,6 +10,26 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ## [Unreleased]
 
+## [1.9.8] — 2026-07-19
+
+### Changed
+- The large-RC-jet example is now an internally consistent approximately 100,000 RPM baseline, including matching gradual N1/EGT protection, idle, hot-start, and windmilling-oil suggestions.
+- Factory settings now retain useful 100 °C/s EGT-rise and 150 °C hot-start thresholds while their Hardware safety switches still control whether those checks are active; windmilling oil starts from a noise-resistant 1,000 RPM baseline.
+- Surge detection now labels its statistical value explicitly as RPM² and explains its equivalent RPM standard deviation.
+- Hardware temperature cards now use one explicit interface selector across TOT, TIT, oil, coolant, and intake/ambient sensing; digital interfaces hide analog signal/range fields, while analog validity limits are shown in measurable millivolts.
+- Torque hardware now presents analog transmitter versus HX711 as the authoritative interface and keeps both HX711 DOUT and SCK wiring visible together.
+
+### Fixed
+- Enabling hot-start safety with an old zero threshold now fills a visible 150 °C starting value instead of leaving the selected protection silently disabled.
+- Config now warns when windmilling-oil protection cannot activate because its RPM threshold is above every selected shaft limit, or cannot deliver oil because both output settings are zero.
+- A configured EGT rate-of-rise threshold no longer blocks START on a supported timer-only turbine with no TOT/TIT sensor; it becomes a feedback requirement only when an engine-temperature source is fitted.
+- Dashboard prop-pitch indication now shows `COARSE`/`FINE` for a binary pitch solenoid and retains the percentage display for servo/PWM pitch actuators.
+- Event-log display now tolerates an incomplete/trailing-comma record instead of discarding every run, and the JSON/CSV download routes are registered before the base log route so they return their intended formats.
+- Flash-heavy log views/downloads are serialized: concurrent clients now receive a clear HTTP 429 retry response instead of stacking large reads that can exhaust async networking memory or trip the watchdog.
+- Glow Preheat help now directs an unfitted installation to add Glow Plug hardware instead of opening a Config section that is hidden without that actuator.
+- Hardware validation now rejects NTC/DS18B20 devices as TOT/TIT feedback, clears incompatible hidden temperature interfaces when a card purpose changes, and ignores irrelevant analog range fields for dedicated digital sensors.
+- A forced transition to STANDBY now stops any active main sequence before the final all-off boundary, preventing a skipped cooldown block or side action from resuming and re-energising an output afterward.
+
 ## [1.9.7] — 2026-07-19
 
 ### Changed

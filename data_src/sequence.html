@@ -1221,9 +1221,13 @@ function showBlockInfo(bname) {
   }
   _infoPanelBlock = bname;
   const def = BLOCKS[bname] || {};
-  const linksHtml = info.links.length
-    ? '<div class="bip-links-label">Config fields used:</div><div class="bip-links">' +
-      info.links.map(l => `<a class="bip-link" href="${l.url}">${l.label}</a>`).join('') +
+  const missingGlowHardware = bname === 'GlowPreheat' && !actuatorEnabled('glow_plug');
+  const infoLinks = missingGlowHardware
+    ? [{label:'Install or configure Glow Plug hardware', url:'/hardware.html#registry-outputs'}]
+    : info.links;
+  const linksHtml = infoLinks.length
+    ? `<div class="bip-links-label">${missingGlowHardware ? 'Hardware required:' : 'Config fields used:'}</div><div class="bip-links">` +
+      infoLinks.map(l => `<a class="bip-link" href="${l.url}">${l.label}</a>`).join('') +
       '</div>'
     : '<div class="bip-links-label" style="color:var(--dim)">No external config fields - all parameters are set directly on this block.</div>';
   panel.innerHTML = `

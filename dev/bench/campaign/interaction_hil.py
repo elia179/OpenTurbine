@@ -203,7 +203,17 @@ class InteractionQualification:
         self.drive(egt=120, seconds=1.2)
         code, resp = self.dut.start()
         if code != 200:
-            raise RuntimeError(f"interaction START rejected: HTTP {code} {resp}")
+            data = self.dut.data()
+            health = {
+                key: data.get(key) for key in (
+                    "n1", "n1_healthy", "n2", "n2_healthy", "tot", "tot_healthy",
+                    "oil", "oil_healthy", "flame", "flame_healthy",
+                    "throttle_input_norm", "mode", "last_event",
+                )
+            }
+            raise RuntimeError(
+                f"interaction START rejected: HTTP {code} {resp}; feedback={health}"
+            )
         ok, data = self.dut.poll_until(
             lambda d: d.get("mode") == "RUNNING", timeout=20, interval=0.06
         )

@@ -241,7 +241,7 @@ public:
     static float hotStartTotThreshold;   // °C; abort startup if selected EGT is above this (0 = disabled)
 
     // ── Post-stop oil scavenge ────────────────────────────────
-    static int   finalStopOilScavengeMs; // extra oil pump runtime after N1=0 in FinalStop (0 = off)
+    static int   finalStopOilScavengeMs; // extra scavenge-pump runtime after the main oil pump stops (0 = off)
     static bool  oilPrimeUseScavengePump;    // run scavenge pump during OilPrime block
     static bool  cooldownUseScavengePump;    // run scavenge pump during CooldownSpin block
 
@@ -424,11 +424,12 @@ public:
     static void load();
     static bool save();          // write-to-tmp + rename; returns false on LittleFS error
     static void sanitizeForHardware(); // clear settings that reference unequipped hardware
-    // Auto-fill a sane default threshold for any of the 5 threshold-based
+    // Auto-fill a sane default threshold for any threshold-based
     // safeties just ENABLED (off->on) while its threshold is 0, so a ticked
     // safety cannot stay silently off. Pass the pre-change enable flags.
     static void autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
-                                           bool prevFuelPress, bool prevBatt, bool prevSurge);
+                                           bool prevFuelPress, bool prevBatt,
+                                           bool prevSurge, bool prevHotStart);
     static void requestSave();   // Core 1: mark save needed, zero file I/O
     static bool flushPendingSave(); // Core 0: perform deferred save; returns true if it ran
     static void requestRuntimeStatsSave(); // Core 1: persist hour meter through NVS

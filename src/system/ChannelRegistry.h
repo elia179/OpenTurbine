@@ -355,6 +355,10 @@ private:
     static bool temperatureInterfaceValid(const Channel& c) {
         if (!c.temperatureInterface) return true;
         if (c.direction != Input || strcmp(c.role, "temperature")) return false;
+        const bool turbineGasPurpose = !strcmp(c.purpose, "tot") || !strcmp(c.purpose, "tit");
+        const bool lowTemperaturePurpose = !strcmp(c.purpose, "oil_temperature") ||
+                                           !strcmp(c.purpose, "coolant_temp") ||
+                                           !strcmp(c.purpose, "intake_temperature");
         if (c.temperatureInterface >= 1 && c.temperatureInterface <= 3) {
             // Thermocouple amplifiers remain limited to turbine-gas cards and
             // the existing oil-temperature compatibility path.
@@ -364,6 +368,11 @@ private:
             if (c.spiClk < 0 || c.spiCs < 0 || c.spiMiso < 0) return false;
             return c.temperatureInterface != 3 || c.spiMosi >= 0;
         }
+        // NTC and DS18B20 devices are low-temperature sensors. In particular,
+        // a DS18B20 can report a plausible-looking but saturated value far
+        // below turbine-gas temperatures, so never accept either interface as
+        // TOT/TIT feedback even if a configuration is submitted outside the UI.
+        if (!lowTemperaturePurpose || turbineGasPurpose) return false;
         if (c.temperatureInterface == 4)
             return c.pin >= 0 && c.thermistorBeta > 0.0f && c.thermistorR0 > 0.0f && c.thermistorRFixed > 0.0f;
         return c.temperatureInterface == 5 && c.pin >= 0 &&
@@ -377,6 +386,11 @@ private:
     }
     static bool rangeValid(const Channel& c) {
         if (c.torqueInterface == 1) return torqueInterfaceValid(c);
+        // Dedicated temperature interfaces do not consume the generic analog
+        // validity range or mV scale. Their own wiring/calibration validates
+        // the channel completely.
+        if (!strcmp(c.role, "temperature") && c.temperatureInterface != 0)
+            return temperatureInterfaceValid(c);
         if (c.maxValue < c.minValue) return false;
         if (c.driver == Analog) {
             if (c.minValue < 0.0f || c.maxValue > 4095.0f || c.maxValue <= c.minValue) return false;

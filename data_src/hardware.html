@@ -1826,11 +1826,12 @@ function registryRangeMeta(direction, driver, role) {
   if (direction === 'input') {
     if (d === 0) return {hide:true, note:'Digital input reads inactive as 0.00 and active as 1.00. Use Active LOW for switches wired to ground.'};
     if (d === 1) {
-      if (role === 'temperature') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:`Raw ADC validity window. Physical output uses the mV per ${dispTempUnit()} calibration below.`};
-      if (role === 'pressure') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:`Raw ADC validity window. Physical output uses mV per bar internally and displays system-wide as ${dispPressUnit()}.`};
-      if (role === 'speed') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:'Raw ADC validity window. Physical output is RPM using the mV/RPM calibration below. Pulse/PCNT is preferred for N1/N2.'};
-      if (role === 'voltage') return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095, note:'Raw ADC validity window. Battery/bus volts use the divider ratio below.'};
-      return {min:'Minimum ADC count', max:'Maximum ADC count', step:'1', limitMin:0, limitMax:4095};
+      const mv = {min:'Minimum valid signal (mV)', max:'Maximum valid signal (mV)', step:'0.1', scale:3300/4095, limitMin:0, limitMax:3300};
+      if (role === 'temperature') return {...mv, note:`Measured voltage validity window. Physical output uses the mV per ${dispTempUnit()} calibration below.`};
+      if (role === 'pressure') return {...mv, note:`Measured voltage validity window. Physical output uses mV per bar internally and displays system-wide as ${dispPressUnit()}.`};
+      if (role === 'speed') return {...mv, note:'Measured voltage validity window. Physical output is RPM using the mV/RPM calibration below. Pulse/PCNT is preferred for N1/N2.'};
+      if (role === 'voltage') return {...mv, note:'Measured ADC-pin voltage validity window. Battery/bus volts use the divider ratio below.'};
+      return {...mv, note:'Measured voltage window accepted as healthy. Raw ADC counts remain available in diagnostics.'};
     }
     if (d === 2) {
       if (role === 'speed') return {min:'Minimum speed (RPM)', max:'Maximum speed (RPM)', step:'100', limitMin:0, limitMax:1000000000,
@@ -1854,6 +1855,8 @@ function registryRangeMeta(direction, driver, role) {
 }
 function registryRangeEditor(direction, c, index) {
   if (direction === 'input' && registryTorqueIsHx711(c)) return '';
+  if (direction === 'input' && String(c.role||'') === 'temperature' &&
+      Number(c.temp_interface||0) !== 0) return '';
   const meta = registryRangeMeta(direction, c.driver, c.role);
   if (meta.hide) return `<div class="hw-field" style="grid-column:1/-1"><span class="hw-label">Mapped value</span><span class="hw-desc">${escapeHtmlText(meta.note)}</span></div>`;
   const scale = Number(meta.scale || 1);
@@ -1900,6 +1903,25 @@ function registryAnalogScaleEditor(direction, c, index) {
 function registryTemperatureIsSpi(c) {
   const iface = Number(c?.temp_interface || 0);
   return String(c?.role || '') === 'temperature' && iface >= 1 && iface <= 3;
+}
+function registryTemperatureIsDigital(c) {
+  const iface = Number(c?.temp_interface || 0);
+  return String(c?.role || '') === 'temperature' && [1,2,3,5].includes(iface);
+}
+function registrySignalTypeEditor(direction, c, index, driverClass) {
+  if (direction === 'input' && String(c.role||'') === 'temperature')
+    return `<div class="hw-field"><span class="hw-label">Electrical interface</span><span class="hw-desc">Selected below; digital probes and thermocouple amplifiers do not use ADC signal settings.</span><output>${escapeHtmlText(registrySignalSummary(c))}</output></div>`;
+  if (direction === 'input' && registryDerivedPurpose(direction,c) === 'torque')
+    return `<div class="hw-field"><span class="hw-label">Electrical interface</span><span class="hw-desc">Selected below. HX711 requires separate DOUT and SCK GPIOs.</span><output>${escapeHtmlText(registrySignalSummary(c))}</output></div>`;
+  return `<div class="hw-field"><span class="hw-label">Signal type</span><span class="hw-desc">The electrical signal connected to this device.</span><select class="${driverClass}" onchange="updateRegistryChannel('${direction}',${index},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role, registryDerivedPurpose(direction,c))}</select></div>`;
+}
+function registryInputPinLabel(c) {
+  if (registryTorqueIsHx711(c)) return 'HX711 DOUT GPIO';
+  if (String(c?.role||'') === 'temperature') {
+    if (Number(c.temp_interface) === 5) return 'OneWire data GPIO';
+    if ([0,4].includes(Number(c.temp_interface||0))) return 'ADC GPIO';
+  }
+  return 'GPIO pin';
 }
 function registryTemperatureInterfaceEditor(c, index) {
   if (String(c.role||'') !== 'temperature' || Number(c.driver) !== 1) return '';
@@ -2230,6 +2252,7 @@ function registryStatus(c) {
   if (registryPurposeIsSingleton(direction, purpose) && (registryRoot()[direction+'s']||[]).filter(row=>registryDerivedPurpose(direction,row)===purpose).length > 1)
     return {kind:'error', text:`${registryPurposeLabel(direction,c)} is already assigned`};
   if (Number(c.temp_interface || 0) >= 1 && Number(c.temp_interface || 0) <= 3 && !['tot','tit','oil_temperature'].includes(purpose)) return {kind:'error', text:'Thermocouple interface requires TOT, TIT, or Oil temperature purpose'};
+  if ([4,5].includes(Number(c.temp_interface || 0)) && !['oil_temperature','coolant_temp','intake_temperature'].includes(purpose)) return {kind:'error', text:'NTC and DS18B20 interfaces are only for oil, coolant, intake or ambient temperature'};
   const thermocouple = registryTemperatureIsSpi(c);
   if (thermocouple) {
     if (![1,2,3].includes(Number(c.temp_interface)) || Number(c.spi_clk) < 0 || Number(c.spi_cs) < 0 || Number(c.spi_miso) < 0 || (Number(c.temp_interface) === 3 && Number(c.spi_mosi) < 0)) return {kind:'error', text:'Thermocouple pins required'};
@@ -2285,6 +2308,7 @@ function registryDemandProblem(value) {
 }
 function registryRangeProblem(c) {
   if (registryTorqueIsHx711(c)) return '';
+  if (String(c?.role || '') === 'temperature' && Number(c?.temp_interface || 0) !== 0) return '';
   const driver = Number(c?.driver);
   const min = Number(c?.min ?? 0);
   const max = Number(c?.max ?? 1);
@@ -2322,11 +2346,17 @@ function registryPinSummary(c) {
     if (Number(c.temp_interface) === 3) pins.push(`MOSI GPIO${c.spi_mosi}`);
     return pins.join(' / ');
   }
+  if (String(c.role||'') === 'temperature' && Number(c.temp_interface) === 5)
+    return (c.pin ?? -1) >= 0 ? `OneWire GPIO ${c.pin}` : 'OneWire GPIO not set';
+  if (String(c.role||'') === 'temperature' && Number(c.temp_interface) === 4)
+    return (c.pin ?? -1) >= 0 ? `NTC ADC GPIO ${c.pin}` : 'NTC ADC GPIO not set';
+  if (String(c.role||'') === 'temperature' && Number(c.temp_interface) === 0)
+    return (c.pin ?? -1) >= 0 ? `Analog GPIO ${c.pin}` : 'Analog GPIO not set';
   return (c.pin ?? -1) >= 0 ? `GPIO ${c.pin}` : 'GPIO not set';
 }
 function registrySignalSummary(c) {
   if (registryTorqueIsHx711(c)) return 'HX711 load-cell amplifier';
-  const tempNames = {1:'MAX6675 thermocouple', 2:'MAX31855 thermocouple', 3:'MAX31856 thermocouple'};
+  const tempNames = {1:'MAX6675 thermocouple', 2:'MAX31855 thermocouple', 3:'MAX31856 thermocouple', 4:'NTC thermistor divider', 5:'DS18B20 OneWire'};
   return tempNames[Number(c.temp_interface)] || driverName(c.driver);
 }
 function registryInvalidDetails() {
@@ -3024,13 +3054,13 @@ function renderRegistryInventory() {
         <div class="registry-card-editor" style="${open ? '' : 'display:none'}">
         <div class="hw-grid">
           <div class="hw-field"><span class="hw-label">Display name</span><span class="hw-desc">Plain name shown on Dashboard, Sequence and Tools. Example: Oil pump, Idle input, Flame sensor.</span><input class="${nameClass}" type="text" maxlength="15" value="${escapeHtmlText(displayName)}" oninput="updateRegistryChannel('${direction}',${i},'name',this.value)"></div>
-          <div class="hw-field"><span class="hw-label">Purpose</span><span class="hw-desc">What this channel does in the ECU. This controls which safety, controller, sequence and rule options can use it.</span><select class="${purposeClass}" onchange="updateRegistryChannel('${direction}',${i},'purpose',this.value)">${registryPurposeOptions(direction, registryDerivedPurpose(direction,c))}</select></div>
-          <div class="hw-field"><span class="hw-label">Signal type</span><span class="hw-desc">The electrical signal connected to this device.</span><select class="${driverClass}" onchange="updateRegistryChannel('${direction}',${i},'driver',+this.value)">${registryDriverOptions(direction, c.driver, c.role, registryDerivedPurpose(direction,c))}</select></div>
-          ${!(direction==='input' && registryTemperatureIsSpi(c)) ? `<div class="hw-field"><span class="hw-label">${registryTorqueIsHx711(c) ? 'HX711 DOUT GPIO' : 'GPIO pin'}</span><select class="${pinClass}" onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryTorqueIsHx711(c) || Number(c.temp_interface||0)===5 ? 'in' : registryPinMode(direction, c.driver))}</select></div>` : ''}
-          ${registryInputOptionsEditor(direction, c, i)}
-          ${registryInvertEditor(direction, c, i)}
-          ${direction==='input' ? registryTemperatureInterfaceEditor(c, i) : ''}
-          ${registryTorqueInterfaceEditor(direction, c, i)}
+           <div class="hw-field"><span class="hw-label">Purpose</span><span class="hw-desc">What this channel does in the ECU. This controls which safety, controller, sequence and rule options can use it.</span><select class="${purposeClass}" onchange="updateRegistryChannel('${direction}',${i},'purpose',this.value)">${registryPurposeOptions(direction, registryDerivedPurpose(direction,c))}</select></div>
+           ${registrySignalTypeEditor(direction, c, i, driverClass)}
+           ${direction==='input' ? registryTemperatureInterfaceEditor(c, i) : ''}
+           ${registryTorqueInterfaceEditor(direction, c, i)}
+           ${!(direction==='input' && registryTemperatureIsSpi(c)) ? `<div class="hw-field"><span class="hw-label">${direction==='input' ? registryInputPinLabel(c) : 'GPIO pin'}</span><select class="${pinClass}" onchange="updateRegistryChannel('${direction}',${i},'pin',+this.value)">${buildPinOptions(c.pin, registryTorqueIsHx711(c) || Number(c.temp_interface||0)===5 ? 'in' : registryPinMode(direction, c.driver))}</select></div>` : ''}
+           ${registryInputOptionsEditor(direction, c, i)}
+           ${registryInvertEditor(direction, c, i)}
           ${registryPulseScaleEditor(direction, c, i)}
           ${registryAnalogScaleEditor(direction, c, i)}
            ${!(direction==='input' && registryTemperatureIsSpi(c)) ? registryRangeEditor(direction, c, i) : ''}
@@ -3084,7 +3114,11 @@ function updateRegistryChannel(direction, index, key, value) {
     }
     if (direction === 'input') {
       if (c.role !== 'temperature') c.temp_interface = 0;
+      // Do not retain an interface that the new purpose cannot use. Without
+      // this, changing Coolant/Intake to TOT could leave a hidden DS18B20/NTC
+      // selection, and the inverse change could retain hidden SPI pins.
       if (['coolant_temp','intake_temperature'].includes(def.value) && Number(c.temp_interface) >= 1 && Number(c.temp_interface) <= 3) c.temp_interface = 0;
+      if (['tot','tit'].includes(def.value) && [4,5].includes(Number(c.temp_interface))) c.temp_interface = 0;
       if (registryIsSwitchRole(c.role) || (def.value === 'idle' && Number(c.driver) === 0)) {
         c.active_high = false; c.pullup = true; c.pulldown = false;
       } else if (Number(c.driver) === 1) {
@@ -4865,8 +4899,8 @@ function applyContextTooltips(root) {
     'Minimum flow (L/min)': 'Lower flow endpoint for mapping this pulse flow input.',
     'Maximum flow (L/min)': 'Upper flow endpoint for mapping this pulse flow input.',
     'Mapped value': 'The firmware maps raw electrical input/output values into the normalized value used by rules and telemetry.',
-    'Minimum ADC count': 'Raw ADC count that maps to 0.00. Must be lower than the maximum and within 0-4095.',
-    'Maximum ADC count': 'Raw ADC count that maps to 1.00. Must be higher than the minimum and within 0-4095.',
+    'Minimum valid signal (mV)': 'Lowest measured voltage accepted as healthy. Raw ADC counts remain available in diagnostics.',
+    'Maximum valid signal (mV)': 'Highest measured voltage accepted as healthy. It must be above the minimum and no higher than 3300 mV.',
     'Minimum frequency (Hz)': 'Input frequency that maps to 0.00. This is a scaling endpoint, not a guaranteed hardware minimum.',
     'Maximum frequency (Hz)': 'Input frequency that maps to 1.00. This is a scaling endpoint, not a guaranteed hardware ceiling; generic registry pulse inputs use interrupt counting sampled every 100 ms, while built-in N1/N2 RPM inputs use the ESP32 PCNT driver.',
     'Minimum mapped value': 'Raw value that maps to 0.00. Must be lower than the maximum.',

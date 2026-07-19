@@ -338,6 +338,8 @@ async function goto(page, route, waitSelector) {
       setNumber('gv_tr', 29000); setNumber('gv_bd', 1500);
       setCheck('di_n2', true); setNumber('di_tr', 30000);
       setNumber('cl_n2', 30000);
+      setNumber('rpm_limit', 100000); setNumber('so_src', 0);
+      setNumber('so_rl', 500000); setNumber('so_fp', 0); setNumber('so_fb', 0);
       runValidation();
       return Array.from(document.querySelectorAll('.cfg-inline-warn')).map(el => el.textContent);
     });
@@ -346,7 +348,9 @@ async function goto(page, route, waitSelector) {
     assert.ok(n2RelationshipWarnings.some(text => /Governor target/i.test(text)), n2WarningDetail);
     assert.ok(n2RelationshipWarnings.some(text => /Idle target/i.test(text)), n2WarningDetail);
     assert.ok(n2RelationshipWarnings.some(text => /Cluster N2 warning/i.test(text)), n2WarningDetail);
-    results.push('config warns when N2 pullback, governor, idle, or display values do not leave margin below the hard trip');
+    assert.ok(n2RelationshipWarnings.some(text => /windmilling oil protection can never activate/i.test(text)), n2WarningDetail);
+    assert.ok(n2RelationshipWarnings.some(text => /both zero/i.test(text)), n2WarningDetail);
+    results.push('config warns about unsafe N2 relationships and unusable windmilling-oil settings');
     await goto(page, 'config.html', '#cf-tot_limit');
     assert.equal(await page.locator('#dev-mode-tools-link').getAttribute('href'), '/tools.html#card-dev-mode');
     assert.equal(await page.locator('#btn-dev-mode').count(), 0,

@@ -82,6 +82,38 @@ static char   g_webTxBuf[16384];  // response serialisation + PATCH merge work b
 static AsyncWebServerRequest* g_webRxOwner = nullptr;
 static unsigned long g_webRxClaimMs = 0;
 
+// Flash-backed log responses are intentionally single-reader. Several clients
+// building heap-backed history responses at once can exhaust async_tcp buffers
+// and trip the web-task watchdog. Telemetry remains fully multi-client.
+static portMUX_TYPE s_logReadMux = portMUX_INITIALIZER_UNLOCKED;
+static AsyncWebServerRequest* s_logReadOwner = nullptr;
+static unsigned long s_logReadClaimMs = 0;
+
+static bool _claimLogRead(AsyncWebServerRequest* req) {
+    bool claimed = false;
+    portENTER_CRITICAL(&s_logReadMux);
+    if (!s_logReadOwner || millis() - s_logReadClaimMs > 30000UL) {
+        s_logReadOwner = req;
+        s_logReadClaimMs = millis();
+        claimed = true;
+    }
+    portEXIT_CRITICAL(&s_logReadMux);
+    return claimed;
+}
+
+static void _releaseLogRead(AsyncWebServerRequest* req) {
+    portENTER_CRITICAL(&s_logReadMux);
+    if (s_logReadOwner == req) s_logReadOwner = nullptr;
+    portEXIT_CRITICAL(&s_logReadMux);
+}
+
+static bool _gateLogRead(AsyncWebServerRequest* req) {
+    if (_claimLogRead(req)) return true;
+    req->send(429, "application/json",
+        "{\"error\":\"Another log view or download is in progress; retry shortly\"}");
+    return false;
+}
+
 static void _mergeJsonObject(JsonObject dst, JsonObjectConst patch) {
     for (JsonPairConst kv : patch) {
         JsonVariantConst src = kv.value();
@@ -1489,45 +1521,6 @@ void WebServer::_setupRoutes() {
         req->send(200, "application/json", saved ? "{\"ok\":true}" : "{\"ok\":true,\"warn\":\"not persisted\"}");
     });
 
-    // GET /api/log — last 400 events as a JSON array for in-browser display.
-    // Capped so AsyncResponseStream stays bounded regardless of log size.
-    // For a full download use /api/log/raw (served directly from flash, zero heap buffer).
-    _server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* req) {
-        if (!_isStandbyLike(EngineData::instance().mode) || Config::logStandby) {
-            req->send(423, "application/json",
-                "{\"error\":\"Log viewing requires STANDBY with standby logging disabled\"}");
-            return;
-        }
-        const int DISPLAY_LIMIT = 400;
-        AsyncResponseStream* resp = req->beginResponseStream("application/json");
-        FlightRecorder::lockLog();
-        File f = LittleFS.open(FlightRecorder::PATH, "r");
-        int total = FlightRecorder::recordCount();
-        int skip  = total > DISPLAY_LIMIT ? total - DISPLAY_LIMIT : 0;
-        resp->print('[');
-        bool first = true;
-        int  seen  = 0;
-        if (f) {
-            char lineBuf[640];
-            while (f.available()) {
-                int n = f.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
-                if (n <= 0) continue;
-                if (lineBuf[n - 1] == '\r') n--;
-                lineBuf[n] = '\0';
-                if (n == 0 || lineBuf[0] != '{') continue;
-                if (seen++ < skip) continue;
-                if (!first) resp->print(',');
-                first = false;
-                resp->print(lineBuf);
-            }
-            f.close();
-        }
-        resp->print(']');
-        FlightRecorder::unlockLog();
-        _finalizeJsonResponse(resp);
-        req->send(resp);
-    });
-
     // GET /api/log/raw — full event log download as NDJSON (one JSON object per line).
     // Uses AsyncFileResponse: reads LittleFS in 1460-byte TCP chunks without heap buffering.
     _server.on("/api/log/raw", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -1540,8 +1533,12 @@ void WebServer::_setupRoutes() {
             req->send(404, "text/plain", "No log");
             return;
         }
+        if (!_gateLogRead(req)) return;
         FlightRecorder::beginRawDownload();
-        req->onDisconnect([]() { FlightRecorder::endRawDownload(); });
+        req->onDisconnect([req]() {
+            FlightRecorder::endRawDownload();
+            _releaseLogRead(req);
+        });
         AsyncWebServerResponse* resp = req->beginResponse(
             LittleFS, FlightRecorder::PATH, "application/x-ndjson");
         resp->addHeader("Content-Disposition", "attachment; filename=\"event_log.ndjson\"");
@@ -1559,7 +1556,11 @@ void WebServer::_setupRoutes() {
                 "{\"error\":\"Log download requires STANDBY with standby logging disabled\"}");
             return;
         }
-        const int DISPLAY_LIMIT = 400;
+        if (!_gateLogRead(req)) return;
+        req->onDisconnect([req]() { _releaseLogRead(req); });
+        // Keep the heap-backed CSV response below the ESP async-stream ceiling.
+        // Full history remains available from the zero-copy /api/log/raw route.
+        const int DISPLAY_LIMIT = 120;
         AsyncResponseStream* resp = req->beginResponseStream("text/csv");
         resp->addHeader("Content-Disposition", "attachment; filename=\"event_log.csv\"");
         resp->print("t,ev,details\r\n");
@@ -1574,9 +1575,12 @@ void WebServer::_setupRoutes() {
             while (f.available()) {
                 int n = f.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
                 if (n <= 0) continue;
-                if (lineBuf[n - 1] == '\r') n--;
+                while (n > 0 && (lineBuf[n - 1] == '\r' || lineBuf[n - 1] == ' ' ||
+                                 lineBuf[n - 1] == '\t')) n--;
+                if (n > 0 && lineBuf[n - 1] == ',') n--;
+                while (n > 0 && (lineBuf[n - 1] == ' ' || lineBuf[n - 1] == '\t')) n--;
                 lineBuf[n] = '\0';
-                if (n == 0 || lineBuf[0] != '{') continue;
+                if (n < 2 || lineBuf[0] != '{' || lineBuf[n - 1] != '}') continue;
                 if (seen++ < skip) continue;
                 doc.clear();
                 if (deserializeJson(doc, lineBuf)) continue;
@@ -1603,6 +1607,55 @@ void WebServer::_setupRoutes() {
         FlightRecorder::unlockLog();
         resp->addHeader("Cache-Control", "no-store");
         resp->addHeader("Connection", "close");
+        req->send(resp);
+    });
+
+    // Register the base route after /raw and /csv. ESPAsyncWebServer matches
+    // path prefixes, so placing /api/log first would steal both download routes.
+    // The display response is capped so AsyncResponseStream stays bounded.
+    _server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* req) {
+        if (!_isStandbyLike(EngineData::instance().mode) || Config::logStandby) {
+            req->send(423, "application/json",
+                "{\"error\":\"Log viewing requires STANDBY with standby logging disabled\"}");
+            return;
+        }
+        if (!_gateLogRead(req)) return;
+        req->onDisconnect([req]() { _releaseLogRead(req); });
+        // Typical 120-record payloads stay comfortably below the async response
+        // stream's practical ~16 KB ceiling even with several connected clients.
+        const int DISPLAY_LIMIT = 120;
+        AsyncResponseStream* resp = req->beginResponseStream("application/json");
+        FlightRecorder::lockLog();
+        File f = LittleFS.open(FlightRecorder::PATH, "r");
+        int total = FlightRecorder::recordCount();
+        int skip  = total > DISPLAY_LIMIT ? total - DISPLAY_LIMIT : 0;
+        resp->print('[');
+        bool first = true;
+        int  seen  = 0;
+        if (f) {
+            char lineBuf[640];
+            while (f.available()) {
+                int n = f.readBytesUntil('\n', lineBuf, sizeof(lineBuf) - 1);
+                if (n <= 0) continue;
+                while (n > 0 && (lineBuf[n - 1] == '\r' || lineBuf[n - 1] == ' ' ||
+                                 lineBuf[n - 1] == '\t')) n--;
+                // Older/interrupted writes may contain a trailing array comma.
+                // Strip it and require a complete object so one damaged record
+                // can never invalidate the entire in-browser JSON response.
+                if (n > 0 && lineBuf[n - 1] == ',') n--;
+                while (n > 0 && (lineBuf[n - 1] == ' ' || lineBuf[n - 1] == '\t')) n--;
+                lineBuf[n] = '\0';
+                if (n < 2 || lineBuf[0] != '{' || lineBuf[n - 1] != '}') continue;
+                if (seen++ < skip) continue;
+                if (!first) resp->print(',');
+                first = false;
+                resp->print(lineBuf);
+            }
+            f.close();
+        }
+        resp->print(']');
+        FlightRecorder::unlockLog();
+        _finalizeJsonResponse(resp);
         req->send(resp);
     });
 
@@ -2175,13 +2228,14 @@ void WebServer::_setupRoutes() {
                     "{\"ok\":false,\"error\":\"Current hardware section is too large to stage safely\"}");
                 return;
             }
-            // Snapshot the 5 threshold-based safety enable flags before applying,
+            // Snapshot threshold-based safety enable flags before applying,
             // so we can auto-fill a default threshold for any newly-enabled one.
             bool prevSafTit  = HardwareConfig::safetyTitOvertemp;
             bool prevSafOilT = HardwareConfig::safetyOilTempHigh;
             bool prevSafFP   = HardwareConfig::safetyFuelPressLow;
             bool prevSafBatt = HardwareConfig::safetyBattLow;
             bool prevSafSurge= HardwareConfig::safetySurge;
+            bool prevSafHot  = HardwareConfig::safetyHotStart;
             bool ok = HardwareConfig::fromJson(g_webRxBuf, g_webRxLen);
             if (!ok) {
                 ConfigApplyGate::release();
@@ -2200,7 +2254,7 @@ void WebServer::_setupRoutes() {
             // Auto-fill a sane threshold for any safety just enabled (and still
             // active after sanitize) whose threshold is 0, so it isn't silently off.
             Config::autoFillNewlyEnabledSafety(prevSafTit, prevSafOilT, prevSafFP,
-                                               prevSafBatt, prevSafSurge);
+                                               prevSafBatt, prevSafSurge, prevSafHot);
             if (!Config::save()) {
                 HardwareConfig::fromJson(g_webTxBuf, previousLen);
                 if (!HardwareConfig::save()) {

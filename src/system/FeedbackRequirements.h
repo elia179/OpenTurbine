@@ -41,7 +41,7 @@ namespace FeedbackRequirements {
 
     inline bool egtForProtectionOrControl() {
         return HardwareConfig::safetyOvertemp || HardwareConfig::safetyHotStart ||
-               Config::totRiseRateLimitDegPerSec > 0.0f ||
+               (Config::effectiveEgtSource() != 0 && Config::totRiseRateLimitDegPerSec > 0.0f) ||
                (HardwareConfig::safetyFlameout && effectiveFlameoutSource() == 3) ||
                (HardwareConfig::hasThrottleSlew && Config::effectiveEgtSource() != 0 && Config::pullbackEgtEnabled &&
                 Config::pullbackEgtHardC > Config::pullbackEgtSoftC);

@@ -169,7 +169,7 @@ int   Config::egtSource                  = 0;
 int   Config::flameoutSource             = 0;
 float Config::flameoutN1MinRpm           = 0.0f;
 float Config::flameoutTotDropC           = 80.0f;
-float Config::totRiseRateLimitDegPerSec  = 0.0f;
+float Config::totRiseRateLimitDegPerSec  = 100.0f;
 float Config::titLimit                   = 0.0f;
 float Config::oilTempLimit               = 120.0f;
 float Config::fuelPressMin               = 0.0f;
@@ -234,7 +234,7 @@ float    Config::oilPressureDeadband = 0.2f;
 uint32_t Config::oilPumpOvercurrentDelayMs = 5000;
 
 int      Config::standbyOilSource    = 0;
-float    Config::standbyOilRpmLimit  = 100.0f;
+float    Config::standbyOilRpmLimit  = 1000.0f;
 float    Config::standbyOilFeedPct   = 25.0f;
 float    Config::standbyOilFeedBar   = 0.0f;
 
@@ -273,7 +273,7 @@ bool     Config::safetyHoldTurnOffIgniter    = false;
 bool     Config::spoolCutStarterOnExit       = true;
 bool     Config::spoolCutStarterEnOnExit     = true;
 
-float    Config::hotStartTotThreshold        = 0.0f;
+float    Config::hotStartTotThreshold        = 150.0f;
 int      Config::finalStopOilScavengeMs      = 0;
 bool     Config::oilPrimeUseScavengePump    = false;
 bool     Config::cooldownUseScavengePump    = false;
@@ -996,8 +996,9 @@ void Config::releaseStorageWrite() {
 }
 
 void Config::autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
-                                        bool prevFuelPress, bool prevBatt, bool prevSurge) {
-    // For each of the 5 threshold-based safeties: if it just transitioned
+                                        bool prevFuelPress, bool prevBatt,
+                                        bool prevSurge, bool prevHotStart) {
+    // For each threshold-based safety: if it just transitioned
     // OFF->ON (user ticked it) and is still active after hardware sanitize (its
     // sensor is present) but its threshold is 0 (= disabled), fill a sane
     // default so a ticked safety can't sit silently off. This runs only on the
@@ -1016,6 +1017,7 @@ void Config::autoFillNewlyEnabledSafety(bool prevTit, bool prevOilTemp,
     fill(prevFuelPress, HardwareConfig::safetyFuelPressLow, fuelPressMin,           0.5f,      "autofill:fuel_press_min_bar");
     fill(prevBatt,      HardwareConfig::safetyBattLow,      battVoltMin,            10.5f,     "autofill:batt_volt_min_v");
     fill(prevSurge,     HardwareConfig::safetySurge,        surgeDetectRpmVariance, 500000.0f, "autofill:surge_variance");
+    fill(prevHotStart,  HardwareConfig::safetyHotStart,     hotStartTotThreshold,   150.0f,    "autofill:hot_start_egt_c");
 }
 
 void Config::sanitizeForHardware() {
@@ -1434,7 +1436,7 @@ void Config::_applyDefaults() {
     flameConfirmTurnOffIgniter = true;
     safetyHoldTurnOffStarter = false; safetyHoldTurnOffStarterEn = false; safetyHoldTurnOffIgniter = false;
     spoolCutStarterOnExit = true; spoolCutStarterEnOnExit = true;
-    hotStartTotThreshold = 0.0f; finalStopOilScavengeMs = 0;
+    hotStartTotThreshold = 150.0f; finalStopOilScavengeMs = 0;
     oilPrimeUseScavengePump = false; cooldownUseScavengePump = false;
     shutdownRpmDropThreshold = 5000; shutdownRpmDropTimeoutMs = 15000;
     shutdownCooldownTimeoutMs = 60000; shutdownFinalStopTimeoutMs = 10000;
@@ -1461,7 +1463,7 @@ void Config::_applyDefaults() {
     lowOilConfirmMs = 500; oilZeroConfirmMs = 100; oilTempConfirmMs = 1000;
     fuelPressConfirmMs = 500; battLowConfirmMs = 1000;
     egtSource = 0; flameoutSource = 0; flameoutN1MinRpm = 0.0f; flameoutTotDropC = 80.0f;
-    totRiseRateLimitDegPerSec = 0.0f; titLimit = 0.0f; oilTempLimit = 120.0f;
+    totRiseRateLimitDegPerSec = 100.0f; titLimit = 0.0f; oilTempLimit = 120.0f;
     fuelPressMin = 0.0f; battVoltMin = 0.0f; surgeDetectRpmVariance = 0.0f;
     relightEnabled = false; relightIgnitionTarget = 0; relightConfirmSource = 0; relightMinRpm = 30000.0f;
     relightConfirmRpm = 0.0f; relightTotRiseC = 30.0f; relightTimeoutMs = 10000;
@@ -1477,7 +1479,7 @@ void Config::_applyDefaults() {
     strcpy(uiTheme, "carbon");
     starterLowRpmSupportPct = 15.0f; starterLowRpmSupportDisengageRpm = 1000.0f; starterStartupRampPctPerSec = 10.0f;
     oilZeroBar = 0.1f; oilPressureDeadband = 0.2f; oilPumpOvercurrentDelayMs = 5000;
-    standbyOilSource = 0; standbyOilRpmLimit = 100.0f; standbyOilFeedPct = 25.0f;
+    standbyOilSource = 0; standbyOilRpmLimit = 1000.0f; standbyOilFeedPct = 25.0f;
     standbyOilFeedBar = 0.0f;
     limpMaxThrottlePct = 50.0f; igniterOnStart = true; manualRelightIgnitionTarget = 0;
     cooldownSkipHoldMs = 1000;

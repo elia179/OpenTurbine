@@ -149,7 +149,7 @@ async function optionDisabled(page, selector, value) {
       cfg.actuators.prop_pitch.enabled = false;
       updateFeaturesUI();
       updateHardwarePrerequisites(true);
-      return {
+       return {
         safety: {
           overspeed: sst('overspeed'), surge: sst('surge'), overtemp: sst('overtemp'),
           hotStart: sst('hot_start'), lowOil: sst('low_oil'), oilZero: sst('oil_zero'),
@@ -189,6 +189,51 @@ async function optionDisabled(page, selector, value) {
       abPump:[4,5,6], propPitch:[5,6], tot:[1], torque:[1], abFlame:[0,1], throttle:[1,3,2,7]
     });
     results.push('hardware editor type selectors show exactly the servo/PWM/relay/SPI/analog subfields that apply');
+
+    const sensorInterfaceUx = await page.evaluate(() => {
+      const base = {role:'temperature', driver:1, pin:4, min:0, max:4095};
+      const intake = {...base, purpose:'intake_temperature', temp_interface:5, temp_resolution:12};
+      const oilNtc = {...base, purpose:'oil_temperature', temp_interface:4, ntc_beta:3950, ntc_r0:10000, ntc_r_fixed:10000};
+      const tot = {...base, purpose:'tot', temp_interface:2, spi_clk:12, spi_cs:13, spi_miso:14};
+      const torque = {role:'torque', purpose:'torque', driver:1, pin:5, torque_interface:1, hx711_clk:6, hx711_scale:1, hx711_zero:0};
+      const mv = registryRangeMeta('input', 1, 'temperature');
+      return {
+        intakeSummary: registrySignalSummary(intake),
+        intakeEditor: registryTemperatureInterfaceEditor(intake, 0),
+        intakeRange: registryRangeEditor('input', intake, 0),
+        oilNtcRange: registryRangeEditor('input', oilNtc, 0),
+        totSummary: registrySignalSummary(tot),
+        totEditor: registryTemperatureInterfaceEditor(tot, 0),
+        totSignalEditor: registrySignalTypeEditor('input', tot, 0, ''),
+        torqueEditor: registryTorqueInterfaceEditor('input', torque, 0),
+        torqueSignalEditor: registrySignalTypeEditor('input', torque, 0, ''),
+         torquePins: registryPinSummary(torque),
+         digitalRangeProblem: registryRangeProblem({...intake, min:4095, max:0}),
+         unsafeTotInterface: registryStatus({...base, id:'unsafe_tot_probe', name:'Probe', purpose:'tot', temp_interface:5, temp_resolution:12}).text,
+         mv
+      };
+    });
+    assert.equal(sensorInterfaceUx.intakeSummary, 'DS18B20 OneWire');
+    assert.match(sensorInterfaceUx.intakeEditor, /NTC thermistor/);
+    assert.match(sensorInterfaceUx.intakeEditor, /DS18B20/);
+    assert.doesNotMatch(sensorInterfaceUx.intakeEditor, /MAX31855/);
+    assert.equal(sensorInterfaceUx.intakeRange, '');
+    assert.equal(sensorInterfaceUx.oilNtcRange, '');
+    assert.equal(sensorInterfaceUx.totSummary, 'MAX31855 thermocouple');
+    assert.match(sensorInterfaceUx.totEditor, /MAX6675/);
+    assert.match(sensorInterfaceUx.totEditor, /MAX31856/);
+    assert.doesNotMatch(sensorInterfaceUx.totEditor, /DS18B20/);
+    assert.match(sensorInterfaceUx.totSignalEditor, /Selected below/);
+    assert.doesNotMatch(sensorInterfaceUx.totSignalEditor, /<select/);
+    assert.match(sensorInterfaceUx.torqueEditor, /HX711 SCK GPIO/);
+    assert.match(sensorInterfaceUx.torqueSignalEditor, /separate DOUT and SCK/);
+    assert.match(sensorInterfaceUx.torquePins, /DOUT GPIO5 \/ SCK GPIO6/);
+    assert.equal(sensorInterfaceUx.digitalRangeProblem, '');
+    assert.match(sensorInterfaceUx.unsafeTotInterface, /only for oil, coolant, intake or ambient/i);
+    assert.equal(sensorInterfaceUx.mv.min, 'Minimum valid signal (mV)');
+    assert.equal(sensorInterfaceUx.mv.max, 'Maximum valid signal (mV)');
+    assert.ok(Math.abs(sensorInterfaceUx.mv.scale - 3300/4095) < 0.000001);
+    results.push('temperature and torque cards expose their real interfaces, wiring and measurable mV validity ranges');
 
     await patchHardware(page, { platform: 'esp32s3', cluster_serial: { enabled: true, tx_pin: 1, rx_pin: -1 } });
     await goto(page, 'hardware.html', '#f-cl-rx');

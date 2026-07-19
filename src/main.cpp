@@ -1941,6 +1941,13 @@ static void enterFaultShutdown() {
 
 static void enterStandby() {
     auto& ed = EngineData::instance();
+    // Some paths intentionally bypass normal sequence completion (most
+    // notably the operator's START+STOP cooldown override). Stop the active
+    // block before changing mode so it cannot tick again in STANDBY and
+    // re-energize a side action, oil/scavenge pump, starter or cooling output.
+    // sequenceComplete() reaches here with the sequencer already stopped, so
+    // the normal completion path remains unchanged.
+    if (g_sequencer.isRunning()) g_sequencer.stopSequence();
     ResetRecovery::markSafe();
     SessionLogger::endSession();   // close session log for this run
     // Accumulate engine-on time (only if we actually entered RUNNING this session)

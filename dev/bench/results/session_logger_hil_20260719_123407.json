@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-07-19T12:34:07",
+  "firmware": "1.9.8",
+  "rows": [
+    {
+      "name": "NO_FIELDS_CREATES_NO_SESSION_FILE",
+      "ok": true,
+      "before_path": "",
+      "after_path": ""
+    },
+    {
+      "name": "ENABLED_LOGGING_RECORDS_WHILE_WEB_STAYS_RESPONSIVE",
+      "ok": true,
+      "active_path": "/logs/session_163.csv",
+      "csv_lines": 132,
+      "web_samples": 33,
+      "logger_healthy": true,
+      "dropped_rows": 0
+    }
+  ],
+  "restored": true,
+  "error": null
+}

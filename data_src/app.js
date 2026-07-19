@@ -1321,7 +1321,9 @@ function applyData(d) {
       if (d.has_prop_pitch && d.prop_pitch_demand !== undefined) {
         const pct = Math.round(d.prop_pitch_demand * 100);
         const relay = actuatorIsRelay(d.prop_pitch_type);
-        setText('pitch-pct', relay ? (pct > 0 ? 'ON' : 'OFF') : pct);
+        // Binary prop-pitch outputs are coarse/fine solenoids, not generic
+        // on/off loads. Proportional servo/PWM installations retain 0-100%.
+        setText('pitch-pct', relay ? (pct > 0 ? 'COARSE' : 'FINE') : pct);
         setText('pitch-unit', relay ? '' : '%');
         setGaugeBar('pitch-gauge-bar', relay ? (pct > 0 ? 100 : 0) : pct);
       }
