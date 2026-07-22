@@ -1,6 +1,123 @@
 (function () {
   'use strict';
 
+  // Abort API reads that are still in flight when leaving a page. Otherwise
+  // they can occupy the Classic ESP32's small TCP pool behind the next page
+  // load. Combine this page-lifetime signal with caller timeout signals.
+  const nativeFetch = window.fetch.bind(window);
+  let pageFetchController = new AbortController();
+  let pendingPageFetches = 0;
+  const pageFetchWaiters = new Set();
+  const waitForPageFetches = (timeoutMs) => {
+    if (!pendingPageFetches) return Promise.resolve(true);
+    return new Promise(resolve => {
+      const done = value => {
+        clearTimeout(timer);
+        pageFetchWaiters.delete(done);
+        resolve(value);
+      };
+      const timer = setTimeout(() => done(false), timeoutMs);
+      pageFetchWaiters.add(done);
+    });
+  };
+  window.fetch = (input, init = {}) => {
+    const requestUrl = typeof input === 'string' ? input : input.url;
+    const method = String(init.method || (typeof input !== 'string' && input.method) || 'GET').toUpperCase();
+    const pathname = new URL(requestUrl, location.href).pathname;
+    const cacheableConfig = method === 'GET' && location.hostname !== '127.0.0.1'
+      && location.hostname !== 'localhost'
+      && (pathname === '/api/config' || pathname === '/api/hardware');
+    const cacheKey = `ot-page-cache:${pathname}`;
+    if (cacheableConfig) {
+      try {
+        const cached = JSON.parse(sessionStorage.getItem(cacheKey) || 'null');
+        if (cached && Date.now() - cached.at < 5000) {
+          return Promise.resolve(new Response(cached.body, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+      } catch (_) {}
+    } else if (method !== 'GET' && (pathname === '/api/config' || pathname === '/api/hardware'
+        || pathname === '/api/ecu_config')) {
+      try {
+        sessionStorage.removeItem('ot-page-cache:/api/config');
+        sessionStorage.removeItem('ot-page-cache:/api/hardware');
+      } catch (_) {}
+    }
+    const requestController = new AbortController();
+    const signals = [pageFetchController.signal, init.signal].filter(Boolean);
+    const abort = () => requestController.abort();
+    for (const signal of signals) {
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+    }
+    pendingPageFetches++;
+    return nativeFetch(input, { ...init, signal: requestController.signal })
+      .then(async response => {
+        // Do not report a JSON fetch as settled merely because its headers
+        // arrived. Navigation must wait until the small ECU response body has
+        // actually drained from the Classic's one-shot HTTP connection.
+        let body = null;
+        if (method === 'GET' && response.headers.get('content-type')?.includes('application/json')) {
+          body = await response.clone().text();
+        }
+        if (cacheableConfig && response.ok && body !== null) {
+          try { sessionStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), body })); } catch (_) {}
+        }
+        return response;
+      })
+      .finally(() => {
+        signals.forEach(signal => signal.removeEventListener('abort', abort));
+        pendingPageFetches = Math.max(0, pendingPageFetches - 1);
+        if (!pendingPageFetches) {
+          for (const done of [...pageFetchWaiters]) done(true);
+        }
+      });
+  };
+  const abortPageFetches = () => pageFetchController.abort();
+  const waitForWindowLoad = (timeoutMs) => {
+    if (document.readyState === 'complete') return Promise.resolve(true);
+    return new Promise(resolve => {
+      const done = value => {
+        clearTimeout(timer);
+        window.removeEventListener('load', loaded);
+        resolve(value);
+      };
+      const loaded = () => done(true);
+      const timer = setTimeout(() => done(false), timeoutMs);
+      window.addEventListener('load', loaded, { once: true });
+    });
+  };
+  window.addEventListener('pagehide', abortPageFetches);
+  window.addEventListener('beforeunload', abortPageFetches);
+  window.addEventListener('pageshow', event => {
+    if (event.persisted && pageFetchController.signal.aborted) {
+      pageFetchController = new AbortController();
+    }
+  });
+  let navigationStarting = false;
+  document.addEventListener('click', async event => {
+    const anchor = event.target.closest?.('nav a[href]');
+    if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey
+        || event.ctrlKey || event.shiftKey || event.altKey || anchor.target === '_blank') return;
+    const target = new URL(anchor.href, location.href);
+    if (target.origin !== location.origin || target.href === location.href) return;
+    event.preventDefault();
+    if (navigationStarting) return;
+    navigationStarting = true;
+    window.dispatchEvent(new Event('ot:navigation-start'));
+    document.documentElement.style.cursor = 'progress';
+    // The navigation bar can be clicked while the Classic is still streaming
+    // this page's CSS/JS. Finish load-blocking files before leaving so Chrome
+    // does not abandon a LittleFS response and occupy a scarce TCP connection.
+    await Promise.all([waitForWindowLoad(6000), waitForPageFetches(4000)]);
+    abortPageFetches();
+    // Give the async TCP task one scheduling window to process the old page's
+    // request aborts and WebSocket close before opening the replacement page.
+    setTimeout(() => location.assign(target.href), 200);
+  });
+
   let activeResolve = null;
   let previousFocus = null;
 
@@ -15,7 +132,7 @@
       .ot-dialog-card{width:min(620px,96vw);max-height:88vh;display:flex;flex-direction:column;background:var(--surface,#17171a);color:var(--text,#f5f5f7);border:1px solid var(--border-light,#42424a);border-radius:10px;box-shadow:0 20px 70px rgba(0,0,0,.55)}
       .ot-dialog-header{padding:1rem 1.1rem .7rem;font-size:.9rem;font-weight:800;letter-spacing:.04em}
       .ot-dialog-message{padding:.25rem 1.1rem 1rem;color:var(--text-2,#cecdd4);font-size:.82rem;line-height:1.55;white-space:pre-wrap;overflow:auto}
-      .ot-dialog-input{margin:0 1.1rem 1rem;width:calc(100% - 2.2rem);min-height:44px;padding:.55rem .7rem;background:var(--bg,#101012);color:var(--text,#f5f5f7);border:1px solid var(--border-light,#42424a);border-radius:6px;font:inherit}
+      .ot-dialog-input{box-sizing:border-box;margin:0 1.1rem 1rem;width:calc(100% - 2.2rem);max-width:calc(100% - 2.2rem);min-width:0;min-height:44px;padding:.55rem .7rem;background:var(--bg,#101012);color:var(--text,#f5f5f7);border:1px solid var(--border-light,#42424a);border-radius:6px;font:inherit}
       .ot-dialog-actions{display:flex;justify-content:flex-end;gap:.6rem;padding:.85rem 1.1rem;border-top:1px solid var(--border,#313135)}
       .ot-dialog-actions button{min-height:44px}
       .ot-dialog-actions .danger{background:var(--red,#ff4d5f);border-color:var(--red,#ff4d5f);color:#fff}

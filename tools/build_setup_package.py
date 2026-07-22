@@ -65,7 +65,7 @@ COMMON_FLASH = [
     ("0x10000", "firmware.bin"),
 ]
 PACKAGE_SCHEMA = 2
-SETUP_TOOL_VERSION = "0.5.25"
+SETUP_TOOL_VERSION = "0.5.26"
 
 
 def read_version() -> str:

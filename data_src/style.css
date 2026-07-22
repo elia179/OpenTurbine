@@ -976,6 +976,11 @@ body[data-page="tools"] main { max-width: 1180px; }
   nav a { flex: 0 0 auto; padding: 0 0.55rem; font-size: 0.68rem; height: 44px; line-height: 44px; }
   .conn-dot { margin-left: 0.55rem; }
   .conn-label { display: none; }
+
+  /* These rows contain only a few important choices. Keep every choice visible
+     instead of making users discover a hidden horizontal swipe area. */
+  .seq-tabs { flex-wrap: wrap; overflow-x: visible; }
+  .seq-tab { flex: 1 1 calc(50% - 0.25rem); }
   /* START / STOP full-width on mobile for maximum target size */
   #btn-start, #btn-stop { min-height: 56px; font-size: 1rem; width: 100%; }
 
@@ -1639,11 +1644,11 @@ select option.pin-inonly { color: #5ba3e0; }
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm);
 }
 
-.add-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
+.add-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.5rem; }
 .add-row select {
   font-family: var(--font-ui); font-size: 0.82rem; padding: 0.32rem 0.6rem;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm);
-  color: var(--text); flex: 1; width: auto;
+  color: var(--text); flex: 1 1 180px; width: auto; min-width: 0;
 }
 .add-row select:focus { outline: none; border-color: var(--accent); }
 .add-btn {
@@ -1790,3 +1795,11 @@ select option.pin-inonly { color: #5ba3e0; }
 /* Info button in block actions */
 .blk-btn.bip-btn { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
 .blk-btn.bip-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* A disconnected dashboard must not leave old instruments looking live. */
+body.telemetry-stale .telemetry,
+body.telemetry-stale .gauge,
+body.telemetry-stale .sparkline {
+  filter: grayscale(1);
+  opacity: .48;
+}

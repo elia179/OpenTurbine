@@ -351,11 +351,11 @@ async function sectionVisible(page, title) {
     await gotoConfig(page);
     await page.locator('#cf-eg_src').selectOption('1');
     assert.equal(await disabled(page, '#cf-tot_limit'), false);
-    assert.equal(await disabled(page, '#cf-sf_tit'), false);
+    assert.equal(await disabled(page, '#cf-sf_tit'), true);
     await page.locator('#cf-eg_src').selectOption('2');
     assert.equal(await disabled(page, '#cf-tot_limit'), true);
     assert.equal(await disabled(page, '#cf-sf_tit'), false);
-    results.push('dual TOT/TIT source switching keeps selected and secondary limits coherent');
+    results.push('dual TOT/TIT source switching enables the selected limit and ghosts the inactive one');
 
     await reset(page);
     console.log('super-audit: oil map/dynamic idle');

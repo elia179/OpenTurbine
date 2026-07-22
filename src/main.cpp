@@ -16,6 +16,7 @@
 #include "system/FeedbackRequirements.h"
 #include "engine/EngineData.h"
 #include "hal/RCInput.h"
+#include "hal/sensors/SensorProtocolDecode.h"
 
 // ── MAVLink serial output ─────────────────────────────────────
 static MAVLinkOutput g_mavlink;
@@ -108,6 +109,8 @@ public:
         _stepMs = 0;
         _stepDelayActive = false;
         _whileReleased = false;
+        _conditionSinceMs = 0;
+        _entrySensorValid = _def && RulesEngine::sensorReading(_def->sensor, _entrySensorValue);
         clearWaitReason();
     }
 
@@ -127,9 +130,23 @@ public:
                     _whileReleased = true;
                 } else {
                     setWaitReason(_def->label[0] ? _def->label : _def->key);
-                    if (RulesEngine::sensorConditionMet(_def->sensor, _def->op, _def->threshold)) {
-                        _whileReleased = true;
-                        clearWaitReason();
+                    float threshold = _def->threshold;
+                    if (_def->relativeToEntry) {
+                        if (!_entrySensorValid) return BlockResult::Abort;
+                        threshold += _entrySensorValue;
+                    }
+                    if (RulesEngine::sensorConditionMet(_def->sensor, _def->op, threshold)) {
+                        if (_conditionSinceMs == 0) _conditionSinceMs = millis();
+                        if (millis() - _conditionSinceMs >= _def->stableMs) {
+                            _whileReleased = true;
+                            clearWaitReason();
+                        } else {
+                            if (_def->timeoutMs > 0 && (millis() - _entryMs) >= _def->timeoutMs) {
+                                if (_def->timeoutAction == 2) { _whileReleased = true; clearWaitReason(); }
+                                else return _def->timeoutAction == 1 ? BlockResult::Fault : BlockResult::Abort;
+                            }
+                            return BlockResult::Running;
+                        }
                     } else if (_def->timeoutMs > 0 && (millis() - _entryMs) >= _def->timeoutMs) {
                         if (_def->timeoutAction == 2) {
                             _whileReleased = true;
@@ -138,6 +155,7 @@ public:
                             return _def->timeoutAction == 1 ? BlockResult::Fault : BlockResult::Abort;
                         }
                     } else {
+                        _conditionSinceMs = 0;
                         return BlockResult::Running;
                     }
                 }
@@ -180,6 +198,9 @@ private:
     unsigned long _stepMs = 0;
     bool _stepDelayActive = false;
     bool _whileReleased = false;
+    unsigned long _conditionSinceMs = 0;
+    float _entrySensorValue = 0.0f;
+    bool _entrySensorValid = false;
 };
 
 class IgnitionCommandBlock : public IBlock {
@@ -541,8 +562,18 @@ static void validateSequences() {
                 addIssue(nm, "Needs N1 RPM sensor - will hang for full timeout then fault", true);
         }
         else if (strcmp(nm, "SafetyHold") == 0) {
-            if (!hw.hasN1Rpm && !hw.hasOilPress)
-                addIssue(nm, "No N1 RPM or oil pressure sensor - SafetyHold has nothing to verify before RUNNING", true);
+            const bool anyFinalCheck = Config::safetyHoldCheckN1 || Config::safetyHoldCheckN2 ||
+                Config::safetyHoldCheckP1 || Config::safetyHoldCheckP2 || Config::safetyHoldCheckOil ||
+                Config::safetyHoldCheckEgt || Config::safetyHoldCheckFlame;
+            if (!anyFinalCheck)
+                addIssue(nm, "No Final Startup Check is enabled - choose at least one installed sensor", true);
+            if (Config::safetyHoldCheckN1 && !hw.hasN1Rpm) addIssue(nm, "N1 check is enabled but N1 is not configured", true);
+            if (Config::safetyHoldCheckN2 && !hw.hasN2Rpm) addIssue(nm, "N2 check is enabled but N2 is not configured", true);
+            if (Config::safetyHoldCheckP1 && !hw.hasP1) addIssue(nm, "P1 check is enabled but P1 pressure is not configured", true);
+            if (Config::safetyHoldCheckP2 && !hw.hasP2) addIssue(nm, "P2 check is enabled but P2 pressure is not configured", true);
+            if (Config::safetyHoldCheckOil && !hw.hasOilPress) addIssue(nm, "Oil check is enabled but oil pressure is not configured", true);
+            if (Config::safetyHoldCheckEgt && Config::effectiveEgtSource() == 0) addIssue(nm, "EGT check is enabled but no engine temperature source is selected", true);
+            if (Config::safetyHoldCheckFlame && !hw.hasFlame) addIssue(nm, "Flame check is enabled but the flame sensor is not configured", true);
         }
         else if (strcmp(nm, "FlameConfirm") == 0) {
             if (!hw.hasFlame)
@@ -882,9 +913,12 @@ static void validateSequences() {
     }
 
     // ── Config sanity checks (not tied to a specific block) ──────
-    if (Config::idleUseN2 && (!hw.hasTwoShaft || !hw.hasN2Rpm))
-        addIssue("DynamicIdle", "Use N2 Speed is selected but no effective N2 RPM sensor is configured. "
-                                "The ECU will fall back to N1 feedback.", false);
+    if (hw.hasDynamicIdle &&
+        ((Config::idleSource == 0 && !hw.hasN1Rpm) ||
+         (Config::idleSource == 1 && !hw.hasN2Rpm) ||
+         (Config::idleSource == 2 && !hw.hasP1) ||
+         (Config::idleSource == 3 && !hw.hasP2)))
+        addIssue("DynamicIdle", "The selected idle feedback source is not configured in Hardware", true);
     if (Config::pullbackN2Enabled) {
         if (!hw.hasTwoShaft || !hw.hasN2Rpm)
             addIssue("N2 Pullback", "N2 soft pullback is enabled but no effective N2 RPM sensor is configured", false);
@@ -907,12 +941,21 @@ static void validateSequences() {
             if (hw.hasGovernor && Config::governorTargetRpm > 0.0f &&
                 Config::governorTargetRpm + Config::governorBandRpm >= Config::n2RpmLimit)
                 addIssue("N2 Governor", "Governor target plus no-correction band reaches the hard N2 shutdown limit", false);
-            if (hw.hasDynamicIdle && Config::idleUseN2 && Config::idleTargetRpm >= Config::n2RpmLimit)
+            if (hw.hasDynamicIdle && Config::idleSource == 1 && Config::idleTargetRpm >= Config::n2RpmLimit)
                 addIssue("DynamicIdle", "N2-based idle target is at/above the hard N2 shutdown limit", false);
             if (Config::clusterEnabled && Config::n2WarnRpm > 0.0f && Config::n2WarnRpm >= Config::n2RpmLimit)
                 addIssue("N2 Cluster Warning", "Cluster N2 warning is at/above the hard N2 shutdown limit", false);
         }
     }
+    if (Config::pullbackP1Enabled && (!hw.hasP1 || Config::pullbackP1Hard <= Config::pullbackP1Soft))
+        addIssue("P1 Pullback", !hw.hasP1 ? "P1 limiter enabled without a P1 sensor" : "P1 full-reduction value must be above its begin value", false);
+    if (Config::pullbackP2Enabled && (!hw.hasP2 || Config::pullbackP2Hard <= Config::pullbackP2Soft))
+        addIssue("P2 Pullback", !hw.hasP2 ? "P2 limiter enabled without a P2 sensor" : "P2 full-reduction value must be above its begin value", false);
+    if (Config::pullbackTorqueEnabled && (!hw.hasTorque || Config::pullbackTorqueHard <= Config::pullbackTorqueSoft))
+        addIssue("Torque Pullback", !hw.hasTorque ? "Torque limiter enabled without a torque sensor" : "Torque full-reduction value must be above its begin value", false);
+    if (Config::p1TripLimit > 0.0f && !hw.hasP1) addIssue("P1 Hard Trip", "P1 hard trip is configured without a P1 sensor", true);
+    if (Config::p2TripLimit > 0.0f && !hw.hasP2) addIssue("P2 Hard Trip", "P2 hard trip is configured without a P2 sensor", true);
+    if (Config::torqueTripLimit > 0.0f && !hw.hasTorque) addIssue("Torque Hard Trip", "Torque hard trip is configured without a torque sensor", true);
     if (hw.safetyOvertemp) {
         if (Config::effectiveEgtSource() == 0)
             addIssue("Overtemp", "Overtemp safety is enabled but no selected TOT/TIT source is configured", true);
@@ -1845,6 +1888,7 @@ static void enterRunning() {
         ed.oilMinBar = fmaxf(ed.oilMinBar, Config::oilRunningMin);
     ed.lastRunFlameAvg = 0;
     ed.lastRunFlameSamples = 0;
+    ed.minOilPressure = -1.0f;
     _runStartMs        = millis();
     ed.runStartMs      = _runStartMs;   // mirror for the live hour meter in telemetry
     strncpy(ed.lastEvent, "Startup complete - engine self-sustained", sizeof(ed.lastEvent) - 1);
@@ -2674,6 +2718,7 @@ static void handleCommand(const OTPacket& pkt) {
             ed.maxOilTemp      = 0;
             ed.maxBattVoltage  = 0;
             ed.maxFuelPressure = 0;
+            ed.minOilPressure  = -1.0f;
             break;
 
         default:
@@ -3105,6 +3150,9 @@ void loop() {
                                        && edp.oilTemp    > edp.maxOilTemp)     edp.maxOilTemp     = edp.oilTemp;
     if (HardwareConfig::hasBattVoltage && edp.battHealthy
                                        && edp.battVoltage > edp.maxBattVoltage) edp.maxBattVoltage = edp.battVoltage;
+    if (edp.mode == SysMode::RUNNING && HardwareConfig::hasOilPress && edp.oilHealthy &&
+        (edp.minOilPressure < 0.0f || edp.oilPressure < edp.minOilPressure))
+        edp.minOilPressure = edp.oilPressure;
 
     const uint32_t loopEndUs = micros();
     const uint32_t execUs = loopEndUs - loopStartUs;
@@ -3138,6 +3186,7 @@ void loop() {
     }
     edp.loopExecAvgMs = loopExecAvgUs / 1000.0f;
     edp.uptimeMs = nowMs;
+    edp.publishSnapshot();
 
     const uint32_t loopElapsedUs = micros() - loopStartUs;
     const uint32_t targetHz = constrain((uint32_t)Config::controlLoopHz, 50u, 1000u);

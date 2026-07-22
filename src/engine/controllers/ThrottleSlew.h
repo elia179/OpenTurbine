@@ -18,13 +18,12 @@
 //
 //  RPM-limiter mode:
 //    Simple (0, default) — pulls back on the CURRENT shaft RPM
-//      (reactive). Byte-for-byte the original behaviour.
+//      (reactive). Uses the present reading of every enabled gradual limiter.
 //    Advanced (1) — pulls back on RPM projected forward from the
 //      filtered acceleration (ed.n1RpmAccel / n2RpmAccel), so fuel
 //      eases off BEFORE an overshoot during a fast spool, and the
-//      throttle-open ramp softens as the predicted RPM nears the
-//      soft limit. EGT pullback stays reactive in both modes
-//      (temperature is not predicted).
+//      throttle-open ramp softens as the predicted N1, N2, P1, P2,
+//      selected EGT (TOT/TIT), or torque nears its soft limit.
 // ============================================================
 
 class ThrottleSlew : public IController {
@@ -41,8 +40,17 @@ public:
     bool  n1PullbackEnabled = true;
     bool  n2PullbackEnabled = false;
     bool  egtPullbackEnabled = true;
+    bool  p1PullbackEnabled = false;
+    bool  p2PullbackEnabled = false;
+    bool  torquePullbackEnabled = false;
     float n2SoftLimit       = 0.0f;
     float n2HardLimit       = 0.0f;
+    float p1SoftLimit       = 0.0f;
+    float p1HardLimit       = 0.0f;
+    float p2SoftLimit       = 0.0f;
+    float p2HardLimit       = 0.0f;
+    float torqueSoftLimit   = 0.0f;
+    float torqueHardLimit   = 0.0f;
     float minPullbackThrottle = 0.08f;
     float pullbackStrength  = 1.0f;
 
@@ -77,19 +85,24 @@ public:
         if (!ed.benchMode &&
             ((FeedbackRequirements::n1ForProtectionOrControl() && !ed.n1Healthy) ||
              (FeedbackRequirements::n2ForProtectionOrControl() && !ed.n2Healthy) ||
-             (FeedbackRequirements::egtForProtectionOrControl() && !Config::primaryEgtHealthy(ed)))) {
+             (FeedbackRequirements::egtForProtectionOrControl() && !Config::primaryEgtHealthy(ed)) ||
+             (FeedbackRequirements::p1ForProtectionOrControl() && !ed.p1Healthy) ||
+             (FeedbackRequirements::p2ForProtectionOrControl() && !ed.p2Healthy) ||
+             (FeedbackRequirements::torqueForProtectionOrControl() && !ed.torqueHealthy))) {
             if (target > _current) target = _current;
         }
 
         // Safety pullback: approach overspeed
         // Guard: rpmHardLimit must be strictly above rpmSoftLimit — equal limits
         // would cause division by zero and NaN throttle demand.
+        const float unrestrictedTarget = target;
         auto applyPullback = [&](float value, float soft, float hard, float authority) {
             if (hard <= soft || value <= soft) return;
             float over = constrain((value - soft) / (hard - soft), 0.0f, 1.0f);
-            float floor = constrain(minPullbackThrottle, 0.0f, target);
+            float floor = constrain(minPullbackThrottle, 0.0f, unrestrictedTarget);
             float reduction = over * authority * pullbackStrength;
-            target = constrain(target - reduction, floor, target);
+            const float ceiling = constrain(unrestrictedTarget - reduction, floor, unrestrictedTarget);
+            target = fminf(target, ceiling); // the most restrictive active limiter wins
         };
 
         // RPM fed to the pullback: current (Simple) or accel-predicted (Advanced),
@@ -98,11 +111,41 @@ public:
         // rampUpMs, so the pullback and slew below are the original behaviour.
         float n1val = ed.n1Rpm;
         float n2val = ed.n2Rpm;
+        float p1val = ed.p1;
+        float p2val = ed.p2;
+        float torqueVal = ed.torque;
+        float egtVal = Config::primaryEgtC(ed);
         float effRampUpMs = rampUpMs;
+        auto updateSampleRate = [&](float value, uint32_t seq, uint32_t sampleMs,
+                                    bool healthy, uint32_t& seenSeq, uint32_t& lastMs,
+                                    float& lastValue, float& rate) {
+            if (!healthy) { rate = 0.0f; return; }
+            if (seq == 0 || seq == seenSeq) return;  // cached value: do not re-differentiate
+            const float alpha = constrain(Config::rpmAccelFilter, 0.02f, 1.0f);
+            const float sampleDt = lastMs ? (sampleMs - lastMs) / 1000.0f : 0.0f;
+            if (sampleDt > 0.0f && sampleDt <= 1.0f) {
+                rate += (((value - lastValue) / sampleDt) - rate) * alpha;
+            } else {
+                rate = 0.0f;
+            }
+            lastValue = value;
+            lastMs = sampleMs;
+            seenSeq = seq;
+        };
+        updateSampleRate(ed.p1, ed.p1SampleSeq, ed.p1SampleMs, ed.p1Healthy,
+                         _p1SeenSeq, _p1LastMs, _lastP1, _p1Rate);
+        updateSampleRate(ed.p2, ed.p2SampleSeq, ed.p2SampleMs, ed.p2Healthy,
+                         _p2SeenSeq, _p2LastMs, _lastP2, _p2Rate);
+        updateSampleRate(ed.torque, ed.torqueSampleSeq, ed.torqueSampleMs, ed.torqueHealthy,
+                         _torqueSeenSeq, _torqueLastMs, _lastTorque, _torqueRate);
         if (rpmLimiterMode == 1) {
             const float horizon = pullbackLookaheadMs * 0.001f;
             n1val = ed.n1Rpm + fmaxf(0.0f, ed.n1RpmAccel) * horizon;   // only anticipate a rising shaft
             n2val = ed.n2Rpm + fmaxf(0.0f, ed.n2RpmAccel) * horizon;
+            p1val = ed.p1 + fmaxf(0.0f, _p1Rate) * horizon;
+            p2val = ed.p2 + fmaxf(0.0f, _p2Rate) * horizon;
+            torqueVal = ed.torque + fmaxf(0.0f, _torqueRate) * horizon;
+            egtVal = Config::primaryEgtC(ed) + fmaxf(0.0f, ed.totRiseRate) * horizon;
             if (ed.n1Healthy && pullbackApproachZoneRpm > 0.0f) {
                 const float approachStart = rpmSoftLimit - pullbackApproachZoneRpm;
                 if (n1val > approachStart) {
@@ -114,8 +157,11 @@ public:
         if (n1PullbackEnabled && ed.n1Healthy) applyPullback(n1val, rpmSoftLimit, rpmHardLimit, 0.30f);
         if (n2PullbackEnabled && ed.n2Healthy) applyPullback(n2val, n2SoftLimit, n2HardLimit, 0.40f);
         if (egtPullbackEnabled && Config::primaryEgtHealthy(ed)) {
-            applyPullback(Config::primaryEgtC(ed), totSoftLimit, totHardLimit, 0.20f);
+            applyPullback(egtVal, totSoftLimit, totHardLimit, 0.20f);
         }
+        if (p1PullbackEnabled && ed.p1Healthy) applyPullback(p1val, p1SoftLimit, p1HardLimit, 0.35f);
+        if (p2PullbackEnabled && ed.p2Healthy) applyPullback(p2val, p2SoftLimit, p2HardLimit, 0.35f);
+        if (torquePullbackEnabled && ed.torqueHealthy) applyPullback(torqueVal, torqueSoftLimit, torqueHardLimit, 0.40f);
 
         // Guard: if rampMs is 0 (instant) or dt is 0 (same-millisecond tick),
         // dividing would produce Inf or NaN.  Treat 0 ms ramp as instant (maxStep=1).
@@ -135,6 +181,10 @@ public:
     void reset() override {
         _current = 0;
         _lastMs  = millis();
+        _lastP1 = _lastP2 = _lastTorque = 0.0f;
+        _p1Rate = _p2Rate = _torqueRate = 0.0f;
+        _p1SeenSeq = _p2SeenSeq = _torqueSeenSeq = 0;
+        _p1LastMs = _p2LastMs = _torqueLastMs = 0;
     }
 
     // Returns the slew-limited output before any external offset (e.g. AB fuel offset)
@@ -145,4 +195,8 @@ public:
 private:
     float         _current = 0;
     unsigned long _lastMs  = 0;
+    float _lastP1 = 0.0f, _lastP2 = 0.0f, _lastTorque = 0.0f;
+    float _p1Rate = 0.0f, _p2Rate = 0.0f, _torqueRate = 0.0f;
+    uint32_t _p1SeenSeq = 0, _p2SeenSeq = 0, _torqueSeenSeq = 0;
+    uint32_t _p1LastMs = 0, _p2LastMs = 0, _torqueLastMs = 0;
 };

@@ -8,7 +8,34 @@ _Note: there is no 1.2.0 release — 1.1.0 was followed directly by 1.3.0._
 
 ---
 
-## [Unreleased]
+## [1.9.10] — 2026-07-22
+
+### Added
+- Startup pressure presets can wait for compressor pressure, confirm a rise relative to block entry, or require a threshold continuously for a stable interval, with selectable P1/P2 source and timeout behavior.
+- Final Startup Checks can independently require N1, N2, P1, P2, oil pressure, selected EGT, and flame evidence before RUNNING.
+- Gradual P1, P2, and shaft-torque fuel protection, independent confirmed hard trips, and P1/P2 automatic-idle feedback are now configurable.
+- Telemetry frames carry a same-control-tick snapshot identifier, and run summaries report the measured minimum healthy oil pressure.
+- Pure host-testable protocol vectors cover MAX31855, MAX31856, MAX6675, HX711, and DS18B20 frame decoding.
+
+### Changed
+- Firmware now uses explicit embedded error paths without unused C++ exception tables, restoring comfortable Classic ESP32 OTA headroom while keeping the same control and safety behavior on both targets.
+- Control rules now expose Standby, Starting, Running, and Shutdown directly; binary inputs use explicit switch-ON and switch-OFF output values instead of editable comparison thresholds.
+- TIT, P1, and P2 hard limits are grouped with the main Engine Protection Limits, and P1/P2 session-log choices are discoverable in the Essentials view.
+- Simultaneous gradual N1/N2/EGT/P1/P2/torque constraints now resolve explicitly to the most restrictive fuel ceiling.
+- Automatic Idle Control selects one N1, N2, P1, or P2 source and uses bounded pressure-specific target, deadband, and disengagement settings for pressure feedback.
+- Loss of feedback consumed by an enabled limiter, hard trip, or automatic-idle controller now prevents fuel increases and enters the shared reduced-power mode.
+- Shaft pulse counting now uses a bounded adaptive 40-250 ms measurement window: low speed is averaged longer while rising pulse rate produces faster updates. Jump detection includes the unavoidable one-pulse window quantization without weakening raw overspeed trips.
+- Every predictive rate calculator now consumes each sensor sample sequence exactly once with its sample timestamp; cached control-loop reads can no longer create or decay P1/P2/torque/pressure-idle rates.
+
+### Fixed
+
+- Full engine-file restore now parses and stages hardware/settings independently and validates the registry in bounded STANDBY scratch space, allowing large unified configurations to restore even after a long Classic ESP32 browser session without requiring another large contiguous heap allocation.
+- P1/P2 pullback and hard-trip fields now follow the selected pressure unit and are locked when their sensor is not fitted; factory-reset confirmation input stays inside its dialog on narrow screens.
+- Rapid page navigation now finishes load-blocking assets, drains or aborts page-owned API reads, closes page-local WebSockets, briefly reuses unchanged configuration reads, and promptly reaps stale clients; legitimate Wi-Fi ACK stalls get a 10-second window without allowing abandoned transfers to exhaust the Classic ESP32 TCP pool.
+- Web telemetry is serialized from an immutable snapshot published after the ECU control tick instead of combining fields read across different ticks.
+- Final startup stability now resets when any selected check becomes unhealthy or falls below its threshold, rather than waiting a fixed time and checking only once.
+- Classic ESP32 software-SPI thermocouple and HX711 clocks now include practical settling margin for level shifters, isolators, and longer hobby wiring; physical MAX6675/MAX31855/MAX31856/HX711 role-reversed HIL passes all decode, calibration, and fault cases.
+- A disabled Automatic Idle controller no longer reports a boot-readiness error merely because its saved source is not fitted in the current hardware profile.
 
 ## [1.9.9] — 2026-07-19
 

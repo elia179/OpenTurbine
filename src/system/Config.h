@@ -52,7 +52,19 @@ public:
     static float spoolRpmTarget;
     static int   spoolTimeoutMs;
     static int   safetyHoldMs;
+    static int   safetyHoldTimeoutMs;
     static float safetyHoldFinalRpm;
+    static bool  safetyHoldCheckN1;
+    static bool  safetyHoldCheckN2;
+    static bool  safetyHoldCheckP1;
+    static bool  safetyHoldCheckP2;
+    static bool  safetyHoldCheckOil;
+    static bool  safetyHoldCheckEgt;
+    static bool  safetyHoldCheckFlame;
+    static float safetyHoldFinalN2Rpm;
+    static float safetyHoldFinalP1;
+    static float safetyHoldFinalP2;
+    static float safetyHoldFinalEgt;
     static float shutdownRpmDropThreshold;
     static int   shutdownRpmDropTimeoutMs;
     static int   shutdownCooldownTimeoutMs;
@@ -67,15 +79,28 @@ public:
     static bool  pullbackN1Enabled;
     static bool  pullbackN2Enabled;
     static bool  pullbackEgtEnabled;
+    static bool  pullbackP1Enabled;
+    static bool  pullbackP2Enabled;
+    static bool  pullbackTorqueEnabled;
     static float pullbackN1SoftRpm;
     static float pullbackN1HardRpm;
     static float pullbackN2SoftRpm;
     static float pullbackN2HardRpm;
     static float pullbackEgtSoftC;
     static float pullbackEgtHardC;
+    static float pullbackP1Soft;
+    static float pullbackP1Hard;
+    static float pullbackP2Soft;
+    static float pullbackP2Hard;
+    static float pullbackTorqueSoft;
+    static float pullbackTorqueHard;
+    static float p1TripLimit;
+    static float p2TripLimit;
+    static float torqueTripLimit;
+    static int   pressureTorqueTripConfirmMs;
     static float pullbackMinThrottlePct;
     static float pullbackStrength;
-    // Advanced RPM-limiter mode (Simple/0 = current reactive behaviour)
+    // Gradual limiter method (Simple/0 = current values, Advanced/1 = rate prediction)
     static int   rpmLimiterMode;
     static float pullbackLookaheadMs;
     static float pullbackNearLimitRampUpMs;
@@ -91,6 +116,10 @@ public:
     static float idleMinMultiplier;
     static float idleMaxMultiplier;      // idle ceiling = throttleIdleMaxPct * this (>=1)
     static bool  idleUseN2;          // false = N1 (default), true = N2
+    static int   idleSource;         // 0=N1, 1=N2, 2=P1, 3=P2
+    static float idleTargetPressure;
+    static float idlePressureDeadband;
+    static float idlePressureLimit;
     static float idleIGain;          // integral gain (accumulated error → throttle %)
     static float idleIMax;           // max integral windup (fraction, e.g. 0.15 = ±15% authority)
     // Advanced dynamic-idle mode (Simple/0 = current PI behaviour)
@@ -402,7 +431,7 @@ public:
         char    sourceId[24] = {};
         char    targetId[24] = {};
     };
-    static constexpr int MAX_RULES = 8;
+    static constexpr int MAX_RULES = 16;
     static Rule rules[MAX_RULES];
     static int  ruleCount;
 

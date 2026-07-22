@@ -909,6 +909,8 @@ void writeCustomBlocks(JsonObject doc) {
             cond["source"] = sequenceSourceId(def.sensor);
             cond["op"] = customOpString(def.op);
             cond["value"] = customThresholdToDisplay(def.sensor, def.threshold);
+            cond["stable_ms"] = def.stableMs;
+            cond["relative_to_entry"] = def.relativeToEntry;
             item["timeout_ms"] = def.timeoutMs;
             item["timeout_action"] = def.timeoutAction == 1 ? "fault" :
                                      (def.timeoutAction == 2 ? "continue" : "abort");
@@ -951,6 +953,8 @@ void readCustomBlocks(const JsonDocument& doc) {
             def.sensor = (uint8_t)sensor;
             def.op = customOpId(cond["op"] | ">");
             def.threshold = customThresholdToStored(def.sensor, cond["value"] | 0.0f);
+            def.stableMs = constrain((uint32_t)(cond["stable_ms"] | 0UL), 0UL, 600000UL);
+            def.relativeToEntry = cond["relative_to_entry"] | false;
         }
 
         if (item["steps"].is<JsonArrayConst>()) {
@@ -2827,7 +2831,7 @@ bool HardwareConfig::validateJson(const char* json, size_t len) {
     return validateJson(doc);
 }
 
-bool HardwareConfig::validateJson(const JsonDocument& doc) {
+bool HardwareConfig::validateJson(const JsonDocument& doc, ChannelRegistry* registryWorkspace) {
     auto reject = [](const char* reason) {
         Serial.printf("[HardwareConfig] validation rejected: %s\n", reason);
         return false;
@@ -2846,12 +2850,16 @@ bool HardwareConfig::validateJson(const JsonDocument& doc) {
     const ChannelRegistry* registryForValidation = nullptr;
     // Keep the expanded registry off the AsyncWebServer task stack without
     // permanently reserving a second registry in DRAM.
-    std::unique_ptr<ChannelRegistry> registry;
+    std::unique_ptr<ChannelRegistry> ownedRegistry;
     if (!doc["channel_registry"].isNull()) {
         if ((doc["channel_registry"]["version"] | 0) > CHANNEL_REGISTRY_VERSION) return reject("channel registry version");
-        registry.reset(new (std::nothrow) ChannelRegistry());
+        ChannelRegistry* registry = registryWorkspace;
+        if (!registry) {
+            ownedRegistry.reset(new (std::nothrow) ChannelRegistry());
+            registry = ownedRegistry.get();
+        }
         if (!registry || !registry->fromJson(doc["channel_registry"].as<JsonObjectConst>())) return reject("channel registry contents");
-        registryForValidation = registry.get();
+        registryForValidation = registry;
     }
     if (!validateOilLoops(doc["oil_loops"], registryForValidation)) return reject("oil loops");
     if (!validateHardwareDependencies(doc, registryForValidation)) return reject("hardware dependencies");

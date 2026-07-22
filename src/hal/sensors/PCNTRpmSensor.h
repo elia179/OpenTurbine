@@ -90,7 +90,7 @@ public:
         if (!_ready) return;
         unsigned long now = millis();
         unsigned long dt  = now - _lastMs;
-        if (dt < UPDATE_INTERVAL_MS) return;
+        if (dt < _nextIntervalMs()) return;
 
         // Read the raw hardware counter (bounded 0…H_LIM-1).
         // We use accum_count=0 and accumulate ourselves in int64_t so the
@@ -133,6 +133,7 @@ public:
     bool        isHealthy() override { return _health.isTrustworthy(); }
     const char* name()      override { return _name; }
     uint32_t sampleSequence() override { return _sampleSeq; }
+    uint32_t sampleTimestampMs() override { return _lastMs; }
     bool hardwareReady() const { return _ready; }
 
     void resetHealth() {
@@ -149,7 +150,9 @@ public:
 
 private:
     static constexpr int           H_LIM              = 30000;
-    static constexpr unsigned long UPDATE_INTERVAL_MS = 100;
+    static constexpr unsigned long MIN_INTERVAL_MS = 40;
+    static constexpr unsigned long MAX_INTERVAL_MS = 250;
+    static constexpr float TARGET_PULSES_PER_SAMPLE = 6.0f;
 
     int         _pin;
     float       _ppr;
@@ -169,6 +172,12 @@ private:
     bool               _ready = false;
     bool               _enabled = false;
     bool               _started = false;
+
+    unsigned long _nextIntervalMs() const {
+        if (_rpm < 1.0f || _ppr <= 0.0f) return MAX_INTERVAL_MS;
+        const float ms = TARGET_PULSES_PER_SAMPLE * 60000.0f / (_rpm * _ppr);
+        return (unsigned long)constrain(ms, (float)MIN_INTERVAL_MS, (float)MAX_INTERVAL_MS);
+    }
 
     void _cleanup() {
         if (_unit && _started) pcnt_unit_stop(_unit);
@@ -198,7 +207,11 @@ private:
         // a fixed 2000 RPM, which left a detection gap for any shaft that idles
         // below 2000 RPM — a dead sensor dropping it to zero was never flagged.
         const float runningRpm = fmaxf(rpmLimit * 0.03f, 200.0f);
-        int requiredZeros = zeroStuckLimit > 0 ? zeroStuckLimit : 1;
+        // Preserve the historical zero-stuck delay in milliseconds even as
+        // the adaptive RPM sample window changes with pulse rate.
+        int requiredZeros = zeroStuckLimit > 0
+            ? (int)ceilf((zeroStuckLimit * 100.0f) / fmaxf(1.0f, (float)dt))
+            : 1;
 
         // Note: RpmHealth::SATURATED ("stuck at max") is intentionally not
         // raised here. With a bare edge counter a stuck-high line produces no
@@ -211,6 +224,11 @@ private:
         // e.g. jumpThreshold=0.40, rpmLimit=100000 → 40000 RPM/s max rate.
         if (_prevRpm > 500.0f && rpm > 0) {
             float maxDeltaRpm = jumpThreshold * rpmLimit * (dt / 1000.0f);
+            // A short adaptive window has a coarser one-pulse RPM quantum.
+            // Permit two counts of unavoidable window-edge quantization so a
+            // steady pulse train cannot alternate into a false JUMP fault.
+            const float pulseQuantumRpm = (60000.0f / fmaxf(1.0f, _ppr)) / fmaxf(1.0f, (float)dt);
+            maxDeltaRpm += 2.0f * pulseQuantumRpm;
             if (fabsf(rpm - _prevRpm) > maxDeltaRpm) {
                 _health.set(RpmHealth::JUMP);
             }

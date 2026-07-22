@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	appVersion              = "0.5.25"
+	appVersion              = "0.5.26"
 	requiredPackageSchema   = 2
 	appTitle                = "OpenTurbine Setup Tool"
 	ecuBaseURL              = "http://192.168.4.1"
@@ -100,8 +100,16 @@ type FlashEntry struct {
 }
 
 type Package struct {
-	Root     string
-	Manifest Manifest
+	Root      string
+	Manifest  Manifest
+	Temporary bool
+}
+
+func (p *Package) cleanup() {
+	if p != nil && p.Temporary && p.Root != "" {
+		_ = os.RemoveAll(p.Root)
+		p.Root = ""
+	}
 }
 
 type driverInstallResult struct {
@@ -153,6 +161,11 @@ func main() {
 	runtime.LockOSThread()
 	setProcessDPIAware()
 	app := newApp()
+	defer func() {
+		app.packageMu.Lock()
+		defer app.packageMu.Unlock()
+		app.packageReady.cleanup()
+	}()
 	runGUI(app)
 }
 
@@ -1938,8 +1951,8 @@ func downloadFile(url, dst string) error {
 }
 
 func downloadFileWithProgress(url, dst string, progress func(done, total int64)) error {
-	if !strings.HasPrefix(strings.ToLower(url), "http") {
-		return fmt.Errorf("bad package URL")
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(url)), "https://") {
+		return fmt.Errorf("package URL must use HTTPS")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
@@ -2015,9 +2028,16 @@ func copyWithProgress(dst io.Writer, src io.Reader, total int64, progress func(d
 func loadPackageFromZip(zipPath string) (*Package, error) {
 	root := filepath.Join(os.TempDir(), "openturbine_setup_pkg_"+fmt.Sprintf("%d", time.Now().UnixNano()))
 	if err := unzip(zipPath, root); err != nil {
+		_ = os.RemoveAll(root)
 		return nil, err
 	}
-	return loadPackageFromDir(root)
+	pkg, err := loadPackageFromDir(root)
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return nil, err
+	}
+	pkg.Temporary = true
+	return pkg, nil
 }
 
 func loadPackageFromDir(root string) (*Package, error) {

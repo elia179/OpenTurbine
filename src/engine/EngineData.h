@@ -2,6 +2,7 @@
 #include "Types.h"
 #include "../system/ChannelRegistry.h"
 #include <stdint.h>
+#include <stddef.h>
 
 // ── Afterburner state machine mode ────────────────────────────
 enum class ABMode : uint8_t {
@@ -35,6 +36,8 @@ enum class ABMode : uint8_t {
 
 struct EngineData {
     static EngineData& instance();
+    void publishSnapshot();
+    static uint32_t readPublishedSnapshot(void* destination, size_t destinationSize);
 
     // ── Sensor values ─────────────────────────────────────────
     volatile float    n1Rpm           = 0;      // RPM  (gas generator / main shaft)
@@ -67,10 +70,16 @@ struct EngineData {
     volatile uint32_t n2SampleSeq      = 0;
     volatile uint32_t totSampleSeq     = 0;
     volatile uint32_t titSampleSeq     = 0;
+    volatile uint32_t p1SampleSeq      = 0;
+    volatile uint32_t p2SampleSeq      = 0;
+    volatile uint32_t torqueSampleSeq  = 0;
     volatile uint32_t n1SampleMs       = 0;
     volatile uint32_t n2SampleMs       = 0;
     volatile uint32_t totSampleMs      = 0;
     volatile uint32_t titSampleMs      = 0;
+    volatile uint32_t p1SampleMs       = 0;
+    volatile uint32_t p2SampleMs       = 0;
+    volatile uint32_t torqueSampleMs   = 0;
 
     // ── Sensor health ─────────────────────────────────────────
     volatile bool     n1Healthy       = false;
@@ -261,6 +270,7 @@ struct EngineData {
     volatile float    maxBattVoltage     = 0;
     volatile float    maxTit             = 0;
     volatile float    maxFuelPressure    = 0;
+    volatile float    minOilPressure     = -1; // minimum healthy RUNNING value; -1 = no sample
 
     // ── EGT rate of rise (°C/s, calculated by SafetyMonitor) ──
     volatile float    totRiseRate        = 0.0f;   // positive = rising

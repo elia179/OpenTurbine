@@ -315,13 +315,14 @@ static void IRAM_ATTR emuClkISR() {
             const uint8_t reg = (uint8_t)((g_56Addr + g_56Byte - 1u) & 0x0Fu);
             emuDataWrite((g_56Regs[reg] >> g_56Bit) & 1u);
         } else emuDataWrite(false);
-    } else if (g_emuMode == EMU_HX711 && !high) {
-        // The DUT samples while SCK is high. Advance on falling edges so the
-        // next bit is stable before the following rising-edge sample.
-        ++g_hxPulse;
-        if (g_hxPulse < 24) {
-            emuDataWrite((g_hxWord >> (23 - g_hxPulse)) & 1u);
-        } else {
+    } else if (g_emuMode == EMU_HX711) {
+        if (g_hxWaiting) return;
+        // A real HX711 changes DOUT after each rising SCK edge. DOUT being LOW
+        // before the first edge is only the data-ready indication, not bit 23.
+        if (high) {
+            if (g_hxPulse < 24)
+                emuDataWrite((g_hxWord >> (23 - g_hxPulse)) & 1u);
+        } else if (++g_hxPulse >= 24) {
             emuDataWrite(true);
             g_hxPulse = 0;
             g_hxWaiting = true;
@@ -500,9 +501,22 @@ static bool applyOutput(const Signal& s, const char* valStr, String& err) {
             return true;
         }
         case SERVO_OUT: {
+            // The S3 has no DAC. Static HIGH/LOW lets the role-reversed bench
+            // prove an ADC1 input at both rails on the same protected jumper;
+            // numeric values retain the normal RC-pulse behavior.
+            int ch = sigLedcChan[sigIndex(s)];
+            if (!strcasecmp(valStr, "high") || !strcasecmp(valStr, "low")) {
+                const bool high = !strcasecmp(valStr, "high");
+                ledc_stop(LEDC_LOW_SPEED_MODE, (ledc_channel_t)ch, high ? 1 : 0);
+                pinMode(s.gpio, OUTPUT);
+                digitalWrite(s.gpio, high ? HIGH : LOW);
+                return true;
+            }
             // Value is the pulse width in microseconds (0 = no pulse). 50 Hz frame = 20000 us,
             // 16-bit resolution -> duty = us / 20000 * 65535.
-            int ch = sigLedcChan[sigIndex(s)];
+            // Reconfigure the channel in case a previous static-level command
+            // stopped it.
+            ledcSetupSignal(sigIndex(s), s, ch);
             float us = constrain((float)atof(valStr), 0.0f, 20000.0f);
             uint32_t duty = (uint32_t)(us / 20000.0f * (float)SERVO_MAX_DUTY + 0.5f);
             ledcSetDuty(ch, duty);

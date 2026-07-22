@@ -152,7 +152,8 @@ public:
                !strcmp(role, "glow_plug") ||
                !strcmp(role, "fuel_pump") ||
                !strcmp(role, "ab_pump") ||
-               !strcmp(role, "prop_pitch");
+               !strcmp(role, "prop_pitch") ||
+               !strcmp(role, "indicator");
     }
     // Driver numbers are persisted. Keep 0..6 stable and append new drivers.
     enum Driver : uint8_t { Digital, Analog, Pulse, RcPwm, Relay, Pwm, Servo, PwmDuty };
@@ -324,7 +325,8 @@ public:
                !strcmp(purpose, "ab_valve") ||
                !strcmp(purpose, "prop_pitch") ||
                !strcmp(purpose, "air_starter") || !strcmp(purpose, "pilot_fuel") ||
-               !strcmp(purpose, "purge_valve") || !strcmp(purpose, "nozzle_actuator");
+               !strcmp(purpose, "purge_valve") || !strcmp(purpose, "nozzle_actuator") ||
+               !strcmp(purpose, "warning_indicator");
     }
 private:
     static bool driverMatches(Direction d, Driver v) {

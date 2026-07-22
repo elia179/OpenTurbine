@@ -127,6 +127,14 @@ func TestConfirmationBadgeOnlyAppearsAtDecisionGates(t *testing.T) {
 	}
 }
 
+func TestPackageDownloadRejectsPlainHTTP(t *testing.T) {
+	err := downloadFileWithProgress("http://example.invalid/OpenTurbine.zip",
+		filepath.Join(t.TempDir(), "package.zip"), nil)
+	if err == nil {
+		t.Fatal("plain HTTP package URL must be rejected before any request is made")
+	}
+}
+
 func writeTestFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

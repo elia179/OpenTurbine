@@ -30,6 +30,7 @@ public:
         digitalWrite(_cs, HIGH);
         // Software SPI — no conflicts with other SPI devices or bus sharing issues
         pinMode(_clk,  OUTPUT);
+        digitalWrite(_clk, LOW);
         // A real converter overrides this weak pull-up; without a converter,
         // it prevents floating SPI data from appearing as hot exhaust.
         pinMode(_miso, INPUT_PULLUP);
@@ -45,9 +46,8 @@ public:
         _lastMs = now;
 
         uint32_t raw = _read32();
-        ++_sampleSeq;
 
-        if (raw == 0x00000000UL || raw == 0xFFFFFFFFUL) {
+        if (raw == 0xFFFFFFFFUL) {
             _healthy = false;
             return;
         }
@@ -72,15 +72,21 @@ public:
         }
         _temp = temp;
         _healthy = true;
+        ++_sampleSeq;
     }
 
     float       getValue()  override { return _temp; }
     bool        isHealthy() override { return _healthy; }
     const char* name()      override { return _name; }
     uint32_t sampleSequence() override { return _sampleSeq; }
+    uint32_t sampleTimestampMs() override { return _lastMs; }
 
 private:
     static constexpr unsigned long READ_INTERVAL_MS = 100;
+    // A conservative software-SPI clock is effectively free at a 10 Hz
+    // conversion rate and gives isolators, long hobby wiring, and slower GPIO
+    // targets time to settle before each sample.
+    static constexpr unsigned int SPI_HALF_PERIOD_US = 5;
 
     int         _clk, _cs, _miso;
     const char* _name;
@@ -95,10 +101,10 @@ private:
         delayMicroseconds(1);
         for (int i = 31; i >= 0; i--) {
             digitalWrite(_clk, LOW);
-            delayMicroseconds(1);
+            delayMicroseconds(SPI_HALF_PERIOD_US);
             if (digitalRead(_miso)) val |= (1UL << i);
             digitalWrite(_clk, HIGH);
-            delayMicroseconds(1);
+            delayMicroseconds(SPI_HALF_PERIOD_US);
         }
         digitalWrite(_cs, HIGH);
         return val;

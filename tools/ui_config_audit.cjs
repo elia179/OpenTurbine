@@ -37,6 +37,21 @@ function auditConfigStructure() {
     'Every Config section must belong to exactly one logical workspace group');
   assert.equal(fields.some(field => field.pathText.startsWith('tools.')), false,
     'Bench-test settings must be owned only by Tools > Test settings');
+  for (const key of ['sf_tit', 'sf_p1t', 'sf_p2t']) {
+    const field = fields.find(candidate => candidate.key === key);
+    assert.equal(field?.section, 'Engine Protection Limits', `${key} must be shown with the main engine limits`);
+    assert.equal(field?.basic, true, `${key} must remain visible in Essentials`);
+  }
+  for (const key of ['pb_p1s', 'pb_p1h', 'pb_p2s', 'pb_p2h', 'sf_p1t', 'sf_p2t']) {
+    assert.equal(fields.find(candidate => candidate.key === key)?.unitType, 'press', `${key} must follow the selected pressure unit`);
+  }
+  for (const key of ['sl_p1', 'sl_p2']) {
+    assert.equal(fields.find(candidate => candidate.key === key)?.basic, true, `${key} must be discoverable in Essentials`);
+  }
+  assert.match(sequenceSource, /rule-mode-standby-/, 'Control rules must expose Standby as an active state');
+  assert.doesNotMatch(sequenceSource, /rule-mode-all-|All operating states/, 'Control rules must not hide states behind an all-operating shortcut');
+  assert.match(sequenceSource, /Output when switch is ON/, 'Binary rules must use direct ON/OFF output values');
+  assert.match(sequenceSource, /ruleUnit\(sensor\) === '0\/1' \? 0\.5/, 'Binary rules must store a fixed midpoint threshold');
 
   const firmwareToolKeys = [...new Set(
     [...configCpp.matchAll(/tl\["([^"]+)"\]\s*=/g)].map(match => match[1])
@@ -92,16 +107,19 @@ async function checked(page, selector) {
 async function reset(page) {
   const response = await page.request.post(`${base}/__sim/reset`);
   assert.equal(response.ok(), true);
+  if (page.url().startsWith(base)) await page.evaluate(() => sessionStorage.clear());
 }
 
 async function patchHardware(page, patch) {
   const response = await page.request.patch(`${base}/api/hardware`, { data: patch });
   assert.equal(response.ok(), true);
+  if (page.url().startsWith(base)) await page.evaluate(() => sessionStorage.clear());
 }
 
 async function patchData(page, patch) {
   const response = await page.request.post(`${base}/__sim/data`, { data: patch });
   assert.equal(response.ok(), true);
+  if (page.url().startsWith(base)) await page.evaluate(() => sessionStorage.clear());
 }
 
 async function goto(page, route, waitSelector) {
@@ -336,7 +354,7 @@ async function goto(page, route, waitSelector) {
       setNumber('n2_rpm_limit', 30000);
       setCheck('pb_n2e', true); setNumber('pb_n2s', 30000); setNumber('pb_n2h', 32000);
       setNumber('gv_tr', 29000); setNumber('gv_bd', 1500);
-      setCheck('di_n2', true); setNumber('di_tr', 30000);
+      setNumber('di_src', 1); setNumber('di_tr', 30000);
       setNumber('cl_n2', 30000);
       setNumber('rpm_limit', 100000); setNumber('so_src', 0);
       setNumber('so_rl', 500000); setNumber('so_fp', 0); setNumber('so_fb', 0);
@@ -433,7 +451,7 @@ async function goto(page, route, waitSelector) {
     await page.waitForSelector('#save-recap-modal', {state:'visible'});
     const presetRecap = await page.locator('#save-recap-body').textContent();
     assert.match(presetRecap, /Engine Protection Limits\s*\/\s*Maximum N1 Speed/i);
-    assert.match(presetRecap, /Automatic Idle Speed Control\s*\/\s*Idle Speed Target/i);
+    assert.match(presetRecap, /Automatic Idle Control\s*\/\s*Idle Target/i);
     assert.doesNotMatch(presetRecap, /live:/i);
     assert.match(await page.locator('#save-recap-subtitle').textContent(), /6 fields/i);
     await page.locator('#save-recap-confirm-btn').click();

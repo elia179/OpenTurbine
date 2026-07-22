@@ -134,6 +134,7 @@ PING                 -> OK OTBench <ver>
 LIST                 -> SIG <name> <kind> gpio=<n> ...  then OK
 RESET                -> OK                 (all driven outputs to safe/idle)
 SET <name> <value>   -> OK | ERR ...       digital: 1/0 · freq: Hz · analog: volts
+SET IDLE_IN HIGH|LOW -> OK                 (S3 role-reversed tester: static ADC rail test)
 GET <name>           -> VAL <name> level=.. | us=.. hz=.. duty=.. level=..
 STATE                -> VAL STATE <name>=.. ...   (all inputs in one shot)
 EMU MAX6675 <C|open> -> OK                 (S3 tester in role-reversed harness)
@@ -152,7 +153,9 @@ EMU OFF 0            -> OK                 (restore normal bench signal roles)
   a load-cell bridge, excitation, analogue noise, grounding or engine-bay EMI.
 - **Only 2 clean analog (DAC) channels** on the tester (GPIO 25/26 → THROTTLE_IN,
   OILP). Without smoothing caps, FLAME and IDLE_IN are digital HIGH/LOW, not swept.
-  Add an MCP4728 (4-ch I²C DAC) if you need more true-analog channels.
+  In the role-reversed S3-tester build there is no DAC; `SET IDLE_IN HIGH|LOW`
+  still proves the connected classic ESP32 ADC1 channel at both rails. Add an
+  MCP4728 (4-ch I²C DAC) if you need calibrated intermediate-voltage sweeps.
 - **NeoPixel status LED** (WS2812) isn't decoded — use a plain-GPIO status LED on
   the bench profile if you want to assert LED state.
 - **Safety reactions** (overspeed/overtemp → shutdown within N ms) are the

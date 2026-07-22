@@ -4,9 +4,9 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Hardware</title>
-<link rel="stylesheet" href="/style.css?v=20260716b">
+<link rel="stylesheet" href="/style.css?v=20260722a">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<script src="/ui_dialog.js?v=20260715a"></script>
+<script src="/ui_dialog.js?v=20260722g"></script>
 </head>
 <body>
 <nav>
@@ -869,6 +869,13 @@ function connectWs() {
 }
 window.addEventListener('pagehide', stopHardwareTelemetry);
 window.addEventListener('beforeunload', stopHardwareTelemetry);
+window.addEventListener('ot:navigation-start', stopHardwareTelemetry);
+window.addEventListener('pageshow', event => {
+  if (!event.persisted) return;
+  wsClosingForNavigation = false;
+  startStatusPoll();
+  connectWs();
+});
 function setConn(ok, text) {
   const dot = document.getElementById('conn');
   const lbl = document.getElementById('conn-label');
@@ -1458,7 +1465,8 @@ const REGISTRY_OUTPUT_ROLES=[
   ['generic','Generic output'],['fuel','Fuel metering'],['fuel_shutoff','Fuel shutoff'],['starter','Starter'],
   ['starter_en','Starter enable'],['oil_pump','Oil pump'],['coolant_pump','Coolant pump'],['scavenge_pump','Scavenge pump'],['cooling_fan','Cooling fan'],
   ['valve','Valve / solenoid'],['igniter','Igniter'],['ab_igniter','AB igniter'],['glow_plug','Glow plug'],
-  ['fuel_pump','Pilot / auxiliary fuel pump'],['ab_pump','Afterburner fuel pump'],['prop_pitch','Prop pitch']
+  ['fuel_pump','Pilot / auxiliary fuel pump'],['ab_pump','Afterburner fuel pump'],['prop_pitch','Prop pitch'],
+  ['indicator','Warning / indicator light']
 ];
 const REGISTRY_INPUT_PURPOSES=[
   {value:'n1_speed',label:'N1 speed',role:'speed',drivers:[2,1],group:'Engine sensors'},
@@ -1514,6 +1522,7 @@ const REGISTRY_OUTPUT_PURPOSES=[
   {value:'nozzle_actuator',label:'Variable nozzle actuator',role:'prop_pitch',drivers:[5,6],group:'Valves and auxiliaries'},
   {value:'ab_pump',label:'Afterburner fuel pump',role:'ab_pump',drivers:[4,5,6],group:'Valves and auxiliaries'},
   {value:'prop_pitch',label:'Propeller pitch',role:'prop_pitch',drivers:[5,6],group:'Valves and auxiliaries'},
+  {value:'warning_indicator',label:'Warning / indicator light',role:'indicator',drivers:[4,5],group:'Warnings and indicators'},
   {value:'generic',label:'Generic automation output',role:'generic',drivers:[4,5,6],group:'Generic automation I/O'}
 ];
 function registryPurposeDefinitions(direction) { return direction === 'input' ? REGISTRY_INPUT_PURPOSES : REGISTRY_OUTPUT_PURPOSES; }
@@ -1595,6 +1604,7 @@ const REGISTRY_OUTPUT_PRESETS=[
   {group:'Engine actuators',role:'prop_pitch',label:'Prop pitch',id:'prop_pitch',name:'Prop Pitch',driver:6},
   {group:'Engine actuators',purpose:'ab_valve',role:'valve',label:'Afterburner fuel shutoff valve',id:'ab_solenoid',name:'AB Fuel Valve',driver:4},
   {group:'Engine actuators',role:'ab_pump',label:'Afterburner fuel pump',id:'ab_pump',name:'AB Fuel Pump',driver:5},
+  {group:'Warnings and indicators',purpose:'warning_indicator',role:'indicator',label:'Warning / indicator light',id:'warning_indicator',name:'Warning Light',driver:4},
   {group:'Generic outputs',role:'generic',label:'Relay output',id:'generic_relay_output',name:'Relay Output',driver:4},
   {group:'Generic outputs',role:'generic',label:'PWM output',id:'generic_pwm_output',name:'PWM Output',driver:5},
   {group:'Generic outputs',role:'generic',label:'Servo/ESC output',id:'generic_servo_output',name:'Servo Output',driver:6}
@@ -2436,7 +2446,7 @@ function registryBlockLabel(block) {
     OilPrime:'Build Oil Pressure', StarterSpin:'Starter Spin to Light-Off Speed', PreIgnSpark:'Igniter 1 Timed On',
     FuelOpen:'Open Main Fuel Shutoff', FlameConfirm:'Confirm Combustion by Flame Sensor', TempConfirm:'Confirm Combustion by Temperature',
     FuelPumpIdle:'Set Main Fuel for Idle', ModifiedIdle:'Set Main Fuel for Raised Idle', Spool:'Accelerate to Idle',
-    SafetyHold:'Verify Stable Idle', OilPumpOn:'Oil Pump On', OilPumpOff:'Oil Pump Off',
+    SafetyHold:'Final Startup Checks', OilPumpOn:'Oil Pump On', OilPumpOff:'Oil Pump Off',
     OilScavengeOn:'Scavenge On', OilScavengeOff:'Scavenge Off', StarterOff:'Starter Off',
     ImmediateCut:'Immediate Fuel and Ignition Cut', RPMDrop:'Wait for Rotor to Slow',
     CooldownSpin:'Cooldown', FinalStop:'Wait for Complete Stop', ThrottleSet:'Set Main Fuel Demand',

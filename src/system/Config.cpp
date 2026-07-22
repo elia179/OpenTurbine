@@ -114,7 +114,19 @@ int   Config::flameCheckIntervalMs    = 300;
 float Config::spoolRpmTarget          = 32000;
 int   Config::spoolTimeoutMs          = 12000;
 int   Config::safetyHoldMs            = 1000;
+int   Config::safetyHoldTimeoutMs     = 15000;
 float Config::safetyHoldFinalRpm      = 31000;
+bool  Config::safetyHoldCheckN1       = true;
+bool  Config::safetyHoldCheckN2       = false;
+bool  Config::safetyHoldCheckP1       = false;
+bool  Config::safetyHoldCheckP2       = false;
+bool  Config::safetyHoldCheckOil      = false;
+bool  Config::safetyHoldCheckEgt      = false;
+bool  Config::safetyHoldCheckFlame    = false;
+float Config::safetyHoldFinalN2Rpm    = 0.0f;
+float Config::safetyHoldFinalP1       = 0.0f;
+float Config::safetyHoldFinalP2       = 0.0f;
+float Config::safetyHoldFinalEgt      = 0.0f;
 float Config::shutdownRpmDropThreshold= 5000;
 int   Config::shutdownRpmDropTimeoutMs= 15000;
 int   Config::shutdownCooldownTimeoutMs= 60000;  // 60 s default (was 200 s — unreachably long for typical engines)
@@ -128,12 +140,25 @@ float Config::throttleExpo          = 0.0f;  // 0 = linear by default
 bool  Config::pullbackN1Enabled     = true;
 bool  Config::pullbackN2Enabled     = false;
 bool  Config::pullbackEgtEnabled    = true;
+bool  Config::pullbackP1Enabled     = false;
+bool  Config::pullbackP2Enabled     = false;
+bool  Config::pullbackTorqueEnabled = false;
 float Config::pullbackN1SoftRpm     = 95000.0f;
 float Config::pullbackN1HardRpm     = 100000.0f;
 float Config::pullbackN2SoftRpm     = 0.0f;
 float Config::pullbackN2HardRpm     = 0.0f;
 float Config::pullbackEgtSoftC      = 700.0f;
 float Config::pullbackEgtHardC      = 750.0f;
+float Config::pullbackP1Soft        = 0.0f;
+float Config::pullbackP1Hard        = 0.0f;
+float Config::pullbackP2Soft        = 0.0f;
+float Config::pullbackP2Hard        = 0.0f;
+float Config::pullbackTorqueSoft    = 0.0f;
+float Config::pullbackTorqueHard    = 0.0f;
+float Config::p1TripLimit           = 0.0f;
+float Config::p2TripLimit           = 0.0f;
+float Config::torqueTripLimit       = 0.0f;
+int   Config::pressureTorqueTripConfirmMs = 250;
 float Config::pullbackMinThrottlePct = 8.0f;
 float Config::pullbackStrength      = 1.0f;
 int   Config::rpmLimiterMode            = 0;
@@ -150,6 +175,10 @@ float Config::idleRpmLimit          = 60000;
 float Config::idleMinMultiplier     = 0.75f;
 float Config::idleMaxMultiplier     = 1.50f;
 bool  Config::idleUseN2             = kIdleUseN2Default;
+int   Config::idleSource            = kIdleUseN2Default ? 1 : 0;
+float Config::idleTargetPressure    = 1.0f;
+float Config::idlePressureDeadband  = 0.03f;
+float Config::idlePressureLimit     = 2.0f;
 float Config::idleIGain             = 0.0f;   // 0 = off by default (pure ramp mode), enable in config
 float Config::idleIMax              = 0.10f;  // ±10% integral authority
 int   Config::idleMode                  = 0;
@@ -551,7 +580,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (!su.is<JsonObjectConst>() || !sd.is<JsonObjectConst>()) return false;
     const char* startupMs[] = {
         "oil_arm_timeout_ms", "pre_ign_spark_ms", "flame_timeout_ms", "rpm_timeout_ms",
-        "safety_hold_ms", "starter_timeout_ms", "temp_confirm_timeout", "wait_for_input_timeout",
+        "safety_hold_ms", "safety_hold_timeout_ms", "starter_timeout_ms", "temp_confirm_timeout", "wait_for_input_timeout",
         "timed_delay_ms", "fuel_pulse_ms", "fuel_off_ms", "wait_tot_timeout", "preheat_ms",
         "fp2_ramp_ms", "gov_hold_timeout_ms"
     };
@@ -563,6 +592,10 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (!validNumber(su["pre_ign_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(su["rpm_target"], 0.0f, 1000000000.0f) ||
         !validNumber(su["final_check_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(su["final_check_n2_rpm"], 0.0f, 1000000000.0f) ||
+        !validNumber(su["final_check_p1_bar"], 0.0f, 1000.0f) ||
+        !validNumber(su["final_check_p2_bar"], 0.0f, 1000.0f) ||
+        !validNumber(su["final_check_egt_c"], 0.0f, 100000.0f) ||
         !validNumber(su["starter_demand"], 0.0f, 100.0f) ||
         !validNumber(su["temp_confirm_target"], 0.0f, 100000.0f) ||
         !validNumber(su["wait_tot_target"], 0.0f, 100000.0f) ||
@@ -574,6 +607,13 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(su["fp2_end_pct"], 0.0f, 100.0f) ||
         !validNumber(su["fp2_demand_pct"], 0.0f, 100.0f)) return false;
     if (!validBool(su["flame_turn_off_igniter"]) ||
+        !validBool(su["final_check_n1_enabled"]) ||
+        !validBool(su["final_check_n2_enabled"]) ||
+        !validBool(su["final_check_p1_enabled"]) ||
+        !validBool(su["final_check_p2_enabled"]) ||
+        !validBool(su["final_check_oil_enabled"]) ||
+        !validBool(su["final_check_egt_enabled"]) ||
+        !validBool(su["final_check_flame_enabled"]) ||
         !validBool(su["safety_turn_off_starter"]) ||
         !validBool(su["safety_turn_off_starter_en"]) ||
         !validBool(su["safety_turn_off_igniter"]) ||
@@ -601,12 +641,21 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validBool(th["pullback_n1"]) ||
         !validBool(th["pullback_n2"]) ||
         !validBool(th["pullback_egt"]) ||
+        !validBool(th["pullback_p1"]) ||
+        !validBool(th["pullback_p2"]) ||
+        !validBool(th["pullback_torque"]) ||
         !validNumber(th["pullback_n1_soft_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(th["pullback_n1_hard_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(th["pullback_n2_soft_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(th["pullback_n2_hard_rpm"], 0.0f, 1000000000.0f) ||
         !validNumber(th["pullback_egt_soft_c"], 0.0f, 100000.0f) ||
         !validNumber(th["pullback_egt_hard_c"], 0.0f, 100000.0f) ||
+        !validNumber(th["pullback_p1_soft_bar"], 0.0f, 1000.0f) ||
+        !validNumber(th["pullback_p1_hard_bar"], 0.0f, 1000.0f) ||
+        !validNumber(th["pullback_p2_soft_bar"], 0.0f, 1000.0f) ||
+        !validNumber(th["pullback_p2_hard_bar"], 0.0f, 1000.0f) ||
+        !validNumber(th["pullback_torque_soft_nm"], 0.0f, 1000000.0f) ||
+        !validNumber(th["pullback_torque_hard_nm"], 0.0f, 1000000.0f) ||
         !validNumber(th["pullback_min_pct"], 0.0f, 100.0f) ||
         !validNumber(th["pullback_strength"], 0.0f, 5.0f)) return false;
     if (present(th["pullback_n1_soft_rpm"]) && present(th["pullback_n1_hard_rpm"]) &&
@@ -618,6 +667,12 @@ bool validateSettingsDoc(const JsonDocument& doc) {
     if (present(th["pullback_egt_soft_c"]) && present(th["pullback_egt_hard_c"]) &&
         th["pullback_egt_hard_c"].as<float>() > 0.0f &&
         th["pullback_egt_hard_c"].as<float>() <= th["pullback_egt_soft_c"].as<float>()) return false;
+    if (present(th["pullback_p1_hard_bar"]) && th["pullback_p1_hard_bar"].as<float>() > 0.0f &&
+        th["pullback_p1_hard_bar"].as<float>() <= th["pullback_p1_soft_bar"].as<float>()) return false;
+    if (present(th["pullback_p2_hard_bar"]) && th["pullback_p2_hard_bar"].as<float>() > 0.0f &&
+        th["pullback_p2_hard_bar"].as<float>() <= th["pullback_p2_soft_bar"].as<float>()) return false;
+    if (present(th["pullback_torque_hard_nm"]) && th["pullback_torque_hard_nm"].as<float>() > 0.0f &&
+        th["pullback_torque_hard_nm"].as<float>() <= th["pullback_torque_soft_nm"].as<float>()) return false;
 
 
     JsonVariantConst tools = doc["tools"];
@@ -664,6 +719,10 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(sf["oil_temp_limit_c"], 0.0f, 100000.0f) ||
         !validNumber(sf["fuel_press_min_bar"], 0.0f, 100.0f) ||
         !validNumber(sf["batt_volt_min_v"], 0.0f, 80.0f) ||
+        !validNumber(sf["p1_trip_bar"], 0.0f, 1000.0f) ||
+        !validNumber(sf["p2_trip_bar"], 0.0f, 1000.0f) ||
+        !validNumber(sf["torque_trip_nm"], 0.0f, 1000000.0f) ||
+        !validInt(sf["pressure_torque_trip_confirm_ms"], 0, 60000) ||
         !validNumber(sf["surge_detect_rpm_variance"], 0.0f, 1000000000000.0f) ||
         !validInt(sf["low_oil_confirm_ms"], 0, 60000) ||
         !validInt(sf["oil_zero_confirm_ms"], 0, 60000) ||
@@ -716,6 +775,10 @@ bool validateSettingsDoc(const JsonDocument& doc) {
         !validNumber(di["min_multiplier"], 0.0f, 1.0f) ||
         !validNumber(di["max_multiplier"], 1.0f, 3.0f) ||
         !validBool(di["use_n2"]) ||
+        !validInt(di["source"], 0, 3) ||
+        !validNumber(di["target_pressure_bar"], 0.0f, 1000.0f) ||
+        !validNumber(di["pressure_deadband_bar"], 0.0f, 1000.0f) ||
+        !validNumber(di["pressure_limit_bar"], 0.0f, 1000.0f) ||
         !validNumber(di["i_gain"], 0.0f, 2.0f) ||
         !validNumber(di["i_max"], 0.0f, 0.5f))) return false;
 
@@ -832,7 +895,7 @@ bool validateSettingsDoc(const JsonDocument& doc) {
                 !validNumber(rule["input_max"], -1000000.0f, 1000000.0f) ||
                 !validNumber(rule["output_min"], 0.0f, 1.0f) ||
                 !validNumber(rule["output_max"], 0.0f, 1.0f) ||
-                !validInt(rule["mode_mask"], 1, 15) ||
+                !validInt(rule["mode_mask"], 1, 14) ||
                 !validRuleId(rule["source"], sizeof(Config::Rule::sourceId), ruleSourceHandle, ruleSensorAvailable) ||
                 !validRuleId(rule["target"], sizeof(Config::Rule::targetId), ruleTargetHandle, ruleActuatorAvailable)) return false;
         }
@@ -1046,11 +1109,14 @@ void Config::sanitizeForHardware() {
     }
     const bool hasN1 = HardwareConfig::hasN1Rpm;
     const bool hasN2 = HardwareConfig::hasTwoShaft && HardwareConfig::hasN2Rpm;
-    if (idleUseN2 && !hasN2) {
-        idleUseN2 = false;
-    } else if (!hasN1 && hasN2) {
-        idleUseN2 = true;
+    if ((idleSource == 0 && !hasN1) || (idleSource == 1 && !hasN2) ||
+        (idleSource == 2 && !HardwareConfig::hasP1) || (idleSource == 3 && !HardwareConfig::hasP2)) {
+        if (hasN1) idleSource = 0;
+        else if (hasN2) idleSource = 1;
+        else if (HardwareConfig::hasP1) idleSource = 2;
+        else if (HardwareConfig::hasP2) idleSource = 3;
     }
+    idleUseN2 = idleSource == 1;
     if (!hasN1 && !hasN2) {
         standbyOilSource = 0;
     } else if (standbyOilSource == 0 && !hasN1) {
@@ -1102,7 +1168,7 @@ void Config::sanitizeForHardware() {
         r.outputMax = constrain(r.outputMax, 0.0f, 1.0f);
         if (r.kind == 1 && (!isfinite(r.inputMin) || !isfinite(r.inputMax) || r.inputMax <= r.inputMin)) continue;
         if (r.hysteresis < 0.0f) r.hysteresis = 0.0f;
-        r.modeMask &= 0x0F;
+        r.modeMask &= 0x0E;
         if (r.modeMask == 0) continue;
         if (r.actuator != 13 && r.actuator != 14)
             claimedTargets[claimedTargetCount++] = r.actuator;
@@ -1428,7 +1494,11 @@ void Config::_applyDefaults() {
     startupOilArmTimeoutMs = 3000; preIgnRpm = 5000; preIgnSparkMs = 1500;
     flameTimeoutMs = 5000; flameCheckIntervalMs = 300; flameRequiredCount = 3;
     spoolRpmTarget = 32000; spoolTimeoutMs = 12000;
-    safetyHoldMs = 1000; safetyHoldFinalRpm = 31000;
+    safetyHoldMs = 1000; safetyHoldTimeoutMs = 15000; safetyHoldFinalRpm = 31000;
+    safetyHoldCheckN1 = true; safetyHoldCheckN2 = false; safetyHoldCheckP1 = false;
+    safetyHoldCheckP2 = false; safetyHoldCheckOil = false; safetyHoldCheckEgt = false;
+    safetyHoldCheckFlame = false; safetyHoldFinalN2Rpm = 0.0f;
+    safetyHoldFinalP1 = 0.0f; safetyHoldFinalP2 = 0.0f; safetyHoldFinalEgt = 0.0f;
     starterDemand = 60.0f; starterTimeoutMs = 8000;
     tempConfirmTarget = 200.0f; tempConfirmTimeoutMs = 10000;
     waitForInputChannel = 0; waitForInputExpected = true; waitForInputTimeoutMs = 0;
@@ -1450,15 +1520,21 @@ void Config::_applyDefaults() {
     throttleIdleMaxPct = 18; throttleExpo = 0.0f;
     fuelPumpMinPct = 0;
     pullbackN1Enabled = true; pullbackN2Enabled = false; pullbackEgtEnabled = true;
+    pullbackP1Enabled = false; pullbackP2Enabled = false; pullbackTorqueEnabled = false;
     pullbackN1SoftRpm = 95000.0f; pullbackN1HardRpm = 100000.0f;
     pullbackN2SoftRpm = 0.0f; pullbackN2HardRpm = 0.0f;
     pullbackEgtSoftC = 700.0f; pullbackEgtHardC = 750.0f;
+    pullbackP1Soft = pullbackP1Hard = pullbackP2Soft = pullbackP2Hard = 0.0f;
+    pullbackTorqueSoft = pullbackTorqueHard = 0.0f;
+    p1TripLimit = p2TripLimit = torqueTripLimit = 0.0f; pressureTorqueTripConfirmMs = 250;
     pullbackMinThrottlePct = 8.0f; pullbackStrength = 1.0f;
     rpmLimiterMode = 0; pullbackLookaheadMs = 1500.0f; pullbackNearLimitRampUpMs = 4000.0f;
     pullbackApproachZoneRpm = 0.0f; rpmAccelFilter = 0.20f;
     idleTargetRpm = 44000; idleRampUpMs = 10000; idleRampDownMs = 20000;
     idleDeadbandRpm = 300; idleRpmLimit = 60000; idleMinMultiplier = 0.75f; idleMaxMultiplier = 1.50f;
     idleUseN2 = kIdleUseN2Default; idleIGain = 0.0f; idleIMax = 0.10f;
+    idleSource = kIdleUseN2Default ? 1 : 0;
+    idleTargetPressure = 1.0f; idlePressureDeadband = 0.03f; idlePressureLimit = 2.0f;
     idleMode = 0; idleDecelEnterRpm = 1000.0f; idleDecelDropPct = 2.0f; idleLookaheadMs = 2500.0f;
     idleSettleBandRpm = 1500.0f; idleFullResponseRpm = 12000.0f; idleTrimUpPctPerSec = 4.0f;
     idleTrimDownPctPerSec = 2.0f; idleLearnRate = 0.02f; idleLearnAccelMax = 1200.0f;
@@ -1570,7 +1646,19 @@ void Config::_fromDoc(const JsonDocument& doc) {
     spoolRpmTarget         = su["rpm_target"]              | spoolRpmTarget;
     spoolTimeoutMs         = su["rpm_timeout_ms"]          | spoolTimeoutMs;
     safetyHoldMs           = su["safety_hold_ms"]          | safetyHoldMs;
+    safetyHoldTimeoutMs    = su["safety_hold_timeout_ms"]  | safetyHoldTimeoutMs;
     safetyHoldFinalRpm     = su["final_check_rpm"]         | safetyHoldFinalRpm;
+    if (!su["final_check_n1_enabled"].isNull()) safetyHoldCheckN1 = su["final_check_n1_enabled"].as<bool>();
+    if (!su["final_check_n2_enabled"].isNull()) safetyHoldCheckN2 = su["final_check_n2_enabled"].as<bool>();
+    if (!su["final_check_p1_enabled"].isNull()) safetyHoldCheckP1 = su["final_check_p1_enabled"].as<bool>();
+    if (!su["final_check_p2_enabled"].isNull()) safetyHoldCheckP2 = su["final_check_p2_enabled"].as<bool>();
+    if (!su["final_check_oil_enabled"].isNull()) safetyHoldCheckOil = su["final_check_oil_enabled"].as<bool>();
+    if (!su["final_check_egt_enabled"].isNull()) safetyHoldCheckEgt = su["final_check_egt_enabled"].as<bool>();
+    if (!su["final_check_flame_enabled"].isNull()) safetyHoldCheckFlame = su["final_check_flame_enabled"].as<bool>();
+    safetyHoldFinalN2Rpm = su["final_check_n2_rpm"] | safetyHoldFinalN2Rpm;
+    safetyHoldFinalP1 = su["final_check_p1_bar"] | safetyHoldFinalP1;
+    safetyHoldFinalP2 = su["final_check_p2_bar"] | safetyHoldFinalP2;
+    safetyHoldFinalEgt = su["final_check_egt_c"] | safetyHoldFinalEgt;
     starterDemand          = su["starter_demand"]          | starterDemand;
     starterTimeoutMs       = su["starter_timeout_ms"]      | starterTimeoutMs;
     tempConfirmTarget      = su["temp_confirm_target"]     | tempConfirmTarget;
@@ -1624,12 +1712,21 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (!th["pullback_n1"].isNull()) pullbackN1Enabled = th["pullback_n1"].as<bool>();
     if (!th["pullback_n2"].isNull()) pullbackN2Enabled = th["pullback_n2"].as<bool>();
     if (!th["pullback_egt"].isNull()) pullbackEgtEnabled = th["pullback_egt"].as<bool>();
+    if (!th["pullback_p1"].isNull()) pullbackP1Enabled = th["pullback_p1"].as<bool>();
+    if (!th["pullback_p2"].isNull()) pullbackP2Enabled = th["pullback_p2"].as<bool>();
+    if (!th["pullback_torque"].isNull()) pullbackTorqueEnabled = th["pullback_torque"].as<bool>();
     pullbackN1SoftRpm = th["pullback_n1_soft_rpm"] | pullbackN1SoftRpm;
     pullbackN1HardRpm = th["pullback_n1_hard_rpm"] | pullbackN1HardRpm;
     pullbackN2SoftRpm = th["pullback_n2_soft_rpm"] | pullbackN2SoftRpm;
     pullbackN2HardRpm = th["pullback_n2_hard_rpm"] | pullbackN2HardRpm;
     pullbackEgtSoftC = th["pullback_egt_soft_c"] | pullbackEgtSoftC;
     pullbackEgtHardC = th["pullback_egt_hard_c"] | pullbackEgtHardC;
+    pullbackP1Soft = th["pullback_p1_soft_bar"] | pullbackP1Soft;
+    pullbackP1Hard = th["pullback_p1_hard_bar"] | pullbackP1Hard;
+    pullbackP2Soft = th["pullback_p2_soft_bar"] | pullbackP2Soft;
+    pullbackP2Hard = th["pullback_p2_hard_bar"] | pullbackP2Hard;
+    pullbackTorqueSoft = th["pullback_torque_soft_nm"] | pullbackTorqueSoft;
+    pullbackTorqueHard = th["pullback_torque_hard_nm"] | pullbackTorqueHard;
     pullbackMinThrottlePct = th["pullback_min_pct"] | pullbackMinThrottlePct;
     pullbackStrength = th["pullback_strength"] | pullbackStrength;
     rpmLimiterMode            = th["rpm_limiter_mode"]              | rpmLimiterMode;
@@ -1647,6 +1744,10 @@ void Config::_fromDoc(const JsonDocument& doc) {
     idleMinMultiplier= di["min_multiplier"]| idleMinMultiplier;
     idleMaxMultiplier= di["max_multiplier"]| idleMaxMultiplier;
     if (!di["use_n2"].isNull()) idleUseN2 = di["use_n2"].as<bool>();
+    idleSource = di["source"] | (idleUseN2 ? 1 : 0);
+    idleTargetPressure = di["target_pressure_bar"] | idleTargetPressure;
+    idlePressureDeadband = di["pressure_deadband_bar"] | idlePressureDeadband;
+    idlePressureLimit = di["pressure_limit_bar"] | idlePressureLimit;
     idleIGain        = di["i_gain"]        | idleIGain;
     idleIMax         = di["i_max"]         | idleIMax;
     idleMode              = di["idle_mode"]         | idleMode;
@@ -1673,6 +1774,10 @@ void Config::_fromDoc(const JsonDocument& doc) {
     oilTempLimit                  = sf["oil_temp_limit_c"]           | oilTempLimit;
     fuelPressMin                  = sf["fuel_press_min_bar"]         | fuelPressMin;
     battVoltMin                   = sf["batt_volt_min_v"]            | battVoltMin;
+    p1TripLimit                  = sf["p1_trip_bar"]                 | p1TripLimit;
+    p2TripLimit                  = sf["p2_trip_bar"]                 | p2TripLimit;
+    torqueTripLimit              = sf["torque_trip_nm"]             | torqueTripLimit;
+    pressureTorqueTripConfirmMs  = sf["pressure_torque_trip_confirm_ms"] | pressureTorqueTripConfirmMs;
     surgeDetectRpmVariance        = sf["surge_detect_rpm_variance"]  | surgeDetectRpmVariance;
     lowOilConfirmMs               = sf["low_oil_confirm_ms"]         | lowOilConfirmMs;
     oilZeroConfirmMs              = sf["oil_zero_confirm_ms"]        | oilZeroConfirmMs;
@@ -1887,7 +1992,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
             r.inputMax  = jr["input_max"]  | 1.0f;
             r.outputMin = jr["output_min"] | 0.0f;
             r.outputMax = jr["output_max"] | 1.0f;
-            r.modeMask  = (uint8_t)(jr["mode_mask"] | 0x0F);
+            r.modeMask  = (uint8_t)(jr["mode_mask"] | 0x0E);
             const char* n = jr["name"] | "";
             strncpy(r.name, n, sizeof(r.name) - 1);
             r.name[sizeof(r.name) - 1] = '\0';
@@ -1935,6 +2040,10 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (preIgnRpm < 0.0f) preIgnRpm = 0.0f;
     if (spoolRpmTarget < 0.0f) spoolRpmTarget = 0.0f;
     if (safetyHoldFinalRpm < 0.0f) safetyHoldFinalRpm = 0.0f;
+    if (safetyHoldFinalN2Rpm < 0.0f) safetyHoldFinalN2Rpm = 0.0f;
+    if (safetyHoldFinalP1 < 0.0f) safetyHoldFinalP1 = 0.0f;
+    if (safetyHoldFinalP2 < 0.0f) safetyHoldFinalP2 = 0.0f;
+    if (safetyHoldFinalEgt < 0.0f) safetyHoldFinalEgt = 0.0f;
     if (waitTotCoolTarget < 0.0f) waitTotCoolTarget = 0.0f;
     if (shutdownRpmDropThreshold < 0.0f) shutdownRpmDropThreshold = 0.0f;
     if (rpmZeroThreshold < 0.0f) rpmZeroThreshold = 0.0f;
@@ -1948,6 +2057,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (tempConfirmTimeoutMs < 0) tempConfirmTimeoutMs = 0;
     if (spoolTimeoutMs < 0) spoolTimeoutMs = 0;
     if (safetyHoldMs < 0) safetyHoldMs = 0;
+    if (safetyHoldTimeoutMs < safetyHoldMs) safetyHoldTimeoutMs = safetyHoldMs;
     if (waitForInputTimeoutMs < 0) waitForInputTimeoutMs = 0;
     if (timedDelayMs < 0) timedDelayMs = 0;
     if (fuelPulsePulseMs < 0) fuelPulsePulseMs = 0;
@@ -1987,7 +2097,7 @@ void Config::_fromDoc(const JsonDocument& doc) {
         rules[i].outputMax = constrain(rules[i].outputMax, 0.0f, 1.0f);
         if (!isfinite(rules[i].inputMin)) rules[i].inputMin = 0.0f;
         if (!isfinite(rules[i].inputMax) || rules[i].inputMax <= rules[i].inputMin) rules[i].inputMax = rules[i].inputMin + 1.0f;
-        rules[i].modeMask &= 0x0F;
+        rules[i].modeMask &= 0x0E;
         if (rules[i].modeMask == 0) rules[i].enabled = false;
     }
     if (standbyOilRpmLimit < 0.0f) standbyOilRpmLimit = 0.0f;
@@ -2042,6 +2152,18 @@ void Config::_fromDoc(const JsonDocument& doc) {
     pullbackEgtSoftC = constrain(pullbackEgtSoftC, 0.0f, 100000.0f);
     pullbackEgtHardC = constrain(pullbackEgtHardC, 0.0f, 100000.0f);
     if (pullbackEgtHardC > 0.0f && pullbackEgtHardC <= pullbackEgtSoftC) pullbackEgtHardC = pullbackEgtSoftC + 1.0f;
+    auto sanitizePair = [](float& soft, float& hard, float maxValue) {
+        soft = constrain(soft, 0.0f, maxValue);
+        hard = constrain(hard, 0.0f, maxValue);
+        if (hard > 0.0f && hard <= soft) hard = soft + 0.001f;
+    };
+    sanitizePair(pullbackP1Soft, pullbackP1Hard, 1000.0f);
+    sanitizePair(pullbackP2Soft, pullbackP2Hard, 1000.0f);
+    sanitizePair(pullbackTorqueSoft, pullbackTorqueHard, 1000000.0f);
+    p1TripLimit = constrain(p1TripLimit, 0.0f, 1000.0f);
+    p2TripLimit = constrain(p2TripLimit, 0.0f, 1000.0f);
+    torqueTripLimit = constrain(torqueTripLimit, 0.0f, 1000000.0f);
+    pressureTorqueTripConfirmMs = constrain(pressureTorqueTripConfirmMs, 0, 60000);
     pullbackMinThrottlePct = constrain(pullbackMinThrottlePct, 0.0f, 100.0f);
     pullbackStrength = constrain(pullbackStrength, 0.0f, 5.0f);
     rpmLimiterMode = constrain(rpmLimiterMode, 0, 1);
@@ -2052,6 +2174,10 @@ void Config::_fromDoc(const JsonDocument& doc) {
     if (idleTargetRpm < 0.0f) idleTargetRpm = 0.0f;
     if (idleDeadbandRpm < 0.0f) idleDeadbandRpm = 0.0f;
     if (idleRpmLimit < 0.0f) idleRpmLimit = 0.0f;
+    idleSource = constrain(idleSource, 0, 3);
+    idleTargetPressure = constrain(idleTargetPressure, 0.0f, 1000.0f);
+    idlePressureDeadband = constrain(idlePressureDeadband, 0.0f, 1000.0f);
+    idlePressureLimit = constrain(idlePressureLimit, 0.0f, 1000.0f);
     idleMinMultiplier = constrain(idleMinMultiplier, 0.0f, 1.0f);
     idleMaxMultiplier = constrain(idleMaxMultiplier, 1.0f, 3.0f);
     idleIGain = constrain(idleIGain, 0.0f, 2.0f);
@@ -2214,7 +2340,19 @@ void Config::_writeDoc(JsonObject doc) {
     su["rpm_target"]              = spoolRpmTarget;
     su["rpm_timeout_ms"]          = spoolTimeoutMs;
     su["safety_hold_ms"]          = safetyHoldMs;
+    su["safety_hold_timeout_ms"]  = safetyHoldTimeoutMs;
     su["final_check_rpm"]         = safetyHoldFinalRpm;
+    su["final_check_n1_enabled"] = safetyHoldCheckN1;
+    su["final_check_n2_enabled"] = safetyHoldCheckN2;
+    su["final_check_p1_enabled"] = safetyHoldCheckP1;
+    su["final_check_p2_enabled"] = safetyHoldCheckP2;
+    su["final_check_oil_enabled"] = safetyHoldCheckOil;
+    su["final_check_egt_enabled"] = safetyHoldCheckEgt;
+    su["final_check_flame_enabled"] = safetyHoldCheckFlame;
+    su["final_check_n2_rpm"] = safetyHoldFinalN2Rpm;
+    su["final_check_p1_bar"] = safetyHoldFinalP1;
+    su["final_check_p2_bar"] = safetyHoldFinalP2;
+    su["final_check_egt_c"] = safetyHoldFinalEgt;
     su["starter_demand"]           = starterDemand;
     su["starter_timeout_ms"]       = starterTimeoutMs;
     su["temp_confirm_target"]      = tempConfirmTarget;
@@ -2268,12 +2406,21 @@ void Config::_writeDoc(JsonObject doc) {
     th["pullback_n1"] = pullbackN1Enabled;
     th["pullback_n2"] = pullbackN2Enabled;
     th["pullback_egt"] = pullbackEgtEnabled;
+    th["pullback_p1"] = pullbackP1Enabled;
+    th["pullback_p2"] = pullbackP2Enabled;
+    th["pullback_torque"] = pullbackTorqueEnabled;
     th["pullback_n1_soft_rpm"] = pullbackN1SoftRpm;
     th["pullback_n1_hard_rpm"] = pullbackN1HardRpm;
     th["pullback_n2_soft_rpm"] = pullbackN2SoftRpm;
     th["pullback_n2_hard_rpm"] = pullbackN2HardRpm;
     th["pullback_egt_soft_c"] = pullbackEgtSoftC;
     th["pullback_egt_hard_c"] = pullbackEgtHardC;
+    th["pullback_p1_soft_bar"] = pullbackP1Soft;
+    th["pullback_p1_hard_bar"] = pullbackP1Hard;
+    th["pullback_p2_soft_bar"] = pullbackP2Soft;
+    th["pullback_p2_hard_bar"] = pullbackP2Hard;
+    th["pullback_torque_soft_nm"] = pullbackTorqueSoft;
+    th["pullback_torque_hard_nm"] = pullbackTorqueHard;
     th["pullback_min_pct"] = pullbackMinThrottlePct;
     th["pullback_strength"] = pullbackStrength;
     th["rpm_limiter_mode"]              = rpmLimiterMode;
@@ -2291,6 +2438,10 @@ void Config::_writeDoc(JsonObject doc) {
     di["min_multiplier"]= idleMinMultiplier;
     di["max_multiplier"]= idleMaxMultiplier;
     di["use_n2"]        = idleUseN2;
+    di["source"]        = idleSource;
+    di["target_pressure_bar"] = idleTargetPressure;
+    di["pressure_deadband_bar"] = idlePressureDeadband;
+    di["pressure_limit_bar"] = idlePressureLimit;
     di["i_gain"]        = idleIGain;
     di["i_max"]         = idleIMax;
     di["idle_mode"]           = idleMode;
@@ -2316,6 +2467,10 @@ void Config::_writeDoc(JsonObject doc) {
     sf["oil_temp_limit_c"]            = oilTempLimit;
     sf["fuel_press_min_bar"]          = fuelPressMin;
     sf["batt_volt_min_v"]             = battVoltMin;
+    sf["p1_trip_bar"]                 = p1TripLimit;
+    sf["p2_trip_bar"]                 = p2TripLimit;
+    sf["torque_trip_nm"]              = torqueTripLimit;
+    sf["pressure_torque_trip_confirm_ms"] = pressureTorqueTripConfirmMs;
     sf["surge_detect_rpm_variance"]   = surgeDetectRpmVariance;
     sf["low_oil_confirm_ms"]          = lowOilConfirmMs;
     sf["oil_zero_confirm_ms"]         = oilZeroConfirmMs;

@@ -87,9 +87,13 @@ public:
                 currentTargets[currentTargetCount++] = r.actuator;
 
             const uint8_t modeBit = (uint8_t)(1u << (int)ed.mode);
-            const bool applies = r.enabled && (r.modeMask & modeBit) != 0 &&
-                                 _sensorUsable(r.sensor, ed) && _actuatorUsable(r.actuator);
+            const bool activeState = r.enabled && (r.modeMask & modeBit) != 0 &&
+                                     _actuatorUsable(r.actuator);
+            const bool inputHealthy = _sensorUsable(r.sensor, ed);
+            const bool applies = activeState && inputHealthy;
             float demand = r.offValue;
+            if (activeState && !inputHealthy && _warningIndicator(r.actuator))
+                demand = r.onValue;
 
             if (applies) {
                 const float value = _readSensor(r.sensor, ed);
@@ -124,7 +128,22 @@ public:
         for (uint8_t i = 0; i < currentTargetCount; ++i) _ownedTargets[i] = currentTargets[i];
     }
 
+    static bool sensorReading(uint8_t sensor, float& value) {
+        auto& ed = EngineData::instance();
+        if (!_sensorUsable(sensor, ed)) return false;
+        value = _readSensor(sensor, ed);
+        return true;
+    }
+
 private:
+    static bool _warningIndicator(uint8_t act) {
+        if (!ChannelRegistry::isOutputActuator(act)) return false;
+        const uint8_t idx = ChannelRegistry::outputIndexFromActuator(act);
+        return idx < HardwareConfig::channelRegistry.outputCount &&
+               !strcmp(HardwareConfig::channelRegistry.outputs[idx].purpose,
+                       "warning_indicator");
+    }
+
     static bool _targetPresent(const uint8_t* targets, uint8_t count, uint8_t target) {
         for (uint8_t i = 0; i < count; ++i) if (targets[i] == target) return true;
         return false;

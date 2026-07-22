@@ -341,7 +341,7 @@ function enumNames(source, marker) {
     assert.match(mainSource, /auto checkAbActuatorBlockHardware = \[\&\]\(const char\* nm\)/);
     assert.match(mainSource, /for \(int i = 0; i < _abShutCount; i\+\+\)[\s\S]*checkAbActuatorBlockHardware\(_abShutBlocks\[i\]->name\(\)\)/);
     assert.match(mainSource, /class CustomSequenceBlock : public IBlock/);
-    assert.match(mainSource, /RulesEngine::sensorConditionMet\(_def->sensor, _def->op, _def->threshold\)/);
+    assert.match(mainSource, /RulesEngine::sensorConditionMet\(_def->sensor, _def->op, threshold\)/);
     assert.match(mainSource, /RulesEngine::applyActuatorDemand\(step\.actuator, step\.value\)/);
     assert.match(mainSource, /custom\.bind\(def\);[\s\S]*blocks\[count\+\+\] = &custom/);
     assert.match(mainSource, /auto customDefFor = \[\&\]\(const char\* key\)/);
@@ -407,7 +407,7 @@ function enumNames(source, marker) {
     assert.doesNotMatch(indexHtml, /20260612b|20260617b|20260619a|20260625a|20260705a|Primary thermal limit/);
     assert.doesNotMatch(indexHtml, />Not saved<|No calibration saved|No successful test recorded/);
     assert.match(indexHtml, /Run a safe actuator or dry-sequence test/);
-    assert.match(indexHtml, /20260716b/);
+    assert.match(indexHtml, /20260722a/);
     assert.match(indexHtml, /<body data-page="dashboard">/);
     assert.match(indexHtml, /id="profile-mismatch-banner" style="display:none"/);
     const appSource = fs.readFileSync(path.join('data_src', 'app.js'), 'utf8');

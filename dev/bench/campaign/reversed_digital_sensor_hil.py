@@ -120,14 +120,18 @@ class ReversedDigitalSensorHil:
         if len(saved) != 1 or saved[0].get("id") != channel["id"]:
             raise RuntimeError(f"channel did not persist: {saved}")
 
-    def registry_value(self, channel_id, timeout=4):
+    def registry_value(self, channel_id, timeout=4, expected=None, tolerance=0.1):
         deadline = time.time() + timeout
         last = None
         while time.time() < deadline:
             for item in self.dut.data().get("registry_inputs", []):
                 if item.get("id") == channel_id:
                     last = item
-                    if item.get("healthy"):
+                    value = item.get("value")
+                    if item.get("healthy") and (
+                        expected is None or
+                        (value is not None and abs(value - expected) <= tolerance)
+                    ):
                         return item
             time.sleep(0.12)
         return last or {"id": channel_id, "healthy": False, "value": None}
@@ -196,7 +200,12 @@ class ReversedDigitalSensorHil:
         counts2 = 87654
         expected2 = (counts2 - zero) * scale
         self.tester.raw(f"EMU HX711 {counts2}")
-        sample2 = self.registry_value("torque_hx711", timeout=3)
+        # The previous reading remains healthy until the HX711 publishes its
+        # next conversion. Wait for the requested calibrated value, not merely
+        # for any healthy (possibly stale) sample.
+        sample2 = self.registry_value(
+            "torque_hx711", timeout=3, expected=expected2, tolerance=0.1
+        )
         value2 = sample2.get("value")
         self.record(
             "HX711 below-zero signed torque",

@@ -33,6 +33,8 @@
 
 class DS18B20TempSensor : public ISensor {
 public:
+    // One configured sensor per bus/pin. External VDD power is required;
+    // parasite-powered two-wire mode needs a strong pull-up that is not fitted.
     explicit DS18B20TempSensor(const char* sensorName)
         : _pin(-1), _resolution(12), _name(sensorName),
           _ow(nullptr), _dt(nullptr) {}
@@ -53,20 +55,24 @@ public:
         _numDevices = _dt->getDeviceCount();
 
         _haveAddr  = false;
-        _firstConv = true;
 
         if (_numDevices > 0) {
             // Cache the ROM address once — getTempCByIndex() would repeat a
             // full bus search every read (~15-25 ms blocking the ECU core).
-            _haveAddr = _dt->getAddress(_addr, 0);
+            _haveAddr = _dt->getAddress(_addr, 0) &&
+                        _addr[0] == 0x28 &&
+                        OneWire::crc8(_addr, 7) == _addr[7];
             _dt->setResolution(_resolution);
-            _startConversion(millis());          // kick off first conversion
+            if (_haveAddr) _startConversion(millis());
+            else _state = ST_IDLE;
         } else {
             _state = ST_IDLE;
         }
 
         _temp    = 0.0f;
         _healthy = false;
+        _sampleSeq = 0;
+        _sampleMs = 0;
     }
 
     // ISensor::begin() — re-init with current pin and resolution.
@@ -113,6 +119,8 @@ public:
     float       getValue()  override { return _temp; }
     bool        isHealthy() override { return _healthy && _numDevices > 0; }
     const char* name()      override { return _name; }
+    uint32_t sampleSequence() override { return _sampleSeq; }
+    uint32_t sampleTimestampMs() override { return _sampleMs; }
 
 private:
     enum ReadState : uint8_t { ST_IDLE, ST_CONVERTING, ST_READING };
@@ -127,13 +135,17 @@ private:
     }
 
     // Broadcast CONVERT T and arm the ready timer (~2 ms on the bus).
-    void _startConversion(unsigned long now) {
-        if (_ow->reset()) {
-            _ow->skip();
-            _ow->write(0x44);                 // CONVERT T
+    bool _startConversion(unsigned long now) {
+        const bool present = _ow && _ow->reset();
+        if (present) {
+            _ow->select(_addr);
+            _ow->write(0x44, 0);              // CONVERT T, external power
+        } else {
+            _healthy = false;
         }
         _convReadyMs = now + _convDelayMs();
         _state = ST_CONVERTING;
+        return present;
     }
 
     void _processScratchpad() {
@@ -150,11 +162,11 @@ private:
         // 85.0 °C (raw 0x0550) is the power-on-reset value: reject it only
         // on the first conversion after begin() — afterwards a requested
         // conversion has demonstrably run, so 85 °C is a legitimate oil temp.
-        bool porArtifact = _firstConv && raw == 0x0550;
-        _firstConv = false;
-        if (!porArtifact && t > -100.0f && t < 130.0f) {
+        if (t >= -55.0f && t <= 125.0f) {
             _temp    = t;
             _healthy = true;
+            _sampleMs = millis();
+            ++_sampleSeq;
         } else {
             _healthy = false;
         }
@@ -175,9 +187,10 @@ private:
     bool          _haveAddr     = false;
     uint8_t       _scratch[9]   = {};
     uint8_t       _scratchIdx   = 0;
-    bool          _firstConv    = true;
     ReadState     _state        = ST_IDLE;
     float         _temp         = 0.0f;
     bool          _healthy      = false;
     unsigned long _convReadyMs  = 0;
+    uint32_t      _sampleSeq    = 0;
+    uint32_t      _sampleMs     = 0;
 };

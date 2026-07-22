@@ -59,8 +59,6 @@ public:
         if (now - _startedMs < FIRST_CONVERSION_MS) return;
         if (now - _lastMs < READ_INTERVAL_MS) return;
         _lastMs = now;
-        ++_sampleSeq;
-
         // Chip never accepted its configuration (miswired/absent MOSI) —
         // retry so a fixed wiring fault recovers without a reboot, and stay
         // unhealthy instead of reporting the power-on 0.0 °C as valid.
@@ -96,16 +94,21 @@ public:
         }
         _temp = temp;
         _healthy = true;
+        ++_sampleSeq;
     }
 
     float       getValue()  override { return _temp; }
     bool        isHealthy() override { return _healthy; }
     const char* name()      override { return _name; }
     uint32_t sampleSequence() override { return _sampleSeq; }
+    uint32_t sampleTimestampMs() override { return _lastMs; }
 
 private:
-    static constexpr unsigned long READ_INTERVAL_MS = 100;
+    // Timed fallback when no DRDY pin is fitted. At 50 Hz rejection a
+    // conversion can take about 110 ms, so do not report it twice.
+    static constexpr unsigned long READ_INTERVAL_MS = 120;
     static constexpr unsigned long FIRST_CONVERSION_MS = 250;
+    static constexpr unsigned int SPI_HALF_PERIOD_US = 5;
 
     int         _clk, _cs, _miso, _mosi;
     const char* _name;
@@ -155,10 +158,10 @@ private:
         for (int i = 7; i >= 0; i--) {
             if (_mosi >= 0) digitalWrite(_mosi, (out >> i) & 1);
             digitalWrite(_clk, LOW);
-            delayMicroseconds(1);
+            delayMicroseconds(SPI_HALF_PERIOD_US);
             if (digitalRead(_miso)) in |= (1 << i);
             digitalWrite(_clk, HIGH);
-            delayMicroseconds(1);
+            delayMicroseconds(SPI_HALF_PERIOD_US);
         }
         return in;
     }

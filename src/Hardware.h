@@ -1099,7 +1099,19 @@ namespace Hardware {
         g_blkSpool.cutStarterEnOnExit     = Config::spoolCutStarterEnOnExit;
         g_blkSpool.runningOilMin          = Config::oilRunningMin;  // raise oil threshold at spool start
         g_blkSafetyHold.holdMs               = Config::safetyHoldMs;
+        g_blkSafetyHold.timeoutMs            = Config::safetyHoldTimeoutMs;
         g_blkSafetyHold.finalCheckRpm        = Config::safetyHoldFinalRpm;
+        g_blkSafetyHold.checkN1              = Config::safetyHoldCheckN1;
+        g_blkSafetyHold.checkN2              = Config::safetyHoldCheckN2;
+        g_blkSafetyHold.checkP1              = Config::safetyHoldCheckP1;
+        g_blkSafetyHold.checkP2              = Config::safetyHoldCheckP2;
+        g_blkSafetyHold.checkOil             = Config::safetyHoldCheckOil;
+        g_blkSafetyHold.checkEgt             = Config::safetyHoldCheckEgt;
+        g_blkSafetyHold.checkFlame           = Config::safetyHoldCheckFlame;
+        g_blkSafetyHold.finalCheckN2Rpm      = Config::safetyHoldFinalN2Rpm;
+        g_blkSafetyHold.finalCheckP1         = Config::safetyHoldFinalP1;
+        g_blkSafetyHold.finalCheckP2         = Config::safetyHoldFinalP2;
+        g_blkSafetyHold.finalCheckEgt        = Config::safetyHoldFinalEgt;
         g_blkSafetyHold.runningOilMin        = Config::oilRunningMin;
         g_blkSafetyHold.turnOffStarterOnExit  = Config::safetyHoldTurnOffStarter;
         g_blkSafetyHold.turnOffStarterEnOnExit= Config::safetyHoldTurnOffStarterEn;
@@ -1161,12 +1173,21 @@ namespace Hardware {
             g_ctrlThrottleSlew.n1PullbackEnabled = Config::pullbackN1Enabled;
             g_ctrlThrottleSlew.n2PullbackEnabled = Config::pullbackN2Enabled;
             g_ctrlThrottleSlew.egtPullbackEnabled = Config::pullbackEgtEnabled;
+            g_ctrlThrottleSlew.p1PullbackEnabled = Config::pullbackP1Enabled;
+            g_ctrlThrottleSlew.p2PullbackEnabled = Config::pullbackP2Enabled;
+            g_ctrlThrottleSlew.torquePullbackEnabled = Config::pullbackTorqueEnabled;
             g_ctrlThrottleSlew.rpmHardLimit = Config::pullbackN1HardRpm > 0.0f ? Config::pullbackN1HardRpm : Config::rpmLimit;
             g_ctrlThrottleSlew.rpmSoftLimit = Config::pullbackN1SoftRpm > 0.0f ? Config::pullbackN1SoftRpm : (Config::rpmLimit * 0.95f);
             g_ctrlThrottleSlew.n2HardLimit = Config::pullbackN2HardRpm;
             g_ctrlThrottleSlew.n2SoftLimit = Config::pullbackN2SoftRpm;
             const float egtLimit = Config::primaryEgtLimitC();
             g_ctrlThrottleSlew.totHardLimit = Config::pullbackEgtHardC > 0.0f ? Config::pullbackEgtHardC : egtLimit;
+            g_ctrlThrottleSlew.p1SoftLimit = Config::pullbackP1Soft;
+            g_ctrlThrottleSlew.p1HardLimit = Config::pullbackP1Hard;
+            g_ctrlThrottleSlew.p2SoftLimit = Config::pullbackP2Soft;
+            g_ctrlThrottleSlew.p2HardLimit = Config::pullbackP2Hard;
+            g_ctrlThrottleSlew.torqueSoftLimit = Config::pullbackTorqueSoft;
+            g_ctrlThrottleSlew.torqueHardLimit = Config::pullbackTorqueHard;
             g_ctrlThrottleSlew.totSoftLimit = Config::pullbackEgtSoftC > 0.0f ? Config::pullbackEgtSoftC : (egtLimit - Config::totSafeMargin);
             g_ctrlThrottleSlew.minPullbackThrottle = Config::pullbackMinThrottlePct / 100.0f;
             g_ctrlThrottleSlew.pullbackStrength = Config::pullbackStrength;
@@ -1183,6 +1204,10 @@ namespace Hardware {
             g_ctrlDynamicIdle.rampDownMs    = Config::idleRampDownMs;
             g_ctrlDynamicIdle.deadbandRpm   = Config::idleDeadbandRpm;
             g_ctrlDynamicIdle.rpmLimit      = Config::idleRpmLimit;
+            g_ctrlDynamicIdle.source        = Config::idleSource;
+            g_ctrlDynamicIdle.targetPressure = Config::idleTargetPressure;
+            g_ctrlDynamicIdle.pressureDeadband = Config::idlePressureDeadband;
+            g_ctrlDynamicIdle.pressureLimit = Config::idlePressureLimit;
             g_ctrlDynamicIdle.minMultiplier = Config::idleMinMultiplier;
             g_ctrlDynamicIdle.maxMultiplier = Config::idleMaxMultiplier;
             g_ctrlDynamicIdle.idleMode              = Config::idleMode;
@@ -1552,7 +1577,11 @@ namespace Hardware {
                 ed.n1Rpm     = g_sensorN1Rpm.getValue();
                 ed.n1Healthy = g_sensorN1Rpm.isHealthy();
                 uint32_t seq = g_sensorN1Rpm.sampleSequence();
-                if (seq != ed.n1SampleSeq) { ed.n1SampleSeq = seq; ed.n1SampleMs = millis(); }
+                if (seq != ed.n1SampleSeq) {
+                    ed.n1SampleSeq = seq;
+                    const uint32_t sampleMs = g_sensorN1Rpm.sampleTimestampMs();
+                    ed.n1SampleMs = sampleMs ? sampleMs : millis();
+                }
             }
         }
         if (hw.hasN2Rpm) {
@@ -1568,7 +1597,11 @@ namespace Hardware {
                 ed.n2Rpm     = g_sensorN2Rpm.getValue();
                 ed.n2Healthy = g_sensorN2Rpm.isHealthy();
                 uint32_t seq = g_sensorN2Rpm.sampleSequence();
-                if (seq != ed.n2SampleSeq) { ed.n2SampleSeq = seq; ed.n2SampleMs = millis(); }
+                if (seq != ed.n2SampleSeq) {
+                    ed.n2SampleSeq = seq;
+                    const uint32_t sampleMs = g_sensorN2Rpm.sampleTimestampMs();
+                    ed.n2SampleMs = sampleMs ? sampleMs : millis();
+                }
             }
         }
         // Filtered RPM acceleration (RPM/s) — one trustworthy source for the
@@ -1604,7 +1637,11 @@ namespace Hardware {
             ed.tot        = g_pSensorTot->getValue();
             ed.totHealthy = g_pSensorTot->isHealthy();
             uint32_t seq = g_pSensorTot->sampleSequence();
-            if (seq != ed.totSampleSeq) { ed.totSampleSeq = seq; ed.totSampleMs = millis(); }
+            if (seq != ed.totSampleSeq) {
+                ed.totSampleSeq = seq;
+                const uint32_t sampleMs = g_pSensorTot->sampleTimestampMs();
+                ed.totSampleMs = sampleMs ? sampleMs : millis();
+            }
         }
         if (totSpecial >= 0) {
             ed.registryInputValue[totSpecial] = ed.tot;
@@ -1622,7 +1659,11 @@ namespace Hardware {
             ed.tit        = g_pSensorTit->getValue();
             ed.titHealthy = g_pSensorTit->isHealthy();
             uint32_t seq = g_pSensorTit->sampleSequence();
-            if (seq != ed.titSampleSeq) { ed.titSampleSeq = seq; ed.titSampleMs = millis(); }
+            if (seq != ed.titSampleSeq) {
+                ed.titSampleSeq = seq;
+                const uint32_t sampleMs = g_pSensorTit->sampleTimestampMs();
+                ed.titSampleMs = sampleMs ? sampleMs : millis();
+            }
         }
         if (titSpecial >= 0) {
             ed.registryInputValue[titSpecial] = ed.tit;
@@ -1716,11 +1757,23 @@ namespace Hardware {
                 ed.torque        = g_sensorTorqueHx711.getValue();
                 ed.torqueRaw     = (int)g_sensorTorqueHx711.rawCounts();
                 ed.torqueHealthy = g_sensorTorqueHx711.isHealthy();
+                const uint32_t seq = g_sensorTorqueHx711.sampleSequence();
+                if (seq != ed.torqueSampleSeq) {
+                    ed.torqueSampleSeq = seq;
+                    const uint32_t sampleMs = g_sensorTorqueHx711.sampleTimestampMs();
+                    ed.torqueSampleMs = sampleMs ? sampleMs : millis();
+                }
             } else {
                 g_sensorTorque.update();
                 ed.torque        = g_sensorTorque.getValue();
                 ed.torqueRaw     = g_sensorTorque.rawCounts();
                 ed.torqueHealthy = g_sensorTorque.isHealthy();
+                const uint32_t seq = g_sensorTorque.sampleSequence();
+                if (seq != ed.torqueSampleSeq) {
+                    ed.torqueSampleSeq = seq;
+                    const uint32_t sampleMs = g_sensorTorque.sampleTimestampMs();
+                    ed.torqueSampleMs = sampleMs ? sampleMs : millis();
+                }
             }
             // shaft power = torque × angular velocity of N2
             if (ed.torqueHealthy && ed.n2Healthy && ed.n2Rpm > 0) {
@@ -1749,18 +1802,38 @@ namespace Hardware {
         if (p1Analog >= 0) {
             ed.p1 = ed.registryInputValue[p1Analog];
             ed.p1Healthy = ed.registryInputHealthy[p1Analog];
+            if (g_registryAnalogLastMs[p1Analog] != ed.p1SampleMs) {
+                ed.p1SampleSeq = ed.p1SampleSeq + 1U;
+                ed.p1SampleMs = g_registryAnalogLastMs[p1Analog];
+            }
         } else if (hw.hasP1) {
             g_sensorP1.update();
             ed.p1 = g_sensorP1.getValue();
             ed.p1Healthy = g_sensorP1.isHealthy();
+            const uint32_t seq = g_sensorP1.sampleSequence();
+            if (seq != ed.p1SampleSeq) {
+                ed.p1SampleSeq = seq;
+                const uint32_t sampleMs = g_sensorP1.sampleTimestampMs();
+                ed.p1SampleMs = sampleMs ? sampleMs : millis();
+            }
         }
         if (p2Analog >= 0) {
             ed.p2 = ed.registryInputValue[p2Analog];
             ed.p2Healthy = ed.registryInputHealthy[p2Analog];
+            if (g_registryAnalogLastMs[p2Analog] != ed.p2SampleMs) {
+                ed.p2SampleSeq = ed.p2SampleSeq + 1U;
+                ed.p2SampleMs = g_registryAnalogLastMs[p2Analog];
+            }
         } else if (hw.hasP2) {
             g_sensorP2.update();
             ed.p2 = g_sensorP2.getValue();
             ed.p2Healthy = g_sensorP2.isHealthy();
+            const uint32_t seq = g_sensorP2.sampleSequence();
+            if (seq != ed.p2SampleSeq) {
+                ed.p2SampleSeq = seq;
+                const uint32_t sampleMs = g_sensorP2.sampleTimestampMs();
+                ed.p2SampleMs = sampleMs ? sampleMs : millis();
+            }
         }
         if (fuelPressAnalog >= 0) {
             const auto& c = HardwareConfig::channelRegistry.inputs[fuelPressAnalog];

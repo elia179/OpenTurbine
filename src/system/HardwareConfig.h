@@ -458,6 +458,8 @@ public:
         uint8_t  sensor = 255;
         uint8_t  op = 0;
         float    threshold = 0.0f;
+        uint32_t stableMs = 0;       // condition must remain true continuously
+        bool     relativeToEntry = false; // threshold is a rise/drop from entry value
         uint8_t  stepCount = 0;
         CustomBlockStep steps[MAX_CUSTOM_STEPS] = {};
     };
@@ -506,7 +508,7 @@ public:
     static size_t toJson(char* buf, size_t len, bool redactPassword = false);
     static void   toJson(JsonDocument& doc, bool redactPassword = false);
     static bool   validateJson(const char* json, size_t len);
-    static bool   validateJson(const JsonDocument& doc);
+    static bool   validateJson(const JsonDocument& doc, ChannelRegistry* registryWorkspace = nullptr);
     static bool   fromJson(const char* json, size_t len);
     // Apply a document already accepted by validateJson(), without writing
     // storage. The full-engine restore path uses this to avoid a second large

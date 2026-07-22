@@ -27,14 +27,14 @@ namespace FeedbackRequirements {
         return HardwareConfig::safetyOverspeed || HardwareConfig::safetySurge ||
                (HardwareConfig::hasN1Rpm && Config::minRpm > 0.0f) ||
                (HardwareConfig::safetyFlameout && effectiveFlameoutSource() == 2) ||
-               (HardwareConfig::hasDynamicIdle && HardwareConfig::hasN1Rpm && !Config::idleUseN2) ||
+               (HardwareConfig::hasDynamicIdle && HardwareConfig::hasN1Rpm && Config::idleSource == 0) ||
                (HardwareConfig::hasThrottleSlew && HardwareConfig::hasN1Rpm && Config::pullbackN1Enabled &&
                 Config::pullbackN1HardRpm > Config::pullbackN1SoftRpm);
     }
 
     inline bool n2ForProtectionOrControl() {
         return HardwareConfig::safetyN2Overspeed || HardwareConfig::hasGovernor ||
-               (HardwareConfig::hasDynamicIdle && HardwareConfig::hasN2Rpm && Config::idleUseN2) ||
+               (HardwareConfig::hasDynamicIdle && HardwareConfig::hasN2Rpm && Config::idleSource == 1) ||
                (HardwareConfig::hasThrottleSlew && HardwareConfig::hasN2Rpm && Config::pullbackN2Enabled &&
                 Config::pullbackN2HardRpm > Config::pullbackN2SoftRpm);
     }
@@ -47,28 +47,45 @@ namespace FeedbackRequirements {
                 Config::pullbackEgtHardC > Config::pullbackEgtSoftC);
     }
 
+    inline bool p1ForProtectionOrControl() {
+        return HardwareConfig::hasP1 &&
+            ((Config::pullbackP1Enabled && Config::pullbackP1Hard > Config::pullbackP1Soft) ||
+             Config::p1TripLimit > 0.0f || (HardwareConfig::hasDynamicIdle && Config::idleSource == 2));
+    }
+    inline bool p2ForProtectionOrControl() {
+        return HardwareConfig::hasP2 &&
+            ((Config::pullbackP2Enabled && Config::pullbackP2Hard > Config::pullbackP2Soft) ||
+             Config::p2TripLimit > 0.0f || (HardwareConfig::hasDynamicIdle && Config::idleSource == 3));
+    }
+    inline bool torqueForProtectionOrControl() {
+        return HardwareConfig::hasTorque &&
+            ((Config::pullbackTorqueEnabled && Config::pullbackTorqueHard > Config::pullbackTorqueSoft) ||
+             Config::torqueTripLimit > 0.0f);
+    }
+
     inline bool n1ForStart() {
         return n1ForProtectionOrControl() || startupHas("StarterSpin") ||
-               startupHas("Spool") || startupHas("SafetyHold");
+               startupHas("Spool") || (startupHas("SafetyHold") && Config::safetyHoldCheckN1);
     }
     inline bool n2ForStart() {
-        return n2ForProtectionOrControl() || startupHas("GovernorHold");
+        return n2ForProtectionOrControl() || startupHas("GovernorHold") ||
+               (startupHas("SafetyHold") && Config::safetyHoldCheckN2);
     }
     inline bool egtForStart() {
         return egtForProtectionOrControl() || startupHas("TempConfirm") ||
-               startupHas("WaitTOTCool");
+               startupHas("WaitTOTCool") || (startupHas("SafetyHold") && Config::safetyHoldCheckEgt);
     }
 
     inline bool oilPressureForStart() {
         if (!HardwareConfig::hasOilPress) return false;
         return HardwareConfig::safetyLowOil || HardwareConfig::safetyOilZero ||
                HardwareConfig::hasOilLoop || startupHas("OilPrime") ||
-               startupHas("SafetyHold");
+               (startupHas("SafetyHold") && Config::safetyHoldCheckOil);
     }
 
     inline bool flameForStart() {
         return HardwareConfig::hasFlame &&
-               (startupHas("FlameConfirm") ||
+               (startupHas("FlameConfirm") || (startupHas("SafetyHold") && Config::safetyHoldCheckFlame) ||
                 (HardwareConfig::safetyFlameout && effectiveFlameoutSource() == 1));
     }
 
@@ -96,6 +113,11 @@ namespace FeedbackRequirements {
             return false;
         if (n2ForStart() && (!HardwareConfig::hasN2Rpm || !ed.n2Healthy || now - ed.n2SampleMs > 500UL))
             return false;
+        if ((p1ForProtectionOrControl() || (startupHas("SafetyHold") && Config::safetyHoldCheckP1)) &&
+            (!HardwareConfig::hasP1 || !ed.p1Healthy)) return false;
+        if ((p2ForProtectionOrControl() || (startupHas("SafetyHold") && Config::safetyHoldCheckP2)) &&
+            (!HardwareConfig::hasP2 || !ed.p2Healthy)) return false;
+        if (torqueForProtectionOrControl() && (!HardwareConfig::hasTorque || !ed.torqueHealthy)) return false;
         if (egtForStart()) {
             const uint32_t sampleMs = Config::effectiveEgtSource() == 2 ? ed.titSampleMs : ed.totSampleMs;
             if (Config::effectiveEgtSource() == 0 || !Config::primaryEgtHealthy(ed) ||

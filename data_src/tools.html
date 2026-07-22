@@ -4,10 +4,10 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Tools</title>
-<link rel="stylesheet" href="/style.css?v=20260716b">
+<link rel="stylesheet" href="/style.css?v=20260722a">
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<script src="/theme.js?v=20260711f"></script>
-<script src="/ui_dialog.js?v=20260715a"></script>
+<script src="/theme.js?v=20260722g"></script>
+<script src="/ui_dialog.js?v=20260722g"></script>
 <style>
 .test-settings-card{width:min(760px,96vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:10px}
 .test-settings-head,.test-settings-foot{flex:0 0 auto;padding:1rem}
@@ -83,7 +83,7 @@
   </div>
 </main>
 
-<script src="/app.js?v=20260716b"></script>
+<script src="/app.js?v=20260722b"></script>
 <script>
 // ── Tool definitions ──────────────────────────────────────────
 // durationMs=0  → instant toggle, no progress bar
@@ -126,6 +126,7 @@ let liveData    = {};
 let hwCfg       = {};
 let cfgData     = {};
 let toolsTelemetryTimer = null;
+let toolsTelemetryInFlight = false;
 function escHtml(value){
   return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
@@ -917,6 +918,8 @@ async function loadToolConfig() {
 }
 
 async function pollToolsTelemetry() {
+  if (toolsTelemetryInFlight) return;
+  toolsTelemetryInFlight = true;
   try {
     const d = await fetchJsonWithTimeout('/api/data', 3000);
     window.applyData(d);
@@ -925,6 +928,8 @@ async function pollToolsTelemetry() {
     setConnectionState(true, 'Connected');
   } catch (_) {
     setConnectionState(false, 'Disconnected');
+  } finally {
+    toolsTelemetryInFlight = false;
   }
 }
 
@@ -933,6 +938,12 @@ function startToolsTelemetry() {
   pollToolsTelemetry();
   toolsTelemetryTimer = setInterval(pollToolsTelemetry, 2000);
 }
+function stopToolsTelemetry() {
+  if (toolsTelemetryTimer) clearInterval(toolsTelemetryTimer);
+  toolsTelemetryTimer = null;
+}
+window.addEventListener('pagehide', stopToolsTelemetry);
+window.addEventListener('ot:navigation-start', stopToolsTelemetry);
 
 
 // ── Config backup ─────────────────────────────────────────────
@@ -1034,11 +1045,21 @@ async function restoreConfig(input) {
   document.getElementById('cfg-backup-state').className   = 'tool-state active';
   const reader = new FileReader();
   reader.onload = ev => {
-    fetch('/api/ecu_config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: ev.target.result
-    })
+    const postRestore = async () => {
+      let response;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        response = await fetch('/api/ecu_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: ev.target.result
+        });
+        if (response.status !== 503 || attempt === 2) return response;
+        document.getElementById('cfg-backup-state').textContent = 'Waiting for ECU memory…';
+        await new Promise(resolve => setTimeout(resolve, 2200));
+      }
+      return response;
+    };
+    postRestore()
     .then(async r => {
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.ok === false) throw new Error(d.error || d.reason || ('HTTP ' + r.status));

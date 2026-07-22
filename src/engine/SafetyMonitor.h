@@ -166,6 +166,25 @@ public:
             _n2OverspeedPending = false;
         }
 
+        // Independent hard trips for pressure and shaft torque. These do not
+        // depend on the gradual fuel limiter being enabled.
+        const unsigned long hardNow = millis();
+        if (_confirmed(HardwareConfig::hasP1 && Config::p1TripLimit > 0.0f &&
+                       ed.p1 > Config::p1TripLimit, hardNow,
+                       Config::pressureTorqueTripConfirmMs, _p1TripSinceMs)) {
+            _trigger("P1_HIGH"); return;
+        }
+        if (_confirmed(HardwareConfig::hasP2 && Config::p2TripLimit > 0.0f &&
+                       ed.p2 > Config::p2TripLimit, hardNow,
+                       Config::pressureTorqueTripConfirmMs, _p2TripSinceMs)) {
+            _trigger("P2_HIGH"); return;
+        }
+        if (_confirmed(HardwareConfig::hasTorque && Config::torqueTripLimit > 0.0f &&
+                       ed.torque > Config::torqueTripLimit, hardNow,
+                       Config::pressureTorqueTripConfirmMs, _torqueTripSinceMs)) {
+            _trigger("TORQUE_HIGH"); return;
+        }
+
         // ── Interval checks ──────────────────────────────────
         // Current protection uses wall time on every ECU tick; its configured
         // delay must not be stretched by the slower general safety scan.
@@ -441,6 +460,9 @@ public:
                 (HardwareConfig::safetyOilTempHigh && HardwareConfig::hasOilTemp && !ed.oilTempHealthy) ||
                 (HardwareConfig::safetyFuelPressLow && HardwareConfig::hasFuelPress && !ed.fuelPressHealthy) ||
                 (HardwareConfig::safetyBattLow && HardwareConfig::hasBattVoltage && !ed.battHealthy) ||
+                (FeedbackRequirements::p1ForProtectionOrControl() && !ed.p1Healthy) ||
+                (FeedbackRequirements::p2ForProtectionOrControl() && !ed.p2Healthy) ||
+                (FeedbackRequirements::torqueForProtectionOrControl() && !ed.torqueHealthy) ||
                 (HardwareConfig::safetyFlameout && _effectiveFlameoutSource() == 1 &&
                  HardwareConfig::hasFlame && !ed.flameHealthy) ||
                 (HardwareConfig::hasOilPumpCurrentSensor && HardwareConfig::oilPumpCurrentMaxAmps > 0.0f &&
@@ -524,6 +546,9 @@ private:
     unsigned long _oilTempSinceMs = 0;
     unsigned long _fuelPressSinceMs = 0;
     unsigned long _battLowSinceMs = 0;
+    unsigned long _p1TripSinceMs = 0;
+    unsigned long _p2TripSinceMs = 0;
+    unsigned long _torqueTripSinceMs = 0;
     bool          _startupSpooled = false;   // true once N1 ≥ minRpm during STARTUP
     float         _n1Buf[SURGE_BUF] = {};   // circular buffer for surge detection
     uint8_t       _n1BufIdx       = 0;
@@ -547,6 +572,9 @@ private:
         _oilTempSinceMs = 0;
         _fuelPressSinceMs = 0;
         _battLowSinceMs = 0;
+        _p1TripSinceMs = 0;
+        _p2TripSinceMs = 0;
+        _torqueTripSinceMs = 0;
     }
 
     void _resetSurge() {
@@ -721,6 +749,15 @@ private:
             "N2 over-speed: power-turbine RPM exceeded its hard shutdown limit.\n"
             "What to do: Do not restart until the driven load, shaft, coupling, N2 pickup, "
             "governor or propeller control, and configured N2 limit have been inspected.";
+        else if (strcmp(code, "P1_HIGH") == 0) desc =
+            "P1 pressure remained above its hard shutdown limit.\n"
+            "What to do: Inspect the pressure pickup and calibration, compressor system, fuel schedule, and configured P1 trip before restarting.";
+        else if (strcmp(code, "P2_HIGH") == 0) desc =
+            "P2 pressure remained above its hard shutdown limit.\n"
+            "What to do: Inspect the pressure pickup and calibration, downstream restriction, fuel schedule, and configured P2 trip before restarting.";
+        else if (strcmp(code, "TORQUE_HIGH") == 0) desc =
+            "Shaft torque remained above its hard shutdown limit.\n"
+            "What to do: Inspect the driven load, coupling and torque calibration, then verify the configured torque trip before restarting.";
         else if (strcmp(code, "OVERTEMP")   == 0) desc =
             "Over-temperature: selected engine temperature source (TOT/TIT) exceeded the limit.\n"
             "What to do: Allow the engine to cool. Check your fuel flow, throttle calibration, "

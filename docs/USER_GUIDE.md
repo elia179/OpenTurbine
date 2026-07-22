@@ -320,9 +320,10 @@ The Dashboard N2 gauge uses the hard shutdown limit. `OFF` means the hard N2 saf
 ### Controller and limiter behavior
 
 - **Throttle slew** limits how quickly effective fuel/throttle demand can rise or fall. Verify both directions with the turbine unfueled. Emergency shutdown bypasses normal gradual movement and commands the safe state immediately.
-- **N1, N2, and EGT pullback** are gradual control limiters. Their soft point begins intervention and their full point applies the configured maximum authority, subject to the minimum reliable fuel command. They reduce the chance of reaching a trip but do not replace hard safety shutdowns.
-- **Predictive RPM limiting** estimates RPM acceleration and begins a gentler approach before the current reading reaches the soft point. Start with reactive/simple behavior unless predictive tuning has been validated on the engine.
-- **Automatic idle speed control** trims fuel near idle using N1 or N2 feedback. Configure target, response ramps, deadband, disengagement limit, and multiplier bounds. Verify it cannot command an unsafe fuel increase after a sensor disconnect or load step.
+- **N1, N2, EGT, P1, P2, and torque pullback** are gradual fuel limiters. Each soft point begins intervention and each full point applies its configured authority. When several are active, the lowest permitted fuel ceiling wins. They reduce the chance of reaching a trip but never replace an independent hard safety shutdown.
+- **Predictive limit protection** projects N1/N2 speed, P1/P2 pressure, selected TOT/TIT, and torque from their measured rise rates, then begins a gentler approach before the current reading reaches the soft point. Start with reactive/simple behavior unless predictive tuning has been validated on the engine.
+- **Sensor timing** is tied to real samples rather than Dashboard/control-loop refreshes. Shaft pulse inputs average over a longer window at low pulse rates and automatically publish faster as speed rises. Pressure, torque, and temperature rates update only when their driver reports a new measurement, so increasing the web refresh rate does not change controller behavior.
+- **Automatic Idle Control** trims fuel near idle using one selected N1, N2, P1, or P2 source. N1/N2 speed control is the normal proven approach; P1/P2 control is explicitly experimental. RPM and pressure sources have separate target, deadband, and disengagement values. Verify the selected sensor is calibrated and that disconnecting it enters reduced-power mode without a fuel increase.
 - **Automatic N2 speed control** uses either fuel or proportional propeller pitch. Start response gains low, verify correction direction with a simulated speed error, and increase gains only while watching for hunting.
 - **Oil-pressure control** adjusts the selected pump to the configured target. Its target must remain above the low-pressure shutdown threshold. Sensor failure uses the configured delay and fallback demand; validate that fallback physically.
 - **Reduced-power mode** caps throttle after its configured digital input or rule requests it. Treat it as a degraded-operation feature, not a substitute for stopping after a mechanical or lubrication fault.
@@ -351,7 +352,7 @@ Afterburner support is shown only when the corresponding fuel and ignition hardw
 
 Dashboard health dots show whether fitted sensors are currently usable; a plausible retained number with a red/failed health indication must not be trusted. N1 and N2 gauges show their hard limits, while temperature and oil gauges use their applicable configured thresholds. Optional P1, P2, fuel pressure, fuel flow, torque, oil temperature, battery, current, and shaft-power cards appear only when their sources are fitted.
 
-After a run, the summary reports available duration and peaks, including peak N1/N2 and selected temperatures. Use **Logs** to review Event Log fault/configuration records and Session Data CSV channels. Session logging interval and channel selection affect storage use and loop load; record only the channels and loop diagnostics needed for the test. Export important evidence before factory reset or a clean installation.
+After a run, the summary reports available duration, peaks, and the minimum healthy oil pressure measured while RUNNING. Use **Logs** to review Event Log fault/configuration records and Session Data CSV channels. Session logging interval and channel selection affect storage use and loop load; record only the channels and loop diagnostics needed for the test. Export important evidence before factory reset or a clean installation.
 
 ### 3. Calibration
 
@@ -379,12 +380,14 @@ Confirm that:
 - Fuel begins at a deliberately conservative value.
 - Light-off is confirmed by a fitted, calibrated source or an explicitly accepted timed method.
 - The engine reaches self-sustaining speed without losing lubrication.
+- Any required P1/P2 compressor-pressure evidence is established before ignition, rises after light-off, and remains stable before RUNNING.
+- **Final Startup Checks** enables only the installed N1/N2/P1/P2/oil/EGT/flame evidence your installation requires. Every enabled check must remain valid for the full stable time; starter state is not sensor evidence.
 - STOP closes fuel immediately.
 - Shutdown keeps oil/scavenge/cooling outputs active for as long as the engine requires.
 
 Use dry runs with fuel physically disconnected before a fueled test.
 
-The editor also supports entry conditions, per-step enter/exit side actions, afterburner sequences, and bounded custom blocks. A custom block can command configured actuators, wait, or gate on a fitted sensor. Red structural errors block START; yellow warnings describe arrangements that may be intentional but require review. Never use Bench Mode to make an invalid real-engine sequence appear acceptable.
+The editor also supports entry conditions, per-step enter/exit side actions, afterburner sequences, and bounded custom blocks. A custom condition can require continuous stability or measure its threshold relative to the reading at block entry. The three compressor-pressure buttons create guided versions of those checks; place them deliberately around ignition and light-off. Red structural errors block START; yellow warnings describe arrangements that may be intentional but require review. Never use Bench Mode to make an invalid real-engine sequence appear acceptable.
 
 ### 5. Simple control rules
 

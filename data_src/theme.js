@@ -46,8 +46,8 @@
   function reconcileFromDevice() {
     try { if (localStorage.getItem(KEY)) return; } catch (e) { return; }
     try {
-      fetch('/api/data').then(function (r) { return r.json(); }).then(function (d) {
-        if (d && d.ui_theme && VALID.indexOf(d.ui_theme) >= 0) set(d.ui_theme, true);
+      fetch('/api/theme').then(function (r) { return r.json(); }).then(function (d) {
+        if (d && d.theme && VALID.indexOf(d.theme) >= 0) set(d.theme, true);
       }).catch(function () {});
     } catch (e) {}
   }

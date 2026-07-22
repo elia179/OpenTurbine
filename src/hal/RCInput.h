@@ -101,13 +101,18 @@ private:
     static Ch _thr;
     static Ch _idle;
     static Ch _ab;
+    static portMUX_TYPE _mux;
 
     static void IRAM_ATTR _isrThr() {
         if (digitalRead(_thr.pin) == HIGH) {
             _thr.riseUs = micros();
         } else {
             uint32_t pw = micros() - _thr.riseUs;
-            if (pw >= 500 && pw <= 2500) { _thr.pulseUs = pw; _thr.fresh = true; }
+            if (pw >= 500 && pw <= 2500) {
+                portENTER_CRITICAL_ISR(&_mux);
+                _thr.pulseUs = pw; _thr.fresh = true;
+                portEXIT_CRITICAL_ISR(&_mux);
+            }
         }
     }
 
@@ -116,7 +121,11 @@ private:
             _idle.riseUs = micros();
         } else {
             uint32_t pw = micros() - _idle.riseUs;
-            if (pw >= 500 && pw <= 2500) { _idle.pulseUs = pw; _idle.fresh = true; }
+            if (pw >= 500 && pw <= 2500) {
+                portENTER_CRITICAL_ISR(&_mux);
+                _idle.pulseUs = pw; _idle.fresh = true;
+                portEXIT_CRITICAL_ISR(&_mux);
+            }
         }
     }
 
@@ -125,7 +134,11 @@ private:
             _ab.riseUs = micros();
         } else {
             uint32_t pw = micros() - _ab.riseUs;
-            if (pw >= 500 && pw <= 2500) { _ab.pulseUs = pw; _ab.fresh = true; }
+            if (pw >= 500 && pw <= 2500) {
+                portENTER_CRITICAL_ISR(&_mux);
+                _ab.pulseUs = pw; _ab.fresh = true;
+                portEXIT_CRITICAL_ISR(&_mux);
+            }
         }
     }
 
@@ -134,9 +147,17 @@ private:
 
         uint32_t now = millis();
 
-        if (ch.fresh) {
-            uint32_t pulseUs = ch.pulseUs;
-            ch.fresh  = false;
+        uint32_t pulseUs = 0;
+        bool fresh = false;
+        portENTER_CRITICAL(&_mux);
+        fresh = ch.fresh;
+        if (fresh) {
+            pulseUs = ch.pulseUs;
+            ch.fresh = false;
+        }
+        portEXIT_CRITICAL(&_mux);
+
+        if (fresh) {
             ch.lastMs = now;
             bool isIdle = (&ch == &_idle);
             bool isAb = (&ch == &_ab);
@@ -165,3 +186,4 @@ private:
 inline RCInput::Ch RCInput::_thr{};
 inline RCInput::Ch RCInput::_idle{};
 inline RCInput::Ch RCInput::_ab{};
+inline portMUX_TYPE RCInput::_mux = portMUX_INITIALIZER_UNLOCKED;

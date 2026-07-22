@@ -14,4 +14,6 @@ public:
     virtual bool        isHealthy() = 0;   // false = reading not trustworthy
     virtual const char* name()      = 0;   // e.g. "N1_RPM" — for logging / web UI
     virtual uint32_t    sampleSequence() { return 0; }
+    // Rate estimators consume each sequence once and use its actual timestamp.
+    virtual uint32_t    sampleTimestampMs() { return 0; }
 };

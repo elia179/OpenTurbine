@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101012">
 <title>OpenTurbine — Config</title>
-<link rel="stylesheet" href="/style.css?v=20260716b">
+<link rel="stylesheet" href="/style.css?v=20260722a">
 <style>
 :root{--bg:#101012;--surface:#17171a;--surface-2:#1d1d20;--surface-3:#262629;--border:#313135;--border-light:#42424a;--text:#f5f5f7;--text-2:#cecdd4;--dim:#a0a0a8;--green:#33cf7a;--red:#ff4d5f;--yellow:#ffcf4d;--blue:#5ab8ca;--accent:#ee7620;--font-ui:system-ui,-apple-system,'Segoe UI',sans-serif;--font-mono:'SF Mono','Menlo','Consolas',monospace}
 *,*::before,*::after{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:14px;line-height:1.5}nav{height:48px;display:flex;align-items:center;padding:0 1.25rem;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}nav a{height:48px;line-height:48px;padding:0 .9rem;color:var(--dim);text-decoration:none;text-transform:uppercase;letter-spacing:.06em;font-size:.75rem;font-weight:600;border-bottom:2px solid transparent;white-space:nowrap}nav a.active{color:var(--text);border-bottom-color:var(--accent)}.conn-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:auto}.conn-dot.connected{background:var(--green);box-shadow:0 0 6px var(--green)}.conn-dot.disconnected{background:var(--red)}.conn-label{font-size:.63rem;color:var(--dim);margin-left:.4rem;text-transform:uppercase;letter-spacing:.05em}main{padding:1.5rem;max-width:920px;margin:0 auto}button{font-family:var(--font-ui);font-size:.78rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;min-height:44px;padding:.42rem 1.1rem;border-radius:6px;border:1px solid var(--border-light);background:var(--surface-3);color:var(--text-2);cursor:pointer}button:hover{color:var(--text);background:var(--surface-2)}button:disabled{opacity:.3;cursor:default}button.primary{background:var(--accent);border-color:var(--accent);color:#2b1405}.view-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--surface-2)}.view-toggle button{border:0;border-radius:0;background:transparent}.view-toggle button.active{background:var(--accent);color:#2b1405}select,input{font-family:var(--font-mono);font-size:.82rem;padding:.32rem .55rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}input[type=checkbox]{width:auto;accent-color:var(--accent)}.cfg-section{background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:1rem 1.2rem;margin-bottom:.85rem}.cfg-title{font-size:.68rem;font-weight:800;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.7rem}.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.75rem}.cfg-field{display:flex;flex-direction:column;gap:.22rem;min-width:0}.cfg-label{font-size:.65rem;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-weight:700}.cfg-desc{font-size:.72rem;color:var(--dim);line-height:1.45}.cfg-field input,.cfg-field select{width:100%;max-width:100%}.cfg-field input:focus,.cfg-field select:focus{outline:none;border-color:var(--accent)}.cfg-field input:disabled,.cfg-field select:disabled{opacity:.45}.error-banner{border-radius:9px;padding:.7rem 1rem;margin-bottom:.85rem;font-size:.82rem;background:color-mix(in srgb,var(--red) 8%,transparent);border:1px solid color-mix(in srgb,var(--red) 40%,transparent);color:var(--red)}.save-bar{position:sticky;bottom:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:1rem;display:flex;align-items:center;gap:.75rem;margin-top:1rem}.save-bar a{color:var(--dim)}.save-msg{font-size:.78rem;color:var(--dim)}.live-val{font-size:.72rem;color:var(--accent);margin-left:.5rem}.field-changed{border-color:var(--yellow)!important;box-shadow:0 0 0 1px var(--yellow)}.save-recap-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;z-index:999}.save-recap-card{width:min(720px,92vw);max-height:82vh;background:var(--surface);border:1px solid var(--border-light);border-radius:9px;overflow:hidden}.save-recap-header,.save-recap-footer{display:flex;align-items:center;gap:.7rem;padding:.85rem 1rem;border-bottom:1px solid var(--border)}.save-recap-footer{border-top:1px solid var(--border);border-bottom:0;justify-content:flex-end}.save-recap-body{padding:1rem;overflow:auto;max-height:55vh}.save-recap-subtitle{padding:.75rem 1rem;color:var(--dim);font-size:.78rem;border-bottom:1px solid var(--border)}@media(max-width:700px){main{padding:1rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{position:static;flex-wrap:wrap}nav{overflow-x:auto}.conn-dot{margin-left:.75rem}}
@@ -23,10 +23,10 @@ main{max-width:1380px;padding:1.1rem 1.5rem 5.5rem}
 .cfg-section{background:transparent;border:0;border-radius:0;padding:.85rem .25rem .2rem;margin:0}.cfg-section+.cfg-section{border-top:1px solid var(--border)}.cfg-title{font-size:.72rem;color:var(--text-2);margin:0 0 .65rem;display:flex;align-items:center;gap:.45rem}.cfg-title-count{font-size:.63rem;color:var(--dim);font-weight:500;letter-spacing:0;text-transform:none}.cfg-grid{grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:.65rem}
 .cfg-field{position:relative;gap:.38rem;padding:.75rem;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);transition:border-color .15s,opacity .15s,transform .15s}.cfg-field:hover{border-color:var(--border-light)}.cfg-field.search-hit{border-color:color-mix(in srgb,var(--accent) 65%,var(--border));box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 18%,transparent)}.cfg-field-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.65rem;min-width:0}.cfg-label{font-size:.68rem;color:var(--text-2);letter-spacing:.055em;min-height:1.05rem;min-width:0}.cfg-field input,.cfg-field select{min-height:42px;font-size:.86rem;background:var(--bg)}.cfg-field input[type=checkbox]{width:22px;height:22px;min-height:22px;align-self:flex-start}.cfg-help{font-size:.69rem;color:var(--dim)}.cfg-help summary{cursor:pointer;display:inline;color:var(--dim);list-style:none}.cfg-help summary::-webkit-details-marker{display:none}.cfg-help summary::before{content:'ⓘ ';color:var(--accent)}.cfg-help[open] summary{color:var(--text-2)}.cfg-desc{padding-top:.35rem;font-size:.72rem;line-height:1.45}.field-level{flex:0 0 auto;font-size:.58rem;text-transform:uppercase;letter-spacing:.05em;color:var(--blue)}.cfg-empty{padding:2.5rem 1rem;text-align:center;border:1px dashed var(--border-light);border-radius:12px;color:var(--dim)}
 .save-bar{position:fixed;z-index:90;left:50%;bottom:14px;transform:translateX(-50%);width:min(1340px,calc(100% - 2rem));padding:.65rem .8rem;border-radius:12px;box-shadow:0 16px 45px rgba(0,0,0,.45)}.save-bar .save-spacer{flex:1}.save-change-count{font-size:.76rem;color:var(--text-2);font-weight:650}.save-bar:not(.is-dirty) .save-change-count{color:var(--dim)}.save-bar a{font-size:.72rem}.save-msg{margin-left:auto}.filter-hidden{display:none!important}
-@media(max-width:700px){main{padding:.85rem .75rem 6rem}.cfg-workspace{position:relative;top:auto;margin:-.85rem 0 .75rem;padding:.75rem 0 .55rem}.cfg-workspace-card{padding:.75rem;border-radius:11px}.cfg-workspace-head{margin-bottom:.6rem}.cfg-header-actions{margin-left:0;width:100%}.cfg-search{height:44px}.cfg-toolbar{flex-wrap:nowrap}.cfg-result-count{display:none}.config-group>summary{min-height:68px;padding:.7rem}.group-desc{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.group-meta{display:none}.group-content{padding:0 .55rem .55rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{bottom:8px;flex-wrap:nowrap}.save-bar a{display:none}.save-msg{display:none}.preset-body select{min-width:100%}}
+@media(max-width:700px){main{padding:.85rem .75rem 6rem}.cfg-workspace{position:relative;top:auto;margin:-.85rem 0 .75rem;padding:.75rem 0 .55rem;background:var(--bg)}.cfg-workspace-card{padding:.75rem;border-radius:11px}.cfg-workspace-head{margin-bottom:.6rem}.cfg-header-actions{margin-left:0;width:100%}.cfg-search{height:44px}.cfg-toolbar{flex-wrap:nowrap}.cfg-result-count{display:none}.config-group>summary{min-height:68px;padding:.7rem}.group-desc{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.group-meta{display:none}.group-content{padding:0 .55rem .55rem}.cfg-grid{grid-template-columns:minmax(0,1fr)}.save-bar{bottom:8px;flex-wrap:nowrap}.save-bar:not(.is-dirty){display:none}.save-bar a{display:none}.save-msg{display:none}.preset-body select{min-width:100%}}
 </style>
 <script>try{var t=localStorage.getItem('ot_theme');if(t&&/^[a-z]+$/.test(t))document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<script src="/ui_dialog.js?v=20260715a"></script>
+<script src="/ui_dialog.js?v=20260722g"></script>
 </head>
 <body>
 <nav>
@@ -123,7 +123,7 @@ main{max-width:1380px;padding:1.1rem 1.5rem 5.5rem}
   </div>
 </main>
 
-<script src="/app.js?v=20260716b"></script>
+<script src="/app.js?v=20260722b"></script>
 <script>
 // ── Config schema — maps UI field key → JSON path + metadata ──
 const SCHEMA = [
@@ -133,6 +133,9 @@ const SCHEMA = [
     { key:'min_rpm',            path:['engine','min_rpm'],            label:'Minimum Running N1 Speed', unit:'RPM', zeroOff:true, desc:'Lowest N1 speed accepted after startup. Falling below it causes an underspeed shutdown. Set 0 to disable this independent underspeed check when N1 is informational only.', step:1000, min:0, basic:true },
     { key:'eg_src',             path:['safety','egt_source'],         label:'Primary Engine Temperature', type:'select', options:[{v:0,l:'Automatic: TOT if fitted, otherwise TIT'},{v:1,l:'Turbine outlet temperature (TOT)'},{v:2,l:'Turbine inlet temperature (TIT)'}], desc:'Temperature used for over-temperature protection, hot-start prevention, cooldown, throttle reduction, and flame confirmation.', basic:true },
     { key:'tot_limit',          path:['engine','tot_limit'],          label:'Outlet Temperature Limit (TOT)', unitType:'temp', zeroOff:true, desc:'Hard limit for turbine-outlet temperature. Active only when TOT is the primary engine temperature. 0 disables this limit.', step:10, min:0, basic:true },
+    { key:'sf_tit',             path:['safety','tit_limit_c'],        label:'Inlet Temperature Limit (TIT)', unitType:'temp', zeroOff:true, wrapId:'field-sf-tit', desc:'Hard limit for turbine-inlet temperature. Active only when TIT is the primary engine temperature. 0 disables this limit.', step:10, min:0, basic:true },
+    { key:'sf_p1t',             path:['safety','p1_trip_bar'],        label:'P1 Hard Shutdown', unitType:'press', zeroOff:true, desc:'Independent P1 pressure shutdown limit. 0 disables the P1 hard trip.', step:0.1, min:0, max:1000, basic:true },
+    { key:'sf_p2t',             path:['safety','p2_trip_bar'],        label:'P2 Hard Shutdown', unitType:'press', zeroOff:true, desc:'Independent P2 pressure shutdown limit. 0 disables the P2 hard trip.', step:0.1, min:0, max:1000, basic:true },
     { key:'tot_safe_margin',    path:['engine','tot_safe_margin'],    label:'Temperature Warning Margin', unitType:'temp_delta', desc:'Distance below the active hard temperature limit where warnings and gradual throttle reduction begin.', step:5, min:0, basic:true },
     { key:'tot_cooldown_target',path:['engine','tot_cooldown_target'],label:'Cooldown Temperature Target', unitType:'temp', desc:'Cooldown completes after the selected engine temperature falls below this value.', step:10, min:0, max:100000, basic:true },
   ]},
@@ -166,10 +169,19 @@ const SCHEMA = [
     { key:'pb_egte', path:['throttle','pullback_egt'], label:'Gradual Temperature Protection', type:'checkbox', desc:'Automatically reduce fuel as the selected engine temperature approaches its limit.' },
     { key:'pb_egts', path:['throttle','pullback_egt_soft_c'], label:'Begin Temperature Reduction', unitType:'temp', desc:'Temperature where gradual fuel reduction begins.', step:10, min:0, max:100000 },
     { key:'pb_egth', path:['throttle','pullback_egt_hard_c'], label:'Full Temperature Reduction', unitType:'temp', desc:'Temperature where gradual reduction reaches full authority.', step:10, min:0, max:100000 },
+    { key:'pb_p1e', path:['throttle','pullback_p1'], label:'Gradual P1 Pressure Protection', type:'checkbox', desc:'Reduce fuel as P1 approaches its configured full-reduction value.' },
+    { key:'pb_p1s', path:['throttle','pullback_p1_soft_bar'], label:'Begin P1 Fuel Reduction', unitType:'press', step:0.1, min:0, max:1000 },
+    { key:'pb_p1h', path:['throttle','pullback_p1_hard_bar'], label:'Full P1 Fuel Reduction', unitType:'press', step:0.1, min:0, max:1000 },
+    { key:'pb_p2e', path:['throttle','pullback_p2'], label:'Gradual P2 Pressure Protection', type:'checkbox', desc:'Reduce fuel as P2 approaches its configured full-reduction value.' },
+    { key:'pb_p2s', path:['throttle','pullback_p2_soft_bar'], label:'Begin P2 Fuel Reduction', unitType:'press', step:0.1, min:0, max:1000 },
+    { key:'pb_p2h', path:['throttle','pullback_p2_hard_bar'], label:'Full P2 Fuel Reduction', unitType:'press', step:0.1, min:0, max:1000 },
+    { key:'pb_tqe', path:['throttle','pullback_torque'], label:'Gradual Shaft-Torque Protection', type:'checkbox', desc:'Reduce fuel as measured shaft torque approaches its configured full-reduction value.' },
+    { key:'pb_tqs', path:['throttle','pullback_torque_soft_nm'], label:'Begin Torque Fuel Reduction', unit:'Nm', step:1, min:0, max:1000000 },
+    { key:'pb_tqh', path:['throttle','pullback_torque_hard_nm'], label:'Full Torque Fuel Reduction', unit:'Nm', step:1, min:0, max:1000000 },
     { key:'pb_min', path:['throttle','pullback_min_pct'], label:'Minimum Fuel During Gradual Protection (%)', desc:'Lowest fuel/throttle output allowed by gradual protection. Emergency protection may still command less.', step:1, min:0, max:100 },
     { key:'pb_str', path:['throttle','pullback_strength'], label:'Limit-Protection Strength', desc:'How strongly fuel is reduced near a limit. 1.0 is normal; higher is more aggressive and may cause oscillation.', step:0.1, min:0, max:5 },
-    { key:'rl_mode', path:['throttle','rpm_limiter_mode'], label:'Gradual Speed-Protection Method', type:'select', options:[{v:0,l:'React to current speed'},{v:1,l:'Predict approaching speed'}], desc:'Reactive control reduces fuel from the current RPM. Predictive control also estimates where RPM is heading so it can approach the limit more gently. Temperature protection always reacts to the current reading.' },
-    { key:'rl_look', path:['throttle','pullback_lookahead_ms'], label:'Speed Prediction Time (ms)', desc:'How far ahead the predictive method estimates shaft speed. Typical: 1000-2000 ms.', step:100, min:0 },
+    { key:'rl_mode', path:['throttle','rpm_limiter_mode'], label:'Gradual Limit-Protection Method', type:'select', options:[{v:0,l:'React to current readings'},{v:1,l:'Predict approaching limits'}], desc:'Reactive control uses current N1/N2/P1/P2/EGT/torque readings. Predictive control also uses each signal rate of change to estimate where it is heading and reduce fuel before an overshoot.' },
+    { key:'rl_look', path:['throttle','pullback_lookahead_ms'], label:'Limit Prediction Time (ms)', desc:'How far ahead Advanced mode projects speed, pressure, selected TOT/TIT, and torque. Typical starting point: 1000-2000 ms.', step:100, min:0 },
     { key:'rl_ramp', path:['throttle','pullback_near_limit_rampup_ms'], label:'Near-Limit Full Opening Time (ms)', desc:'Slower full-opening time used near the predicted speed limit. Larger values make the approach gentler.', step:100, min:0 },
     { key:'rl_zone', path:['throttle','pullback_approach_zone_rpm'], label:'Begin Prediction This Far Below Limit (RPM)', desc:'Distance below the gradual limit where the ECU starts slowing fuel increases. 0 chooses this distance automatically.', step:500, min:0 },
     { key:'rl_acc', path:['throttle','rpm_accel_filter'], label:'Speed-Change Smoothing (0-1)', desc:'Smooths the estimated rate of RPM change. Lower values are steadier but slower; higher values react faster but pass more sensor noise.', step:0.01, min:0.02, max:1 },
@@ -177,15 +189,18 @@ const SCHEMA = [
   { title: 'Reduced-Power Mode', sectionNote:'This one cap is shared by manual Reduced-Power Mode and the automatic response to losing feedback required by an enabled shaft controller or safety protection. Sensor loss turns Reduced-Power Mode on; it does not create a separate hidden limit.', fields: [
     { key:'lm_mt', path:['limp_mode','max_throttle_pct'], label:'Maximum Fuel Output (%)', desc:'Shared main-fuel cap when Reduced-Power Mode is turned on from Tools or a configured switch, or automatically because feedback used by an enabled protection/controller becomes unhealthy. A high value also permits higher fuel after that safety feedback is lost.', step:5, min:0, max:100, basic:true },
   ]},
-  { title: 'Automatic Idle Speed Control', sectionNote:'Automatically adjusts fuel near idle to hold a steady shaft speed as accessory load changes. This is commonly called dynamic idle.', fields: [
-    { key:'di_tr', path:['dynamic_idle','target_rpm'],    label:'Idle Speed Target', unit:'RPM', desc:'Shaft speed the automatic idle controller tries to maintain.', step:500, min:0, basic:true },
+  { title: 'Automatic Idle Control', sectionNote:'Automatically adjusts fuel near idle to hold one selected N1, N2, P1 or P2 feedback value as accessory load changes. Choose only an installed, calibrated sensor.', fields: [
+    { key:'di_src', path:['dynamic_idle','source'], label:'Idle Feedback Source', type:'select', options:[{v:0,l:'N1 core speed (normal / proven)'},{v:1,l:'N2 output-shaft speed (normal / proven)'},{v:2,l:'P1 pressure (experimental)'},{v:3,l:'P2 pressure (experimental)'}], desc:'N1/N2 speed feedback is the normal proven approach. Pressure feedback is available for experimental turbine arrangements and requires careful stand validation.', basic:true },
+    { key:'di_tr', path:['dynamic_idle','target_rpm'],    label:'Idle Target (N1/N2)', unit:'RPM', desc:'Used when the selected feedback source is N1 or N2.', step:500, min:0, basic:true },
+    { key:'di_tp', path:['dynamic_idle','target_pressure_bar'], label:'Idle Target (P1/P2)', unit:'bar', desc:'Used when the selected feedback source is P1 or P2.', step:0.01, min:0, max:1000, basic:true },
     { key:'di_ru', path:['dynamic_idle','ramp_up_ms'],    label:'Fuel Increase Time (ms)', desc:'How quickly automatic idle control may increase fuel.', step:500, min:0 },
     { key:'di_rd', path:['dynamic_idle','ramp_down_ms'],  label:'Fuel Decrease Time (ms)', desc:'How quickly automatic idle control may reduce fuel.', step:500, min:0 },
-    { key:'di_db', path:['dynamic_idle','deadband_rpm'],  label:'No-Correction Speed Band', unit:'RPM', desc:'No fuel correction is made while speed is within this distance of the target. Technical name: deadband.', step:100, min:0 },
-    { key:'di_rl', path:['dynamic_idle','rpm_limit'],     label:'Stop Controlling Above', unit:'RPM', desc:'Automatic idle control disengages above this speed.', step:1000, min:0 },
+    { key:'di_db', path:['dynamic_idle','deadband_rpm'],  label:'No-Correction Band (N1/N2)', unit:'RPM', desc:'Used for an N1/N2 feedback source.', step:100, min:0 },
+    { key:'di_rl', path:['dynamic_idle','rpm_limit'],     label:'Stop Controlling Above (N1/N2)', unit:'RPM', desc:'Used for an N1/N2 feedback source.', step:1000, min:0 },
+    { key:'di_pd', path:['dynamic_idle','pressure_deadband_bar'], label:'No-Correction Band (P1/P2)', unitType:'press', desc:'Used for a P1/P2 feedback source.', step:0.01, min:0, max:1000 },
+    { key:'di_pl', path:['dynamic_idle','pressure_limit_bar'], label:'Stop Controlling Above (P1/P2)', unitType:'press', desc:'Used for a P1/P2 feedback source.', step:0.1, min:0, max:1000 },
     { key:'di_mm', path:['dynamic_idle','min_multiplier'],label:'Minimum Fuel Range Multiplier', desc:'Scales the calibrated minimum reliable fuel-pump output to set the controller floor.', step:0.05, min:0, max:1 },
     { key:'di_mx', path:['dynamic_idle','max_multiplier'],label:'Maximum Fuel Range Multiplier', desc:'Allows the controller extra fuel authority above the configured maximum idle output.', step:0.05, min:1, max:3 },
-    { key:'di_n2', path:['dynamic_idle','use_n2'],       label:'Control N2 Instead of N1', desc:'Use power-turbine/output shaft speed as the idle feedback signal.', type:'checkbox' },
     { key:'di_ig', path:['dynamic_idle','i_gain'],       label:'Long-Term Correction Strength', desc:'Removes a persistent speed error caused by changing accessory load. 0 disables this correction. Start small: 0.05–0.15. Technical name: integral gain.', step:0.01, min:0, max:2 },
     { key:'di_im', path:['dynamic_idle','i_max'],        label:'Maximum Long-Term Correction', desc:'Limits how much fuel the long-term correction may add or remove. 0.10 means 10% of the available fuel range.', step:0.01, min:0, max:0.5 },
     { key:'di_mode', path:['dynamic_idle','idle_mode'], label:'Idle-Control Method', type:'select', options:[{v:0,l:'Standard idle control'},{v:1,l:'Predictive fast-deceleration control'}], desc:'Standard control corrects present speed error. Predictive control learns the steady idle output and briefly reduces fuel during a fast return from high speed so RPM settles without hanging high.' },
@@ -207,6 +222,8 @@ const SCHEMA = [
     { key:'sf_ot_d', path:['safety','oil_temp_confirm_ms'], label:'Oil-Temperature Confirmation (ms)', desc:'High oil temperature must persist for this time before shutdown.', step:100, min:0, max:60000 },
     { key:'sf_fp_d', path:['safety','fuel_press_confirm_ms'], label:'Fuel-Pressure Confirmation (ms)', desc:'Low running fuel pressure must persist for this time before shutdown.', step:50, min:0, max:60000 },
     { key:'sf_bv_d', path:['safety','batt_low_confirm_ms'], label:'Bus-Voltage Confirmation (ms)', desc:'Low battery or bus voltage must persist for this time before shutdown.', step:100, min:0, max:60000 },
+    { key:'sf_pt_d', path:['safety','pressure_torque_trip_confirm_ms'], label:'Pressure / Torque Hard-Trip Confirmation (ms)', desc:'P1, P2 or torque must remain above its hard limit for this long before shutdown.', step:25, min:0, max:60000 },
+    { key:'sf_tqt', path:['safety','torque_trip_nm'], label:'Shaft-Torque Hard Shutdown', unit:'Nm', zeroOff:true, desc:'Independent shutdown limit. 0 disables the torque hard trip.', step:1, min:0, max:1000000 },
     { key:'sf_fs', path:['safety','flameout_source'],      label:'How Combustion Loss Is Detected', type:'select', options:[{v:0,l:'Best available sensor automatically'},{v:1,l:'Flame sensor reports no flame'},{v:2,l:'N1 speed falls too low'},{v:3,l:'Engine temperature falls'}], desc:'Signal used to decide that combustion has been lost while running.', basic:true },
     { key:'sf_fn', path:['safety','flameout_n1_min_rpm'],  label:'N1 Flameout RPM', desc:'For N1-source flameout: declare flameout if N1 stays below this RPM. 0 uses Min RPM. This is delayed by Flameout Delay.', step:1000, min:0, basic:true },
     { key:'sf_ft', path:['safety','flameout_tot_drop_c'],  label:'EGT Drop for Flameout', unitType:'temp_delta', desc:'For EGT-source flameout: declare flameout after selected EGT drops this far below the highest running EGT reference. 0 disables EGT-drop flameout detection. Use cautiously; throttle changes can affect EGT.', step:5, min:0, basic:true },
@@ -233,8 +250,8 @@ const SCHEMA = [
     { key:'sl_tt', path:['session_log','tot'],       label:'Log TOT',         type:'checkbox', desc:'Include turbine outlet temperature column in session CSV.' },
     { key:'sl_ot', path:['session_log','oil_temp'],  label:'Log Oil Temp',    type:'checkbox', desc:'Include oil, gearbox, or coolant temperature column in session CSV.' },
     { key:'sl_ol', path:['session_log','oil'],       label:'Log Oil Pressure',type:'checkbox', desc:'Include oil pressure column in session CSV.' },
-    { key:'sl_p1', path:['session_log','p1'],        label:'Log P1',          type:'checkbox', desc:'Include P1 pressure column in session CSV.' },
-    { key:'sl_p2', path:['session_log','p2'],        label:'Log P2',          type:'checkbox', desc:'Include P2 pressure column in session CSV.' },
+    { key:'sl_p1', path:['session_log','p1'],        label:'Log P1',          type:'checkbox', desc:'Include P1 pressure column in session CSV.', basic:true },
+    { key:'sl_p2', path:['session_log','p2'],        label:'Log P2',          type:'checkbox', desc:'Include P2 pressure column in session CSV.', basic:true },
     { key:'sl_th', path:['session_log','throttle'],  label:'Log Throttle',    type:'checkbox', desc:'Include throttle demand column in session CSV.' },
     { key:'sl_md', path:['session_log','mode'],      label:'Log Mode',        type:'checkbox', desc:'Include engine mode column in session CSV.' },
     { key:'sl_ti', path:['session_log','tit'],       label:'Log TIT',         type:'checkbox', desc:'Include turbine inlet temperature column in session CSV.' },
@@ -294,10 +311,10 @@ const SCHEMA = [
     { key:'ab_lpp',  path:['afterburner','lightup_pump_pct'],  label:'Light-Up Pump %', desc:'AB fuel pump demand used while the light-up sequence is trying to establish a confirmed flame.', step:5, min:0, max:100 },
   ]},
   { title: 'Afterburner — Flame Confirmation', id: 'ab-flame-section', fields: [
-    { key:'ab_fm',  path:['afterburner','flame_mode'],          label:'Flame Mode',          type:'select', options:[{v:0,l:'Flame Sensor'},{v:1,l:'EGT Rise'},{v:2,l:'Timed (no sensor)'}], desc:'How to verify the afterburner has lit. Sensor: requires AB flame sensor in Hardware. EGT Rise: waits for a selected-temperature jump. Timed: wait a fixed delay then assume lit - no sensor required.', basic:true },
+    { key:'ab_fm',  path:['afterburner','flame_mode'],          label:'Light-up Evidence',    type:'select', options:[{v:0,l:'Flame sensor verification'},{v:1,l:'EGT-rise verification'},{v:2,l:'Timed assumption - no flame verification'}], desc:'How light-up is assessed. Timed assumption provides no evidence that fuel has ignited and should be used only when the installation has no usable flame or EGT feedback.', basic:true },
     { key:'ab_tr',  path:['afterburner','tot_rise_deg_c'],      label:'EGT Rise', unitType:'temp_delta', desc:'Minimum selected EGT rise required to confirm ignition (EGT Rise mode). Typical: 20-50 C. Too low can false-confirm on noise/throttle changes; too high can reject a real light. Verify on a real start.', step:5, min:0 },
     { key:'ab_tw',  path:['afterburner','tot_rise_window_ms'],  label:'EGT Rise Window (ms)',desc:'Time window in which the required EGT rise must occur (EGT Rise mode). Typical: 1500-3000 ms.', step:100, min:0 },
-    { key:'ab_ams', path:['afterburner','assume_ignited_ms'],   label:'Assume Lit After (ms)',desc:'Delay before assuming AB has lit without sensor confirmation (Timed mode). Typical: 1000-2000 ms.', step:100, min:0 },
+    { key:'ab_ams', path:['afterburner','assume_ignited_ms'],   label:'Unverified Timed Delay (ms)',desc:'Delay before continuing without verifying flame. This is not flame confirmation. Typical starting point: 1000-2000 ms, verified on a restrained test setup.', step:100, min:0 },
     { key:'ab_fto', path:['afterburner','flame_timeout_ms'],    label:'Confirmation Timeout (ms)', desc:'Overall deadline for flame confirmation. Exceeding this triggers an AB fault and shuts down the afterburner. Typical: 3000-5000 ms.', step:200, min:0, max:3600000 },
   ]},
   { title: 'Afterburner — Running', id: 'ab-run-section', fields: [
@@ -309,7 +326,6 @@ const SCHEMA = [
     { key:'ab_smt', path:['afterburner','stabilize_max_tot'],    label:'Stabilize Max EGT',  unitType:'temp', zeroOff:true, desc:'AB faults if selected EGT exceeds this during the stabilize hold. 0 = disabled.', step:10, min:0, max:100000 },
   ]},
   { title: 'Safety Thresholds', id: 'safety-ext-section', fields: [
-    { key:'sf_tit', path:['safety','tit_limit_c'],              label:'TIT Limit',          unitType:'temp',  zeroOff:true, wrapId:'field-sf-tit', desc:'Turbine Inlet Temperature hard limit. Engine shuts down if TIT exceeds this. 0 = disabled. Typical turboprop TIT limit: 800-950 °C / 1470-1740 °F.',               step:10,   min:0, basic:true },
     { key:'sf_ot',  path:['safety','oil_temp_limit_c'],         label:'Oil Temp Limit',     unitType:'temp',  zeroOff:true, desc:'Maximum oil temperature before fault shutdown. 0 = disabled. Typical limit: 120–150 °C / 250–300 °F depending on oil grade.',                                   step:5,    min:0, basic:true },
     { key:'sf_fp',  path:['safety','fuel_press_min_bar'],       label:'Fuel Press Min',     unitType:'press', desc:'Low fuel pressure fault threshold during RUNNING. 0 = disabled. Typical: 0.5–2.0 bar / 7–30 PSI depending on pump type.',                                     step:0.1,  min:0, basic:true },
     { key:'sf_bv',  path:['safety','batt_volt_min_v'],          label:'Battery Min (V)',          desc:'Battery / bus undervoltage fault threshold. 0 = disabled. Set ~0.5 V below your minimum expected loaded voltage. Typical: 10.5 V for 3S LiPo.',    step:0.1,  min:0, basic:true },
@@ -462,7 +478,7 @@ function setPath(obj, path, val) {
 const WORKSPACE_GROUPS = [
   { id:'engine', title:'Engine & Limits', desc:'Primary speed, temperature and throttle behaviour', sections:['Engine Protection Limits','Throttle'] },
   { id:'oil', title:'Oil & Lubrication', desc:'Startup, running and windmilling oil protection', sections:['Oil System','Windmilling Oil Protection'] },
-  { id:'operation', title:'Start, Run & Recovery', desc:'Idle control, relight, cooldown overrides, low-RPM starter support and glow', sections:['Automatic Idle Speed Control','Reduced-Power Mode','Automatic Flameout Relight','Manual Relight and Cooldown Override','Low-RPM Starter Support','Glow Plug Preheat'] },
+  { id:'operation', title:'Start, Run & Recovery', desc:'Idle control, relight, cooldown overrides, low-RPM starter support and glow', sections:['Automatic Idle Control','Reduced-Power Mode','Automatic Flameout Relight','Manual Relight and Cooldown Override','Low-RPM Starter Support','Glow Plug Preheat'] },
   { id:'safety', title:'Safety & Input Health', desc:'Shutdown thresholds, sensor health and input signal loss', sections:['Automatic Safety Shutdowns','Safety Thresholds','RPM Sensor Fault Detection','RC / Servo Signal Loss Detection'] },
   { id:'power', title:'Power System', desc:'Automatic N2 speed control and afterburner tuning', sections:['Automatic N2 Speed Control','Afterburner — Ignition Conditions','Afterburner — Ignition Method','Afterburner — Flame Confirmation','Afterburner — Running'] },
   { id:'data', title:'Data & Display', desc:'Logging, update rates and external display thresholds', sections:['Logging and Data Updates','External Instrument Cluster Display'] },
@@ -508,6 +524,7 @@ function applyView() {
   document.querySelectorAll('.cfg-field').forEach(field => {
     const hardHidden = field.dataset.hardHidden === '1';
     const unavailable = field.dataset.forceHidden === '1';
+    const keepUnavailableVisible = field.dataset.keepUnavailableVisible === '1';
     const essential = field.dataset.level === 'essential';
     const bench = field.closest('.config-group')?.dataset.group === 'bench';
     const changed = !!field.querySelector('.field-changed');
@@ -516,8 +533,8 @@ function applyView() {
     let show = false;
     if (!hardHidden && searchMatch) {
       if (search) show = true;
-      else if (_workspaceFilter === 'essential') show = essential && !unavailable && !bench;
-      else if (_workspaceFilter === 'all') show = !unavailable;
+      else if (_workspaceFilter === 'essential') show = essential && (!unavailable || keepUnavailableVisible) && !bench;
+      else if (_workspaceFilter === 'all') show = !unavailable || keepUnavailableVisible;
       else if (_workspaceFilter === 'changed') show = changed;
       else if (_workspaceFilter === 'locked') show = unavailable;
     }
@@ -619,6 +636,10 @@ function setCfgFieldHardHidden(key, hidden) {
   if(!wrap)return;
   wrap.dataset.hardHidden=hidden?'1':'0';
   _scheduleWorkspaceRefresh();
+}
+function keepUnavailableFieldVisible(key) {
+  const wrap = document.getElementById('cf-' + key)?.closest('.cfg-field');
+  if (wrap) wrap.dataset.keepUnavailableVisible = '1';
 }
 
 // Mode-specific tuning fields appear only when their controller selects the
@@ -900,12 +921,12 @@ function runValidation() {
   }
 
   // 4. Idle target must remain below the shaft limit it actually uses.
-  const idleUsesN2 = !!document.getElementById('cf-di_n2')?.checked;
-  const idleComparisonLimit = idleUsesN2 ? n2RpmLimit : rpmLimit;
+  const idleSource = Number(document.getElementById('cf-di_src')?.value || 0);
+  const idleComparisonLimit = idleSource === 1 ? n2RpmLimit : (idleSource === 0 ? rpmLimit : 0);
   if (idleTargetRpm !== undefined && idleComparisonLimit !== undefined &&
       idleComparisonLimit > 0 && idleTargetRpm >= idleComparisonLimit) {
     warnings.push({
-      section: 'Automatic Idle Speed Control',
+      section: 'Automatic Idle Control',
       key:     'warn-idlelimit',
       msg:     '⚠ Idle target is at or above the selected shaft hard limit.'
     });
@@ -1034,7 +1055,7 @@ async function validateBeforeSave(cfg) {
   const n2RpmLimit = gv(cfg, 'engine', 'n2_rpm_limit');
   const minRpm     = gv(cfg, 'engine', 'min_rpm');
   const idleTarget = gv(cfg, 'dynamic_idle', 'target_rpm');
-  const idleUseN2  = !!gv(cfg, 'dynamic_idle', 'use_n2');
+  const idleSource = Number(gv(cfg, 'dynamic_idle', 'source') || 0);
   const hasN1 = hasRegistryInput('n1_speed');
   const hasN2 = hasRegistryInput('n2_speed');
   const hasAnyIdleRpm = hasN1 || hasN2;
@@ -1058,7 +1079,7 @@ async function validateBeforeSave(cfg) {
     const governorBand = Number(gv(cfg, 'governor', 'band_rpm') || 0);
     if (hwCfg.controllers?.governor && governorTarget > 0 && governorTarget + governorBand >= n2RpmLimit)
       warns.push('Governor target plus no-correction band (' + (governorTarget + governorBand) + ' RPM) reaches Maximum N2 Speed (' + n2RpmLimit + ' RPM). Leave operating margin below the hard trip.');
-    if (hwCfg.controllers?.dynamic_idle && idleUseN2 && Number(idleTarget) >= n2RpmLimit)
+    if (hwCfg.controllers?.dynamic_idle && idleSource === 1 && Number(idleTarget) >= n2RpmLimit)
       warns.push('N2-based idle target (' + idleTarget + ' RPM) is at or above Maximum N2 Speed (' + n2RpmLimit + ' RPM).');
     const clusterN2Warn = Number(gv(cfg, 'cluster', 'n2_warn_rpm') || 0);
     if (clusterN2Warn > 0 && clusterN2Warn >= n2RpmLimit)
@@ -1135,6 +1156,12 @@ async function validateBeforeSave(cfg) {
     warns.push(primaryLabel + ' Limit is 0 - overtemperature protection is DISABLED. The engine will not shut down on over-temperature.');
   if (oilRunning !== undefined && oilRunning === 0)
     warns.push('Running Oil Min is 0 — oil pressure fault protection is DISABLED. The engine will not shut down on oil loss.');
+
+  if (Number(gv(cfg, 'afterburner', 'flame_mode')) === 2) {
+    warns.push('Afterburner uses a timed assumption with no flame verification. A failed light-up can continue feeding fuel.');
+    if (Number(gv(cfg, 'afterburner', 'stabilize_max_tot')) === 0)
+      warns.push('Afterburner timed assumption is combined with disabled stabilization EGT protection. Fit flame/EGT feedback or configure a verified stabilization limit.');
+  }
 
   if (errors.length) {
     alert('Cannot save — fix these errors:\n\n' + errors.map(e => '• ' + e).join('\n'));
@@ -1638,6 +1665,9 @@ function applyHwConditions() {
   const hasFlame       = hasRegistryInput('flame');
   const hasTot         = hasRegistryInput('tot');
   const hasTit         = hasRegistryInput('tit');
+  const hasP1          = hasRegistryInput('p1_pressure');
+  const hasP2          = hasRegistryInput('p2_pressure');
+  const hasTorque      = hasRegistryInput('torque');
   const hasAB          = hasActualAfterburnerHardware();
   const hasAbFlame     = !!(hasAB && hasRegistryInput('ab_flame'));
   const abTriggerSource = Number(hwCfg.ab_trigger?.source ?? hwCfg.abTriggerSource ?? 0);
@@ -1805,7 +1835,7 @@ function applyHwConditions() {
   ghostField('sf_ot', hasOilTemp, 'Oil temperature sensor is not configured in Hardware.');
   ghostField('sf_fp', hasFuelPress, 'Fuel pressure sensor is not configured in Hardware.');
   ghostField('sf_bv', hasBattVolt, 'Battery voltage sensor is not configured in Hardware.');
-  ghostField('sf_tit', hasTit, 'TIT sensor is not configured in Hardware.');
+  ghostField('sf_tit', usesTitEgt, !hasTit ? 'TIT sensor is not configured in Hardware.' : 'TIT is not the selected primary engine temperature.');
   ghostField('sf_sg', hasN1, 'Surge detection requires an N1 RPM sensor.');
   ghostField('rh_jt', hasN1, 'RPM health checks require an N1 RPM sensor.');
   ghostField('rh_zs', hasN1, 'RPM health checks require an N1 RPM sensor.');
@@ -1832,7 +1862,16 @@ function applyHwConditions() {
   ['pb_egte','pb_egts','pb_egth'].forEach(k =>
     ghostField(k, hasThrottleSlew && hasEgtPb,
       !hasEgtPb ? 'EGT pullback requires a TOT or TIT sensor in Hardware.' : slewMsg));
-  const hasAnyPullbackSource = hasN1Pb || hasN2 || hasEgtPb;
+  ['pb_p1e','pb_p1s','pb_p1h'].forEach(k =>
+    ghostField(k, hasThrottleSlew && hasP1,
+      !hasP1 ? 'P1 pullback requires a P1 pressure sensor in Hardware.' : slewMsg));
+  ['pb_p2e','pb_p2s','pb_p2h'].forEach(k =>
+    ghostField(k, hasThrottleSlew && hasP2,
+      !hasP2 ? 'P2 pullback requires a P2 pressure sensor in Hardware.' : slewMsg));
+  ['pb_tqe','pb_tqs','pb_tqh'].forEach(k =>
+    ghostField(k, hasThrottleSlew && hasTorque,
+      !hasTorque ? 'Torque pullback requires a shaft-torque sensor in Hardware.' : slewMsg));
+  const hasAnyPullbackSource = hasN1Pb || hasN2 || hasEgtPb || hasP1 || hasP2 || hasTorque;
   ['pb_min','pb_str'].forEach(k =>
     ghostField(k, hasThrottleSlew && hasAnyPullbackSource,
       !hasAnyPullbackSource ? 'Pullback floor has no effect until an N1, N2, TOT, or TIT sensor is configured in Hardware.' : slewMsg));
@@ -1886,12 +1925,9 @@ function applyHwConditions() {
   ghostField('sl_oc', hasOilPump && !!a.oil_pump?.has_current,
     'Oil pump current logging requires an oil pump current sensor in Hardware.');
 
-  ['di_tr','di_ru','di_rd','di_db','di_rl','di_mm','di_ig','di_im'].forEach(k =>
+  ['di_src','di_tr','di_tp','di_ru','di_rd','di_db','di_rl','di_pd','di_pl','di_mm','di_ig','di_im'].forEach(k =>
     ghostField(k, hasDynamicIdle, 'Automatic idle speed control must be enabled in Hardware > Controllers and needs a throttle/fuel output plus an N1 or N2 speed sensor.'));
-  ghostField('di_n2', hasDynamicIdle && hasN2, hasN2
-    ? 'Automatic idle speed control must be enabled in Hardware > Controllers and needs a throttle/fuel output.'
-    : 'Use N2 Speed requires an N2 RPM sensor in Hardware.');
-  ghostSectionByTitle('Automatic Idle Speed Control', hasDynamicIdle, 'Automatic idle speed control needs a throttle/fuel output and N1 or N2 speed feedback.');
+  ghostSectionByTitle('Automatic Idle Control', hasDynamicIdle, 'Automatic idle control needs a throttle/fuel output and one installed N1, N2, P1 or P2 sensor.');
 
   ghostSectionByTitle('Automatic N2 Speed Control', hasGovernor,
     !hasGovernorRequested
@@ -1907,8 +1943,6 @@ function applyHwConditions() {
       : 'Prop-pitch governor fields require a proportional prop-pitch actuator in Hardware.'));
 
   // ── N2 / two-shaft fields ────────────────────────────────────────────────
-  setCfgFieldHardHidden('di_n2', !hasN2);
-  showField('di_n2', hasN2);
   setCfgFieldHardHidden('cl_n2', !hasN2); // impossible on single-shaft topology; do not ghost
   if (!hasN2) showField('cl_n2', false); // applyClusterVisibility guards show, we guard N2
   const clusterSec = Array.from(document.querySelectorAll('.cfg-section'))
@@ -1918,6 +1952,9 @@ function applyHwConditions() {
   ['rpm_limit','min_rpm','cl_n1'].forEach(k =>
     ghostField(k, hasN1, 'N1 RPM sensor is not configured in Hardware. Standard timer/TOT setup does not use this value.'));
   ghostField('n2_rpm_limit', hasN2, 'N2 RPM sensor is not configured in Hardware. This hard power-turbine shutdown limit does not apply.');
+  ghostField('sf_p1t', hasP1, 'P1 pressure sensor is not configured in Hardware. This hard shutdown limit does not apply.');
+  ghostField('sf_p2t', hasP2, 'P2 pressure sensor is not configured in Hardware. This hard shutdown limit does not apply.');
+  ['rpm_limit','n2_rpm_limit','tot_limit','sf_tit','sf_p1t','sf_p2t'].forEach(keepUnavailableFieldVisible);
   ghostField('cl_tw', hasEgt, 'Cluster EGT warning needs a fitted TOT or TIT sensor.');
   ghostField('cl_ow', hasOilPress, 'Cluster oil warning needs a fitted oil pressure sensor.');
 
@@ -1993,11 +2030,8 @@ function applyHwConditions() {
     }
   }
 
-  // P1/P2 — hide completely when absent (they also lack a dashboard card)
-  const hasP1 = hasRegistryInput('p1_pressure');
-  const hasP2 = hasRegistryInput('p2_pressure');
-  showField('sl_p1', hasP1);
-  showField('sl_p2', hasP2);
+  // P1/P2 choices follow the same visible-but-ghosted treatment as every
+  // other hardware-dependent session-log column.
 
   // Other hardware-conditional log columns — ghost treatment
   const hasFuelFlow = hasRegistryInput('fuel_flow');
@@ -2007,6 +2041,8 @@ function applyHwConditions() {
   ghostSlogField('sl_ti', hasTit,         'TIT sensor');
   ghostSlogField('sl_ot', hasOilTemp,     'Oil temperature sensor');
   ghostSlogField('sl_ol', hasOilPress,    'Oil pressure sensor');
+  ghostSlogField('sl_p1', hasP1,          'P1 pressure sensor');
+  ghostSlogField('sl_p2', hasP2,          'P2 pressure sensor');
   ghostSlogField('sl_th', hasThrottleOut, 'Throttle output');
   ghostSlogField('sl_op', hasOilPump,     'Oil pump output');
   ghostSlogField('sl_bv', hasBattVolt,    'Battery voltage sensor');

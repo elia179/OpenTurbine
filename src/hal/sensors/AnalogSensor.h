@@ -50,6 +50,8 @@ public:
     }
 
     void begin() override {
+        _lastMs = 0;
+        _sampleSeq = 0;
         analogSetAttenuation(ADC_11db); // 0–3.3 V full range
         analogReadResolution(12);       // 12-bit (0–4095), portable across ESP32 targets
     }
@@ -61,12 +63,15 @@ public:
         unsigned long now = millis();
         if (now - _lastMs < SAMPLE_INTERVAL_MS) return;
         _lastMs = now;
+        ++_sampleSeq;
         _avg.push(analogRead(_pin));    // raw 12-bit counts
     }
 
     int         rawCounts()  const { return (int)_avg.avg(); }
     bool        railHealthy() const { return _railCheck(); }
     const char* name()       override { return _name; }
+    uint32_t sampleSequence() override { return _sampleSeq; }
+    uint32_t sampleTimestampMs() override { return _lastMs; }
     void setHealthyRawRange(int minRaw, int maxRaw) {
         _healthyMinRaw = constrain(minRaw, 0, 4094);
         _healthyMaxRaw = constrain(maxRaw, _healthyMinRaw + 1, 4095);
@@ -78,6 +83,7 @@ protected:
     int         _pin;
     const char* _name;
     unsigned long _lastMs = 0;
+    uint32_t _sampleSeq = 0;
     RollingAvg<4> _avg;
     int _healthyMinRaw = 10;
     int _healthyMaxRaw = 4085;

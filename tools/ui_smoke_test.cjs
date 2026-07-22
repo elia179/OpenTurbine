@@ -26,6 +26,7 @@ async function state(page) {
 async function scenario(page, name) {
   const response = await page.request.post(`${base}/__sim/scenario/${name}`);
   assert.equal(response.ok(), true, `scenario ${name} request failed`);
+  if (page.url().startsWith(base)) await page.evaluate(() => sessionStorage.clear());
 }
 
 async function openConfigWorkspace(page) {
@@ -137,7 +138,7 @@ function installedBrowser() {
     await page.goto(base);
     await waitShown(page, '#n1-card', true);
     const retainedTrend = await page.evaluate(() =>
-      JSON.parse(localStorage.getItem('ot_dashboard_sparklines_v1') || '{}').series?.tot || []);
+      JSON.parse(localStorage.getItem(`ot_dashboard_sparklines_v2:${location.host}:sim-dev`) || '{}').series?.tot || []);
     assert.equal(retainedTrend.some(v => Number(v) === 175), true);
     assert.equal(retainedTrend.some(v => Number(v) === 640), true);
     results.push('equivalent EGT/speed cards expose trends and dashboard history survives page navigation');
@@ -255,7 +256,7 @@ function installedBrowser() {
       has_tit: true, tit_limit: 0, has_oil_temp: false,
       has_batt_voltage: false, fuel_press_min: 0, has_governor: false
     } });
-    await waitShown(page, '#safety-ext-section', true);
+    await waitShown(page, '#engine-limits', true);
     await waitShown(page, '#field-sf-tit', true);
     results.push('installed TIT sensor exposes its configurable limit before a limit is set');
     assert.equal(await page.locator('text=Download settings').count(), 0);
@@ -580,7 +581,10 @@ function installedBrowser() {
     assert.equal(await page.locator('#rule-kind-1').inputValue(), '1');
     assert.match(await page.locator('#rule-sensor-1 option:checked').textContent(), /Lamp Dimmer/);
     assert.match(await page.locator('#rule-act-1 option:checked').textContent(), /Warning Lamp/);
-    assert.equal(await page.locator('#rule-mode-all-1').isChecked(), true);
+    assert.equal(await page.locator('#rule-mode-standby-1').isChecked(), false);
+    assert.equal(await page.locator('#rule-mode-startup-1').isChecked(), true);
+    assert.equal(await page.locator('#rule-mode-running-1').isChecked(), true);
+    assert.equal(await page.locator('#rule-mode-shutdown-1').isChecked(), true);
     await page.locator('#rule-in-min-1').fill('10');
     await page.locator('#rule-in-max-1').fill('90');
     await page.locator('#rule-out-min-1').fill('15');
@@ -593,12 +597,12 @@ function installedBrowser() {
     assert.equal(saved.hardware.startup_delay_ms[6], 6000);
     assert.equal(saved.settings.rules.length, 2);
     assert.equal(saved.settings.rules[1].kind, 1);
-    assert.equal(saved.settings.rules[1].mode_mask, 15);
+    assert.equal(saved.settings.rules[1].mode_mask, 14);
     assert.equal(saved.settings.rules[1].input_min, 0.1);
     assert.equal(saved.settings.rules[1].input_max, 0.9);
     assert.equal(saved.settings.rules[1].output_min, 0.15);
     assert.equal(saved.settings.rules[1].output_max, 0.65);
-    results.push('control rules provide a useful generic ADC-to-PWM example, all-state selection, and canonical percentage saves');
+    results.push('control rules expose each engine state directly and preserve canonical percentage saves');
 
     const unified = await (await page.request.get(`${base}/api/ecu_config`)).json();
     unified.hardware.profile_id = 'second-bench-engine';

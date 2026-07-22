@@ -46,7 +46,7 @@ const SEQUENCE_BLOCK_LABELS = {
   FuelOpen:'Open Main Fuel Shutoff', FlameConfirm:'Confirm Combustion by Flame Sensor',
   TempConfirm:'Confirm Combustion by Temperature', TimedDelay:'Timed Delay',
   FuelPumpIdle:'Set Main Fuel for Idle', ModifiedIdle:'Set Main Fuel for Raised Idle', Spool:'Accelerate to Idle',
-  SafetyHold:'Verify Stable Idle', AirstarterOn:'Air Starter Valve Open', AirstarterOff:'Air Starter Valve Close',
+  SafetyHold:'Final Startup Checks', AirstarterOn:'Air Starter Valve Open', AirstarterOff:'Air Starter Valve Close',
   CoolFanOn:'Cooling Fan On', CoolFanOff:'Cooling Fan Off', IgniterOn:'Ignition Output On', IgniterOff:'Ignition Output Off',
   FuelSolClose:'Close Main Fuel Shutoff', StarterEnOn:'Starter Enable On', StarterEnOff:'Starter Enable Off',
   OilPumpOn:'Oil Pump On', OilPumpOff:'Oil Pump Off', OilScavengeOn:'Scavenge On', OilScavengeOff:'Scavenge Off',
@@ -159,15 +159,10 @@ function resolveCssColor(color) {
 }
 
 const SPARK_LEN = 60;
-const SPARK_STORAGE_KEY = 'ot_dashboard_sparklines_v1';
+const SPARK_STORAGE_PREFIX = 'ot_dashboard_sparklines_v2';
 const SPARK_MAX_AGE_MS = 15 * 60 * 1000;
-const _storedSparks = (() => {
-  try {
-    const saved = JSON.parse(localStorage.getItem(SPARK_STORAGE_KEY) || '{}');
-    return saved.saved_at && Date.now() - Number(saved.saved_at) <= SPARK_MAX_AGE_MS
-      ? (saved.series || {}) : {};
-  } catch { return {}; }
-})();
+let _sparkStorageKey = '';
+let _storedSparks = {};
 function sparkSeries(key) {
   const values = Array.isArray(_storedSparks[key]) ? _storedSparks[key] : [];
   return values.map(Number).filter(Number.isFinite).slice(-SPARK_LEN);
@@ -189,6 +184,7 @@ function registryInputSparkSeries(id) {
 }
 
 function persistSparklineHistory(force = false) {
+  if (!_sparkStorageKey) return;
   const now = Date.now();
   if (!force && now - _lastSparkPersistMs < 1000) return;
   _lastSparkPersistMs = now;
@@ -198,8 +194,23 @@ function persistSparklineHistory(force = false) {
   };
   _sparkRegistryInputs.forEach((values, key) => { series[key] = values; });
   try {
-    localStorage.setItem(SPARK_STORAGE_KEY, JSON.stringify({saved_at:now,series}));
+    localStorage.setItem(_sparkStorageKey, JSON.stringify({saved_at:now,series}));
   } catch {}
+}
+
+function scopeSparklineHistory(profileId) {
+  const profile = String(profileId || '').trim();
+  if (!profile || _sparkStorageKey) return;
+  _sparkStorageKey = `${SPARK_STORAGE_PREFIX}:${location.host}:${profile}`;
+  try {
+    const saved = JSON.parse(localStorage.getItem(_sparkStorageKey) || '{}');
+    _storedSparks = saved.saved_at && Date.now() - Number(saved.saved_at) <= SPARK_MAX_AGE_MS
+      ? (saved.series || {}) : {};
+  } catch { _storedSparks = {}; }
+  const restore = (arr, key) => arr.splice(0, arr.length, ...sparkSeries(key));
+  restore(_sparkN1, 'n1'); restore(_sparkN2, 'n2'); restore(_sparkTot, 'tot');
+  restore(_sparkTit, 'tit'); restore(_sparkOilTemp, 'oil_temp');
+  restore(_sparkBattVolt, 'battery'); restore(_sparkTorque, 'torque');
 }
 window.addEventListener('pagehide', () => persistSparklineHistory(true));
 
@@ -254,6 +265,9 @@ let _wsRequestSentMs = 0;
 let _lastUptimeS = null;
 let _lastBootCount = null;
 let _statusHeartbeatTimer = null;
+let _staleTimer = null;
+let _telemetryStale = false;
+let _dashboardBootstrapTimer = null;
 
 function isLiveTelemetryPage() {
   if (document.body?.dataset?.page === 'dashboard') return true;
@@ -317,7 +331,7 @@ async function restTelemetryFallbackNow() {
   if (_lastMsgMs && Date.now() - _lastMsgMs < 2500) return;
   _restFallbackInFlight = true;
   try {
-    const r = await fetch('/api/data', { cache: 'no-store' });
+    const r = await fetch('/api/telemetry', { cache: 'no-store' });
     if (r.ok) {
       const d = await r.json();
       _lastMsgMs = Date.now();
@@ -338,6 +352,7 @@ function stopGlobalTelemetry() {
   if (_pullTimer) { clearInterval(_pullTimer); _pullTimer = null; _pullPeriodMs = 0; }
   if (_restFallbackTimer) { clearInterval(_restFallbackTimer); _restFallbackTimer = null; }
   if (_statusHeartbeatTimer) { clearInterval(_statusHeartbeatTimer); _statusHeartbeatTimer = null; }
+  if (_dashboardBootstrapTimer) { clearTimeout(_dashboardBootstrapTimer); _dashboardBootstrapTimer = null; }
   _wsRequestInFlight = false;
   _restFallbackInFlight = false;
   if (ws) {
@@ -378,6 +393,7 @@ function startStatusHeartbeat() {
 function connect() {
   if (!usesGlobalTelemetry()) return;
   if (ws && ws.readyState <= WebSocket.OPEN) return;
+  startStaleMonitor();
   _lastConnectMs = Date.now();
   ws = new WebSocket('ws://' + location.host + '/ws');
 
@@ -417,6 +433,8 @@ function connect() {
 // ── Apply telemetry frame to DOM ──────────────────────────────
 let _lastData = null;
 function applyData(d) {
+  setTelemetryStale(false, 0);
+  if (d?.profile_id) scopeSparklineHistory(d.profile_id);
   let bootChanged = false;
   if (d && d.boot_count !== undefined) {
     const nextBootCount = Number(d.boot_count);
@@ -1528,8 +1546,8 @@ function _showRunSummary(d, durationMs) {
     (d.has_n2 && d.max_n2 !== undefined) ? { label: 'Peak N2',  value: fmtInt(d.max_n2) + ' RPM' } : null,
     (d.has_tot && d.max_tot !== undefined) ? { label: 'Peak TOT', value: toDispTemp(Number(d.max_tot)).toFixed(0) + ' ' + dispTempUnit() } : null,
     (d.has_tit && d.max_tit !== undefined) ? { label: 'Peak TIT', value: toDispTemp(Number(d.max_tit)).toFixed(0) + ' ' + dispTempUnit() } : null,
-    (d.has_oil_press && d.oil_min_bar !== undefined && Number(d.oil_min_bar) > 0)
-      ? { label: 'Min oil', value: toDispPress(Number(d.oil_min_bar)).toFixed(2) + ' ' + dispPressUnit() } : null,
+    (d.has_oil_press && d.min_oil !== undefined && d.min_oil !== null)
+      ? { label: 'Minimum oil pressure', value: toDispPress(Number(d.min_oil)).toFixed(2) + ' ' + dispPressUnit() } : null,
   ].filter(Boolean);
 
   const statsEl = document.getElementById('run-summary-stats');
@@ -1713,6 +1731,7 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', stopGlobalTelemetry);
 window.addEventListener('beforeunload', stopGlobalTelemetry);
+window.addEventListener('ot:navigation-start', stopGlobalTelemetry);
 function startTelemetryBoot() {
   if (!usesGlobalTelemetry()) {
     if (!hasPageLocalTelemetry()) startStatusHeartbeat();
@@ -1721,11 +1740,49 @@ function startTelemetryBoot() {
   connect();
   startRestFallbackTimer();
   if (isDashboardPage()) {
-    fetch('/api/data', { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => { try { applyData(d); } catch(e) {} })
-      .catch(() => {});
+    // Live values arrive immediately over WS. Delay the much larger full
+    // snapshot until the user has actually remained on Dashboard; otherwise a
+    // quick menu click can abandon this Classic ESP32 transfer behind the next
+    // page request. The navigation teardown cancels this timer.
+    _dashboardBootstrapTimer = setTimeout(() => {
+      _dashboardBootstrapTimer = null;
+      fetch('/api/data', { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => { try { applyData(d); } catch(e) {} })
+        .catch(() => {});
+    }, 2500);
   }
+}
+
+function setTelemetryStale(stale, ageMs = 0) {
+  if (!isLiveTelemetryPage()) return;
+  _telemetryStale = !!stale;
+  document.body?.classList.toggle('telemetry-stale', _telemetryStale);
+  let banner = document.getElementById('telemetry-stale-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'telemetry-stale-banner';
+    banner.style.cssText = 'display:none;position:sticky;top:48px;z-index:95;padding:.65rem 1rem;text-align:center;background:#7f1d1d;color:#fff;border-bottom:2px solid #ef4444;font-weight:800;letter-spacing:.04em';
+    document.body.insertBefore(banner, document.body.firstChild?.nextSibling || null);
+  }
+  banner.style.display = _telemetryStale ? '' : 'none';
+  if (_telemetryStale) {
+    banner.textContent = `TELEMETRY STALE - last update ${(ageMs / 1000).toFixed(1)} s ago`;
+    ['btn-start','btn-ab-fire'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+  }
+}
+
+function startStaleMonitor() {
+  if (_staleTimer || !isLiveTelemetryPage()) return;
+  _staleTimer = setInterval(() => {
+    if (!_lastMsgMs || document.hidden) return;
+    const age = Date.now() - _lastMsgMs;
+    const staleAfter = Math.max(2500, desiredPullPeriodMs() * 3 + 500);
+    setTelemetryStale(age > staleAfter, age);
+  }, 500);
 }
 
 function mergeTelemetryChannels(previousRows, nextRows) {
